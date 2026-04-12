@@ -1,0 +1,26 @@
+{
+  "name": "spica-tide",
+  "version": "1.0.0",
+  "description": "SPICA TIDE — Deck Cargo Planning Tool for PSV FAR SPICA",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "release": "vite build && tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^6"
+  }
+}

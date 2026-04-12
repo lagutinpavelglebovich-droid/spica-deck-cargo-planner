@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPICA TIDE — Deck Cargo Plan</title>
+<script>
+/* Apply saved theme before first paint — prevents flash */
+(function(){
+  try{
+    var t=localStorage.getItem('spicaTide_theme');
+    if(t==='dark') document.documentElement.setAttribute('data-theme','dark');
+  }catch(e){}
+})();
+</script>
+<script type="module" src="/src/main.js"></script>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="brand" id="brandBlock">
+    <div class="brand-name" id="brandName">SPICA TIDE</div>
+    <div class="brand-dcp"  id="brandDcp">Deck Cargo Plan</div>
+    <div class="brand-sub"  id="brandSub">PSV · FAR SPICA · NEO Energy · North Sea</div>
+    <!-- Admin edit trigger — pencil icon, appears on hover -->
+    <button class="brand-edit-btn" id="brandEditBtn" title="Admin: edit header labels" aria-label="Edit header">✎</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="gstats">
+    <div class="gst">
+      <span class="gst-lbl">Total Lifts</span>
+      <div class="gst-val total" id="sLifts">0</div>
+      <div class="gst-wt" id="sWT">0.0 T</div>
+    </div>
+    <div class="gst-sep"></div>
+    <div class="gst"><span class="gst-lbl">Load</span><div class="gst-val load" id="sL">0</div></div>
+    <div class="gst"><span class="gst-lbl">Backload</span><div class="gst-val bl" id="sBL">0</div></div>
+    <div class="gst"><span class="gst-lbl">ROB</span><div class="gst-val rob" id="sROB">0</div></div>
+    <div class="gst" id="gstTR" style="display:none"><span class="gst-lbl">Transfer</span><div class="gst-val tr" id="sTR">0</div></div>
+  </div>
+
+  <div class="hdr-right">
+    <!-- Status selector -->
+    <div class="hst">
+      <div class="hst-lbl">Placing as</div>
+      <div class="sbtns">
+        <div class="sb sel" data-s="L">Load</div>
+        <div class="sb" data-s="BL">Backload</div>
+        <div class="sb" data-s="ROB">ROB</div>
+        <div class="sb" data-s="TR">Transfer</div>
+      </div>
+    </div>
+
+    <!-- Voyage + Date card -->
+    <div class="voy-card">
+      <div class="voy-row">
+        <span class="voy-lbl">Voyage</span>
+        <input class="voy-input" type="text" id="voyIn" placeholder="NN/074/26">
+      </div>
+      <div class="voy-row">
+        <span class="voy-lbl">Date</span>
+        <button class="voy-date-btn" id="dateBtn"></button>
+      </div>
+      <button class="voy-remarks-btn" id="voyRemarksBtn" title="Voyage Notes / Remarks">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 4h6M3 6.5h4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        Voyage Notes
+      </button>
+    </div>
+
+    <!-- ASCO Upload -->
+    <button class="btn-asco-upload" id="btnAscoUpload" title="Upload ASCO Cargo List (Excel)">
+      <div class="btn-asco-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+        <path d="M9 11V3M9 3L6.5 5.5M9 3L11.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3 13v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg></div>
+      <div class="btn-asco-lbl">Upload Cargo List</div>
+    </button>
+
+    <!-- Library -->
+    <button class="btn-lib-open" id="btnLibOpen" title="Cargo &amp; DG Library">
+      <div class="btn-lib-open-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+        <rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="10" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="2.5" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="10" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+      </svg></div>
+      <div class="btn-lib-open-lbl">Library</div>
+      <div class="btn-lib-open-badge" id="libOpenBadge"></div>
+    </button>
+
+    <!-- Clear Deck -->
+    <button class="btn-clr-deck" id="btnClrDeck" title="Clear all cargo from deck">
+      <div class="btn-clr-deck-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+        <path d="M3 5.5h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M7 5.5V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M6.5 5.5l.7 9a1 1 0 0 0 1 .9h1.6a1 1 0 0 0 1-.9l.7-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg></div>
+      <div class="btn-clr-deck-lbl">Clear Deck</div>
+    </button>
+
+    <!-- Smart Tools button -->
+    <button class="btn-smart-tools" id="btnSmartTools" title="Smart Tools &amp; Settings">
+      <div class="btn-smart-tools-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+        <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg></div>
+      <div class="btn-smart-tools-lbl">Smart Tools</div>
+      <div class="btn-smart-tools-dot"></div>
+    </button>
+
+    <!-- Language picker — compact dropdown -->
+    <div class="lang-switch" id="langSwitch">
+      <button class="lang-picker-btn" id="langPickerBtn" aria-label="Select language">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M1 6h10M6 1c-1.5 2-2 3.5-2 5s.5 3 2 5M6 1c1.5 2 2 3.5 2 5s-.5 3-2 5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+        <span id="langPickerLabel">EN</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 3l2 2 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="lang-dropdown" id="langDropdown">
+        <button class="lang-opt active" data-lang="en">
+          <span class="lang-opt-flag">🇬🇧</span>
+          <span class="lang-opt-name">English</span>
+          <span class="lang-opt-check">✓</span>
+        </button>
+        <button class="lang-opt" data-lang="ru">
+          <span class="lang-opt-flag">🇷🇺</span>
+          <span class="lang-opt-name">Русский</span>
+          <span class="lang-opt-check">✓</span>
+        </button>
+        <button class="lang-opt" data-lang="uk">
+          <span class="lang-opt-flag">🇺🇦</span>
+          <span class="lang-opt-name">Українська</span>
+          <span class="lang-opt-check">✓</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Theme toggle — compact icon pill -->
+    <div class="theme-toggle" id="themeToggle">
+      <div class="theme-pill" id="themeSeg">
+        <button class="theme-icon-btn active" id="themeLight" aria-label="Light mode" title="Light mode">
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M9.5 2.5l-.7.7M3.2 8.8l-.7.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="theme-icon-btn" id="themeDark" aria-label="Dark mode" title="Dark mode">
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 7.5A4.5 4.5 0 0 1 4.5 2c0-.3.02-.6.07-.9A4.5 4.5 0 1 0 10.9 7.43 4.6 4.6 0 0 1 10 7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Undo / Redo -->
+    <div class="undo-redo-group">
+      <button class="btn-undo" id="btnUndo" title="Undo (Ctrl+Z)" disabled>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 7h7a3 3 0 0 1 0 6H9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7 4L4 7l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="btn-redo" id="btnRedo" title="Redo (Ctrl+Y)" disabled>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 7H5a3 3 0 0 0 0 6h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 4l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <!-- Save As -->
+    <div class="btn-saveas-wrap" id="saveAsWrap">
+      <button class="btn-saveas" id="btnSaveAs" title="Export deck plan">
+        <div class="btn-saveas-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+          <path d="M4 14h10M9 3v8M9 11L6.5 8.5M9 11l2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg></div>
+        <div class="btn-saveas-lbl">Save As</div>
+        <div class="btn-saveas-chevron">▾</div>
+      </button>
+      <div class="saveas-dropdown" id="saveAsDropdown">
+        <!-- Native file operations (visible only in Tauri desktop mode) -->
+        <div class="saveas-item tauri-only" id="saveAsPlanFile" style="display:none">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 1.5h5.5L11 4v8.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5V4.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 8h4M5 10h2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Save Plan</span>
+            <span class="saveas-item-sub">.spica file &middot; Ctrl+Shift+S</span>
+          </span>
+        </div>
+        <div class="saveas-item tauri-only" id="openPlanFile" style="display:none">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5V11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1H7.5L6 3H3a1 1 0 0 0-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Open Plan...</span>
+            <span class="saveas-item-sub">.spica file &middot; Ctrl+O</span>
+          </span>
+        </div>
+        <div class="saveas-divider tauri-only" id="tauriDivider" style="display:none"></div>
+        <div class="saveas-sep-lbl tauri-only" id="tauriRecentLbl" style="display:none">Recent</div>
+        <div id="tauriRecentList"></div>
+        <div class="saveas-divider tauri-only" id="tauriRecentDivider" style="display:none"></div>
+        <div class="saveas-sep-lbl">Project</div>
+        <div class="saveas-item" id="saveProjectFile">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 1h6l3 3v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M8 1v3h3" stroke="currentColor" stroke-width="1.2"/><path d="M5 8h4M5 10h2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Save Project</span>
+            <span class="saveas-item-sub">.json file</span>
+          </span>
+        </div>
+        <div class="saveas-item" id="openProjectFile">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5V11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1H7.5L6 3H3a1 1 0 0 0-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Open Project...</span>
+            <span class="saveas-item-sub">.json file</span>
+          </span>
+        </div>
+        <div class="saveas-divider"></div>
+        <div class="saveas-sep-lbl">Export</div>
+        <div class="saveas-item" id="saveAsPDF">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="1" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M4 5h6M4 7.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Save as PDF</span>
+            <span class="saveas-item-sub">A4 landscape · full deck plan</span>
+          </span>
+        </div>
+        <div class="saveas-divider"></div>
+        <div class="saveas-item disabled" id="saveAsXLSX">
+          <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="1" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5l5 4M9.5 5l-5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+          <span class="saveas-item-text">
+            <span class="saveas-item-name">Save as Excel</span>
+            <span class="saveas-item-sub">Coming soon</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Autosave toggle -->
+    <button class="autosave-toggle on" id="autosaveToggle" title="Autosave On" aria-label="Toggle autosave">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.3"/><path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+    </button>
+
+    <!-- Save state indicator -->
+    <div class="save-state" id="saveState">
+      <span class="save-dot"></span>
+      <span class="save-state-text" id="saveStateText">Saved</span>
+    </div>
+
+    <!-- Version badge -->
+    <div class="ver-badge">
+      <div class="ver-badge-inner">Beta&nbsp;·&nbsp;<b>v38.19</b></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- DG AUTO-SEGREGATION CHECK MODAL -->
+<div class="dg-check-ov" id="dgCheckOv">
+  <div class="dg-check-panel" id="dgCheckPanel">
+    <div class="dg-check-titlebar">
+      <div class="dg-check-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 2L16.5 15H1.5L9 2Z" stroke="#dc2626" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M9 7v4M9 12.5v.5" stroke="#dc2626" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="dg-check-title-wrap">
+        <div class="dg-check-title">DG Segregation Violations</div>
+        <div class="dg-check-sub" id="dgCheckSub">Checking IMDG matrix…</div>
+      </div>
+      <div class="dg-check-close" id="dgCheckClose">×</div>
+    </div>
+    <div class="dg-check-body" id="dgCheckBody"></div>
+    <div class="dg-check-footer">
+      <div class="dg-check-footer-note">IMDG Code segregation — distances are minimum edge-to-edge clearance in MINI units (6 ft × 6 ft).</div>
+      <button class="dg-check-dismiss" id="dgCheckDismiss">Acknowledge</button>
+    </div>
+  </div>
+</div>
+
+<div class="clr-deck-ov" id="clrDeckOv">
+  <div class="clr-deck-modal" id="clrDeckModal">
+    <div class="clr-deck-head">
+      <div class="clr-deck-icon-wrap">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline points="3,5 5,5 15,5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M7 5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 5l.7 9.1A1 1 0 0 0 7.7 15h2.6a1 1 0 0 0 1-.9L12 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="clr-deck-title">Clear Deck</div>
+        <div class="clr-deck-sub"><span data-i18n="clr_sub">This cannot be undone</span></div>
+      </div>
+    </div>
+    <div class="clr-deck-body">
+      <span data-i18n="clr_body">Are you sure you want to remove all cargo from the deck?</span>
+      <div class="clr-deck-count" id="clrDeckCount">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="3" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M4 3V2.5A1.5 1.5 0 0 1 8 2.5V3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span id="clrDeckCountNum">0</span> <span data-i18n="clr_items">cargo items will be removed</span>
+      </div>
+    </div>
+    <div class="clr-deck-actions">
+      <button class="clr-deck-cancel" id="clrDeckCancel"><span data-i18n="btn_cancel">Cancel</span></button>
+      <button class="clr-deck-confirm" id="clrDeckConfirm">Clear Deck</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASCO IMPORT MODAL -->
+<div class="asco-ov" id="ascoOv">
+  <div class="asco-panel" id="ascoPanel">
+    <div class="asco-titlebar">
+      <div class="asco-traffic">
+        <div class="asco-dot close" id="ascoClose" title="Close"></div>
+      </div>
+      <div class="asco-title-wrap">
+        <div class="asco-title">Imported Cargo List</div>
+        <div class="asco-subtitle" id="ascoSubtitle">Select an ASCO loadout Excel file to import</div>
+      </div>
+      <div class="asco-badge-count" id="ascoBadgeCount" style="display:none"></div>
+    </div>
+    <!-- Drop zone -->
+    <div class="asco-dropzone" id="ascoDropzone">
+      <div class="asco-drop-icon">📂</div>
+      <div class="asco-drop-title">Drop ASCO Loadout Excel File</div>
+      <div class="asco-drop-sub">Supports .xlsx and .xls files with multiple sheet tabs.<br>Each sheet = one load list / platform batch.</div>
+      <button class="asco-drop-pill" id="ascoFilePill">Choose File…</button>
+      <input type="file" id="ascoFileInput" accept=".xlsx,.xls" style="display:none">
+    </div>
+    <!-- Results content -->
+    <div class="asco-content" id="ascoContent" style="display:none"></div>
+    <!-- Footer -->
+    <div class="asco-footer" id="ascoFooter" style="display:none">
+      <div class="asco-foot-info" id="ascoFootInfo"></div>
+      <button class="asco-btn cancel" id="ascoCancelBtn">Cancel</button>
+      <button class="asco-btn import" id="ascoImportBtn" disabled>Add to Queue</button>
+    </div>
+  </div>
+</div>
+
+<!-- DATE PICKER -->
+<div class="cal-popup" id="calPopup">
+  <div class="cal-hdr">
+    <div class="cal-nav" id="calPrev">‹</div>
+    <div class="cal-month" id="calMonthLbl"></div>
+    <div class="cal-nav" id="calNext">›</div>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<!-- Admin mode indicator bar -->
+<div class="admin-mode-bar" id="adminModeBar">
+  <div class="admin-mode-bar-dot"></div>
+  <span>Admin Edit Mode Active — click any header field to edit</span>
+  <button class="admin-mode-exit" id="adminModeExit">✓ Done Editing</button>
+</div>
+
+<!-- LOCATION ROW -->
+<div class="locs-row expanded" id="locsRow">
+  <div class="locs-toggle-bar" id="locsToggleBar">
+    <span class="locs-toggle-icon">▾</span>
+    <span class="locs-toggle-lbl">Active Locations</span>
+    <span class="locs-toggle-count" id="locsCount">0</span>
+  </div>
+  <div class="locs-content" id="locsContent">
+    <div class="btn-locs" id="btnAddLoc">
+      <div class="btn-locs-icon">⊕</div>
+      <div class="btn-locs-lbl">Locations</div>
+    </div>
+    <div id="activeLocStrip" style="display:flex;align-items:stretch;flex:1;overflow-x:auto;overflow-y:visible;"></div>
+  </div>
+</div>
+
+<!-- LOCATION DRAWER -->
+<div class="loc-drawer" id="locDrawer">
+  <div class="loc-drawer-inner">
+    <div class="loc-drawer-hdr">
+      <div class="loc-drawer-title">Select offshore locations for this voyage</div>
+      <div class="loc-drawer-close" id="locDrawerClose">×</div>
+    </div>
+    <div class="loc-grid" id="locGrid"></div>
+  </div>
+</div>
+
+<!-- DG + WARN -->
+<div class="dg-bar"><span class="dg-bar-lbl">DG on board:</span><span class="dg-empty" id="dgSumContent">none</span></div>
+<div class="dgw" id="dgW"><b>⚠ DG Segregation:</b>&nbsp;<span id="dgWTxt"></span></div>
+
+<!-- ZOOM -->
+<div class="zoom-bar">
+  <button class="zbtn" id="zoomOut">−</button>
+  <button class="zbtn" id="zoomIn">+</button>
+  <div class="zdiv"></div>
+  <button class="zbtn" id="zoomReset">1:1</button>
+  <button class="zbtn" id="zoomFit">⊡ Fit</button>
+  <span class="zlbl" id="zoomLbl">100%</span>
+</div>
+
+<!-- DECK — "Spica Tide" in compass -->
+<div class="deck-area" id="deckArea">
+  <div id="kb-coord-tip"></div>
+
+<!-- KEYBOARD SHORTCUTS CHEATSHEET MODAL -->
+<div class="kb-cheat-ov" id="kbCheatOv">
+  <div class="kb-cheat-panel">
+    <div class="kb-cheat-head">
+      <div class="kb-cheat-icon">⌨</div>
+      <div class="kb-cheat-title">Keyboard Shortcuts</div>
+      <button class="kb-cheat-close" id="kbCheatClose">✕</button>
+    </div>
+    <div class="kb-cheat-body">
+
+      <div class="kb-cheat-sec">Selection &amp; Navigation</div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Click</span></div>
+        <div class="kb-desc">Select cargo block</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key wide">Esc</span></div>
+        <div class="kb-desc">Deselect / cancel pending</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">↑</span><span class="kb-key">↓</span><span class="kb-key">←</span><span class="kb-key">→</span></div>
+        <div class="kb-desc">Move selected block <b>1 px</b></div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Alt</span><span class="kb-key-sep">+</span><span class="kb-key">↑↓←→</span></div>
+        <div class="kb-desc">Move block <b>5 px</b></div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Shift</span><span class="kb-key-sep">+</span><span class="kb-key">↑↓←→</span></div>
+        <div class="kb-desc">Move block <b>1 metre</b></div>
+      </div>
+
+      <div class="kb-cheat-sec">Cargo Actions</div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">E</span></div>
+        <div class="kb-desc"><b>Edit</b> selected block (open modal)</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">R</span></div>
+        <div class="kb-desc"><b>Rotate</b> selected block 90°</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">D</span></div>
+        <div class="kb-desc"><b>Duplicate</b> selected block</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Del</span></div>
+        <div class="kb-desc"><b>Delete</b> selected block</div>
+      </div>
+
+      <div class="kb-cheat-sec">Zoom</div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">1</span><span class="kb-key-sep">–</span><span class="kb-key">5</span></div>
+        <div class="kb-desc">Set zoom level: <b>50% · 75% · 100% · 125% · 150%</b></div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Ctrl</span><span class="kb-key-sep">+</span><span class="kb-key">Scroll</span></div>
+        <div class="kb-desc">Zoom in / out</div>
+      </div>
+
+      <div class="kb-cheat-sec">Help</div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">L</span></div>
+        <div class="kb-desc"><b>Library</b> panel — expand / collapse</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">?</span></div>
+        <div class="kb-desc">Show / hide this shortcuts panel</div>
+      </div>
+
+    </div>
+    <div class="kb-cheat-footer">
+      Shortcuts work when no input field is focused · <b>L</b> = Library panel · <b>Smart Tools → Keyboard Shortcuts</b> to toggle
+    </div>
+  </div>
+</div>
+
+<!-- Zoom level flash indicator -->
+<div id="kb-zoom-flash"></div>
+  <div class="deck-zoom-wrap" id="deckZoomWrap">
+    <div class="deck-outer">
+      <div class="deck-compass">
+        <span>◄ AFT / STERN — BAY 12</span>
+        <span>SPICA TIDE · 53.7 m × 15 m · 752 m² · Max 2500 T · 10 T/m²</span>
+        <span>BAY 1 — BOW / FORE ►</span>
+      </div>
+      <div class="dcv" id="cvDECK" data-side="DECK"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LIBRARY RESIZE HANDLE -->
+<!-- ═══ OLD LIBRARY REPLACED BY RIGHT PANEL ═══
+     All IDs kept as hidden stubs so legacy JS still finds them ══ -->
+<div style="display:none" aria-hidden="true">
+  <div id="libResizeHandle"></div>
+  <div id="libPanel"><div id="libHeader"></div></div>
+  <span id="hint"></span>
+  <div id="queueBadge"></div>
+  <input id="csearch">
+  <div id="clist"></div>
+  <div id="dglist"></div>
+  <input id="cCCU">
+  <input id="cDesc">
+  <input id="cSize">
+  <input id="cWT" type="number">
+  <button id="btnAdd"></button>
+  <button id="btnClr"></button>
+  <div id="custList"></div>
+  <div id="queueList"></div>
+  <div id="queuePaneCount"></div>
+  <button id="btnClearQueue"></button>
+</div>
+
+<!-- LOCATION DELETE DIALOG -->
+<div class="loc-del-ov" id="locDelOv">
+  <div class="loc-del-panel" id="locDelPanel">
+    <div class="loc-del-icon-wrap">
+      <div class="loc-del-icon" id="locDelIcon"></div>
+    </div>
+    <div class="loc-del-body">
+      <div class="loc-del-loc-name" id="locDelLocName">
+        <span class="loc-del-loc-dot" id="locDelLocDot"></span>
+        <span id="locDelLocNameText"></span>
+      </div>
+      <div class="loc-del-title" id="locDelTitle"></div>
+      <div class="loc-del-msg" id="locDelMsg"></div>
+      <div class="loc-del-info" id="locDelInfo"></div>
+    </div>
+    <div class="loc-del-sep"></div>
+    <div class="loc-del-btns" id="locDelBtns"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="ov" id="ov">
+<div class="mdl">
+  <div class="mdl-title">Edit Cargo</div>
+  <label>CCU / ID</label><input type="text" id="mCCU">
+  <label>Description</label>
+  <select class="mdl-desc-sel" id="mDesc">
+    <option value="">— select type —</option>
+  </select>
+  <label>Weight (T)</label><input type="number" id="mWT" step="0.1" min="0">
+  <label>Location</label><div class="mdl-locs" id="mLocGrid"></div>
+  <label>Status</label>
+  <div class="mdl-status">
+    <div class="mdl-st" data-s="L">Load</div>
+    <div class="mdl-st" data-s="BL">Backload</div>
+    <div class="mdl-st" data-s="ROB">ROB</div>
+    <div class="mdl-st" data-s="TR">Transfer</div>
+  </div>
+  <!-- Transfer destination — shown only when status=TR -->
+  <div class="mdl-tr-wrap" id="mdlTrWrap">
+    <div class="mdl-tr-lbl">Transfer destination</div>
+    <select class="mdl-tr-sel" id="mdlTrDest">
+      <option value="">— select destination —</option>
+    </select>
+  </div>
+  <label>DG Class</label>
+  <!-- Hidden native select — preserves .value API used by openModal / save -->
+  <select id="mDG" style="display:none" aria-hidden="true">
+    <option value="">— Not DG —</option>
+    <option value="1.1">1.1 Explosives (mass)</option><option value="1.2">1.2 Explosives (proj.)</option>
+    <option value="1.3">1.3 Explosives (fire)</option><option value="1.4">1.4 Explosives (minor)</option>
+    <option value="1.5">1.5 Very insensitive</option><option value="1.6">1.6 Extr. insensitive</option>
+    <option value="2.1">2.1 Flammable Gas</option><option value="2.2">2.2 Non-flammable Gas</option>
+    <option value="2.3">2.3 Toxic Gas</option><option value="3">3 Flammable Liquid</option>
+    <option value="4.1">4.1 Flammable Solid</option><option value="4.2">4.2 Spont. Combustion</option>
+    <option value="4.3">4.3 Dangerous Wet</option><option value="5.1">5.1 Oxidizing Agent</option>
+    <option value="5.2">5.2 Org. Peroxide</option><option value="6.1">6.1 Toxic</option>
+    <option value="6.2">6.2 Infectious</option><option value="7">7 Radioactive</option>
+    <option value="8">8 Corrosive</option><option value="9">9 Miscellaneous</option>
+  </select>
+  <!-- Custom DG picker — fully styled, theme-aware -->
+  <div class="dg-picker" id="dgPicker">
+    <button type="button" class="dg-picker-btn" id="dgPickerBtn" aria-haspopup="listbox" aria-expanded="false">
+      <span class="dg-picker-dot" id="dgPickerDot"></span>
+      <span class="dg-picker-label" id="dgPickerLabel">— Not DG —</span>
+      <svg class="dg-picker-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="dg-picker-dropdown" id="dgPickerDropdown" role="listbox">
+      <div class="dg-picker-search-wrap">
+        <input class="dg-picker-search" id="dgPickerSearch" type="text" placeholder="Search DG class…" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="dg-picker-list" id="dgPickerList"></div>
+    </div>
+  </div>
+  <label>Heavy Lift</label>
+  <div class="mdl-hl-toggle" id="mHL">
+    <span class="mdl-hl-icon">🏗</span>
+    <span class="mdl-hl-lbl" id="mHLlbl">Heavy Lift — off</span>
+  </div>
+  <label>Priority Lift</label>
+  <div class="mdl-priority-toggle" id="mPriority">
+    <span class="mdl-pri-icon">⚡</span>
+    <span class="mdl-pri-lbl" id="mPriorityLbl">Priority Lift — off</span>
+  </div>
+  <div class="mbtns">
+    <button class="mrm" id="mRm">Remove</button>
+    <button class="mcancel" id="mCan">Cancel</button>
+    <button class="msave" id="mSav">Save</button>
+  </div>
+</div>
+</div>
+
+<!-- SMART TOOLS PANEL -->
+<div class="st-ov" id="stOv">
+  <div class="st-backdrop" id="stBackdrop"></div>
+  <div class="st-panel" id="stPanel">
+
+    <div class="st-head">
+      <div class="st-head-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="st-title">Smart Tools</div>
+      <button class="st-close" id="stClose">✕</button>
+    </div>
+
+    <div class="st-body">
+
+      <!-- Section: Cargo Placement -->
+      <div class="st-sec-hdr" data-i18n="st_sec_placement">Cargo Placement</div>
+
+      <!-- Smart Bounce / Magnetic Snap -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v3M8 10v3M3 8h3M10 8h3" stroke="var(--acc)" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="8" cy="8" r="2" stroke="var(--acc)" stroke-width="1.4"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">
+            Smart Bounce
+            <span class="feat-badge" data-since="v38.7" data-tooltip="Added in v38.7">NEW</span>
+          </div>
+          <div class="st-row-desc" data-i18n="st_bounce_desc">При перекрытии грузов после drag — контейнер мягко отталкивается в ближайшую свободную позицию рядом, а не остаётся в overlap.</div>
+        </div>
+        <label class="st-toggle" title="Smart Bounce / Magnetic Snap">
+          <input type="checkbox" id="stBounceToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Smart Grid Snap -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="5" height="5" rx="1" stroke="var(--acc)" stroke-width="1.3"/>
+            <rect x="9" y="2" width="5" height="5" rx="1" stroke="var(--acc)" stroke-width="1.3" opacity=".4"/>
+            <rect x="2" y="9" width="5" height="5" rx="1" stroke="var(--acc)" stroke-width="1.3" opacity=".4"/>
+            <rect x="9" y="9" width="5" height="5" rx="1" stroke="var(--acc)" stroke-width="1.3"/>
+            <path d="M7 4.5h2M4.5 7v2M11.5 7v2M7 11.5h2" stroke="var(--acc)" stroke-width="1" stroke-linecap="round" opacity=".5"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">
+            Smart Grid Snap
+            <span class="feat-badge" data-since="v38.13" data-tooltip="Added in v38.13">NEW</span>
+          </div>
+          <div class="st-row-desc" data-i18n="st_gridsnap_desc">При сбросе контейнера рядом с соседом или границей бэя — один раз аккуратно выравнивает по ближайшей логичной позиции. Не липнет при следующем движении.</div>
+        </div>
+        <label class="st-toggle" title="Smart Grid Snap">
+          <input type="checkbox" id="stGridSnapToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Keyboard Shortcuts -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="3" width="14" height="10" rx="2" stroke="var(--acc)" stroke-width="1.3"/>
+            <rect x="3" y="5.5" width="2.5" height="2" rx=".5" fill="var(--acc)" opacity=".7"/>
+            <rect x="6.75" y="5.5" width="2.5" height="2" rx=".5" fill="var(--acc)" opacity=".7"/>
+            <rect x="10.5" y="5.5" width="2.5" height="2" rx=".5" fill="var(--acc)" opacity=".7"/>
+            <rect x="3" y="8.5" width="10" height="2" rx=".5" fill="var(--acc)" opacity=".4"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">
+            Keyboard Shortcuts
+            <span class="feat-badge" data-since="v38.17" data-tooltip="Added in v38.17">NEW</span>
+          </div>
+          <div class="st-row-desc">Del=удалить, R=повернуть, D=дублировать, E=редактировать, 1–5=zoom. Нажмите <b>?</b> для полного списка.</div>
+        </div>
+        <label class="st-toggle" title="Keyboard Shortcuts">
+          <input type="checkbox" id="stKbShortcutsToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Section: Cargo Library -->
+      <div class="st-sec-hdr" data-i18n="st_sec_library">Cargo Library</div>
+
+      <!-- Manifest Matching -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(58,125,82,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="2" width="12" height="12" rx="2" stroke="var(--s-L)" stroke-width="1.4"/>
+            <path d="M5 8l2 2 4-4" stroke="var(--s-L)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Manifest Matching <span class="feat-badge" data-since="v38.7" data-tooltip="Added in v38.7">NEW</span></div>
+          <div class="st-row-desc" data-i18n="st_match_desc">Показывает расхождения между импортированным ASCO списком и реальным расположением груза на палубе.</div>
+        </div>
+        <label class="st-toggle" title="ASCO Manifest Matching">
+          <input type="checkbox" id="stMatchToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Section: Safety -->
+      <div class="st-sec-hdr">Safety</div>
+
+      <!-- DG Auto-Segregation Check -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(220,38,38,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="#dc2626" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M8 6v4M8 11.5v.5" stroke="#dc2626" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">DG Auto-Segregation Check <span class="feat-badge" data-since="v38.8" data-type="safety" data-tooltip="Added in v38.8 · Safety-critical">SAFETY</span></div>
+          <div class="st-row-desc" data-i18n="st_dgseg_desc">При размещении DG груза — автоматическая проверка совместимости по матрице IMDG. Нарушения сегрегации подсвечиваются немедленно.</div>
+        </div>
+        <label class="st-toggle" title="DG Auto-Segregation Check">
+          <input type="checkbox" id="stDgSegToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Section: Visual -->
+      <div class="st-sec-hdr" data-i18n="st_sec_visual">Visual</div>
+
+      <!-- DG Hover Transparency -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(120,90,26,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="var(--s-ROB)" stroke-width="1.4"/>
+            <path d="M6 8h4M8 6v4" stroke="var(--s-ROB)" stroke-width="1.4" stroke-linecap="round" opacity=".4"/>
+            <path d="M1 2l14 12" stroke="var(--s-ROB)" stroke-width="1.2" stroke-linecap="round" opacity=".35"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">DG Badge Fade on Hover <span class="feat-badge" data-since="v38.7" data-tooltip="Added in v38.7">NEW</span></div>
+          <div class="st-row-desc" data-i18n="st_dgfade_desc">При наведении на грузовой блок — DG и HL бейджи становятся полупрозрачными, чтобы был виден CCU/ID.</div>
+        </div>
+        <label class="st-toggle" title="DG Hover Transparency">
+          <input type="checkbox" id="stDgFadeToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Hover Motion Effect -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="3" y="5" width="10" height="7" rx="1.5" stroke="var(--acc)" stroke-width="1.4"/>
+            <path d="M8 5V3M6 3.5l2-1.5 2 1.5" stroke="var(--acc)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Cargo Hover Motion <span class="feat-badge" data-since="v38.11" data-tooltip="Added in v38.11">NEW</span></div>
+          <div class="st-row-desc" data-i18n="st_hovermotion_desc">При наведении на грузовой блок он слегка приподнимается и увеличивается. Выключите для полностью статичного интерфейса.</div>
+        </div>
+        <label class="st-toggle" title="Cargo Hover Motion Effect">
+          <input type="checkbox" id="stHoverMotionToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Section: Actions -->
+      <div class="st-sec-hdr">Actions</div>
+
+      <!-- Auto Align Deck -->
+      <div class="st-action-row">
+        <button class="st-action-btn" id="stAutoAlignBtn" type="button">
+          <div class="st-action-btn-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="1" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="9" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M7 4h2M7 12h2M4 6v4M12 6v4" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".45"/>
+            </svg>
+          </div>
+          <div class="st-action-btn-body">
+            <div class="st-action-btn-title">
+              Auto Align Deck
+              <span class="feat-badge" data-since="v38.14" data-type="action" data-tooltip="Added in v38.14">ONE-SHOT</span>
+            </div>
+            <div class="st-action-btn-desc" id="stAutoAlignDesc">Выравнивает все контейнеры на палубе — подтягивает близко стоящие к соседям и границам бэёв. Одноразовое действие.</div>
+          </div>
+          <span class="st-action-btn-arrow">→</span>
+        </button>
+      </div>
+
+      <!-- Footer note -->
+      <div style="padding:16px 20px 0;font-size:9.5px;color:var(--txt4);font-family:'Inter',sans-serif;line-height:1.4;">
+        <span data-i18n="st_persist_note">Настройки сохраняются автоматически и восстанавливаются при следующем открытии.</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MANIFEST MATCH INFO MODAL -->
+<div class="match-info-ov" id="matchInfoOv">
+  <div class="match-info-modal">
+    <div class="match-info-head">
+      <div class="match-info-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M9 16A7 7 0 1 0 9 2a7 7 0 0 0 0 14Z" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M9 8v5M9 6v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="match-info-title">Manifest Matching</div>
+        <div class="match-info-sub"><span data-i18n="mi_sub">ASCO list vs deck</span></div>
+      </div>
+      <button class="match-info-close" id="matchInfoClose">✕</button>
+    </div>
+    <div class="match-info-body">
+      <div class="match-info-row">
+        <div class="match-info-dot" style="background:var(--s-ROB)"></div>
+        <div class="match-info-row-body">
+          <div class="match-info-row-title">Не размещено</div>
+          <div class="match-info-row-desc"><span data-i18n="mi_unplaced_desc">Items from the ASCO list not yet placed on deck. Attention required before departure.</span></div>
+        </div>
+      </div>
+      <div class="match-info-row">
+        <div class="match-info-dot" style="background:#9f403d"></div>
+        <div class="match-info-row-body">
+          <div class="match-info-row-title">Расхождение параметров</div>
+          <div class="match-info-row-desc"><span data-i18n="mi_mismatch_desc">Cargo placed but weight or location differs from the imported list. Verify before departure.</span></div>
+        </div>
+      </div>
+      <div class="match-info-row">
+        <div class="match-info-dot" style="background:var(--s-TR,#0e7490)"></div>
+        <div class="match-info-row-body">
+          <div class="match-info-row-title">Extra cargo</div>
+          <div class="match-info-row-desc"><span data-i18n="mi_extra_desc">Cargo on deck not found in the ASCO list. Possibly added manually.</span></div>
+        </div>
+      </div>
+      <div class="match-info-row">
+        <div class="match-info-dot" style="background:var(--s-L)"></div>
+        <div class="match-info-row-body">
+          <div class="match-info-row-title">Совпадает</div>
+          <div class="match-info-row-desc"><span data-i18n="mi_ok_desc">All matched: cargo from the ASCO list is placed correctly.</span></div>
+        </div>
+      </div>
+    </div>
+    <button class="match-info-action" id="matchInfoAction"><span data-i18n="mi_action">Got it — enable Manifest Matching</span></button>
+  </div>
+</div>
+
+<!-- VOYAGE REMARKS MODAL -->
+<div class="rmk-ov" id="rmkOv">
+  <div class="rmk-modal">
+    <div class="rmk-head">
+      <div class="rmk-head-icon">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M4 5.5h8M4 8.5h6M4 11.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      </div>
+      <div class="rmk-title">Voyage Notes</div>
+      <button class="rmk-close" id="rmkClose">✕</button>
+    </div>
+    <div class="rmk-body">
+      <textarea class="rmk-textarea" id="rmkText" data-i18n-placeholder="rmk_placeholder" placeholder="Enter operational remarks, special instructions, cargo notes, or any voyage-specific information…" rows="6"></textarea>
+      <div class="rmk-hint"><span data-i18n="rmk_hint">Notes appear in the PDF export below the deck plan and in the Excel manifest.</span></div>
+    </div>
+    <div class="rmk-actions">
+      <button class="rmk-cancel" id="rmkCancel"><span data-i18n="btn_cancel">Cancel</span></button>
+      <button class="rmk-save" id="rmkSave"><span data-i18n="rmk_save">Save Notes</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN PASSWORD MODAL -->
+<div class="admin-modal-ov" id="adminModalOv">
+  <div class="admin-modal" id="adminModal">
+    <div class="admin-modal-head">
+      <div class="admin-modal-icon">🔐</div>
+      <div class="admin-modal-title">Admin Access</div>
+      <div class="admin-modal-close" id="adminModalClose">✕</div>
+    </div>
+    <div class="admin-modal-body">
+      <div class="admin-modal-lbl">Enter admin password to unlock editing</div>
+      <input class="admin-modal-input" id="adminPwInput" type="password" placeholder="Password" autocomplete="off">
+      <div class="admin-modal-err" id="adminPwErr">Incorrect password — please try again</div>
+      <div class="admin-modal-actions">
+        <button class="admin-modal-cancel" id="adminModalCancel">Cancel</button>
+        <button class="admin-modal-unlock" id="adminModalUnlock">Unlock Editing</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     CARGO PANEL — Fixed position overlay, no layout impact
+     V33 · Zero-disruption implementation
+     All IDs are cp-* to avoid collision with existing code
+═══════════════════════════════════════════════════════════ -->
+
+<!-- Floating deck placement hint -->
+<div class="deck-float-hint" id="deckFloatHint"></div>
+
+<!-- Panel overlay container -->
+<div class="cp-overlay" id="cpOverlay">
+  <div class="cp-backdrop" id="cpBackdrop"></div>
+  <!-- Edge handle — visible when panel is closed, click to open -->
+  <div class="cp-edge-handle" id="cpEdgeHandle" title="Open Cargo Library"></div>
+
+  <div class="cp" id="cp">
+
+    <!-- Header -->
+    <div class="cp-head">
+      <!-- Collapsed strip — shown only when panel is collapsed to icon bar -->
+      <div class="cp-collapsed-strip">
+        <button class="cp-strip-expand" id="cpExpandBtn" title="Expand panel (L)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="cp-strip-label">Library</div>
+        <div class="cp-strip-badge" id="cpStripBadge"></div>
+        <div class="cp-strip-hint">L</div>
+      </div>
+      <!-- Normal header content -->
+      <div class="cp-head-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1.5" y="5" width="13" height="9.5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+  <path d="M1.5 5l2.5-3.5h8L14.5 5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M6 5v2h4V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+</svg></div>
+      <div style="flex:1;min-width:0;">
+        <div class="cp-title">Cargo Library</div>
+        <div class="cp-subtitle">Mission Control</div>
+      </div>
+      <!-- Collapse button — shrinks panel to icon strip -->
+      <button class="cp-collapse-btn" id="cpCollapseBtn" title="Collapse panel (L)">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="cp-close" id="cpClose" title="Close panel">✕</div>
+    </div>
+
+    <!-- Global search -->
+    <div class="cp-search-wrap">
+      <input class="cp-search" id="cpSearch"
+             placeholder="Search cargo, CCU, location…" autocomplete="off">
+      <div class="cp-search-clear" id="cpSearchClear" title="Clear">✕</div>
+    </div>
+
+    <!-- Filter pills -->
+    <div class="cp-filters" id="cpFilters">
+      <div class="cp-pill on"  data-f="all">All</div>
+      <div class="cp-pill"     data-f="unplaced">Unplaced</div>
+      <div class="cp-pill"     data-f="ondk">On Deck</div>
+      <div class="cp-pill pdg" data-f="dg">⬥ DG</div>
+      <div class="cp-pill phl" data-f="hl">⬆ HL</div>
+      <div class="cp-pill"     data-f="L">Load</div>
+      <div class="cp-pill"     data-f="BL">Backload</div>
+      <div class="cp-pill"     data-f="ROB">ROB</div>
+      <div class="cp-pill ppri" data-f="pri">⚡ Priority</div>
+    </div>
+
+    <!-- Manifest Match toggle strip -->
+    <div class="cp-match-strip" id="cpMatchStrip">
+      <span class="cp-match-lbl">Manifest Matching</span>
+      <button class="cp-match-info-btn" id="cpMatchInfoBtn" title="What is Manifest Matching?">?</button>
+      <label class="cp-match-toggle" title="Compare ASCO list with deck">
+        <input type="checkbox" id="cpMatchToggle">
+        <div class="cp-match-track"><div class="cp-match-thumb"></div></div>
+      </label>
+    </div>
+
+    <!-- Manifest Match results — shown when toggle is ON -->
+    <div class="cp-match-section" id="cpMatchSection">
+      <div id="cpMatchResults"></div>
+      <button class="cp-match-refresh" id="cpMatchRefresh">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9 2A5 5 0 1 0 9.9 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10 1v3H7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Refresh comparison
+      </button>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="cp-body" id="cpBody">
+
+      <!-- SECTION: Imported Cargo -->
+      <div class="cp-sec" id="cpSecQueue">
+        <div class="cp-sec-hdr" id="cpSecHdrQueue">
+          <div class="cp-sec-title">Imported Cargo</div>
+          <div class="cp-sec-badge warn" id="cpQueueBadge" style="display:none">0</div>
+          <button class="cp-clear-q" id="cpClearQueue" style="display:none">Clear</button>
+          <span class="cp-sec-arr">▾</span>
+        </div>
+        <div class="cp-sec-body" id="cpSecBodyQueue">
+          <div class="cp-empty" id="cpQueueEmpty">No imported cargo yet.<br>Upload an ASCO file to start.</div>
+        </div>
+      </div>
+
+      <!-- SECTION: Standard Library -->
+      <div class="cp-sec" id="cpSecLib">
+        <div class="cp-sec-hdr" id="cpSecHdrLib">
+          <div class="cp-sec-title">Cargo Library</div>
+          <div class="cp-sec-badge" id="cpLibBadge">0</div>
+          <span class="cp-sec-arr">▾</span>
+        </div>
+        <div class="cp-sec-body" id="cpSecBodyLib"></div>
+      </div>
+
+      <!-- SECTION: DG Cargo -->
+      <div class="cp-sec" id="cpSecDg">
+        <div class="cp-sec-hdr" id="cpSecHdrDg">
+          <div class="cp-sec-title">⬥ Dangerous Goods</div>
+          <span class="cp-sec-arr">▾</span>
+        </div>
+        <div class="cp-sec-body" id="cpSecBodyDg"></div>
+      </div>
+
+      <!-- SECTION: Custom Cargo -->
+      <div class="cp-sec" id="cpSecCustom">
+        <div class="cp-sec-hdr" id="cpSecHdrCustom">
+          <div class="cp-sec-title">Custom Cargo</div>
+          <span class="cp-sec-arr">▾</span>
+        </div>
+        <div class="cp-sec-body" id="cpSecBodyCustom">
+          <div class="cp-cform">
+            <div class="cp-cf-row">
+              <div class="cp-cf-g" style="flex:2">
+                <span class="cp-cf-l">Description</span>
+                <input class="cp-cf-i" id="cpDesc" placeholder="e.g. Special Frame">
+              </div>
+              <div class="cp-cf-g">
+                <span class="cp-cf-l">CCU / ID</span>
+                <input class="cp-cf-i" id="cpCCU" placeholder="KA1980">
+              </div>
+            </div>
+            <div class="cp-cf-row">
+              <div class="cp-cf-g">
+                <span class="cp-cf-l">Size (m)</span>
+                <input class="cp-cf-i" id="cpSize" placeholder="3.0x2.4">
+              </div>
+              <div class="cp-cf-g">
+                <span class="cp-cf-l">Weight (T)</span>
+                <input type="number" class="cp-cf-i" id="cpWT" placeholder="3.0" step="0.1" min="0">
+              </div>
+            </div>
+            <button class="cp-cf-add" id="cpBtnAdd">+ Add Custom Cargo</button>
+            <button class="cp-clr-custom" id="cpBtnClrCustom">🗑 Clear All Custom</button>
+          </div>
+          <div id="cpCustomList"></div>
+        </div>
+      </div>
+
+    </div><!-- /cp-body -->
+  </div><!-- /cp -->
+</div><!-- /cp-overlay -->
+
+
+
+
+</body>
+</html>

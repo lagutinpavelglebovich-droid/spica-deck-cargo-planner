@@ -1,0 +1,57 @@
+END-USER LICENSE AGREEMENT (EULA)
+SPICA TIDE Deck Cargo Plan
+Version 1.0
+
+IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE USING THIS SOFTWARE.
+
+1. GRANT OF LICENSE
+
+This End-User License Agreement ("Agreement") is a legal agreement between you ("User") and the SPICA TIDE Project ("Licensor") for the use of SPICA TIDE Deck Cargo Plan software ("Software").
+
+By installing or using this Software, you agree to be bound by the terms of this Agreement.
+
+The Licensor grants you a non-exclusive, non-transferable, limited license to install and use the Software for its intended purpose: deck cargo planning and manifest preparation for Platform Supply Vessel operations.
+
+2. RESTRICTIONS
+
+You may not:
+- Distribute, sublicense, or sell the Software to third parties
+- Modify, reverse engineer, decompile, or disassemble the Software
+- Remove or alter any proprietary notices, labels, or marks
+- Use the Software for any purpose other than its intended operational use
+
+3. INTELLECTUAL PROPERTY
+
+The Software, including all code, design, graphics, and documentation, is the intellectual property of the Licensor and is protected by applicable copyright laws.
+
+4. DATA AND PRIVACY
+
+The Software stores data locally on the user's device. No personal data or cargo plan information is transmitted externally. All saved project files remain under the full control of the User.
+
+5. DISCLAIMER OF WARRANTIES
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE OR UNINTERRUPTED.
+
+THE SOFTWARE IS A PLANNING TOOL AND DOES NOT REPLACE PROFESSIONAL MARINE SAFETY PROCEDURES, VESSEL STABILITY CALCULATIONS, OR REGULATORY COMPLIANCE REQUIREMENTS.
+
+6. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES ARISING FROM THE USE OR INABILITY TO USE THE SOFTWARE.
+
+ALL CARGO PLACEMENT DECISIONS, DANGEROUS GOODS HANDLING, AND VESSEL LOADING OPERATIONS REMAIN THE SOLE RESPONSIBILITY OF THE VESSEL OPERATOR AND QUALIFIED PERSONNEL.
+
+7. TERMINATION
+
+This Agreement is effective until terminated. Your rights under this Agreement will terminate automatically if you fail to comply with any of its terms.
+
+8. GOVERNING LAW
+
+This Agreement shall be governed by and construed in accordance with applicable laws.
+
+9. ACCEPTANCE
+
+By clicking "I Agree" during installation or by using the Software, you acknowledge that you have read, understood, and agree to be bound by this Agreement.
+
+---
+SPICA TIDE Project
+Contact: spicatide@project.local
