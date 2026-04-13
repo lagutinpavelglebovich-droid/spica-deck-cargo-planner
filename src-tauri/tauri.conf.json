@@ -1,5 +1,5 @@
 {
-  "productName": "SPICA TIDE Deck Cargo Plan",
+  "productName": "SPICA TIDE Deck Cargo Planner",
   "version": "1.0.0",
   "identifier": "com.spicatide.app",
   "build": {
@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "SPICA TIDE \u2014 Deck Cargo Plan",
+        "title": "SPICA TIDE - Deck Cargo Planner",
         "width": 1400,
         "height": 900,
         "minWidth": 900,

@@ -2859,7 +2859,7 @@ function importLegacy(raw) {
   return {
     _schema: PLAN_SCHEMA_CURRENT,
     _savedAt: new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.19'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
     _legacyScaleWarn: needsScaleWarn,
     name: raw.voyage || 'Imported Plan',
     plan: {
@@ -2927,7 +2927,9 @@ const LocalStorageAdapter = {
 
 let _planAdapter = LocalStorageAdapter;
 let _currentFilePath = null;   /* path of currently open .spica file (Tauri only) */
-const _isTauri = typeof window !== 'undefined' && !!window.__TAURI__;
+/* _isTauri is a function, not a const — window.__TAURI__ may not exist
+   at module load time in Tauri v2 (injected after ES module executes). */
+function _isTauri(){ return typeof window !== 'undefined' && !!window.__TAURI__; }
 let _dirty = false;            /* true when unsaved changes exist */
 let _autosaveEnabled = true;   /* user-togglable autosave */
 
@@ -3029,7 +3031,7 @@ function _buildEnvelope() {
   return {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.19'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3046,12 +3048,42 @@ function _buildEnvelope() {
   };
 }
 
+/* ── Shared native Save As dialog ───────────────────────────
+   Returns the chosen file path, or null if cancelled.
+   Works in Tauri desktop mode only. Browser mode returns null. */
+async function _nativeSaveDialog(defaultName, filterName, extensions) {
+  if (!_isTauri()) {
+    console.warn('[SaveDialog] Not in Tauri — falling back to browser');
+    return null;
+  }
+  try {
+    const dialogModule = await import('@tauri-apps/plugin-dialog');
+    console.log('[SaveDialog] Dialog module loaded, calling save...');
+    const path = await dialogModule.save({
+      title: 'Save As',
+      defaultPath: defaultName,
+      filters: [{ name: filterName, extensions: extensions }]
+    });
+    console.log('[SaveDialog] User chose:', path);
+    return path || null;
+  } catch (e) {
+    console.error('[SaveDialog] FAILED:', e);
+    showToast('Save dialog error: ' + (e && e.message || e), 'warn');
+    return null;
+  }
+}
+
+/* ── Write bytes or string to a chosen path via Tauri ─── */
+async function _tauriWriteBytes(path, uint8arr) {
+  await window.__TAURI__.core.invoke('write_file_bytes', { path, bytes: Array.from(uint8arr) });
+}
+
 function _updateWindowTitle(filePath) {
   if (filePath) {
     const name = filePath.split(/[/\\]/).pop();
-    document.title = 'SPICA TIDE \u2014 ' + name;
+    document.title = 'SPICA TIDE - ' + name;
   } else {
-    document.title = 'SPICA TIDE \u2014 Deck Cargo Plan';
+    document.title = 'SPICA TIDE - Deck Cargo Planner';
   }
 }
 
@@ -3062,14 +3094,12 @@ async function _addToRecent(path, name) {
 }
 
 async function savePlanToFile(path) {
-  if (!_isTauri) return;
+  if (!_isTauri()) return;
   try {
     let targetPath = path;
     if (!targetPath) {
-      const { save } = window.__TAURI__.dialog
-        ? window.__TAURI__.dialog
-        : await import('@tauri-apps/plugin-dialog');
-      targetPath = await save({
+      const dlg = await import('@tauri-apps/plugin-dialog');
+      targetPath = await dlg.save({
         title: 'Save Cargo Plan',
         defaultPath: (document.getElementById('voyIn').value || 'cargo-plan').replace(/[^a-zA-Z0-9_\-. ]/g, '_') + '.spica',
         filters: [{ name: 'SPICA Plan', extensions: ['spica'] }]
@@ -3095,12 +3125,10 @@ async function savePlanToFile(path) {
 }
 
 async function openPlanFromFile() {
-  if (!_isTauri) return;
+  if (!_isTauri()) return;
   try {
-    const { open } = window.__TAURI__.dialog
-      ? window.__TAURI__.dialog
-      : await import('@tauri-apps/plugin-dialog');
-    const selected = await open({
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const selected = await dlg.open({
       title: 'Open Cargo Plan',
       filters: [{ name: 'SPICA Plan', extensions: ['spica'] }],
       multiple: false
@@ -3151,7 +3179,7 @@ async function openPlanFromFile() {
 }
 
 async function openRecentFile(path) {
-  if (!_isTauri || !path) return;
+  if (!_isTauri() || !path) return;
   try {
     const contents = await window.__TAURI__.core.invoke('read_file', { path });
     let envelope = JSON.parse(contents);
@@ -3184,7 +3212,7 @@ async function openRecentFile(path) {
 }
 
 function saveQuick() {
-  if (_isTauri && _currentFilePath) {
+  if (_isTauri() && _currentFilePath) {
     const envelope = _buildEnvelope();
     const json = JSON.stringify(envelope, null, 2);
     window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: json }).catch(() => {});
@@ -3196,7 +3224,7 @@ function saveQuick() {
 
 /* ── Project Save / Load (.json) ────────────────────────── */
 
-function saveProjectFile() {
+async function saveProjectFile() {
   const envelope = _buildEnvelope();
   const json = JSON.stringify(envelope, null, 2);
   const dd = String(selDate.getDate()).padStart(2,'0');
@@ -3204,33 +3232,24 @@ function saveProjectFile() {
   const yyyy = selDate.getFullYear();
   const fileName = 'SPICA TIDE Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
 
-  if (_isTauri) {
-    /* Tauri: native save dialog */
-    (async () => {
-      try {
-        const { save } = window.__TAURI__.dialog
-          ? window.__TAURI__.dialog
-          : await import('@tauri-apps/plugin-dialog');
-        const targetPath = await save({
-          title: 'Save Project',
-          defaultPath: fileName,
-          filters: [{ name: 'SPICA Project', extensions: ['json'] }]
-        });
-        if (!targetPath) return;
-        await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
-        _currentFilePath = targetPath;
-        _updateWindowTitle(targetPath);
-        _addToRecent(targetPath, envelope.name);
-        LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
-        showToast('Project saved \u2014 ' + targetPath.split(/[/\\]/).pop(), 'ok');
-      } catch (e) {
-        showToast('Save failed: ' + (e && e.message || e), 'warn');
-      }
-    })();
+  if (_isTauri()) {
+    const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
+    if (!targetPath) return;
+    try {
+      await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
+      _currentFilePath = targetPath;
+      _updateWindowTitle(targetPath);
+      _addToRecent(targetPath, envelope.name);
+      LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+      _markSaved();
+      showToast('Project saved \u2014 ' + targetPath.split(/[/\\]/).pop(), 'ok');
+    } catch (e) {
+      showToast('Save failed: ' + (e && e.message || e), 'warn');
+    }
     return;
   }
 
-  /* Browser: Blob download (same mechanism as XLSX.writeFile / doc.save) */
+  /* Browser: Blob download */
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3238,18 +3257,17 @@ function saveProjectFile() {
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+  _markSaved();
   showToast('Project saved \u2014 ' + fileName, 'ok');
 }
 
 function openProjectFile() {
-  if (_isTauri) {
+  if (_isTauri()) {
     /* Tauri: native open dialog */
     (async () => {
       try {
-        const { open } = window.__TAURI__.dialog
-          ? window.__TAURI__.dialog
-          : await import('@tauri-apps/plugin-dialog');
-        const selected = await open({
+        const dlg = await import('@tauri-apps/plugin-dialog');
+        const selected = await dlg.open({
           title: 'Open Project',
           filters: [{ name: 'SPICA Project', extensions: ['json','spica'] }],
           multiple: false
@@ -3312,7 +3330,7 @@ function _applyProjectData(jsonString, fileName) {
 }
 
 /* ── Auto-detect Tauri runtime ──────────────────────────── */
-if (_isTauri) {
+if (_isTauri()) {
   _planAdapter = TauriFileAdapter;
 }
 
@@ -3341,7 +3359,7 @@ function savePlan(key) {
   const envelope = {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.19'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -4679,22 +4697,28 @@ async function buildPDF(deckCanvas, data){
   doc.setTextColor(...C.navy);
   doc.text('Voyage '+voyageNum+'  \u00B7  '+dateStr, ML+CW, fy+4, {align:'right'});
 
-  /* 9. SAVE — Blob download, same mechanism as XLSX.writeFile() */
-  const dd = String(selDate.getDate()).padStart(2,'0');
-  const mm = String(selDate.getMonth()+1).padStart(2,'0');
-  const yyyy = selDate.getFullYear();
-  const fileName = 'SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf';
-  console.log('[PDF][9] START doc.save:', fileName);
-  try {
-    doc.save(fileName);
-    console.log('[PDF][9] SUCCESS doc.save');
-  } catch(saveErr) {
-    console.error('[PDF][9] FAIL doc.save:', saveErr);
-    console.error('[PDF][9] Stack:', saveErr.stack);
-    showToast('doc.save error: ' + (saveErr && saveErr.message || saveErr), 'warn');
-    return;
+  /* 9. SAVE — use pre-chosen path from menu dialog, or browser fallback */
+  const pdfPath = window._pendingPdfPath;
+  window._pendingPdfPath = null;
+
+  if(pdfPath){
+    /* Path was chosen by user via native Save As dialog in _menuExportPDF */
+    try {
+      const pdfOutput = doc.output('arraybuffer');
+      const bytes = Array.from(new Uint8Array(pdfOutput));
+      await window.__TAURI__.core.invoke('write_file_bytes', { path: pdfPath, bytes });
+      showToast(t('toast_pdf_ok') + ' \u2014 ' + pdfPath.split(/[/\\]/).pop(), 'ok');
+    } catch(e) {
+      showToast('PDF save failed: ' + (e && e.message || e), 'warn');
+    }
+  } else {
+    /* Browser fallback — direct download */
+    const dd = String(selDate.getDate()).padStart(2,'0');
+    const mm = String(selDate.getMonth()+1).padStart(2,'0');
+    const yyyy = selDate.getFullYear();
+    doc.save('SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf');
+    showToast(t('toast_pdf_ok'), 'ok');
   }
-  showToast(t('toast_pdf_ok') + ' \u2014 ' + fileName, 'ok');
 }
 
 
@@ -4709,7 +4733,7 @@ function bindSaveAs(){
     e.stopPropagation();
     dd.classList.toggle('open');
     /* Populate recent files each time dropdown opens (Tauri only) */
-    if(_isTauri && dd.classList.contains('open')) _populateRecentFiles();
+    if(_isTauri() && dd.classList.contains('open')) _populateRecentFiles();
   });
   document.addEventListener('click', e=>{
     if(!wrap.contains(e.target)) dd.classList.remove('open');
@@ -4745,7 +4769,7 @@ function bindSaveAs(){
   }
 
   /* ── Tauri-only: Save Plan / Open Plan ── */
-  if(_isTauri){
+  if(_isTauri()){
     document.querySelectorAll('.tauri-only').forEach(el => { el.style.display = ''; });
 
     document.getElementById('saveAsPlanFile').addEventListener('click', ()=>{
@@ -4764,17 +4788,17 @@ function bindSaveAs(){
     if(!mod) return;
 
     if(e.key === 's' && e.shiftKey){
-      /* Cmd+Shift+S → Save Project As (always dialog) */
+      /* Ctrl+Shift+S → Save As (always dialog) */
       e.preventDefault();
-      saveProjectAs();
+      menuSaveAs();
     } else if(e.key === 's'){
-      /* Cmd+S → Save Project (overwrite if file exists, dialog if new) */
+      /* Ctrl+S → Save (overwrite or dialog) */
       e.preventDefault();
-      saveProject();
+      menuSave();
     } else if(e.key === 'o'){
-      /* Cmd+O → Open Project */
+      /* Ctrl+O → Open */
       e.preventDefault();
-      openProjectFile();
+      menuOpen();
     } else if(e.key === 'z' && !e.shiftKey){
       /* Ctrl+Z → Undo */
       e.preventDefault();
@@ -6106,7 +6130,7 @@ function bindModalExtensions(){
 /* ════════════════════════════════════════════════════════════
    EXCEL EXPORT — Full cargo manifest via SheetJS
 ════════════════════════════════════════════════════════════ */
-function exportExcel(){
+async function exportExcel(){
   if(typeof XLSX === 'undefined'){ showToast(t('toast_xlsx_loading'),'ok');return; }
 
   const voyageNum = document.getElementById('voyIn').value.trim()||'—';
@@ -6219,18 +6243,38 @@ function exportExcel(){
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Cargo Manifest');
     XLSX.utils.book_append_sheet(wb, wsSummary2, 'Summary');
-    const safeName = voyageNum.replace(/\//g,'-')||'EXPORT';
-    XLSX.writeFile(wb, `SPICA-TIDE_${safeName}_Manifest.xlsx`);
-    showToast(t('toast_xlsx_ok'),'ok');
+    await _saveWorkbook(wb);
     return;
   }
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Cargo Manifest');
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
-  const safeName = voyageNum.replace(/\//g,'-')||'EXPORT';
-  XLSX.writeFile(wb, `SPICA-TIDE_${safeName}_Manifest.xlsx`);
-  showToast(t('toast_xlsx_ok'),'ok');
+  await _saveWorkbook(wb);
+}
+
+async function _saveWorkbook(wb){
+  const xlsxPath = window._pendingXlsxPath;
+  window._pendingXlsxPath = null;
+
+  if(xlsxPath){
+    /* Path was chosen by user via native Save As dialog in _menuExportExcel */
+    try {
+      const xlsxData = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+      const bytes = Array.from(new Uint8Array(xlsxData));
+      await window.__TAURI__.core.invoke('write_file_bytes', { path: xlsxPath, bytes });
+      showToast(t('toast_xlsx_ok') + ' \u2014 ' + xlsxPath.split(/[/\\]/).pop(), 'ok');
+    } catch(e){
+      showToast('Excel save failed: ' + (e && e.message || e), 'warn');
+    }
+  } else {
+    /* Browser fallback — direct download */
+    const dd = String(selDate.getDate()).padStart(2,'0');
+    const mm = String(selDate.getMonth()+1).padStart(2,'0');
+    const yyyy = selDate.getFullYear();
+    XLSX.writeFile(wb, 'SPICA TIDE Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx');
+    showToast(t('toast_xlsx_ok'),'ok');
+  }
 }
 
 
@@ -7371,7 +7415,10 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v38.19';
+const CURRENT_BUILD = 'v38.20';
+const APP_VERSION   = '1.0.0';
+const BUILD_NUMBER  = '38.20';
+const RELEASE_CHANNEL = 'Beta';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
 function parseBuildVersion(str){
@@ -7409,7 +7456,168 @@ function applyNewBadges(){
   });
 }
 
+/* ══════════════════════════════════════════════════════════
+   MENU ACTIONS — standalone handlers with direct dialog calls.
+   These do NOT depend on _isTauri() or _nativeSaveDialog().
+   They import @tauri-apps/plugin-dialog directly at call time.
+══════════════════════════════════════════════════════════ */
+
+async function menuSaveAs(){
+  try {
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
+    const path = await dlg.save({ title:'Save Project As', defaultPath:'SPICA TIDE Project - '+dd+'.'+mm+'.'+yyyy+'.json', filters:[{name:'SPICA Project',extensions:['json']}] });
+    if(!path) return;
+    const envelope = _buildEnvelope();
+    await window.__TAURI__.core.invoke('write_file', { path, contents: JSON.stringify(envelope,null,2) });
+    _currentFilePath = path;
+    _updateWindowTitle(path);
+    LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+    _markSaved();
+    showToast('Saved \u2014 ' + path.split(/[/\\]/).pop(), 'ok');
+  } catch(e){
+    console.error('[SaveAs]', e);
+    showToast('Save As failed: '+(e&&e.message||e), 'warn');
+  }
+}
+
+async function menuSave(){
+  if(_currentFilePath){
+    try {
+      const envelope = _buildEnvelope();
+      await window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: JSON.stringify(envelope,null,2) });
+      LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+      _markSaved();
+      showToast('Saved \u2014 ' + _currentFilePath.split(/[/\\]/).pop(), 'ok');
+    } catch(e){ showToast('Save failed: '+(e&&e.message||e),'warn'); }
+  } else {
+    menuSaveAs();
+  }
+}
+
+async function menuExportPDF(){
+  try {
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
+    const path = await dlg.save({ title:'Export PDF', defaultPath:'SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf', filters:[{name:'PDF Document',extensions:['pdf']}] });
+    if(!path) return;
+    window._pendingPdfPath = path;
+    exportPDF();
+  } catch(e){
+    console.error('[ExportPDF]', e);
+    showToast('PDF export failed: '+(e&&e.message||e),'warn');
+  }
+}
+
+async function menuExportExcel(){
+  try {
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
+    const path = await dlg.save({ title:'Export Excel', defaultPath:'SPICA TIDE Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx', filters:[{name:'Excel Spreadsheet',extensions:['xlsx']}] });
+    if(!path) return;
+    window._pendingXlsxPath = path;
+    exportExcel();
+  } catch(e){
+    console.error('[ExportExcel]', e);
+    showToast('Excel export failed: '+(e&&e.message||e),'warn');
+  }
+}
+
+async function menuOpen(){
+  try {
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const selected = await dlg.open({ title:'Open Project', filters:[{name:'SPICA Project',extensions:['json','spica']}], multiple:false });
+    if(!selected) return;
+    const filePath = typeof selected === 'string' ? selected : selected.path;
+    const contents = await window.__TAURI__.core.invoke('read_file', { path: filePath });
+    _applyProjectData(contents, filePath.split(/[/\\]/).pop());
+    _currentFilePath = filePath;
+    _updateWindowTitle(filePath);
+  } catch(e){
+    console.error('[Open]', e);
+    showToast('Open failed: '+(e&&e.message||e),'warn');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   MENU BAR — Desktop application menu wiring
+══════════════════════════════════════════════════════════ */
+function bindMenuBar(){
+  const menubar = document.getElementById('menubar');
+  if(!menubar) return;
+
+  let openMenu = null;
+
+  function closeAll(){ if(openMenu){ openMenu.classList.remove('open'); openMenu = null; } }
+
+  /* Open/close menu — only when clicking the label, not dropdown children */
+  menubar.querySelectorAll('.menu-item').forEach(item => {
+    const label = item.querySelector('.menu-label');
+    label.addEventListener('click', e => {
+      e.stopPropagation();
+      if(item === openMenu){ closeAll(); }
+      else { closeAll(); item.classList.add('open'); openMenu = item; }
+    });
+    /* Hover-switch when a menu is already open */
+    item.addEventListener('mouseenter', () => {
+      if(openMenu && openMenu !== item){
+        openMenu.classList.remove('open');
+        item.classList.add('open');
+        openMenu = item;
+      }
+    });
+  });
+
+  /* Close on outside click */
+  document.addEventListener('click', e => {
+    if(openMenu && !menubar.contains(e.target)) closeAll();
+  });
+
+  /* Action dispatch — uses module-level menu* functions */
+  const actions = {
+    newDeck:       () => { S.cargo=[]; _currentFilePath=null; _updateWindowTitle(null); renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save(); showToast('New deck plan','ok'); },
+    openProject:   () => menuOpen(),
+    saveProject:   () => menuSave(),
+    saveProjectAs: () => menuSaveAs(),
+    exportPDF:     () => menuExportPDF(),
+    exportExcel:   () => menuExportExcel(),
+    exportJSON:    () => menuSaveAs(),
+    exit:          () => { try{ window.close(); }catch(e){} },
+    undo:          () => undo(),
+    redo:          () => redo(),
+    deleteSelected:() => { if(typeof KB_SEL!=='undefined' && KB_SEL){ const idx=S.cargo.findIndex(c=>c.id===KB_SEL); if(idx>=0){S.cargo.splice(idx,1);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();} } },
+    zoomIn:        () => applyZoom(zoomLevel+0.1),
+    zoomOut:       () => applyZoom(zoomLevel-0.1),
+    zoomReset:     () => applyZoom(1.0),
+    zoomFit:       () => fitToScreen(),
+    toggleLibrary: () => cpToggle(),
+    about:         () => document.getElementById('aboutOverlay').classList.add('open'),
+  };
+
+  /* Wire each menu action — click fires the action and closes the menu */
+  menubar.querySelectorAll('.menu-action').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const action = el.dataset.action;
+      closeAll();
+      if(actions[action]) actions[action]();
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   ABOUT MODAL
+══════════════════════════════════════════════════════════ */
+function bindAboutModal(){
+  const ov = document.getElementById('aboutOverlay');
+  if(!ov) return;
+  document.getElementById('aboutClose').addEventListener('click', () => ov.classList.remove('open'));
+  ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
+}
+
 function init(){
+  bindMenuBar();
+  bindAboutModal();
   bindThemeToggle();   /* apply saved theme immediately, before any render */
   initResponsiveHeader();  /* apply body.hdr-compact / body.hdr-tight */
   bindSmartTools();        /* load and apply smart tool settings */
@@ -7505,7 +7713,7 @@ function _markSaved(){
 
 /* ── Manual Save (Cmd+S) — overwrite or dialog ────────── */
 function saveProject(){
-  if(_isTauri && _currentFilePath){
+  if(_isTauri() && _currentFilePath){
     /* Overwrite current file silently */
     const envelope = _buildEnvelope();
     const json = JSON.stringify(envelope, null, 2);
@@ -7523,7 +7731,7 @@ function saveProject(){
 }
 
 /* ── Save As (Cmd+Shift+S) — always show dialog ────────── */
-function saveProjectAs(){
+async function saveProjectAs(){
   const envelope = _buildEnvelope();
   const json = JSON.stringify(envelope, null, 2);
   const dd = String(selDate.getDate()).padStart(2,'0');
@@ -7531,29 +7739,20 @@ function saveProjectAs(){
   const yyyy = selDate.getFullYear();
   const fileName = 'SPICA TIDE Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
 
-  if(_isTauri){
-    (async () => {
-      try {
-        const { save: saveDlg } = window.__TAURI__.dialog
-          ? window.__TAURI__.dialog
-          : await import('@tauri-apps/plugin-dialog');
-        const targetPath = await saveDlg({
-          title: 'Save Project As',
-          defaultPath: fileName,
-          filters: [{ name: 'SPICA Project', extensions: ['json'] }]
-        });
-        if(!targetPath) return;
-        await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
-        _currentFilePath = targetPath;
-        _updateWindowTitle(targetPath);
-        _addToRecent(targetPath, envelope.name);
-        LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
-        _markSaved();
-        showToast('Saved \u2014 ' + targetPath.split(/[/\\]/).pop(), 'ok');
-      } catch(e){
-        showToast('Save failed: ' + (e && e.message || e), 'warn');
-      }
-    })();
+  if(_isTauri()){
+    const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
+    if(!targetPath) return;
+    try {
+      await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
+      _currentFilePath = targetPath;
+      _updateWindowTitle(targetPath);
+      _addToRecent(targetPath, envelope.name);
+      LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+      _markSaved();
+      showToast('Saved \u2014 ' + targetPath.split(/[/\\]/).pop(), 'ok');
+    } catch(e){
+      showToast('Save failed: ' + (e && e.message || e), 'warn');
+    }
   } else {
     /* Browser: Blob download */
     const blob = new Blob([json], { type: 'application/json' });

@@ -1,0 +1,16 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for SPICA TIDE desktop app",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "fs:default",
+    "fs:allow-read",
+    "fs:allow-write"
+  ]
+}

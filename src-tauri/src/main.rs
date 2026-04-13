@@ -31,6 +31,11 @@ fn write_file(path: String, contents: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    fs::write(&path, &bytes).map_err(|e| format!("Write failed: {}", e))
+}
+
+#[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
 }
@@ -88,6 +93,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             write_file,
+            write_file_bytes,
             read_file,
             get_recent_files,
             add_recent_file,

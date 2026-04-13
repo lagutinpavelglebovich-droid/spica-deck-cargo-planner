@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPICA TIDE — Deck Cargo Plan</title>
+<title>SPICA TIDE - Deck Cargo Planner</title>
 <script>
 /* Apply saved theme before first paint — prevents flash */
 (function(){
@@ -16,6 +16,94 @@
 <script type="module" src="/src/main.js"></script>
 </head>
 <body>
+
+<!-- MENU BAR -->
+<div class="menubar" id="menubar">
+  <div class="menu-item" data-menu="file">
+    <span class="menu-label">File</span>
+    <div class="menu-dropdown">
+      <div class="menu-action" data-action="newDeck">New Deck Plan</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="openProject">Open Project<span class="menu-shortcut">Ctrl+O</span></div>
+      <div class="menu-action" data-action="saveProject">Save<span class="menu-shortcut">Ctrl+S</span></div>
+      <div class="menu-action" data-action="saveProjectAs">Save As...<span class="menu-shortcut">Ctrl+Shift+S</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="exportPDF">Export PDF</div>
+      <div class="menu-action" data-action="exportExcel">Export Excel</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="exit">Exit</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="edit">
+    <span class="menu-label">Edit</span>
+    <div class="menu-dropdown">
+      <div class="menu-action" data-action="undo">Undo<span class="menu-shortcut">Ctrl+Z</span></div>
+      <div class="menu-action" data-action="redo">Redo<span class="menu-shortcut">Ctrl+Y</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="deleteSelected">Delete Selected<span class="menu-shortcut">Del</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="view">
+    <span class="menu-label">View</span>
+    <div class="menu-dropdown">
+      <div class="menu-action" data-action="zoomIn">Zoom In<span class="menu-shortcut">Ctrl+=</span></div>
+      <div class="menu-action" data-action="zoomOut">Zoom Out<span class="menu-shortcut">Ctrl+-</span></div>
+      <div class="menu-action" data-action="zoomReset">Reset Zoom</div>
+      <div class="menu-action" data-action="zoomFit">Fit to Screen</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="toggleLibrary">Toggle Library<span class="menu-shortcut">L</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="export">
+    <span class="menu-label">Export</span>
+    <div class="menu-dropdown">
+      <div class="menu-action" data-action="exportPDF">PDF Deck Plan</div>
+      <div class="menu-action" data-action="exportExcel">Excel Manifest</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="exportJSON">JSON Project File</div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="help">
+    <span class="menu-label">Help</span>
+    <div class="menu-dropdown">
+      <div class="menu-action" data-action="about">About SPICA TIDE</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action menu-disabled" data-action="version">v1.0.0 &middot; Build 38.20</div>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT MODAL -->
+<div class="about-overlay" id="aboutOverlay">
+  <div class="about-modal">
+    <button class="about-close" id="aboutClose">&times;</button>
+    <div class="about-icon">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect width="48" height="48" rx="10" fill="#1E2E45"/>
+        <line x1="24" y1="6" x2="24" y2="16" stroke="white" stroke-width="1.5"/>
+        <rect x="20" y="14" x2="28" width="8" height="3" rx="1" fill="none" stroke="white" stroke-width="1.2"/>
+        <line x1="16" y1="17" x2="20" y2="20" stroke="white" stroke-width="1"/>
+        <line x1="32" y1="17" x2="28" y2="20" stroke="white" stroke-width="1"/>
+        <rect x="12" y="20" width="24" height="18" rx="2" fill="none" stroke="white" stroke-width="1.8"/>
+        <line x1="18" y1="20" x2="18" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
+        <line x1="24" y1="20" x2="24" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
+        <line x1="30" y1="20" x2="30" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
+      </svg>
+    </div>
+    <h2 class="about-title">SPICA TIDE</h2>
+    <div class="about-subtitle">Deck Cargo Planner</div>
+    <div class="about-version">
+      Version 1.0.0<br>
+      Build 38.20<br>
+      Release Channel: Beta
+    </div>
+    <div class="about-desc">
+      Built for offshore PSV cargo planning.<br>
+      Designed for practical deck operations and export workflows.
+    </div>
+    <div class="about-footer">&copy; 2026 SPICA TIDE Marine Operations</div>
+  </div>
+</div>
 
 <!-- HEADER -->
 <div class="hdr">
@@ -241,11 +329,6 @@
     <div class="save-state" id="saveState">
       <span class="save-dot"></span>
       <span class="save-state-text" id="saveStateText">Saved</span>
-    </div>
-
-    <!-- Version badge -->
-    <div class="ver-badge">
-      <div class="ver-badge-inner">Beta&nbsp;·&nbsp;<b>v38.19</b></div>
     </div>
 
   </div>
