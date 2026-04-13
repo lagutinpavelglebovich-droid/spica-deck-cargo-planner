@@ -26,7 +26,7 @@ const SPICA_CONFIG = {
   BRAND: {
     name:     'SPICA TIDE',
     title:    'Deck Cargo Plan',
-    subtitle: 'PSV · FAR SPICA · NEO Energy · North Sea',
+    subtitle: 'PSV · SPICA TIDE · NEO Energy · North Sea',
   },
 
   /* ── PDF Export defaults ───────────────────────────────────
@@ -1445,6 +1445,13 @@ function toggleLoc(id){
 let LOC_FILTER = null; /* currently filtered location id, or null */
 
 function applyLocFilter(id){
+  /* Only apply visual dimming if Highlight by Platform is enabled in Smart Tools */
+  if(!SMART.locHighlight){
+    /* Still track selection for cargo placement, but don't dim */
+    LOC_FILTER = null;
+    return;
+  }
+
   LOC_FILTER = id;
 
   /* Inject CSS that dims all .cb not matching the filter */
@@ -1455,8 +1462,8 @@ function applyLocFilter(id){
     document.head.appendChild(styleEl);
   }
   styleEl.textContent =
-    `.cb:not([data-loc="${id}"]){opacity:.18;filter:saturate(0);pointer-events:none;}` +
-    `.cb[data-loc="${id}"]{z-index:20;}`;
+    `.cb:not([data-loc="${id}"]){opacity:.25;filter:saturate(0);pointer-events:none;transition:opacity .3s,filter .3s;}` +
+    `.cb[data-loc="${id}"]{z-index:20;transition:opacity .3s,filter .3s;}`;
 
   /* Mark loc-cards */
   document.querySelectorAll('.loc-card').forEach(card => {
@@ -1512,10 +1519,42 @@ function buildActiveLocStrip(){
     el.className='loc-card'+(S.selLoc===id?' sel':'');
     el.style.setProperty('--lc',effectiveBase);
 
-    /* Name row — always visible */
+    /* Name row — dot is a color picker trigger */
     const head=document.createElement('div');
     head.className='loc-card-head';
-    head.innerHTML=`<div class="loc-card-dot"></div><div class="loc-card-name">${loc.name}</div>`;
+
+    const dot=document.createElement('div');
+    dot.className='loc-card-dot';
+    dot.title='Click to change colour';
+    dot.style.cursor='pointer';
+
+    /* Hidden native color input */
+    const colorInp=document.createElement('input');
+    colorInp.type='color';
+    colorInp.value=effectiveBase;
+    colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+    dot.appendChild(colorInp);
+
+    dot.addEventListener('click', e=>{
+      e.stopPropagation();
+      colorInp.click();
+    });
+    colorInp.addEventListener('input', e=>{
+      e.stopPropagation();
+      const newCol=colorInp.value;
+      /* Update DYN_COLORS with user's chosen colour */
+      DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
+      /* Persist and rebuild */
+      renderAll(); updateStats(); buildActiveLocStrip(); save();
+    });
+    colorInp.addEventListener('click', e=>e.stopPropagation());
+
+    const nameLbl=document.createElement('div');
+    nameLbl.className='loc-card-name';
+    nameLbl.textContent=loc.name;
+
+    head.appendChild(dot);
+    head.appendChild(nameLbl);
 
     /* Status pill strip — only present statuses */
     const pillStrip=document.createElement('div');
@@ -1785,6 +1824,11 @@ function renderBlock(cv,cargo){
   const b=document.createElement('div');b.className='cb';b.dataset.id=cargo.id;
   /* Location id for Quick Filter — used by #locFilterStyle CSS rule */
   b.dataset.loc = cargo.platform || '';
+  if(cargo.dgClass) b.dataset.dg = cargo.dgClass;
+  /* Corner badge text for Visual Smart Tool */
+  if(cargo.dgClass) b.dataset.cornerBadge = cargo.dgClass;
+  else if(cargo.status === 'BL') b.dataset.cornerBadge = 'BL';
+  else if(cargo.status === 'ROB') b.dataset.cornerBadge = 'ROB';
   /* Premium tactile finish — subtle inset highlight + ambient shadow */
   const shadowCol = isDark(fill) ? 'rgba(0,0,0,.22)' : 'rgba(49,51,44,.10)';
   const hlCol     = isDark(fill) ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.55)';
@@ -1800,6 +1844,9 @@ function renderBlock(cv,cargo){
     'border-radius:7px',
     trExtra,
   ].filter(Boolean).join(';');
+
+  /* Right-click context menu */
+  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(cargo.id, e.clientX, e.clientY); });
 
   const dgd=cargo.dgClass?DG_DATA.find(d=>d.cls===cargo.dgClass):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
@@ -1859,15 +1906,25 @@ function renderBlock(cv,cargo){
     const ghost=document.createElement('div');ghost.className='ghost';
     ghost.style.cssText=`width:${cargo.w*zoomLevel}px;height:${cargo.h*zoomLevel}px;left:${e.clientX-ox*zoomLevel}px;top:${e.clientY-oy*zoomLevel}px;`;
     document.body.appendChild(ghost);
+    /* Drag ghost trail (#7) — shadow at original position */
+    let _ghostTrail=null;
+    if(SMART.dragGhost){
+      _ghostTrail=document.createElement('div');
+      _ghostTrail.className='drag-ghost-trail';
+      _ghostTrail.style.cssText=`left:${cargo.x}px;top:${cargo.y}px;width:${cargo.w}px;height:${cargo.h}px;`;
+      const cv=document.getElementById('cvDECK');if(cv)cv.appendChild(_ghostTrail);
+    }
+    let _dragSegTimer=0;
     const onMove=ev=>{
       if(Math.abs(ev.clientX-sx)>4||Math.abs(ev.clientY-sy)>4)moved=true;
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
-      /* Live DG segregation overlay — only when dragged block has a DG class */
-      if(cargo.dgClass)showDragSegOverlay(cargo.dgClass, cargo.id);
+      /* Throttled DG segregation overlay — prevents fullscreen flicker */
+      if(cargo.dgClass&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClass,cargo.id);_dragSegTimer=0;});}
     };
     const onUp=ev=>{
       document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);ghost.remove();
+      if(_ghostTrail) _ghostTrail.remove();
       clearDragSegOverlay();
       if(moved){b.style.visibility='hidden';const el=document.elementFromPoint(ev.clientX,ev.clientY);b.style.visibility='';const tc=el&&el.closest('.dcv');if(tc){const cr=tc.getBoundingClientRect();cargo.x=Math.max(0,Math.min((ev.clientX-cr.left)/zoomLevel-ox,TW-cargo.w));cargo.y=Math.max(0,Math.min((ev.clientY-cr.top)/zoomLevel-oy,CVH-cargo.h));}/* Smart Bounce: resolve overlap BEFORE grid snap */
               const bouncePos=smartBounce(cargo);
@@ -1878,10 +1935,46 @@ function renderBlock(cv,cargo){
               renderAll();
               if(bouncePos) triggerBounceAnim(cargo.id);
               updateStats();buildActiveLocStrip();
-              checkSeg();save();}else{ kbSelect(cargo.id); openModal(cargo.id); }
+              checkSeg();save();if(typeof setLastAction==='function')setLastAction('Moved '+(cargo.ccu||cargo.desc||'cargo'));}else{ kbSelect(cargo.id); openModal(cargo.id); }
     };
     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
+
+  /* ── Touch support — mirrors mouse drag for tablets ── */
+  b.addEventListener('touchstart', e => {
+    if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-rot')) return;
+    if(S.pending){cancelPending();return;}
+    const touch = e.touches[0];
+    const sx=touch.clientX, sy=touch.clientY, rect=b.getBoundingClientRect();
+    const ox=(touch.clientX-rect.left)/zoomLevel, oy=(touch.clientY-rect.top)/zoomLevel;
+    let moved=false;
+    const ghost=document.createElement('div');ghost.className='ghost';
+    ghost.style.cssText=`width:${cargo.w*zoomLevel}px;height:${cargo.h*zoomLevel}px;left:${touch.clientX-ox*zoomLevel}px;top:${touch.clientY-oy*zoomLevel}px;`;
+    document.body.appendChild(ghost);
+    const onTouchMove = ev => {
+      ev.preventDefault();
+      const t = ev.touches[0];
+      if(Math.abs(t.clientX-sx)>4||Math.abs(t.clientY-sy)>4) moved=true;
+      ghost.style.left=(t.clientX-ox*zoomLevel)+'px'; ghost.style.top=(t.clientY-oy*zoomLevel)+'px';
+      if(cargo.dgClass) showDragSegOverlay(cargo.dgClass, cargo.id);
+    };
+    const onTouchEnd = ev => {
+      document.removeEventListener('touchmove',onTouchMove); document.removeEventListener('touchend',onTouchEnd);
+      ghost.remove(); clearDragSegOverlay();
+      const t = ev.changedTouches[0];
+      if(moved){
+        b.style.visibility='hidden';const el=document.elementFromPoint(t.clientX,t.clientY);b.style.visibility='';
+        const tc=el&&el.closest('.dcv');
+        if(tc){const cr=tc.getBoundingClientRect();cargo.x=Math.max(0,Math.min((t.clientX-cr.left)/zoomLevel-ox,TW-cargo.w));cargo.y=Math.max(0,Math.min((t.clientY-cr.top)/zoomLevel-oy,CVH-cargo.h));}
+        const bouncePos=smartBounce(cargo);if(bouncePos){cargo.x=bouncePos.x;cargo.y=bouncePos.y;}
+        const snapPos=smartGridSnap(cargo);if(snapPos){cargo.x=snapPos.x;cargo.y=snapPos.y;}
+        renderAll();if(bouncePos)triggerBounceAnim(cargo.id);
+        updateStats();buildActiveLocStrip();checkSeg();save();
+      } else { kbSelect(cargo.id); openModal(cargo.id); }
+    };
+    document.addEventListener('touchmove',onTouchMove,{passive:false}); document.addEventListener('touchend',onTouchEnd);
+  }, {passive:false});
+
   cv.appendChild(b);
 }
 
@@ -1926,7 +2019,15 @@ function startResize(e,cargo,block,dir){
 /* ════════════════════════════════════
    STATS + DG
 ════════════════════════════════════ */
-function updateStats(){let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;S.cargo.forEach(c=>{tot++;wt+=parseFloat(c.wt)||0;if(c.status==='L')L++;if(c.status==='BL')BL++;if(c.status==='ROB')ROB++;if(c.status==='TR')TR++;});document.getElementById('sLifts').textContent=tot;document.getElementById('sWT').textContent=wt.toFixed(1)+' T';document.getElementById('sL').textContent=L;document.getElementById('sBL').textContent=BL;document.getElementById('sROB').textContent=ROB;const trEl=document.getElementById('sTR');if(trEl)trEl.textContent=TR;const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';}
+function updateStats(){let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;S.cargo.forEach(c=>{tot++;wt+=parseFloat(c.wt)||0;if(c.status==='L')L++;if(c.status==='BL')BL++;if(c.status==='ROB')ROB++;if(c.status==='TR')TR++;});document.getElementById('sLifts').textContent=tot;document.getElementById('sWT').textContent=wt.toFixed(1)+' T';document.getElementById('sL').textContent=L;document.getElementById('sBL').textContent=BL;document.getElementById('sROB').textContent=ROB;const trEl=document.getElementById('sTR');if(trEl)trEl.textContent=TR;const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';
+/* V2: Weight gauge update */
+const gaugeEl=document.getElementById('wtGauge');const fillEl=document.getElementById('wtGaugeFill');const gaugeTxt=document.getElementById('wtGaugeText');
+if(gaugeEl&&fillEl){gaugeEl.style.display=SMART.weightGauge?'':'none';if(SMART.weightGauge){const MAX_WT=2500;const pct=Math.min(100,wt/MAX_WT*100);fillEl.style.width=pct+'%';fillEl.className='wt-gauge-fill'+(pct>90?' crit':pct>70?' warn':'');if(gaugeTxt)gaugeTxt.textContent=wt.toFixed(0)+' / '+MAX_WT+' T';}}
+/* V12: Empty deck hint */
+const hintEl=document.getElementById('emptyDeckHint');if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
+/* V9: Status bar update */
+if(typeof updateStatusBar==='function') updateStatusBar();
+}
 function updateDGSummary(){const counts={};S.cargo.filter(c=>c.dgClass).forEach(c=>{counts[c.dgClass]=(counts[c.dgClass]||0)+1;});const el=document.getElementById('dgSumContent');const entries=Object.entries(counts);if(!entries.length){el.className='dg-empty';el.innerHTML='none';return;}el.className='';el.innerHTML=entries.map(([cls,n])=>{const dg=DG_DATA.find(d=>d.cls===cls);return`<span class="dg-sum-item" style="background:${dg?.bg||'#888'};color:${dg?.tc||'#fff'};border-color:${dg?.bc||'#888'};">◆${cls} ×${n}</span>`;}).join('');}
 /* ════════════════════════════════════════════════════════════
    DG AUTO-SEGREGATION CHECK ENGINE  v38.8
@@ -3052,22 +3153,16 @@ function _buildEnvelope() {
    Returns the chosen file path, or null if cancelled.
    Works in Tauri desktop mode only. Browser mode returns null. */
 async function _nativeSaveDialog(defaultName, filterName, extensions) {
-  if (!_isTauri()) {
-    console.warn('[SaveDialog] Not in Tauri — falling back to browser');
-    return null;
-  }
+  if (!_isTauri()) return null;
   try {
     const dialogModule = await import('@tauri-apps/plugin-dialog');
-    console.log('[SaveDialog] Dialog module loaded, calling save...');
     const path = await dialogModule.save({
       title: 'Save As',
       defaultPath: defaultName,
       filters: [{ name: filterName, extensions: extensions }]
     });
-    console.log('[SaveDialog] User chose:', path);
     return path || null;
   } catch (e) {
-    console.error('[SaveDialog] FAILED:', e);
     showToast('Save dialog error: ' + (e && e.message || e), 'warn');
     return null;
   }
@@ -3450,7 +3545,13 @@ function load() { loadPlan(); }
 let zoomLevel=1.0;const ZOOM_STEP=0.1,ZOOM_MIN=0.3,ZOOM_MAX=2.0;
 function applyZoom(z){zoomLevel=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,z));const wrap=document.getElementById('deckZoomWrap');wrap.style.transform=`scale(${zoomLevel})`;wrap.style.transformOrigin='top left';const inner=wrap.querySelector('.deck-outer');if(inner){wrap.style.width=(inner.offsetWidth*zoomLevel)+'px';wrap.style.height=(inner.offsetHeight*zoomLevel)+'px';}document.getElementById('zoomLbl').textContent=Math.round(zoomLevel*100)+'%';}
 function fitToScreen(){const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(!inner)return;applyZoom(Math.min((area.clientWidth-24)/inner.offsetWidth,(area.clientHeight-16)/inner.offsetHeight,1.0));}
-function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);}
+function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);
+/* Pinch-to-zoom on touch devices */
+let _pinchStartDist=0, _pinchStartZoom=1;
+document.getElementById('deckArea').addEventListener('touchstart',e=>{if(e.touches.length===2){e.preventDefault();const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;_pinchStartDist=Math.sqrt(dx*dx+dy*dy);_pinchStartZoom=zoomLevel;}},{passive:false});
+document.getElementById('deckArea').addEventListener('touchmove',e=>{if(e.touches.length===2&&_pinchStartDist>0){e.preventDefault();const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;const dist=Math.sqrt(dx*dx+dy*dy);applyZoom(_pinchStartZoom*(dist/_pinchStartDist));}},{passive:false});
+document.getElementById('deckArea').addEventListener('touchend',()=>{_pinchStartDist=0;});
+}
 
 /* ── Resolve an ASCO display name to a LOC_ALL location id ──────────────
    Maps strings like "CLAYMORE WOPS", "CLAYMORE CAP", "CLAYMORE CPP",
@@ -4257,6 +4358,13 @@ function bindAscoUpload(){
 }
 
 function processASCOFile(file){
+  /* V11: Show skeleton shimmer while parsing */
+  const ascoBody = document.querySelector('.asco-body') || document.getElementById('ascoContent');
+  if(ascoBody){
+    ascoBody.innerHTML = '';
+    for(let i=0;i<6;i++){ const sk=document.createElement('div'); sk.className='skel-card'; ascoBody.appendChild(sk); }
+  }
+
   const reader = new FileReader();
   reader.onload = e => {
     try{
@@ -4264,13 +4372,16 @@ function processASCOFile(file){
       const { sheets, stats } = result;
 
       if(!sheets || sheets.length === 0){
+        if(ascoBody) ascoBody.innerHTML = '';
         showToast(t('toast_no_cargo'), 'warn');
         return;
       }
 
       document.getElementById('ascoSubtitle').textContent = `Reading: ${file.name}`;
       renderAscoContent(sheets, stats);
+      setLastAction('Imported ' + file.name);
     } catch(err){
+      if(ascoBody) ascoBody.innerHTML = '';
       showToast(t('toast_read_err', err.message), 'warn');
       console.error('ASCO parse error:', err);
     }
@@ -4435,11 +4546,18 @@ function exportPDF(){
   dcv.style.overflow = 'visible';
   if(deckOuter) deckOuter.style.overflow = 'visible';
 
-  /* 3. Hide editing controls */
+  /* 3. Hide editing controls + remove cargo shadows for clean print */
   const hiddenEls = document.querySelectorAll('.cb-del,.cb-rot,.cb-copy,.rh,.kb-coord-tip');
   hiddenEls.forEach(el => el.style.visibility = 'hidden');
   const kbEl = document.querySelector('.cb.kb-sel');
   if(kbEl) kbEl.classList.remove('kb-sel');
+  /* Remove box-shadow from all cargo blocks for crisp print */
+  const allCb = dcv.querySelectorAll('.cb');
+  const _savedShadows = [];
+  allCb.forEach(cb => {
+    _savedShadows.push(cb.style.boxShadow);
+    cb.style.boxShadow = 'none';
+  });
 
   /* 4. Hide body::before noise texture (feTurbulence taint source) */
   document.body.classList.add('pdf-capture');
@@ -4464,14 +4582,7 @@ function exportPDF(){
       el.style.backgroundColor = 'rgba(180,140,20,0.6)';
       el.style.backgroundImage = 'none';
     }
-    console.log('[PDF] DIAG zone:', cls, 'left:', el.style.left, 'top:', el.style.top, 'w:', el.style.width, 'h:', el.style.height, 'rect:', Math.round(rect.width)+'x'+Math.round(rect.height), 'bgColor:', el.style.backgroundColor);
   });
-
-  /* Also check what the ACTUAL zone count is */
-  console.log('[PDF] DIAG .zone count:', dcv.querySelectorAll('.zone').length);
-  console.log('[PDF] DIAG .z-hose count:', dcv.querySelectorAll('.z-hose').length);
-  console.log('[PDF] DIAG .z-tiger count:', dcv.querySelectorAll('.z-tiger').length);
-  console.log('[PDF] DIAG .z-store count:', dcv.querySelectorAll('.z-store').length);
 
   /* No-DG zone */
   const _nodgEl = dcv.querySelector('[style*="repeating-linear-gradient(45deg,rgba(220,38,38"]');
@@ -4480,12 +4591,7 @@ function exportPDF(){
     _nodgSavedCss = _nodgEl.style.cssText;
     _nodgEl.style.backgroundColor = 'rgba(220,50,50,0.15)';
     _nodgEl.style.backgroundImage = 'none';
-    console.log('[PDF] DIAG nodg: left:', _nodgEl.style.left, 'w:', _nodgEl.style.width, 'h:', _nodgEl.style.height);
-  } else {
-    console.log('[PDF] DIAG nodg: NOT FOUND');
   }
-
-  console.log('[PDF] Total zones modified:', _zoneSaved.length, '+ nodg:', _nodgEl ? 1 : 0);
 
   const restore = () => {
     dzw.style.transform = savedTransform;
@@ -4493,6 +4599,8 @@ function exportPDF(){
     if(deckOuter) deckOuter.style.overflow = savedOuterOv;
     hiddenEls.forEach(el => el.style.visibility = '');
     if(kbEl && KB_SEL) kbEl.classList.add('kb-sel');
+    /* Restore cargo shadows */
+    allCb.forEach((cb,i) => { cb.style.boxShadow = _savedShadows[i] || ''; });
     document.body.classList.remove('pdf-capture');
     /* Restore original zone styles */
     _zoneSaved.forEach(s => { s.el.style.cssText = s.cssText; });
@@ -4510,7 +4618,6 @@ function exportPDF(){
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
     }).then(deckCanvas => {
       restore();
-      console.log('[PDF] Captured live deck:', deckCanvas.width, 'x', deckCanvas.height);
       buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs })
         .catch(err => {
           console.error('[PDF] buildPDF error:', err);
@@ -4549,54 +4656,54 @@ async function buildPDF(deckCanvas, data){
 
   let y = MT;
 
-  /* 1. HEADER */
-  const HDR_H = 22;
+  /* 1. HEADER — enlarged for print readability */
+  const HDR_H = 32;
   roundRect(ML,y,CW,HDR_H,2,C.ivory,C.brd);
-  doc.setFillColor(...C.navy); doc.roundedRect(ML,y,2.5,HDR_H,1,1,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...C.ink);
-  doc.text('SPICA TIDE', ML+7, y+9);
-  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.navy);
-  doc.text('Deck Cargo Plan', ML+7, y+14);
-  doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
-  doc.text('PSV \u00B7 North Sea \u00B7 NEO Energy Resources UK', ML+7, y+18.5);
-  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2); doc.line(ML+70,y+3,ML+70,y+HDR_H-3);
+  doc.setFillColor(...C.navy); doc.roundedRect(ML,y,3,HDR_H,1,1,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(...C.ink);
+  doc.text('SPICA TIDE', ML+8, y+12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...C.navy);
+  doc.text('Deck Cargo Plan', ML+8, y+18);
+  doc.setFontSize(7); doc.setTextColor(...C.ink3);
+  doc.text('PSV \u00B7 North Sea \u00B7 NEO Energy Resources UK', ML+8, y+24);
+  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2); doc.line(ML+75,y+4,ML+75,y+HDR_H-4);
   const cell = (label,value,cx,colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(),cx,y+8.5);
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...colVal);
-    doc.text(value,cx,y+16);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(),cx,y+12);
+    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(...colVal);
+    doc.text(value,cx,y+24);
   };
-  cell('Voyage',voyageNum,ML+76,C.navy); cell('Date',dateStr,ML+116,C.ink);
-  doc.setDrawColor(...C.brd); doc.line(ML+155,y+3,ML+155,y+HDR_H-3);
+  cell('Voyage',voyageNum,ML+82,C.navy); cell('Date',dateStr,ML+122,C.ink);
+  doc.setDrawColor(...C.brd); doc.line(ML+160,y+4,ML+160,y+HDR_H-4);
   [{lbl:'Total Lifts',val:String(lifts),col:C.ink,dx:0},{lbl:'Load',val:String(loadCount),col:C.green,dx:32},
    {lbl:'Backload',val:String(blCount),col:C.navy,dx:58},{lbl:'ROB',val:String(robCount),col:C.amber,dx:82},
-   {lbl:'Weight',val:weightStr,col:C.ink2,dx:106}].forEach(s=>cell(s.lbl,s.val,ML+160+s.dx,s.col));
+   {lbl:'Weight',val:weightStr,col:C.ink2,dx:106}].forEach(s=>cell(s.lbl,s.val,ML+165+s.dx,s.col));
   y += HDR_H+3;
 
-  /* 2. LOCATIONS */
+  /* 2. LOCATIONS — enlarged for print readability */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
   if(filledLocs.length > 0){
-    const LOC_H=16, GAP=3;
-    const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 68);
+    const LOC_H=22, GAP=3;
+    const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
     filledLocs.forEach((loc,i) => {
       const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
       roundRect(lx,y,locW,LOC_H,2,C.surf2,C.brd);
-      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,2.5,1,1,'F');
-      doc.setFillColor(...rgb); doc.circle(lx+4,y+7.5,1.5,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink);
-      const maxChars = Math.floor(locW/2.0);
+      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
+      doc.setFillColor(...rgb); doc.circle(lx+5,y+10,2,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.ink);
+      const maxChars = Math.floor(locW/2.8);
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'\u2026' : loc.name;
-      doc.text(nm, lx+8, y+8.5);
-      doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink3);
-      doc.text(loc.wt+'T', lx+locW-2.5, y+8.5, {align:'right'});
-      let px = lx+3; const py = y+11;
+      doc.text(nm, lx+10, y+11);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink3);
+      doc.text(loc.wt+'T', lx+locW-3, y+11, {align:'right'});
+      let px = lx+4; const py = y+15.5;
       [{lbl:'L',val:loc.L,col:C.green},{lbl:'BL',val:loc.BL,col:C.navy},{lbl:'ROB',val:loc.ROB,col:C.amber}]
         .filter(p=>p.val>0).forEach(p => {
-          const pw = p.lbl==='ROB'?13:p.lbl==='BL'?11:9;
+          const pw = p.lbl==='ROB'?16:p.lbl==='BL'?14:12;
           const pillBg = p.col.map(v=>Math.round(v*0.12+242));
-          roundRect(px,py-2,pw,5,1.5,pillBg,null);
-          doc.setFont('helvetica','bold'); doc.setFontSize(5); doc.setTextColor(...p.col);
-          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.5, {align:'center'}); px+=pw+2;
+          roundRect(px,py-2.5,pw,6.5,2,pillBg,null);
+          doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...p.col);
+          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.5, {align:'center'}); px+=pw+2.5;
         });
     });
     y += LOC_H+3;
@@ -4641,7 +4748,6 @@ async function buildPDF(deckCanvas, data){
      This avoids toDataURL() which throws "insecure operation" on
      tainted canvases in Tauri WebView2. toBlob uses a different
      code path that bypasses the taint check in Chromium. */
-  console.log('[PDF][8] START toBlob conversion. Canvas:', deckCanvas.width, 'x', deckCanvas.height);
   let pngBytes;
   try {
     const blob = await new Promise((resolve, reject) => {
@@ -4649,20 +4755,14 @@ async function buildPDF(deckCanvas, data){
     });
     const arrayBuf = await blob.arrayBuffer();
     pngBytes = new Uint8Array(arrayBuf);
-    console.log('[PDF][8] SUCCESS toBlob. PNG size:', pngBytes.length, 'bytes');
   } catch(blobErr) {
-    console.error('[PDF][8] FAIL toBlob:', blobErr);
-    console.error('[PDF][8] Stack:', blobErr.stack);
     showToast('Canvas export error: ' + (blobErr && blobErr.message || blobErr), 'warn');
     return;
   }
   try {
     doc.addImage(pngBytes, 'PNG', ML, y, dw, dh, '', 'FAST');
-    console.log('[PDF][8] SUCCESS doc.addImage with Uint8Array');
   } catch(imgErr) {
-    console.error('[PDF][8] FAIL doc.addImage:', imgErr);
-    console.error('[PDF][8] Stack:', imgErr.stack);
-    showToast('addImage error: ' + (imgErr && imgErr.message || imgErr), 'warn');
+    showToast('Image error: ' + (imgErr && imgErr.message || imgErr), 'warn');
     return;
   }
 
@@ -4759,7 +4859,6 @@ function bindSaveAs(){
     xlsxBtn.addEventListener('click', ()=>{
       dd.classList.remove('open');
       try {
-        console.log('[Excel] Starting export. XLSX available:', typeof XLSX !== 'undefined');
         exportExcel();
       } catch(err) {
         console.error('[Excel] exportExcel threw:', err);
@@ -5449,25 +5548,63 @@ function cpMakeLibCard(item, isCustom=false){
   });
   card.appendChild(star);
 
-  /* ── Click = activate for deck placement ── */
+  /* ── F1: Drag from library card onto deck canvas ── */
+  const pendingItem = {
+    type: 'cargo',
+    item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:parseFloat(wt)||0, length_m:item.length_m, width_m:item.width_m }
+  };
+
+  card.addEventListener('mousedown', e => {
+    if(e.target.closest('.cp-lc-star')) return; /* don't intercept star click */
+    if(e.button !== 0) return;
+    const sx = e.clientX, sy = e.clientY;
+    let dragging = false, ghost = null;
+
+    const onMove = ev => {
+      if(!dragging && (Math.abs(ev.clientX-sx)>5 || Math.abs(ev.clientY-sy)>5)){
+        dragging = true;
+        ghost = document.createElement('div');
+        ghost.className = 'ghost';
+        ghost.style.cssText = `width:${pw*zoomLevel}px;height:${ph*zoomLevel}px;left:${ev.clientX-pw*zoomLevel/2}px;top:${ev.clientY-ph*zoomLevel/2}px;`;
+        ghost.innerHTML = '<div style="font-size:9px;color:var(--acc);text-align:center;padding:4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">' + displayName.replace(/</g,'&lt;') + '</div>';
+        document.body.appendChild(ghost);
+      }
+      if(ghost){
+        ghost.style.left = (ev.clientX - pw*zoomLevel/2) + 'px';
+        ghost.style.top  = (ev.clientY - ph*zoomLevel/2) + 'px';
+      }
+    };
+    const onUp = ev => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if(ghost) ghost.remove();
+      if(dragging){
+        /* Check if dropped onto the deck canvas */
+        const dcv = document.querySelector('.dcv');
+        if(!dcv) return;
+        const cr = dcv.getBoundingClientRect();
+        const dropX = (ev.clientX - cr.left) / zoomLevel - pw/2;
+        const dropY = (ev.clientY - cr.top)  / zoomLevel - ph/2;
+        if(ev.clientX >= cr.left && ev.clientX <= cr.right && ev.clientY >= cr.top && ev.clientY <= cr.bottom){
+          /* Place cargo at drop position */
+          S.pending = pendingItem;
+          _placeAtCore(
+            Math.max(0, Math.min(dropX, TW - pw)),
+            Math.max(0, Math.min(dropY, CVH - ph))
+          );
+          setLastAction('Placed ' + displayName);
+        }
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  /* ── Click = activate for deck placement (existing behavior) ── */
   card.addEventListener('click', () => {
     document.querySelectorAll('.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-lc-sel','cp-dg-sel'));
     card.classList.add('cp-lc-sel');
-
-    /* type:'cargo' is what _placeAtCore checks with isC = p.type==='cargo' */
-    S.pending = {
-      type: 'cargo',
-      item: {
-        cat: item.cat,
-        name: displayName,
-        key:  itemKey,
-        w:    pw,
-        h:    ph,
-        wt:   parseFloat(wt) || 0,
-        length_m: item.length_m,
-        width_m:  item.width_m,
-      }
-    };
+    S.pending = pendingItem;
     document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x => x.classList.remove('sel','selected-q'));
     cpShowHint('<b>' + displayName.replace(/</g,'&lt;') + '</b> → click deck to place');
   });
@@ -6526,13 +6663,31 @@ function bindManifestMatch(){
 ════════════════════════════════════════════════════════════ */
 
 const SMART_DEFAULTS = {
-  bounce:     true,   /* Smart Bounce / Magnetic Snap */
-  match:      false,  /* ASCO Manifest Matching */
-  dgFade:     true,   /* DG Badge fade on hover */
-  dgSeg:      true,   /* DG Auto-Segregation Check — safety critical, default ON */
-  hoverMotion:true,   /* Cargo hover lift/scale animation */
-  gridSnap:   true,   /* Smart Grid Snap — align on drop to neighbours / bay lines */
-  kbShortcuts:true,   /* Keyboard Shortcuts System */
+  bounce:      true,   /* Smart Bounce / Magnetic Snap */
+  match:       false,  /* ASCO Manifest Matching */
+  dgFade:      true,   /* DG Badge fade on hover */
+  dgSeg:       true,   /* DG Auto-Segregation Check — safety critical, default ON */
+  hoverMotion: true,   /* Cargo hover lift/scale animation */
+  gridSnap:    true,   /* Smart Grid Snap — align on drop to neighbours / bay lines */
+  kbShortcuts: true,   /* Keyboard Shortcuts System */
+  locHighlight:false,  /* Highlight by Platform — dim non-selected platform cargo */
+  weightGauge: false,  /* V2: Show weight gauge in header */
+  emptyHint:   true,   /* V12: Show hint when deck is empty */
+  dgOnly:      false,  /* S3: Show DG cargo only */
+  /* Visual Smart Tools */
+  cornerBadges:  false, /* Corner badges on cargo blocks */
+  animCounter:   false, /* Animated import counter */
+  bayDashes:     false, /* Yellow dashed bay dividers */
+  hoverGlow:     false, /* Cargo block hover glow */
+  portStbd:      true,  /* STBD/PORT labels on deck */
+  secWatermark:  true,  /* Section number watermarks */
+  dragGhost:     false, /* Ghost trail during drag */
+  smoothColor:   true,  /* Smooth colour transitions */
+  statusIcons:   false, /* Status bar SVG icons */
+  nameShimmer:   false, /* Vessel name shimmer */
+  btnMicro:      true,  /* Button micro-interactions */
+  deckShadow:    true,  /* Deck edge shadow */
+  customScroll:  true,  /* Custom scrollbar styling */
 };
 
 let SMART = { ...SMART_DEFAULTS };
@@ -6963,6 +7118,9 @@ function bindSmartTools(){
   loadSmartSettings();
   applyDgFade();
   applyHoverMotion();
+  /* S3: Apply DG-only mode from persisted settings */
+  const _dcvInit = document.getElementById('cvDECK');
+  if(_dcvInit && SMART.dgOnly) _dcvInit.classList.add('deck-dg-only');
   updateSmartDot();
 
   const btn        = document.getElementById('btnSmartTools');
@@ -6976,6 +7134,10 @@ function bindSmartTools(){
   const hoverMotionChk  = document.getElementById('stHoverMotionToggle');
   const gridSnapChk     = document.getElementById('stGridSnapToggle');
   const kbShortcutsChk  = document.getElementById('stKbShortcutsToggle');
+  const locHighlightChk = document.getElementById('stLocHighlightToggle');
+  const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
+  const emptyHintChk    = document.getElementById('stEmptyHintToggle');
+  const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
 
   if(!btn || !ov) return;
 
@@ -6987,6 +7149,10 @@ function bindSmartTools(){
   if(hoverMotionChk) hoverMotionChk.checked = SMART.hoverMotion;
   if(gridSnapChk)    gridSnapChk.checked    = SMART.gridSnap;
   if(kbShortcutsChk) kbShortcutsChk.checked = SMART.kbShortcuts;
+  if(locHighlightChk) locHighlightChk.checked = SMART.locHighlight;
+  if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
+  if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
+  if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
 
   /* Open / Close */
   const open  = () => ov.classList.add('open');
@@ -7055,8 +7221,75 @@ function bindSmartTools(){
     SMART.kbShortcuts = kbShortcutsChk.checked;
     saveSmartSettings();
     updateSmartDot();
-    /* If disabling, close cheatsheet if open */
     if(!SMART.kbShortcuts) closeKbCheat();
+  });
+
+  if(locHighlightChk) locHighlightChk.addEventListener('change', () => {
+    SMART.locHighlight = locHighlightChk.checked;
+    saveSmartSettings();
+    updateSmartDot();
+    if(!SMART.locHighlight && LOC_FILTER) clearLocFilter();
+  });
+
+  if(weightGaugeChk) weightGaugeChk.addEventListener('change', () => {
+    SMART.weightGauge = weightGaugeChk.checked;
+    saveSmartSettings(); updateSmartDot(); updateStats();
+  });
+
+  if(emptyHintChk) emptyHintChk.addEventListener('change', () => {
+    SMART.emptyHint = emptyHintChk.checked;
+    saveSmartSettings(); updateSmartDot(); updateStats();
+  });
+
+  if(dgOnlyChk) dgOnlyChk.addEventListener('change', () => {
+    SMART.dgOnly = dgOnlyChk.checked;
+    saveSmartSettings(); updateSmartDot();
+    const dcv = document.getElementById('cvDECK');
+    if(dcv) dcv.classList.toggle('deck-dg-only', SMART.dgOnly);
+  });
+
+  /* ── Visual Smart Tools — 13 toggles ── */
+  const vstMap = {
+    cornerBadges: { id:'stCornerBadges', cls:'vst-corner-badges', target:'body' },
+    bayDashes:    { id:'stBayDashes',    cls:'vst-bay-dashes',    target:'dcv' },
+    hoverGlow:    { id:'stHoverGlow',    cls:'vst-hover-glow',    target:'dcv' },
+    portStbd:     { id:'stPortStbd',     cls:'vst-no-portstbd',   target:'dcv', invert:true },
+    secWatermark: { id:'stSecWatermark', cls:'vst-no-watermark',  target:'dcv', invert:true },
+    dragGhost:    { id:'stDragGhost' },
+    smoothColor:  { id:'stSmoothColor',  cls:'vst-smooth-color',  target:'dcv' },
+    nameShimmer:  { id:'stNameShimmer',  cls:'vst-name-shimmer',  target:'body' },
+    btnMicro:     { id:'stBtnMicro',     cls:'vst-btn-micro',     target:'body' },
+    deckShadow:   { id:'stDeckShadow',   cls:'vst-deck-shadow',   target:'body' },
+    customScroll: { id:'stCustomScroll', cls:'vst-custom-scroll', target:'body' },
+    animCounter:  { id:'stAnimCounter' },
+    statusIcons:  { id:'stStatusIcons' },
+  };
+  const dcvEl = document.getElementById('cvDECK');
+  Object.entries(vstMap).forEach(([key, cfg]) => {
+    const chk = document.getElementById(cfg.id);
+    if(!chk) return;
+    chk.checked = SMART[key];
+    /* Apply initial class */
+    if(cfg.cls){
+      const el = cfg.target === 'dcv' ? dcvEl : document.body;
+      if(el){
+        if(cfg.invert) el.classList.toggle(cfg.cls, !SMART[key]);
+        else el.classList.toggle(cfg.cls, SMART[key]);
+      }
+    }
+    chk.addEventListener('change', () => {
+      SMART[key] = chk.checked;
+      saveSmartSettings(); updateSmartDot();
+      if(cfg.cls){
+        const el = cfg.target === 'dcv' ? dcvEl : document.body;
+        if(el){
+          if(cfg.invert) el.classList.toggle(cfg.cls, !SMART[key]);
+          else el.classList.toggle(cfg.cls, SMART[key]);
+        }
+      }
+      /* Some toggles need re-render */
+      if(key === 'cornerBadges') renderAll();
+    });
   });
 
   /* Auto Align Deck — one-shot action button */
@@ -7539,6 +7772,43 @@ async function menuOpen(){
   }
 }
 
+/* ── Recent files for File menu ──────────────────────────── */
+async function _populateMenuRecent(){
+  const listEl = document.getElementById('menuRecentList');
+  const lblEl  = document.getElementById('menuRecentLabel');
+  const sepEl  = document.getElementById('menuRecentSep');
+  if(!listEl) return;
+  listEl.innerHTML = '';
+
+  let recents = [];
+  try {
+    if(window.__TAURI__) recents = await window.__TAURI__.core.invoke('get_recent_files');
+  } catch(e){}
+
+  if(!recents.length){
+    if(lblEl) lblEl.style.display = 'none';
+    if(sepEl) sepEl.style.display = 'none';
+    return;
+  }
+  if(lblEl) lblEl.style.display = '';
+  if(sepEl) sepEl.style.display = '';
+
+  recents.slice(0, 5).forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'menu-action';
+    const fname = r.path.split(/[/\\]/).pop();
+    el.innerHTML = '<span class="ctx-icon" style="font-size:10px;opacity:.5">\u{1F4C4}</span>' + escHtml(fname);
+    el.title = r.path;
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      /* Close menu and open the file */
+      document.querySelectorAll('.menu-item.open').forEach(m => m.classList.remove('open'));
+      openRecentFile(r.path);
+    });
+    listEl.appendChild(el);
+  });
+}
+
 /* ══════════════════════════════════════════════════════════
    MENU BAR — Desktop application menu wiring
 ══════════════════════════════════════════════════════════ */
@@ -7556,7 +7826,11 @@ function bindMenuBar(){
     label.addEventListener('click', e => {
       e.stopPropagation();
       if(item === openMenu){ closeAll(); }
-      else { closeAll(); item.classList.add('open'); openMenu = item; }
+      else {
+        closeAll(); item.classList.add('open'); openMenu = item;
+        /* Populate recent files when File menu opens */
+        if(item.dataset.menu === 'file') _populateMenuRecent();
+      }
     });
     /* Hover-switch when a menu is already open */
     item.addEventListener('mouseenter', () => {
@@ -7608,16 +7882,204 @@ function bindMenuBar(){
 /* ══════════════════════════════════════════════════════════
    ABOUT MODAL
 ══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   CARGO CONTEXT MENU — right-click on cargo blocks
+══════════════════════════════════════════════════════════ */
+let _ctxCargoId = null;
+
+function showCtxMenu(cargoId, x, y){
+  _ctxCargoId = cargoId;
+  const menu = document.getElementById('ctxMenu');
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+  menu.classList.add('open');
+  /* Clamp to viewport */
+  const r = menu.getBoundingClientRect();
+  if(r.right > window.innerWidth) menu.style.left = (window.innerWidth - r.width - 4) + 'px';
+  if(r.bottom > window.innerHeight) menu.style.top = (window.innerHeight - r.height - 4) + 'px';
+}
+
+function hideCtxMenu(){
+  document.getElementById('ctxMenu').classList.remove('open');
+  _ctxCargoId = null;
+}
+
+/* ══════════════════════════════════════════════════════════
+   V9: STATUS BAR — cursor position, zoom, count, last action
+══════════════════════════════════════════════════════════ */
+let _lastAction = 'Ready';
+function setLastAction(text){ _lastAction=text; const el=document.getElementById('dsbAction'); if(el) el.textContent=text; }
+function updateStatusBar(){
+  const el=document.getElementById('dsbCount'); if(el) el.textContent=S.cargo.length+' items';
+  const zEl=document.getElementById('dsbZoom'); if(zEl) zEl.textContent=Math.round(zoomLevel*100)+'%';
+}
+function bindStatusBar(){
+  const dcv=document.getElementById('cvDECK');
+  if(!dcv) return;
+  dcv.addEventListener('mousemove', e=>{
+    const r=dcv.getBoundingClientRect();
+    const xm=((e.clientX-r.left)/zoomLevel/M).toFixed(1);
+    const ym=((e.clientY-r.top)/zoomLevel/(CVH/15)).toFixed(1);
+    const el=document.getElementById('dsbPos');
+    if(el) el.textContent='X: '+xm+'m \u00B7 Y: '+ym+'m';
+  });
+}
+
+function bindContextMenu(){
+  /* Close on any click outside */
+  document.addEventListener('click', hideCtxMenu);
+  document.addEventListener('contextmenu', e => {
+    /* Only keep open if right-clicking another .cb */
+    if(!e.target.closest('.cb')) hideCtxMenu();
+  });
+
+  /* Action dispatch */
+  document.getElementById('ctxMenu').addEventListener('click', e => {
+    const item = e.target.closest('.ctx-item');
+    if(!item || !_ctxCargoId) return;
+    const action = item.dataset.ctx;
+    const cargo = S.cargo.find(c => c.id === _ctxCargoId);
+    hideCtxMenu();
+    if(!cargo) return;
+
+    if(action === 'edit'){
+      openModal(cargo.id);
+    } else if(action === 'rotate'){
+      const cx=cargo.x+cargo.w/2, cy=cargo.y+cargo.h/2;
+      const nw=cargo.h, nh=cargo.w;
+      cargo.w=nw; cargo.h=nh;
+      cargo.x=Math.max(0,Math.min(cx-nw/2,TW-nw));
+      cargo.y=Math.max(0,Math.min(cy-nh/2,CVH-nh));
+      const tmp=cargo.length_m; cargo.length_m=cargo.width_m; cargo.width_m=tmp;
+      renderAll(); updateStats(); save();
+    } else if(action === 'duplicate'){
+      const nc={...cargo, id:Date.now()+Math.random(), x:Math.min(cargo.x+cargo.w+5,TW-cargo.w)};
+      S.cargo.push(nc);
+      renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+    } else if(action === 'delete'){
+      S.cargo = S.cargo.filter(c => c.id !== cargo.id);
+      dgEvictDeletedCargo(cargo.id);
+      renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+    }
+  });
+}
+
 function bindAboutModal(){
   const ov = document.getElementById('aboutOverlay');
   if(!ov) return;
   document.getElementById('aboutClose').addEventListener('click', () => ov.classList.remove('open'));
   ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
+
+  /* Show last check time */
+  const lastTs = localStorage.getItem('spicaTide_lastUpdateCheck');
+  const lastEl = document.getElementById('aboutLastCheck');
+  if(lastEl && lastTs) lastEl.textContent = 'Last check: ' + new Date(parseInt(lastTs)).toLocaleString();
+
+  /* Check for updates button */
+  const checkBtn = document.getElementById('aboutCheckBtn');
+  if(checkBtn) checkBtn.addEventListener('click', () => _checkForUpdates(true));
+
+  /* Changelog button */
+  const clBtn = document.getElementById('aboutChangelogBtn');
+  if(clBtn) clBtn.addEventListener('click', () => {
+    window.open('https://github.com/pchekla/spica-deck-cargo-planner/blob/main/CHANGELOG.md', '_blank');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   AUTO-UPDATE SYSTEM — checks every 5 days, shows banner
+══════════════════════════════════════════════════════════ */
+const UPDATE_CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; /* 5 days in ms */
+let _updateAvailable = null;
+
+async function _checkForUpdates(manual){
+  const resultEl = document.getElementById('aboutCheckResult');
+  const lastEl = document.getElementById('aboutLastCheck');
+
+  try {
+    if(manual && resultEl) resultEl.textContent = 'Checking...';
+
+    const updaterMod = await import('@tauri-apps/plugin-updater');
+    const update = await updaterMod.check();
+
+    /* Save check timestamp */
+    localStorage.setItem('spicaTide_lastUpdateCheck', String(Date.now()));
+    if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
+
+    if(update && update.available){
+      _updateAvailable = update;
+      const ver = update.version || 'new';
+
+      /* Show banner */
+      const banner = document.getElementById('updateBanner');
+      const textEl = document.getElementById('ubText');
+      if(banner && textEl){
+        textEl.textContent = 'New version ' + ver + ' available';
+        banner.classList.add('show');
+        /* Auto-dismiss after 30 seconds */
+        setTimeout(() => banner.classList.remove('show'), 30000);
+      }
+
+      if(manual && resultEl){
+        resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+      }
+    } else {
+      if(manual && resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+    }
+  } catch(e) {
+    if(manual && resultEl) resultEl.textContent = 'Check failed: ' + (e && e.message || e);
+  }
+}
+
+async function _doUpdate(){
+  if(!_updateAvailable) return;
+  try {
+    showToast('Downloading update...', 'ok');
+    await _updateAvailable.downloadAndInstall();
+    /* Prompt restart */
+    const { relaunch } = await import('@tauri-apps/plugin-process');
+    if(confirm('Update installed. Restart now?')) relaunch();
+  } catch(e){
+    showToast('Update failed: ' + (e && e.message || e), 'warn');
+  }
+}
+
+function _bindUpdateBanner(){
+  const banner = document.getElementById('updateBanner');
+  if(!banner) return;
+
+  document.getElementById('ubUpdate').addEventListener('click', () => {
+    banner.classList.remove('show');
+    _doUpdate();
+  });
+  document.getElementById('ubLater').addEventListener('click', () => {
+    banner.classList.remove('show');
+  });
+  document.getElementById('ubDismiss').addEventListener('click', () => {
+    banner.classList.remove('show');
+  });
+  document.getElementById('ubWhatsNew').addEventListener('click', () => {
+    window.open('https://github.com/pchekla/spica-deck-cargo-planner/releases', '_blank');
+  });
+}
+
+function _scheduleUpdateCheck(){
+  if(!_isTauri()) return;
+  const lastCheck = parseInt(localStorage.getItem('spicaTide_lastUpdateCheck') || '0');
+  const elapsed = Date.now() - lastCheck;
+  if(elapsed >= UPDATE_CHECK_INTERVAL){
+    /* Delay 8 seconds so app loads first */
+    setTimeout(() => _checkForUpdates(false), 8000);
+  }
 }
 
 function init(){
   bindMenuBar();
   bindAboutModal();
+  _bindUpdateBanner();
+  _scheduleUpdateCheck();
+  bindContextMenu();
+  bindStatusBar();
   bindThemeToggle();   /* apply saved theme immediately, before any render */
   initResponsiveHeader();  /* apply body.hdr-compact / body.hdr-tight */
   bindSmartTools();        /* load and apply smart tool settings */
@@ -7662,6 +8124,48 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
     setTimeout(() => showToast('Previous session restored', 'ok'), 400);
   }
 
+  /* ── Auto-update checker — checks GitHub Releases ── */
+  setTimeout(async () => {
+    try {
+      const res = await fetch('https://api.github.com/repos/pchekla/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
+      if(!res.ok) return;
+      const data = await res.json();
+      const latest = data.tag_name ? data.tag_name.replace(/^v/,'') : '';
+      if(latest && latest !== APP_VERSION){
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:10px 16px;border-radius:8px;background:var(--acc);color:#fff;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:600;z-index:9000;box-shadow:var(--sh-md);cursor:pointer;';
+        toast.innerHTML = '\u2B06 Update available: v' + escHtml(latest) + ' <span style="opacity:.6;margin-left:6px;font-size:9px;">Click to view</span>';
+        toast.addEventListener('click', () => { window.open(data.html_url || 'https://github.com/pchekla/spica-deck-cargo-planner/releases','_blank'); toast.remove(); });
+        document.body.appendChild(toast);
+        setTimeout(() => { if(toast.parentNode) toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 15000);
+      }
+    } catch(e){ /* silently ignore — no internet or no repo */ }
+  }, 3000);
+
+  /* ── File association: open file passed as CLI argument ── */
+  if(window.__TAURI__){
+    setTimeout(async () => {
+      try {
+        const { getCurrent } = await import('@tauri-apps/api/window');
+        const win = getCurrent();
+        /* Listen for file-drop events (Tauri v2 deep link) */
+        win.onFileDropEvent && win.onFileDropEvent(async ev => {
+          if(ev.payload && ev.payload.paths && ev.payload.paths.length){
+            const fp = ev.payload.paths[0];
+            if(fp.endsWith('.json') || fp.endsWith('.spica')){
+              try {
+                const contents = await window.__TAURI__.core.invoke('read_file', { path: fp });
+                _applyProjectData(contents, fp.split(/[/\\]/).pop());
+                _currentFilePath = fp;
+                _updateWindowTitle(fp);
+              } catch(e){}
+            }
+          }
+        });
+      } catch(e){}
+    }, 500);
+  }
+
   /* ── Periodic autosave (every 15 seconds, respects toggle) ── */
   setInterval(() => {
     if(!_autosaveEnabled) return;
@@ -7672,6 +8176,21 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   /* ── Autosave toggle + save state indicator ── */
   bindAutosaveToggle();
   _updateSaveIndicator();
+
+  /* ── Unsaved changes warning on window close ── */
+  window.addEventListener('beforeunload', e => {
+    if(_dirty){
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  /* ── Hide splash screen ── */
+  const splash = document.getElementById('splash');
+  if(splash){
+    splash.style.opacity = '0';
+    setTimeout(() => splash.remove(), 400);
+  }
 }
 
 function _flashAutosave(){
@@ -7697,7 +8216,7 @@ function _updateSaveIndicator(){
 }
 
 function _showSaveState(state){
-  const dot  = document.querySelector('.save-dot');
+  const dot  = document.getElementById('saveDotBottom') || document.querySelector('.save-dot');
   const text = document.getElementById('saveStateText');
   if(!dot || !text) return;
   dot.className = 'save-dot ' + state;
@@ -7767,7 +8286,7 @@ async function saveProjectAs(){
 
 /* ── Autosave toggle ──────────────────────────────────── */
 function bindAutosaveToggle(){
-  const btn = document.getElementById('autosaveToggle');
+  const btn = document.getElementById('autosaveToggleBottom') || document.getElementById('autosaveToggle');
   if(!btn) return;
   /* Restore from localStorage */
   const stored = localStorage.getItem('spicaTide_autosave');

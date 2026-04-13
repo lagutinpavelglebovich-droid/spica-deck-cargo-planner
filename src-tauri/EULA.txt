@@ -6,7 +6,7 @@ IMPORTANT: PLEASE READ THIS AGREEMENT CAREFULLY BEFORE USING THIS SOFTWARE.
 
 1. GRANT OF LICENSE
 
-This End-User License Agreement ("Agreement") is a legal agreement between you ("User") and the SPICA TIDE Project ("Licensor") for the use of SPICA TIDE Deck Cargo Plan software ("Software").
+This End-User License Agreement ("Agreement") is a legal agreement between you ("User") and the SPICA TIDE — Developed by Pavlo Lagutin ("Licensor") for the use of SPICA TIDE Deck Cargo Plan software ("Software").
 
 By installing or using this Software, you agree to be bound by the terms of this Agreement.
 
@@ -53,5 +53,5 @@ This Agreement shall be governed by and construed in accordance with applicable 
 By clicking "I Agree" during installation or by using the Software, you acknowledge that you have read, understood, and agree to be bound by this Agreement.
 
 ---
-SPICA TIDE Project
+SPICA TIDE — Developed by Pavlo Lagutin
 Contact: spicatide@project.local

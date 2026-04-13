@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SPICA TIDE - Deck Cargo Planner</title>
+<link rel="icon" type="image/png" href="/src/assets/fonts/../../../src-tauri/icons/icon.png">
 <script>
 /* Apply saved theme before first paint — prevents flash */
 (function(){
@@ -17,6 +18,39 @@
 </head>
 <body>
 
+<!-- SPLASH SCREEN — inline styles, visible before CSS/JS loads -->
+<div id="splash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a2a42;transition:opacity .4s;">
+  <svg width="72" height="72" viewBox="0 0 512 512" fill="none" style="margin-bottom:20px;">
+    <rect width="512" height="512" rx="100" fill="#26446E"/>
+    <rect x="252" y="52" width="8" height="90" rx="4" fill="#fff" opacity=".9"/>
+    <circle cx="256" cy="46" r="16" fill="none" stroke="#fff" stroke-width="7" opacity=".9"/>
+    <circle cx="256" cy="46" r="4.5" fill="#fff" opacity=".6"/>
+    <rect x="108" y="142" width="296" height="14" rx="7" fill="#fff" opacity=".95"/>
+    <rect x="138" y="156" width="7" height="34" rx="3.5" fill="#fff" opacity=".88"/>
+    <rect x="367" y="156" width="7" height="34" rx="3.5" fill="#fff" opacity=".88"/>
+    <rect x="112" y="188" width="288" height="176" rx="6" fill="#fff" opacity=".96"/>
+    <rect x="254" y="200" width="4" height="152" fill="#1A2E48" opacity=".18"/>
+    <rect x="112" y="274" width="288" height="4" fill="#1A2E48" opacity=".14"/>
+    <rect x="105" y="182" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
+    <rect x="381" y="182" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
+    <rect x="105" y="358" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
+    <rect x="381" y="358" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
+  </svg>
+  <div style="font-family:system-ui,sans-serif;font-weight:900;font-size:18px;letter-spacing:5px;color:#fff;text-transform:uppercase;">SPICA TIDE</div>
+  <div style="font-family:system-ui,sans-serif;font-weight:500;font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,.5);text-transform:uppercase;margin-top:6px;">Deck Cargo Planner</div>
+  <div style="margin-top:24px;width:32px;height:32px;border:2.5px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.7);border-radius:50%;animation:splashSpin .8s linear infinite;"></div>
+  <style>@keyframes splashSpin{to{transform:rotate(360deg)}}</style>
+</div>
+
+<!-- CARGO CONTEXT MENU -->
+<div class="ctx-menu" id="ctxMenu">
+  <div class="ctx-item" data-ctx="edit"><span class="ctx-icon">&#9998;</span>Edit<span class="ctx-key">E</span></div>
+  <div class="ctx-item" data-ctx="rotate"><span class="ctx-icon">&#8635;</span>Rotate 90&deg;<span class="ctx-key">R</span></div>
+  <div class="ctx-item" data-ctx="duplicate"><span class="ctx-icon">+</span>Duplicate<span class="ctx-key">D</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item ctx-danger" data-ctx="delete"><span class="ctx-icon">&times;</span>Delete<span class="ctx-key">Del</span></div>
+</div>
+
 <!-- MENU BAR -->
 <div class="menubar" id="menubar">
   <div class="menu-item" data-menu="file">
@@ -28,6 +62,9 @@
       <div class="menu-action" data-action="saveProject">Save<span class="menu-shortcut">Ctrl+S</span></div>
       <div class="menu-action" data-action="saveProjectAs">Save As...<span class="menu-shortcut">Ctrl+Shift+S</span></div>
       <div class="menu-sep"></div>
+      <div class="menu-sublabel" id="menuRecentLabel" style="display:none">Recent Projects</div>
+      <div id="menuRecentList"></div>
+      <div class="menu-sep" id="menuRecentSep" style="display:none"></div>
       <div class="menu-action" data-action="exportPDF">Export PDF</div>
       <div class="menu-action" data-action="exportExcel">Export Excel</div>
       <div class="menu-sep"></div>
@@ -73,6 +110,15 @@
   </div>
 </div>
 
+<!-- UPDATE BANNER -->
+<div class="update-banner" id="updateBanner">
+  <span class="ub-text" id="ubText">New version available</span>
+  <a class="ub-link" id="ubWhatsNew">What's new</a>
+  <button class="ub-btn ub-btn-update" id="ubUpdate">Update</button>
+  <button class="ub-btn ub-btn-later" id="ubLater">Later</button>
+  <button class="ub-dismiss" id="ubDismiss">&times;</button>
+</div>
+
 <!-- ABOUT MODAL -->
 <div class="about-overlay" id="aboutOverlay">
   <div class="about-modal">
@@ -92,7 +138,7 @@
     </div>
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
-    <div class="about-version">
+    <div class="about-version" id="aboutVersionText">
       Version 1.0.0<br>
       Build 38.20<br>
       Release Channel: Beta
@@ -101,16 +147,24 @@
       Built for offshore PSV cargo planning.<br>
       Designed for practical deck operations and export workflows.
     </div>
-    <div class="about-footer">&copy; 2026 SPICA TIDE Marine Operations</div>
+    <div class="about-update-section">
+      <div class="about-check-row">
+        <span class="about-check-label" id="aboutLastCheck">Last check: never</span>
+        <button class="about-check-btn" id="aboutCheckBtn">Check for updates</button>
+      </div>
+      <div class="about-check-result" id="aboutCheckResult"></div>
+      <button class="about-changelog-btn" id="aboutChangelogBtn">View changelog</button>
+    </div>
+    <div class="about-footer">&copy; 2026 SPICA TIDE Marine Operations<br>Developed by Pavlo Lagutin</div>
   </div>
 </div>
 
 <!-- HEADER -->
 <div class="hdr">
   <div class="brand" id="brandBlock">
-    <div class="brand-name" id="brandName">SPICA TIDE</div>
+    <div class="brand-name" id="brandName"><svg class="brand-icon" width="22" height="22" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="10" fill="#1E2E45"/><rect x="23" y="5" width="2" height="12" rx="1" fill="#fff" opacity=".8"/><circle cx="24" cy="4.5" r="2.5" stroke="#fff" stroke-width="1.2" fill="none"/><rect x="14" y="17" width="20" height="3" rx="1.5" fill="#fff" opacity=".7"/><rect x="11" y="20" width="26" height="18" rx="2.5" stroke="#fff" stroke-width="1.8" fill="none"/><line x1="17" y1="20" x2="17" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/><line x1="24" y1="20" x2="24" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/><line x1="31" y1="20" x2="31" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/></svg> SPICA TIDE</div>
     <div class="brand-dcp"  id="brandDcp">Deck Cargo Plan</div>
-    <div class="brand-sub"  id="brandSub">PSV · FAR SPICA · NEO Energy · North Sea</div>
+    <div class="brand-sub"  id="brandSub">PSV · SPICA TIDE · NEO Energy · North Sea</div>
     <!-- Admin edit trigger — pencil icon, appears on hover -->
     <button class="brand-edit-btn" id="brandEditBtn" title="Admin: edit header labels" aria-label="Edit header">✎</button>
   </div>
@@ -127,6 +181,13 @@
     <div class="gst"><span class="gst-lbl">Backload</span><div class="gst-val bl" id="sBL">0</div></div>
     <div class="gst"><span class="gst-lbl">ROB</span><div class="gst-val rob" id="sROB">0</div></div>
     <div class="gst" id="gstTR" style="display:none"><span class="gst-lbl">Transfer</span><div class="gst-val tr" id="sTR">0</div></div>
+    <!-- V2: Weight gauge -->
+    <div class="wt-gauge" id="wtGauge" style="display:none">
+      <div class="wt-gauge-track">
+        <div class="wt-gauge-fill" id="wtGaugeFill"></div>
+      </div>
+      <div class="wt-gauge-label"><span id="wtGaugeText">0 / 2500 T</span></div>
+    </div>
   </div>
 
   <div class="hdr-right">
@@ -320,17 +381,6 @@
       </div>
     </div>
 
-    <!-- Autosave toggle -->
-    <button class="autosave-toggle on" id="autosaveToggle" title="Autosave On" aria-label="Toggle autosave">
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.3"/><path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-    </button>
-
-    <!-- Save state indicator -->
-    <div class="save-state" id="saveState">
-      <span class="save-dot"></span>
-      <span class="save-state-text" id="saveStateText">Saved</span>
-    </div>
-
   </div>
 </div>
 
@@ -479,7 +529,6 @@
 
 <!-- DECK — "Spica Tide" in compass -->
 <div class="deck-area" id="deckArea">
-  <div id="kb-coord-tip"></div>
 
 <!-- KEYBOARD SHORTCUTS CHEATSHEET MODAL -->
 <div class="kb-cheat-ov" id="kbCheatOv">
@@ -568,7 +617,50 @@
         <span>BAY 1 — BOW / FORE ►</span>
       </div>
       <div class="dcv" id="cvDECK" data-side="DECK"></div>
+      <!-- V12: Empty deck hint -->
+      <div class="empty-deck-hint" id="emptyDeckHint">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity=".4">
+          <rect x="4" y="10" width="32" height="20" rx="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <path d="M20 16v8M16 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="empty-deck-text">Drag cargo here or import ASCO file</div>
+      </div>
     </div>
+  </div>
+
+</div>
+
+<!-- ═══ BOTTOM UTILITY PANEL — outside deck-area, fixed footer ═══ -->
+<div class="bottom-panel" id="bottomPanel">
+  <div class="bp-section">
+    <span class="bp-label">Position</span>
+    <span class="bp-value" id="dsbPos">X: 0.0m &middot; Y: 0.0m</span>
+  </div>
+  <div class="bp-sep"></div>
+  <div class="bp-section">
+    <span class="bp-label">Zoom</span>
+    <span class="bp-value" id="dsbZoom">100%</span>
+  </div>
+  <div class="bp-sep"></div>
+  <div class="bp-section">
+    <span class="bp-label">Cargo</span>
+    <span class="bp-value" id="dsbCount">0 items</span>
+  </div>
+  <div class="bp-sep"></div>
+  <div class="bp-section bp-action-section">
+    <span class="bp-value bp-action" id="dsbAction">Ready</span>
+  </div>
+  <div class="bp-spacer"></div>
+  <div class="bp-section">
+    <button class="bp-autosave on" id="autosaveToggleBottom" title="Autosave On" aria-label="Toggle autosave">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.3"/><path d="M6 3v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      <span class="bp-autosave-lbl">Autosave</span>
+    </button>
+  </div>
+  <div class="bp-sep"></div>
+  <div class="bp-section bp-save-section">
+    <span class="save-dot" id="saveDotBottom"></span>
+    <span class="bp-save-text" id="saveStateText">Saved</span>
   </div>
 </div>
 
@@ -779,6 +871,79 @@
         </label>
       </div>
 
+      <!-- Highlight by Platform -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="3" width="12" height="10" rx="2" stroke="var(--acc)" stroke-width="1.3"/>
+            <circle cx="5.5" cy="8" r="1.5" fill="var(--acc)"/>
+            <path d="M8 7h4M8 9h3" stroke="var(--acc)" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Highlight by Platform</div>
+          <div class="st-row-desc">When enabled, clicking a platform dims all unrelated cargo. When off, all cargo stays fully visible.</div>
+        </div>
+        <label class="st-toggle" title="Highlight by Platform">
+          <input type="checkbox" id="stLocHighlightToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- V2: Weight Gauge -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="6" width="12" height="4" rx="2" stroke="var(--acc)" stroke-width="1.3"/>
+            <rect x="3" y="7" width="5" height="2" rx="1" fill="var(--acc)" opacity=".5"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Weight Gauge</div>
+          <div class="st-row-desc">Shows total deck weight vs 2500T max capacity as a fill bar in the header.</div>
+        </div>
+        <label class="st-toggle" title="Weight Gauge">
+          <input type="checkbox" id="stWeightGaugeToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- V12: Empty Deck Hint -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="4" width="12" height="8" rx="2" stroke="var(--acc)" stroke-width="1.2" stroke-dasharray="3 2"/>
+            <path d="M8 7v2M7 8h2" stroke="var(--acc)" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Empty Deck Hint</div>
+          <div class="st-row-desc">Shows a placement hint when no cargo is on deck.</div>
+        </div>
+        <label class="st-toggle" title="Empty Deck Hint">
+          <input type="checkbox" id="stEmptyHintToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- S3: Show DG Only -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(120,90,26,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2L14 13H2Z" stroke="var(--acc-warm)" stroke-width="1.3" stroke-linejoin="round"/>
+            <path d="M8 7v2.5M8 11v.5" stroke="var(--acc-warm)" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Show DG Only</div>
+          <div class="st-row-desc">Hides all non-DG cargo blocks for quick compliance review.</div>
+        </div>
+        <label class="st-toggle" title="Show DG Only">
+          <input type="checkbox" id="stDgOnlyToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
       <!-- Section: Cargo Library -->
       <div class="st-sec-hdr" data-i18n="st_sec_library">Cargo Library</div>
 
@@ -862,6 +1027,23 @@
       </div>
 
       <!-- Section: Actions -->
+      <!-- Section: Visual Effects -->
+      <div class="st-sec-hdr">Visual Effects</div>
+
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Corner Badges</div><div class="st-row-desc">DG class / status badge on cargo block corners</div></div><label class="st-toggle"><input type="checkbox" id="stCornerBadges"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Animated Counter</div><div class="st-row-desc">Airport-style number animation on ASCO import</div></div><label class="st-toggle"><input type="checkbox" id="stAnimCounter"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Bay Dashed Lines</div><div class="st-row-desc">Yellow dashed deck-marking style bay dividers</div></div><label class="st-toggle"><input type="checkbox" id="stBayDashes"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Cargo Hover Glow</div><div class="st-row-desc">Soft platform-colour glow on cargo hover</div></div><label class="st-toggle"><input type="checkbox" id="stHoverGlow"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">PORT / STBD Labels</div><div class="st-row-desc">Nautical side labels on deck edges</div></div><label class="st-toggle"><input type="checkbox" id="stPortStbd"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Section Watermarks</div><div class="st-row-desc">Large semi-transparent bay numbers as background</div></div><label class="st-toggle"><input type="checkbox" id="stSecWatermark"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Drag Ghost Trail</div><div class="st-row-desc">Shadow remains at original position during drag</div></div><label class="st-toggle"><input type="checkbox" id="stDragGhost"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Smooth Colours</div><div class="st-row-desc">Animated colour transitions on platform changes</div></div><label class="st-toggle"><input type="checkbox" id="stSmoothColor"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Status Bar Icons</div><div class="st-row-desc">SVG icons next to status bar values</div></div><label class="st-toggle"><input type="checkbox" id="stStatusIcons"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Name Shimmer</div><div class="st-row-desc">Subtle shine on vessel name in header</div></div><label class="st-toggle"><input type="checkbox" id="stNameShimmer"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Button Effects</div><div class="st-row-desc">Press-down micro-interaction on all buttons</div></div><label class="st-toggle"><input type="checkbox" id="stBtnMicro"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Deck Shadow</div><div class="st-row-desc">Drop shadow under deck plan canvas</div></div><label class="st-toggle"><input type="checkbox" id="stDeckShadow"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Custom Scrollbars</div><div class="st-row-desc">Theme-coloured scrollbars in library panel</div></div><label class="st-toggle"><input type="checkbox" id="stCustomScroll"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+
       <div class="st-sec-hdr">Actions</div>
 
       <!-- Auto Align Deck -->

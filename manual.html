@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPICA TIDE — User Manual</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════
+   SPICA TIDE — Illustrated User Manual
+   Maritime dark theme, self-contained
+═══════════════════════════════════════ */
+:root{
+  --bg:#0d1b2a;--bg2:#1b2838;--bg3:#243447;
+  --surf:#2a3f55;--surf2:#334d66;
+  --txt:#e0e6ed;--txt2:#a8b8c8;--txt3:#6d8299;
+  --acc:#c8a84e;--acc2:#dbb85e;
+  --navy:#1e3a5f;--steel:#4a6a8a;
+  --green:#3ea36a;--red:#c0392b;--amber:#c89a38;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);line-height:1.7;font-size:15px;}
+
+/* ── Layout ── */
+.manual-wrap{display:flex;min-height:100vh;}
+.sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:240px;
+  background:var(--bg2);border-right:1px solid rgba(255,255,255,.06);
+  overflow-y:auto;padding:20px 0;z-index:100;
+  display:flex;flex-direction:column;
+}
+.sidebar-logo{padding:16px 20px;text-align:center;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:12px;}
+.sidebar-logo h2{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;letter-spacing:3px;color:var(--acc);text-transform:uppercase;}
+.sidebar-logo .sub{font-size:9px;color:var(--txt3);letter-spacing:1px;margin-top:2px;}
+.sidebar a{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 20px;font-size:12px;font-weight:500;
+  color:var(--txt2);text-decoration:none;
+  border-left:3px solid transparent;
+  transition:all .15s;
+}
+.sidebar a:hover{background:rgba(255,255,255,.04);color:var(--txt);}
+.sidebar a.active{color:var(--acc);border-left-color:var(--acc);background:rgba(200,168,78,.06);}
+.sidebar .sec-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt3);padding:14px 20px 4px;margin-top:8px;}
+
+.content{margin-left:240px;flex:1;max-width:900px;padding:0 40px 80px;}
+
+/* ── Cover ── */
+.cover{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;
+  padding:60px 20px;
+  background:linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+  border-bottom:1px solid rgba(200,168,78,.15);
+}
+.cover-icon{margin-bottom:24px;}
+.cover h1{font-family:'Manrope',sans-serif;font-weight:800;font-size:36px;letter-spacing:6px;color:var(--txt);text-transform:uppercase;}
+.cover .tagline{font-size:13px;color:var(--acc);letter-spacing:2px;text-transform:uppercase;margin-top:8px;font-weight:600;}
+.cover .vessel-info{
+  margin-top:32px;padding:16px 28px;border-radius:var(--r);
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt2);
+  line-height:2;
+}
+.cover .ver-badge{
+  display:inline-block;margin-top:24px;
+  padding:5px 14px;border-radius:20px;
+  background:rgba(200,168,78,.12);border:1px solid rgba(200,168,78,.25);
+  font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--acc);font-weight:600;
+}
+
+/* ── Sections ── */
+section{padding:60px 0 40px;}
+section h2{
+  font-family:'Manrope',sans-serif;font-weight:800;font-size:24px;
+  letter-spacing:2px;color:var(--txt);text-transform:uppercase;
+  border-bottom:2px solid var(--acc);padding-bottom:10px;margin-bottom:28px;
+  display:flex;align-items:center;gap:12px;
+}
+section h2 .sec-icon{
+  width:36px;height:36px;border-radius:8px;
+  background:rgba(200,168,78,.1);border:1px solid rgba(200,168,78,.2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+h3{font-size:17px;font-weight:700;color:var(--txt);margin:28px 0 10px;display:flex;align-items:center;gap:8px;}
+h3 .feat-icon{font-size:16px;width:28px;height:28px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+p{color:var(--txt2);margin-bottom:14px;}
+
+/* ── Feature cards ── */
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0 28px;}
+.feat-card{
+  padding:16px;border-radius:var(--r);
+  background:var(--bg2);border:1px solid rgba(255,255,255,.06);
+  transition:border-color .2s;
+}
+.feat-card:hover{border-color:rgba(200,168,78,.2);}
+.feat-card-title{font-size:13px;font-weight:700;color:var(--txt);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+.feat-card-title .fc-icon{font-size:14px;}
+.feat-card-desc{font-size:11px;color:var(--txt3);line-height:1.5;}
+
+/* ── Visual diagrams (CSS-drawn) ── */
+.diagram{
+  margin:14px 0 20px;padding:20px;border-radius:var(--r);
+  background:var(--bg2);border:1px solid rgba(255,255,255,.06);
+  position:relative;overflow:hidden;
+}
+.diagram-label{position:absolute;top:8px;right:10px;font-size:8px;color:var(--txt3);text-transform:uppercase;letter-spacing:1px;font-weight:600;}
+
+/* Mini deck diagram */
+.mini-deck{
+  height:60px;background:var(--surf);border-radius:6px;
+  position:relative;display:flex;overflow:hidden;
+  border:1px solid rgba(255,255,255,.08);
+}
+.mini-bay{flex:1;border-right:1px dashed rgba(200,168,78,.2);display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--txt3);}
+.mini-bay:last-child{border-right:none;}
+.mini-cargo{
+  position:absolute;border-radius:3px;font-size:7px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;color:#fff;
+}
+
+/* ── Keyboard shortcuts table ── */
+.kb-table{width:100%;border-collapse:collapse;margin:16px 0;}
+.kb-table th{text-align:left;font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:1px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.08);}
+.kb-table td{padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04);}
+.kb-table .key{
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;
+  padding:2px 8px;border-radius:4px;
+  background:var(--bg3);border:1px solid rgba(255,255,255,.1);
+  color:var(--acc);
+}
+
+/* ── Workflow steps ── */
+.step{display:flex;gap:16px;margin:16px 0;align-items:flex-start;}
+.step-num{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  background:rgba(200,168,78,.12);border:1px solid rgba(200,168,78,.25);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;color:var(--acc);
+}
+.step-body h4{font-size:14px;font-weight:700;color:var(--txt);margin-bottom:4px;}
+.step-body p{font-size:12px;color:var(--txt2);margin:0;}
+
+/* ── Tips ── */
+.tip{
+  padding:14px 18px;border-radius:var(--r);margin:12px 0;
+  background:rgba(200,168,78,.05);border-left:3px solid var(--acc);
+}
+.tip-title{font-size:12px;font-weight:700;color:var(--acc);margin-bottom:4px;}
+.tip-text{font-size:12px;color:var(--txt2);}
+
+/* ── Smart Tool toggle preview ── */
+.st-preview{
+  display:flex;align-items:center;gap:12px;padding:12px 16px;
+  border-radius:var(--r);background:var(--bg2);border:1px solid rgba(255,255,255,.06);
+  margin:8px 0;
+}
+.st-preview-icon{font-size:18px;width:32px;text-align:center;flex-shrink:0;}
+.st-preview-body{flex:1;}
+.st-preview-title{font-size:12px;font-weight:700;color:var(--txt);}
+.st-preview-desc{font-size:10px;color:var(--txt3);margin-top:2px;}
+.st-preview-badge{
+  font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;
+  background:rgba(62,163,106,.15);color:var(--green);text-transform:uppercase;letter-spacing:.5px;
+}
+.st-preview-badge.off{background:rgba(192,57,43,.1);color:var(--red);}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .sidebar{display:none;}
+  .content{margin-left:0;padding:0 20px 60px;}
+  .feat-grid{grid-template-columns:1fr;}
+  .cover h1{font-size:24px;letter-spacing:4px;}
+}
+
+/* ── Print ── */
+@media print{
+  .sidebar{display:none;}
+  .content{margin-left:0;max-width:100%;}
+  body{background:#fff;color:#111;font-size:11px;}
+  section{page-break-inside:avoid;}
+  .cover{min-height:auto;padding:30px;page-break-after:always;}
+  .cover h1{color:#111;}
+  .cover .tagline{color:#8a6d20;}
+  .cover .vessel-info{color:#333;background:#f5f5f0;border-color:#ddd;}
+  h2{color:#111;border-bottom-color:#c8a84e;}
+  h2 .sec-icon{background:#f0e8d0;border-color:#d4c090;}
+  h3{color:#111;}
+  h3 .feat-icon{background:#eee;}
+  .feat-card,.diagram,.st-preview,.tip{background:#f5f5f0;border-color:#ddd;}
+  .feat-card-title{color:#111 !important;}
+  .feat-card-desc{color:#555;}
+  .st-preview-title{color:#111 !important;}
+  .st-preview-desc{color:#555;}
+  .st-preview-icon{filter:none;}
+  .tip-title{color:#8a6d20;}
+  .tip-text{color:#555;}
+  p{color:#444;}
+  .kb-table td{color:#222;}
+  .kb-table .key{background:#eee;border-color:#ccc;color:#8a6d20;}
+  .step-num{background:#f0e8d0;border-color:#d4c090;color:#8a6d20;}
+  .step-body h4{color:#111;}
+  .step-body p{color:#555;}
+  .bp-label{color:#888;}
+  .bp-value{color:#333;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR NAVIGATION ═══ -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <h2>SPICA TIDE</h2>
+    <div class="sub">User Manual</div>
+  </div>
+  <a href="#cover">Cover</a>
+  <a href="#overview">Overview</a>
+  <div class="sec-lbl">Features</div>
+  <a href="#core">Core Features</a>
+  <a href="#smart">Smart Tools</a>
+  <a href="#visual">Visual Effects</a>
+  <div class="sec-lbl">Reference</div>
+  <a href="#keyboard">Keyboard Shortcuts</a>
+  <a href="#workflow">Workflow Guide</a>
+  <a href="#tips">Tips & Best Practices</a>
+</nav>
+
+<!-- ═══ CONTENT ═══ -->
+<div class="content">
+
+<!-- ═══ 1. COVER ═══ -->
+<section class="cover" id="cover">
+  <div class="cover-icon">
+    <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+      <rect width="72" height="72" rx="16" fill="#1e3a5f"/>
+      <rect x="36" y="8" width="2" height="18" rx="1" fill="#c8a84e" opacity=".8"/>
+      <circle cx="37" cy="7" r="3" stroke="#c8a84e" stroke-width="1.5" fill="none" opacity=".7"/>
+      <rect x="22" y="26" width="28" height="4" rx="2" fill="#c8a84e" opacity=".6"/>
+      <line x1="26" y1="30" x2="26" y2="36" stroke="#c8a84e" stroke-width="1" opacity=".5"/>
+      <line x1="46" y1="30" x2="46" y2="36" stroke="#c8a84e" stroke-width="1" opacity=".5"/>
+      <rect x="18" y="36" width="36" height="26" rx="3" stroke="#e0e6ed" stroke-width="2" fill="none"/>
+      <line x1="27" y1="36" x2="27" y2="62" stroke="#e0e6ed" stroke-width=".6" opacity=".3"/>
+      <line x1="36" y1="36" x2="36" y2="62" stroke="#e0e6ed" stroke-width=".6" opacity=".3"/>
+      <line x1="45" y1="36" x2="45" y2="62" stroke="#e0e6ed" stroke-width=".6" opacity=".3"/>
+      <line x1="18" y1="49" x2="54" y2="49" stroke="#e0e6ed" stroke-width=".6" opacity=".2"/>
+    </svg>
+  </div>
+  <h1>SPICA TIDE</h1>
+  <div class="tagline">Deck Cargo Planner</div>
+  <div class="vessel-info">
+    PSV SPICA TIDE &middot; NEO Energy Resources UK &middot; North Sea Operations<br>
+    12 Bays &middot; 53.7m Deck Length &middot; 2,500T Max Capacity &middot; 7 Platforms
+  </div>
+  <div class="ver-badge">Version 1.0.0 &middot; Build 38.20 &middot; Beta</div>
+</section>
+
+<!-- ═══ 2. OVERVIEW ═══ -->
+<section id="overview">
+  <h2><span class="sec-icon">&#9875;</span> Overview</h2>
+  <p>SPICA TIDE is a professional deck cargo planning application built for Platform Supply Vessel <strong>SPICA TIDE</strong> operating in the North Sea under NEO Energy. It provides an interactive drag-and-drop deck plan with real-time cargo visualisation, platform colour coding, DG safety checks, and full PDF/Excel manifest export.</p>
+  <p>The application replaces paper-based and spreadsheet-based cargo plans with a precise, scalable digital tool that officers can use at the planning desk or on a bridge tablet.</p>
+
+  <div class="feat-grid">
+    <div class="feat-card">
+      <div class="feat-card-title"><span class="fc-icon">&#128674;</span> 12 Cargo Bays</div>
+      <div class="feat-card-desc">Full deck from Bay 12 (aft) to Bay 1 (bow), each individually labelled and sized to real vessel dimensions.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-card-title"><span class="fc-icon">&#9878;</span> 7 Platforms</div>
+      <div class="feat-card-desc">Bleo Holm, Claymore CAP/CPP/WOPS/Drill, Piper, Saltire &mdash; each with unique colour coding and cargo tracking.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-card-title"><span class="fc-icon">&#9888;</span> DG Safety</div>
+      <div class="feat-card-desc">Full IMDG segregation matrix with 20 DG classes. Automatic pairwise conflict detection with visual warnings.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-card-title"><span class="fc-icon">&#128196;</span> Export Ready</div>
+      <div class="feat-card-desc">Professional PDF deck plans and Excel manifests exported directly to disk via native save dialogs.</div>
+    </div>
+  </div>
+
+  <!-- Mini deck illustration -->
+  <div class="diagram">
+    <div class="diagram-label">Deck Layout Preview</div>
+    <div class="mini-deck">
+      <div class="mini-bay">12</div><div class="mini-bay">11</div><div class="mini-bay">10</div>
+      <div class="mini-bay">9</div><div class="mini-bay">8</div><div class="mini-bay">7</div>
+      <div class="mini-bay">6</div><div class="mini-bay">5</div><div class="mini-bay">4</div>
+      <div class="mini-bay">3</div><div class="mini-bay">2</div><div class="mini-bay">1</div>
+      <div class="mini-cargo" style="left:28%;top:15%;width:12%;height:35%;background:#3ea36a;">10ft</div>
+      <div class="mini-cargo" style="left:42%;top:20%;width:8%;height:28%;background:#4a6a8a;">6ft</div>
+      <div class="mini-cargo" style="left:55%;top:50%;width:15%;height:30%;background:#c89a38;">20ft</div>
+      <div class="mini-cargo" style="left:75%;top:10%;width:10%;height:40%;background:#8b5cf6;">DG</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 3. CORE FEATURES ═══ -->
+<section id="core">
+  <h2><span class="sec-icon">&#9881;</span> Core Features</h2>
+
+  <h3><span class="feat-icon">&#128065;</span> Drag & Drop Placement</h3>
+  <p>Select cargo from the Library panel and drag it directly onto the deck canvas. Drop to place at the exact position. Cargo blocks can be repositioned by dragging, rotated 90&deg; with the R key, duplicated with D, or deleted with Del.</p>
+
+  <h3><span class="feat-icon">&#128218;</span> Cargo Library Panel</h3>
+  <p>The bottom panel contains 60+ preset cargo types across 5 categories: Container, Module, Tank, Basket, Skip. Each preset includes real-world dimensions in metres and default weights. Custom cargo types can be added and saved.</p>
+
+  <h3><span class="feat-icon">&#127912;</span> Platform Colour Coding</h3>
+  <p>Each platform destination is assigned a unique colour. Cargo blocks are tinted by their assigned platform, making it easy to visually identify which cargo goes where. Colours can be manually changed by clicking the colour dot on any location card.</p>
+
+  <h3><span class="feat-icon">&#128204;</span> Cargo Statuses</h3>
+  <p>Four cargo statuses drive colour tinting and manifest grouping:</p>
+  <div class="feat-grid">
+    <div class="feat-card"><div class="feat-card-title" style="color:#3ea36a;">&#9632; Load</div><div class="feat-card-desc">Cargo being loaded onto vessel for delivery</div></div>
+    <div class="feat-card"><div class="feat-card-title" style="color:#4a6a8a;">&#9632; Backload</div><div class="feat-card-desc">Cargo being returned from platform to shore</div></div>
+    <div class="feat-card"><div class="feat-card-title" style="color:#c89a38;">&#9632; ROB</div><div class="feat-card-desc">Remaining On Board from previous voyage</div></div>
+    <div class="feat-card"><div class="feat-card-title" style="color:#06b6d4;">&#9632; Transfer</div><div class="feat-card-desc">Cargo transferring between platforms (dashed border)</div></div>
+  </div>
+
+  <h3><span class="feat-icon">&#128196;</span> ASCO / iLMS Excel Import</h3>
+  <p>Upload an ASCO loadout Excel file (.xlsx) and the app parses cargo descriptions, CCU IDs, weights, DG classes, dimensions, and platform assignments automatically. Imported items appear in a queue for selective placement.</p>
+
+  <h3><span class="feat-icon">&#9888;</span> DG Dangerous Goods</h3>
+  <p>20 IMDG DG classes with a full segregation matrix. The system automatically checks every cargo pair for DG violations. Conflicts show a pulsing red outline and a modal warning. Each conflict can be individually acknowledged.</p>
+
+  <h3><span class="feat-icon">&#128196;</span> PDF Export</h3>
+  <p>Generates a professional A4 landscape PDF with header, voyage info, stats, location cards, DG summary, full deck image, bay labels, voyage notes, and footer. Opens native Save As dialog &mdash; user chooses destination.</p>
+
+  <h3><span class="feat-icon">&#128202;</span> Excel Export</h3>
+  <p>Two-sheet Excel workbook: Cargo Manifest (all items with CCU, dimensions, weight, status, platform, DG) and Summary (totals, per-location breakdown, voyage notes). Native Save As dialog.</p>
+
+  <h3><span class="feat-icon">&#8630;</span> Undo / Redo</h3>
+  <p>50-step undo history. Every cargo mutation (move, add, delete, edit, rotate, duplicate) is tracked. Ctrl+Z to undo, Ctrl+Y or Ctrl+Shift+Z to redo. UI buttons also available in the header.</p>
+
+  <h3><span class="feat-icon">&#128190;</span> Save / Open Project</h3>
+  <p>Save the complete deck state as a .json project file. Open previously saved projects. Ctrl+S saves to current file (or opens Save As if new). Autosave to localStorage every 15 seconds as crash protection.</p>
+
+  <h3><span class="feat-icon">&#128269;</span> Zoom Controls</h3>
+  <p>Zoom 30%&ndash;200% with smooth transitions. Ctrl+Scroll for wheel zoom. Number keys 1&ndash;5 for preset levels. Fit-to-screen button. Pinch-to-zoom on touch devices.</p>
+
+  <h3><span class="feat-icon">&#127769;</span> Dark / Light Theme</h3>
+  <p>Full dark mode with warm graphite surfaces. Toggle via the theme pill in the header. All UI elements, cargo blocks, modals, and export dialogs are dark-mode aware.</p>
+</section>
+
+<!-- ═══ 4. SMART TOOLS ═══ -->
+<section id="smart">
+  <h2><span class="sec-icon">&#9881;</span> Smart Tools Panel</h2>
+  <p>Access via the gear icon in the header or View menu. All settings persist between sessions.</p>
+
+  <div class="st-preview"><div class="st-preview-icon">&#128640;</div><div class="st-preview-body"><div class="st-preview-title">Smart Bounce</div><div class="st-preview-desc">Resolves overlapping cargo after drop by pushing to nearest free space</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128204;</div><div class="st-preview-body"><div class="st-preview-title">Smart Grid Snap</div><div class="st-preview-desc">Snaps dropped cargo to nearest bay line, neighbour edge, or centre line</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#9888;</div><div class="st-preview-body"><div class="st-preview-title">DG Auto-Segregation</div><div class="st-preview-desc">Checks every DG pair against IMDG segregation matrix. Safety critical.</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128290;</div><div class="st-preview-body"><div class="st-preview-title">Weight Gauge</div><div class="st-preview-desc">Animated fill bar in header showing total weight vs 2500T capacity</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#9888;</div><div class="st-preview-body"><div class="st-preview-title">Show DG Only</div><div class="st-preview-desc">Hides all non-DG cargo for quick compliance review</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128270;</div><div class="st-preview-body"><div class="st-preview-title">Highlight by Platform</div><div class="st-preview-desc">Click a platform card to dim all other platforms' cargo to 25% opacity</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128196;</div><div class="st-preview-body"><div class="st-preview-title">Empty Deck Hint</div><div class="st-preview-desc">Shows placement hint icon when deck has zero cargo</div></div><div class="st-preview-badge">ON</div></div>
+</section>
+
+<!-- ═══ 5. VISUAL SMART TOOLS ═══ -->
+<section id="visual">
+  <h2><span class="sec-icon">&#127912;</span> Visual Effects</h2>
+  <p>All visual effects are individually toggleable in the Visual Effects section of Smart Tools. Each persists between sessions.</p>
+
+  <div class="st-preview"><div class="st-preview-icon">&#128311;</div><div class="st-preview-body"><div class="st-preview-title">Corner Badges</div><div class="st-preview-desc">Small triangular badge on cargo block corners showing DG class or BL/ROB status</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128200;</div><div class="st-preview-body"><div class="st-preview-title">Animated Counter</div><div class="st-preview-desc">Airport departure-board style number animation when importing ASCO files</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#9473;</div><div class="st-preview-body"><div class="st-preview-title">Bay Dashed Lines</div><div class="st-preview-desc">Yellow dashed lines replacing grey bay dividers &mdash; styled like real deck markings</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#10024;</div><div class="st-preview-body"><div class="st-preview-title">Cargo Hover Glow</div><div class="st-preview-desc">Soft glow in platform colour around cargo blocks on mouse hover</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#9875;</div><div class="st-preview-body"><div class="st-preview-title">PORT / STBD Labels</div><div class="st-preview-desc">Vertical nautical side labels on both edges of the deck canvas</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128290;</div><div class="st-preview-body"><div class="st-preview-title">Section Watermarks</div><div class="st-preview-desc">Large semi-transparent bay numbers as background inside each section</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128123;</div><div class="st-preview-body"><div class="st-preview-title">Drag Ghost Trail</div><div class="st-preview-desc">Semi-transparent ghost remains at original position while dragging cargo</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#127752;</div><div class="st-preview-body"><div class="st-preview-title">Smooth Colours</div><div class="st-preview-desc">Animated CSS transitions when cargo block platform/colour changes</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#9881;</div><div class="st-preview-body"><div class="st-preview-title">Status Bar Icons</div><div class="st-preview-desc">Small SVG icons next to values in the bottom status bar</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#10024;</div><div class="st-preview-body"><div class="st-preview-title">Name Shimmer</div><div class="st-preview-desc">Subtle shine animation on the SPICA TIDE vessel name in the header</div></div><div class="st-preview-badge off">OFF</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128073;</div><div class="st-preview-body"><div class="st-preview-title">Button Effects</div><div class="st-preview-desc">Micro press-down interaction on all buttons (1px translate + shadow)</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128065;</div><div class="st-preview-body"><div class="st-preview-title">Deck Shadow</div><div class="st-preview-desc">Drop shadow beneath deck plan creating physical depth illusion</div></div><div class="st-preview-badge">ON</div></div>
+  <div class="st-preview"><div class="st-preview-icon">&#128220;</div><div class="st-preview-body"><div class="st-preview-title">Custom Scrollbars</div><div class="st-preview-desc">Theme-coloured scrollbars in the library panel matching app accent</div></div><div class="st-preview-badge">ON</div></div>
+</section>
+
+<!-- ═══ 6. KEYBOARD SHORTCUTS ═══ -->
+<section id="keyboard">
+  <h2><span class="sec-icon">&#9000;</span> Keyboard Shortcuts</h2>
+  <table class="kb-table">
+    <tr><th>Key</th><th>Action</th></tr>
+    <tr><td><span class="key">E</span></td><td>Edit selected cargo block</td></tr>
+    <tr><td><span class="key">R</span></td><td>Rotate selected block 90&deg;</td></tr>
+    <tr><td><span class="key">D</span></td><td>Duplicate selected block</td></tr>
+    <tr><td><span class="key">Del</span></td><td>Delete selected block</td></tr>
+    <tr><td><span class="key">1</span>&ndash;<span class="key">5</span></td><td>Zoom to 50% / 75% / 100% / 125% / 150%</td></tr>
+    <tr><td><span class="key">L</span></td><td>Toggle library panel collapse</td></tr>
+    <tr><td><span class="key">?</span></td><td>Show keyboard shortcuts cheatsheet</td></tr>
+    <tr><td><span class="key">Esc</span></td><td>Deselect / cancel / clear filter</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">Z</span></td><td>Undo</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">Y</span></td><td>Redo</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">S</span></td><td>Save project</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">Shift</span>+<span class="key">S</span></td><td>Save As (new file)</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">O</span></td><td>Open project</td></tr>
+    <tr><td><span class="key">&#8593;&#8595;&#8592;&#8594;</span></td><td>Move selected block 1px</td></tr>
+    <tr><td><span class="key">Shift</span>+<span class="key">Arrow</span></td><td>Move selected block 1 metre</td></tr>
+    <tr><td><span class="key">Ctrl</span>+<span class="key">Scroll</span></td><td>Zoom in/out</td></tr>
+  </table>
+</section>
+
+<!-- ═══ 7. WORKFLOW GUIDE ═══ -->
+<section id="workflow">
+  <h2><span class="sec-icon">&#128203;</span> Workflow Guide</h2>
+  <p>A typical voyage planning workflow from start to PDF export:</p>
+
+  <div class="step"><div class="step-num">1</div><div class="step-body"><h4>Set Voyage Details</h4><p>Enter the voyage number and select the date in the header. Add voyage notes if needed.</p></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><h4>Activate Platforms</h4><p>Click the &oplus; button in the location strip to add the platforms this voyage will visit. Each gets a unique colour.</p></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Import ASCO File (Optional)</h4><p>Upload the ASCO/iLMS Excel loadout file. Review imported items in the queue. Select items to place on deck.</p></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><h4>Place Cargo</h4><p>Drag cargo from the Library panel onto the deck, or click a library card then click the deck to place. Position, rotate (R), and resize as needed.</p></div></div>
+  <div class="step"><div class="step-num">5</div><div class="step-body"><h4>Assign Status & Platform</h4><p>Click each cargo block to open the edit modal. Set the correct status (Load/BL/ROB/TR), platform, weight, and DG class.</p></div></div>
+  <div class="step"><div class="step-num">6</div><div class="step-body"><h4>Review DG Compliance</h4><p>Check for DG segregation warnings (red pulsing outlines). Acknowledge or resolve each conflict.</p></div></div>
+  <div class="step"><div class="step-num">7</div><div class="step-body"><h4>Export PDF</h4><p>File &rarr; Export PDF. Choose destination folder and filename in the Save As dialog. The PDF includes full deck image, stats, and manifest data.</p></div></div>
+  <div class="step"><div class="step-num">8</div><div class="step-body"><h4>Export Excel</h4><p>File &rarr; Export Excel for the formal cargo manifest spreadsheet with per-location breakdown.</p></div></div>
+  <div class="step"><div class="step-num">9</div><div class="step-body"><h4>Save Project</h4><p>Ctrl+S to save the project file for future reference or continuation.</p></div></div>
+</section>
+
+<!-- ═══ 8. TIPS & BEST PRACTICES ═══ -->
+<section id="tips">
+  <h2><span class="sec-icon">&#128161;</span> Tips & Best Practices</h2>
+
+  <div class="tip"><div class="tip-title">&#9733; Use Smart Grid Snap</div><div class="tip-text">Keep Smart Grid Snap enabled (default ON). It aligns cargo to bay lines and neighbours automatically, keeping the deck plan clean and realistic.</div></div>
+  <div class="tip"><div class="tip-title">&#9733; Zoom to 100% Before Export</div><div class="tip-text">For the best PDF quality, set zoom to 100% before exporting. The deck image is captured at the current view.</div></div>
+  <div class="tip"><div class="tip-title">&#9733; Use Platform Highlight</div><div class="tip-text">Enable "Highlight by Platform" in Smart Tools, then click a platform card to isolate its cargo visually. Great for verifying platform-specific loads.</div></div>
+  <div class="tip"><div class="tip-title">&#9733; Save Early, Save Often</div><div class="tip-text">Autosave protects against crashes (every 15s to localStorage), but Ctrl+S creates a proper named project file you can share or archive.</div></div>
+  <div class="tip"><div class="tip-title">&#9733; Right-Click Context Menu</div><div class="tip-text">Right-click any cargo block for quick access to Edit, Rotate, Duplicate, and Delete actions.</div></div>
+  <div class="tip"><div class="tip-title">&#9733; Keyboard Shortcuts Speed</div><div class="tip-text">Learn E/R/D/Del for cargo editing &mdash; much faster than using the mouse buttons. Arrow keys for precision positioning (Shift+Arrow = 1 metre).</div></div>
+  <div class="tip"><div class="tip-title">&#9733; DG Acknowledgement</div><div class="tip-text">DG warnings are per-cargo-pair, not per-class. Acknowledging a warning for two specific containers won't suppress future warnings for new pairs of the same DG class.</div></div>
+</section>
+
+<!-- Footer -->
+<div style="text-align:center;padding:40px 0;border-top:1px solid rgba(255,255,255,.06);margin-top:40px;">
+  <div style="font-family:'Manrope',sans-serif;font-weight:800;font-size:12px;letter-spacing:3px;color:var(--acc);text-transform:uppercase;">SPICA TIDE</div>
+  <div style="font-size:10px;color:var(--txt3);margin-top:4px;">&copy; 2026 SPICA TIDE Marine Operations · Developed by Pavlo Lagutin</div>
+  <div style="font-size:9px;color:var(--txt3);margin-top:2px;">Version 1.0.0 &middot; Build 38.20</div>
+</div>
+
+</div><!-- /content -->
+
+<!-- ═══ SIDEBAR ACTIVE STATE SCRIPT ═══ -->
+<script>
+(function(){
+  const links = document.querySelectorAll('.sidebar a');
+  const sections = [];
+  links.forEach(a => {
+    const id = a.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if(el) sections.push({a, el});
+  });
+  function update(){
+    let current = sections[0];
+    const scrollY = window.scrollY + 120;
+    sections.forEach(s => { if(s.el.offsetTop <= scrollY) current = s; });
+    links.forEach(a => a.classList.remove('active'));
+    if(current) current.a.classList.add('active');
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+</script>
+</body>
+</html>

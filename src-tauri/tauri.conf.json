@@ -32,11 +32,23 @@
       "icons/icon.ico"
     ],
     "resources": [],
-    "copyright": "\u00A9 2026 SPICA TIDE Project. All rights reserved.",
+    "copyright": "\u00a9 2026 SPICA TIDE. Developed by Pavlo Lagutin. All rights reserved.",
     "category": "Productivity",
-    "shortDescription": "Deck cargo planning tool for PSV FAR SPICA",
-    "longDescription": "Professional deck cargo planning application for Platform Supply Vessel FAR SPICA. Plan, visualise and export cargo placement for North Sea operations.",
+    "shortDescription": "Deck cargo planning tool for PSV SPICA TIDE",
+    "longDescription": "Professional deck cargo planning application for Platform Supply Vessel SPICA TIDE. Plan, visualise and export cargo placement for North Sea operations.",
     "licenseFile": "EULA.txt",
+    "fileAssociations": [
+      {
+        "ext": ["spica"],
+        "mimeType": "application/x-spica-tide",
+        "description": "SPICA TIDE Project"
+      },
+      {
+        "ext": ["json"],
+        "mimeType": "application/json",
+        "description": "SPICA TIDE Project (JSON)"
+      }
+    ],
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
@@ -44,6 +56,12 @@
         "languages": ["English"],
         "startMenuFolder": "SPICA TIDE"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/pchekla/spica-deck-cargo-planner/releases/latest/download/latest.json"],
+      "pubkey": "REPLACE_WITH_YOUR_PUBLIC_KEY"
     }
   }
 }
