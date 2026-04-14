@@ -61,11 +61,23 @@ jobs:
           releaseBody: |
             ## SPICA TIDE Deck Cargo Planner ${{ github.ref_name }}
 
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-
             ### Update
             Running installations will automatically detect this update.
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
-          args: --target x86_64-pc-windows-msvc
+          args: --verbose --target x86_64-pc-windows-msvc
+
+      - name: Upload build logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== Tauri build log ==="
+          cat src-tauri/target/x86_64-pc-windows-msvc/release/.cargo-lock 2>/dev/null || echo "No cargo lock"
+          echo "=== Last 100 lines of any build log ==="
+          find src-tauri/target -name "*.log" -exec tail -50 {} \; 2>/dev/null || echo "No log files found"
+          echo "=== NSIS output ==="
+          find src-tauri/target -name "nsis-output*" -exec cat {} \; 2>/dev/null || echo "No NSIS output"
+          echo "=== dist/ contents ==="
+          ls -la dist/ 2>/dev/null || echo "dist/ directory missing!"
+          echo "=== Bundle output ==="
+          find src-tauri/target -path "*/release/bundle/*" -type f 2>/dev/null || echo "No bundle output found"

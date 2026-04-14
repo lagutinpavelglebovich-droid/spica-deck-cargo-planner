@@ -8074,7 +8074,7 @@ function bindAboutModal(){
   /* Changelog button */
   const clBtn = document.getElementById('aboutChangelogBtn');
   if(clBtn) clBtn.addEventListener('click', () => {
-    window.open('https://github.com/pchekla/spica-deck-cargo-planner/blob/main/CHANGELOG.md', '_blank');
+    window.open('https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/blob/main/CHANGELOG.md', '_blank');
   });
 }
 
@@ -8162,7 +8162,7 @@ function _bindUpdateBanner(){
     banner.classList.remove('show');
   });
   document.getElementById('ubWhatsNew').addEventListener('click', () => {
-    window.open('https://github.com/pchekla/spica-deck-cargo-planner/releases', '_blank');
+    window.open('https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases', '_blank');
   });
 }
 
@@ -8671,7 +8671,7 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   /* ── Auto-update checker — checks GitHub Releases ── */
   setTimeout(async () => {
     try {
-      const res = await fetch('https://api.github.com/repos/pchekla/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
+      const res = await fetch('https://api.github.com/repos/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
       if(!res.ok) return;
       const data = await res.json();
       const latest = data.tag_name ? data.tag_name.replace(/^v/,'') : '';
@@ -8679,7 +8679,7 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
         const toast = document.createElement('div');
         toast.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:10px 16px;border-radius:8px;background:var(--acc);color:#fff;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:600;z-index:9000;box-shadow:var(--sh-md);cursor:pointer;';
         toast.innerHTML = '\u2B06 Update available: v' + escHtml(latest) + ' <span style="opacity:.6;margin-left:6px;font-size:9px;">Click to view</span>';
-        toast.addEventListener('click', () => { window.open(data.html_url || 'https://github.com/pchekla/spica-deck-cargo-planner/releases','_blank'); toast.remove(); });
+        toast.addEventListener('click', () => { window.open(data.html_url || 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases','_blank'); toast.remove(); });
         document.body.appendChild(toast);
         setTimeout(() => { if(toast.parentNode) toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 15000);
       }

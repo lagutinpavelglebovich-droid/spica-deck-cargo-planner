@@ -30,7 +30,7 @@ Open `src-tauri/tauri.conf.json` and replace the placeholder:
 ```json
 "plugins": {
   "updater": {
-    "endpoints": ["https://github.com/pchekla/spica-deck-cargo-planner/releases/latest/download/latest.json"],
+    "endpoints": ["https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest/download/latest.json"],
     "pubkey": "PASTE_YOUR_PUBLIC_KEY_HERE"
   }
 }
@@ -105,11 +105,11 @@ To test the update mechanism without affecting production:
    ```
 
 4. **Wait for CI** — the release appears at:
-   `https://github.com/pchekla/spica-deck-cargo-planner/releases/tag/v1.8.1`
+   `https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/tag/v1.8.1`
 
 5. **Verify `latest.json`** is a release asset:
    ```
-   https://github.com/pchekla/spica-deck-cargo-planner/releases/latest/download/latest.json
+   https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest/download/latest.json
    ```
    It should contain `"version": "1.8.1"` and a `windows-x86_64` platform entry.
 
