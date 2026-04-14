@@ -1,6 +1,6 @@
 {
   "productName": "SPICA TIDE Deck Cargo Planner",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "identifier": "com.spicatide.app",
   "build": {
     "devUrl": "http://localhost:1420",

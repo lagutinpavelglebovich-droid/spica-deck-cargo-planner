@@ -2971,7 +2971,7 @@ function importLegacy(raw) {
   return {
     _schema: PLAN_SCHEMA_CURRENT,
     _savedAt: new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
     _legacyScaleWarn: needsScaleWarn,
     name: raw.voyage || 'Imported Plan',
     plan: {
@@ -3143,7 +3143,7 @@ function _buildEnvelope() {
   return {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3465,7 +3465,7 @@ function savePlan(key) {
   const envelope = {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -7739,8 +7739,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v1.8.0';
-const APP_VERSION   = '1.8.0';
+const CURRENT_BUILD = 'v1.8.1';
+const APP_VERSION   = '1.8.1';
 const BUILD_NUMBER  = '40';
 const RELEASE_CHANNEL = 'Beta';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */

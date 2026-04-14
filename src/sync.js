@@ -132,7 +132,7 @@ export async function pushState(stateData) {
     _id: SYNC_DOC_ID,
     timestamp: Date.now(),
     type: 'deck_plan',
-    version: '1.8.0',
+    version: '1.8.1',
     state: stateData
   };
   if (_rev) doc._rev = _rev;
