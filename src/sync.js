@@ -1,7 +1,8 @@
 /* ══════════════════════════════════════════════════════════
-   SPICA TIDE — CouchDB Sync Service v2
+   SPICA TIDE — CouchDB Sync Service v3
    Direct REST API. Single-document sync.
    Long-polling for instant remote updates.
+   Conflict protection + replication activity tracking.
    Full console logging for debugging.
 ══════════════════════════════════════════════════════════ */
 
@@ -15,8 +16,11 @@ let _rev = null;         // CouchDB _rev
 let _lastSync = 0;
 let _onStatus = null;
 let _onRemote = null;
+let _onActivity = null;  // callback for push/pull activity
+let _onConflict = null;  // callback for conflict resolution
 let _pollActive = false;
 let _pollAbort = null;
+let _errorCount = 0;
 
 const log = (...args) => console.log('[Sync]', ...args);
 const warn = (...args) => console.warn('[Sync]', ...args);
@@ -30,10 +34,17 @@ function _setStatus(s) {
   if (_onStatus) _onStatus(s);
 }
 
+function _emitActivity(dir, detail) {
+  if (_onActivity) _onActivity(dir, detail);
+}
+
 export function getSyncStatus() { return _status; }
 export function getLastSyncTime() { return _lastSync; }
+export function getErrorCount() { return _errorCount; }
 export function onStatusChange(fn) { _onStatus = fn; }
 export function onRemoteUpdate(fn) { _onRemote = fn; }
+export function onActivity(fn) { _onActivity = fn; }
+export function onConflict(fn) { _onConflict = fn; }
 
 /* ── Config ── */
 export function setSyncConfig(config) {
@@ -41,6 +52,7 @@ export function setSyncConfig(config) {
   if (config?.url && config?.db) {
     log('Config set:', config.url + '/' + config.db);
     _setStatus('offline');
+    _errorCount = 0;
   } else {
     log('Config cleared');
     _setStatus('disabled');
@@ -88,6 +100,7 @@ export async function testConnection() {
       return { ok: false, error: 'Database "' + _cfg.db + '" not found. Create it first.' };
     }
     if (dbRes.status === 401 || dbRes.status === 403) {
+      _setStatus('auth_failed');
       return { ok: false, error: 'Authentication failed. Check username/password.' };
     }
     if (!dbRes.ok) {
@@ -96,6 +109,7 @@ export async function testConnection() {
 
     const info = await dbRes.json();
     log('DB info:', info);
+    _errorCount = 0;
     return { ok: true, dbName: info.db_name, docCount: info.doc_count };
 
   } catch (e) {
@@ -106,11 +120,13 @@ export async function testConnection() {
 
 /* ══════════════════════════════════════════════════════════
    PUSH — send local state to CouchDB
+   With conflict detection: if remote changed, notify caller
 ══════════════════════════════════════════════════════════ */
 export async function pushState(stateData) {
   if (!_cfg?.url || !_cfg?.db || _status === 'disabled') return false;
 
   _setStatus('syncing');
+  _emitActivity('push', 'start');
 
   const doc = {
     _id: SYNC_DOC_ID,
@@ -133,10 +149,32 @@ export async function pushState(stateData) {
     log('PUSH response:', res.status, res.statusText);
 
     if (res.status === 409) {
-      // Conflict — fetch remote _rev and retry once
-      warn('PUSH conflict (409). Fetching remote rev...');
+      // Conflict — remote has a newer revision
+      warn('PUSH conflict (409). Remote has changed.');
+      _emitActivity('push', 'conflict');
+
+      // Fetch remote doc to compare
       const remote = await _fetchDoc();
-      if (remote) {
+      if (remote && remote.state) {
+        // Ask the app to resolve the conflict
+        if (_onConflict) {
+          log('Delegating conflict resolution to app...');
+          _onConflict({
+            localState: stateData,
+            remoteState: remote.state,
+            remoteRev: remote._rev,
+            remoteTimestamp: remote.timestamp,
+            resolve: async (chosenState) => {
+              // Push the chosen state with the remote's rev
+              _rev = remote._rev;
+              const ok = await pushState(chosenState);
+              return ok;
+            }
+          });
+          return false; // don't auto-resolve, let app decide
+        }
+
+        // Fallback: force-push local (overwrite remote)
         _rev = remote._rev;
         doc._rev = _rev;
         const retry = await fetch(_docUrl(), {
@@ -149,37 +187,49 @@ export async function pushState(stateData) {
           const r = await retry.json();
           _rev = r.rev;
           _lastSync = Date.now();
+          _errorCount = 0;
           _setStatus('synced');
+          _emitActivity('push', 'done');
           return true;
         }
       }
+      _errorCount++;
       _setStatus('error');
+      _emitActivity('push', 'error');
       return false;
     }
 
     if (res.status === 401 || res.status === 403) {
       err('PUSH auth failed:', res.status);
-      _setStatus('error');
+      _errorCount++;
+      _setStatus('auth_failed');
+      _emitActivity('push', 'auth_failed');
       return false;
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       err('PUSH failed:', res.status, body.slice(0, 200));
+      _errorCount++;
       _setStatus('error');
+      _emitActivity('push', 'error');
       return false;
     }
 
     const result = await res.json();
     _rev = result.rev;
     _lastSync = Date.now();
+    _errorCount = 0;
     log('PUSH ok. New rev:', _rev);
     _setStatus('synced');
+    _emitActivity('push', 'done');
     return true;
 
   } catch (e) {
     err('PUSH network error:', e.message);
+    _errorCount++;
     _setStatus('offline');
+    _emitActivity('push', 'error');
     return false;
   }
 }
@@ -191,6 +241,10 @@ async function _fetchDoc() {
   try {
     const res = await fetch(_docUrl(), { headers: _headers() });
     if (res.status === 404) { log('Doc not found (first sync)'); return null; }
+    if (res.status === 401 || res.status === 403) {
+      _setStatus('auth_failed');
+      return null;
+    }
     if (!res.ok) { warn('Fetch doc:', res.status); return null; }
     return await res.json();
   } catch (e) {
@@ -203,18 +257,22 @@ export async function pullState() {
   if (!_cfg?.url || !_cfg?.db || _status === 'disabled') return null;
 
   _setStatus('syncing');
+  _emitActivity('pull', 'start');
   log('PULL from', _docUrl());
 
   const doc = await _fetchDoc();
   if (!doc || !doc.state) {
     _setStatus('offline');
+    _emitActivity('pull', 'error');
     return null;
   }
 
   _rev = doc._rev;
   _lastSync = Date.now();
+  _errorCount = 0;
   log('PULL ok. Rev:', _rev, 'Timestamp:', new Date(doc.timestamp).toLocaleString());
   _setStatus('synced');
+  _emitActivity('pull', 'done');
   return doc.state;
 }
 
@@ -281,6 +339,7 @@ async function _pollLoop() {
           continue;
         }
         warn('Long-poll error:', res.status);
+        _errorCount++;
         _setStatus('offline');
         await _sleep(RETRY_DELAY);
         continue;
@@ -292,13 +351,18 @@ async function _pollLoop() {
       const changed = data.results?.some(r => r.id === SYNC_DOC_ID);
       if (changed) {
         log('Remote change detected!');
+        _emitActivity('pull', 'start');
         const doc = await _fetchDoc();
         if (doc && doc.state && doc._rev !== _rev) {
           log('Applying remote update. Rev:', doc._rev);
           _rev = doc._rev;
           _lastSync = doc.timestamp || Date.now();
+          _errorCount = 0;
           _setStatus('synced');
+          _emitActivity('pull', 'done');
           if (_onRemote) _onRemote(doc.state);
+        } else {
+          _emitActivity('pull', 'done');
         }
       }
 
@@ -307,6 +371,7 @@ async function _pollLoop() {
     } catch (e) {
       if (e.name === 'AbortError') { log('Poll aborted (stopSync)'); break; }
       warn('Poll error:', e.message);
+      _errorCount++;
       _setStatus('offline');
       await _sleep(RETRY_DELAY);
     }
@@ -319,9 +384,12 @@ async function _simplePollOnce() {
   const doc = await _fetchDoc();
   if (doc && doc.state && doc._rev !== _rev) {
     log('Simple poll: remote change detected');
+    _emitActivity('pull', 'start');
     _rev = doc._rev;
     _lastSync = doc.timestamp || Date.now();
+    _errorCount = 0;
     _setStatus('synced');
+    _emitActivity('pull', 'done');
     if (_onRemote) _onRemote(doc.state);
   } else if (doc) {
     _setStatus('synced');

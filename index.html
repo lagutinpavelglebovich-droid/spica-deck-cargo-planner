@@ -89,6 +89,7 @@
     <span class="menu-label">Help</span>
     <div class="menu-dropdown">
       <div class="menu-action" data-action="about">About SPICA TIDE</div>
+      <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
       <div class="menu-action menu-disabled" data-action="version">v1.8.0 &middot; Build 40</div>
     </div>
@@ -486,7 +487,8 @@
   </div>
 </div>
 
-<!-- DG bar removed — segregation handled via modal only -->
+<!-- DG ON BOARD summary line -->
+<div class="dg-onboard-line" id="dgOnBoardLine">DG ON BOARD: <span id="dgOnBoardText">none</span></div>
 
 <!-- ZOOM -->
 <div class="zoom-bar">
@@ -637,6 +639,9 @@
   <div class="bp-section" id="bpSyncSection" style="display:none;">
     <span class="sync-dot-bp" id="syncDotBp"></span>
     <span class="bp-value" id="syncStatusBp" style="font-size:9px;">Sync</span>
+    <span class="sync-arrow sync-arrow-up" id="syncArrowUp" title="Pushing to cloud">↑</span>
+    <span class="sync-arrow sync-arrow-down" id="syncArrowDn" title="Pulling from cloud">↓</span>
+    <span class="sync-error-badge" id="syncErrorBadge" title="Sync errors — click for details" style="display:none;">!</span>
   </div>
 </div>
 
@@ -1026,6 +1031,17 @@
               <button class="sync-btn" id="syncSaveBtn" style="flex:1;padding:4px 8px;border:1px solid var(--acc);border-radius:var(--r-xs);background:rgba(72,96,131,.1);color:var(--acc);font-size:9px;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;">Save & Enable</button>
             </div>
             <div class="sync-result" id="syncResult" style="font-size:9px;color:var(--txt3);margin-top:4px;font-family:'JetBrains Mono',monospace;"></div>
+            <!-- Backup / Restore -->
+            <div class="sync-backup-row" style="display:flex;gap:4px;margin-top:6px;">
+              <button class="sync-btn" id="syncBackupBtn" title="Download full plan as backup JSON" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↓ Backup</button>
+              <button class="sync-btn" id="syncRestoreBtn" title="Restore plan from backup JSON" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↑ Restore</button>
+              <button class="sync-btn" id="syncForcePull" title="Force pull latest from cloud" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">⟳ Pull</button>
+            </div>
+            <!-- Debug Log -->
+            <details class="sync-log-details" style="margin-top:6px;">
+              <summary style="font-size:9px;color:var(--txt3);cursor:pointer;user-select:none;">Sync Log</summary>
+              <pre class="sync-log-content" id="syncLogContent" style="margin:4px 0 0;padding:6px;background:var(--surf);border:1px solid var(--brd);border-radius:var(--r-xs);font-size:8px;font-family:'JetBrains Mono',monospace;color:var(--txt3);max-height:140px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.4;"></pre>
+            </details>
           </div>
         </div>
         <label class="st-toggle" title="Cloud Sync">

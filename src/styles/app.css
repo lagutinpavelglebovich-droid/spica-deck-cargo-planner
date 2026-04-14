@@ -329,6 +329,19 @@ body.pdf-capture::before{ display:none !important; }
 .locs-content::-webkit-scrollbar{height:2px;}
 .locs-content::-webkit-scrollbar-thumb{background:var(--brd2);}
 
+/* DG ON BOARD summary line */
+.dg-onboard-line{
+  padding:3px 18px;
+  font-size:10px;
+  font-family:'JetBrains Mono',monospace;
+  color:var(--txt2);
+  background:var(--surf);
+  border-bottom:1px solid var(--brd);
+  letter-spacing:.3px;
+  flex-shrink:0;
+}
+.dg-onboard-line #dgOnBoardText{font-weight:600;color:var(--txt);}
+
 /* + Locations button */
 .btn-locs{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -990,16 +1003,18 @@ body.pdf-capture::before{ display:none !important; }
   opacity:.12;
 }
 /* Heavy Lift toggle — see scrollbar section above */
-.cb-del{display:none;position:absolute;top:-8px;left:-8px;width:18px;height:18px;background:#9f403d;color:#fff;border-radius:50%;font-size:11px;line-height:18px;text-align:center;cursor:pointer;z-index:30;font-family:sans-serif;box-shadow:0 2px 6px rgba(159,64,61,.4);}
+/* ── Cargo action buttons — positioned at edge centers to free corners for resize ── */
+.cb-del{display:none;position:absolute;top:-10px;left:50%;transform:translateX(-50%) translateX(-14px);width:18px;height:18px;background:#9f403d;color:#fff;border-radius:50%;font-size:11px;line-height:18px;text-align:center;cursor:pointer;z-index:30;font-family:sans-serif;box-shadow:0 2px 6px rgba(159,64,61,.4);}
 .cb:hover .cb-del{display:block;}
-.cb-rot{display:none;position:absolute;top:-8px;right:-8px;width:18px;height:18px;background:var(--acc);color:#fff;border-radius:50%;font-size:11px;line-height:18px;text-align:center;cursor:pointer;z-index:30;user-select:none;box-shadow:0 2px 6px rgba(72,96,131,.4);}
+.cb-rot{display:none;position:absolute;top:-10px;left:50%;transform:translateX(-50%) translateX(14px);width:18px;height:18px;background:var(--acc);color:#fff;border-radius:50%;font-size:11px;line-height:18px;text-align:center;cursor:pointer;z-index:30;user-select:none;box-shadow:0 2px 6px rgba(72,96,131,.4);}
 .cb:hover .cb-rot{display:block;}
-.cb-copy{display:none;position:absolute;bottom:-8px;right:-8px;width:18px;height:18px;background:var(--s-L);color:#fff;border-radius:50%;font-size:14px;line-height:17px;text-align:center;cursor:pointer;z-index:30;user-select:none;font-weight:700;box-shadow:0 2px 6px rgba(58,125,82,.4);}
+.cb-copy{display:none;position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:18px;height:18px;background:var(--s-L);color:#fff;border-radius:50%;font-size:14px;line-height:17px;text-align:center;cursor:pointer;z-index:30;user-select:none;font-weight:700;box-shadow:0 2px 6px rgba(58,125,82,.4);}
 .cb:hover .cb-copy{display:block;}
-.rh{position:absolute;width:8px;height:8px;background:var(--surf);border:1.5px solid var(--acc);border-radius:2px;z-index:25;display:none;box-shadow:0 1px 4px rgba(49,51,44,.15);}
+/* ── Resize handles — all four corners now unobstructed ── */
+.rh{position:absolute;width:10px;height:10px;background:var(--surf);border:1.5px solid var(--acc);border-radius:2px;z-index:28;display:none;box-shadow:0 1px 4px rgba(49,51,44,.15);}
 .cb:hover .rh{display:block;}
-.rh-se{bottom:-4px;right:-4px;cursor:se-resize;}.rh-sw{bottom:-4px;left:-4px;cursor:sw-resize;}
-.rh-ne{top:-4px;right:-4px;cursor:ne-resize;}.rh-nw{top:-4px;left:-4px;cursor:nw-resize;}
+.rh-se{bottom:-5px;right:-5px;cursor:se-resize;}.rh-sw{bottom:-5px;left:-5px;cursor:sw-resize;}
+.rh-ne{top:-5px;right:-5px;cursor:ne-resize;}.rh-nw{top:-5px;left:-5px;cursor:nw-resize;}
 .id-input{font-family:'Inter',system-ui,sans-serif;font-size:11.5px;font-weight:700;border:none;border-bottom:1.5px solid var(--acc);background:transparent;width:100%;outline:none;}
 .ghost{position:fixed;pointer-events:none;z-index:9999;border-radius:8px;border:1.5px dashed rgba(72,96,131,.5);background:rgba(72,96,131,.08);box-shadow:0 8px 24px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.12);transform:scale(1.04);}
 
@@ -4326,6 +4341,27 @@ body.hdr-tight .save-state-text{ display:none; }
 .sync-btn:hover{filter:brightness(1.1);}
 .sync-btn:active{transform:scale(.97);}
 [data-theme="dark"] .sync-config input{background:var(--surf3);border-color:var(--brd2);color:var(--txt);}
+
+/* ── Sync replication arrows ── */
+.sync-arrow{font-size:9px;font-weight:700;opacity:0;transition:opacity .2s;margin-left:1px;line-height:1;}
+.sync-arrow.active{opacity:1;}
+.sync-arrow-up.active{color:#3ea36a;animation:syncArrowBlink .6s ease 2;}
+.sync-arrow-down.active{color:#4a90d9;animation:syncArrowBlink .6s ease 2;}
+@keyframes syncArrowBlink{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-error-badge{background:#c0392b;color:#fff;font-size:7px;font-weight:700;width:12px;height:12px;border-radius:50%;text-align:center;line-height:12px;margin-left:2px;cursor:pointer;}
+.sync-error-badge:hover{filter:brightness(1.2);}
+
+/* ── Sync log ── */
+.sync-log-details summary{outline:none;}
+.sync-log-details summary::-webkit-details-marker{color:var(--txt3);}
+.sync-log-content::-webkit-scrollbar{width:4px;}
+.sync-log-content::-webkit-scrollbar-thumb{background:var(--brd);border-radius:2px;}
+
+/* ── Sync conflict bar ── */
+.sync-conflict-bar{position:fixed;top:0;left:50%;transform:translateX(-50%);background:#e67e22;color:#fff;padding:8px 18px;border-radius:0 0 var(--r-sm) var(--r-sm);font-size:11px;font-weight:600;z-index:9999;display:flex;gap:10px;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,.25);animation:slideDown .3s ease;}
+.sync-conflict-bar button{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:3px 10px;border-radius:var(--r-xs);font-size:10px;cursor:pointer;font-weight:600;}
+.sync-conflict-bar button:hover{background:rgba(255,255,255,.35);}
+@keyframes slideDown{from{transform:translateX(-50%) translateY(-100%)}to{transform:translateX(-50%) translateY(0)}}
 
 /* ═══════════════════════════════════════════════════════════
    SOUND SETTINGS — 3-level hierarchical panel

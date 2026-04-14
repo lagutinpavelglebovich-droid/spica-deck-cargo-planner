@@ -2029,7 +2029,20 @@ const hintEl=document.getElementById('emptyDeckHint');if(hintEl){hintEl.classLis
 /* V9: Status bar update */
 if(typeof updateStatusBar==='function') updateStatusBar();
 }
-function updateDGSummary(){/* DG summary bar removed — function kept as no-op for callers */}
+function updateDGSummary(){
+  const el = document.getElementById('dgOnBoardText');
+  if(!el) return;
+  const counts = {};
+  S.cargo.filter(c => c.dgClass).forEach(c => {
+    counts[c.dgClass] = (counts[c.dgClass]||0) + 1;
+  });
+  const entries = Object.keys(counts).sort((a,b) => parseFloat(a)-parseFloat(b));
+  if(entries.length === 0){
+    el.textContent = 'none';
+  } else {
+    el.textContent = entries.map(cls => 'Class ' + cls + ' (' + counts[cls] + ')').join(', ');
+  }
+}
 /* ════════════════════════════════════════════════════════════
    DG AUTO-SEGREGATION CHECK ENGINE  v38.8
    
@@ -7944,6 +7957,7 @@ function bindMenuBar(){
     zoomFit:       () => fitToScreen(),
     toggleLibrary: () => cpToggle(),
     about:         () => document.getElementById('aboutOverlay').classList.add('open'),
+    checkUpdate:   () => { if(_isTauri()) _checkForUpdates(true); else showToast('Updates available in desktop app only','info'); },
   };
 
   /* Wire each menu action — click fires the action and closes the menu */
@@ -8075,7 +8089,10 @@ async function _checkForUpdates(manual){
   const lastEl = document.getElementById('aboutLastCheck');
 
   try {
-    if(manual && resultEl) resultEl.textContent = 'Checking...';
+    if(manual) {
+      showToast('Checking for updates...', 'info');
+      if(resultEl) resultEl.textContent = 'Checking...';
+    }
 
     const updaterMod = await import('@tauri-apps/plugin-updater');
     const update = await updaterMod.check();
@@ -8098,14 +8115,22 @@ async function _checkForUpdates(manual){
         setTimeout(() => banner.classList.remove('show'), 30000);
       }
 
-      if(manual && resultEl){
-        resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+      if(manual){
+        showToast('Update available: v' + ver, 'ok');
+        if(resultEl) resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
       }
     } else {
-      if(manual && resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+      if(manual){
+        showToast('You are on the latest version', 'ok');
+        if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+      }
     }
   } catch(e) {
-    if(manual && resultEl) resultEl.textContent = 'Check failed: ' + (e && e.message || e);
+    if(manual){
+      showToast('Update check failed', 'warn');
+      if(resultEl) resultEl.textContent = 'Check failed: ' + (e && e.message || e);
+    }
+    /* Automatic checks fail silently */
   }
 }
 
@@ -8230,25 +8255,111 @@ function _syncPushDebounced(){
   }, 3000); // debounce 3s — don't push on every keystroke
 }
 
+/* ── Replication activity indicators ── */
+let _syncArrowUpTimer = null;
+let _syncArrowDnTimer = null;
+
+function _syncShowActivity(dir, detail){
+  const arrowUp = document.getElementById('syncArrowUp');
+  const arrowDn = document.getElementById('syncArrowDn');
+  const badge = document.getElementById('syncErrorBadge');
+
+  if(dir === 'push'){
+    if(arrowUp){
+      if(detail === 'start'){ arrowUp.classList.add('active'); clearTimeout(_syncArrowUpTimer); }
+      else { _syncArrowUpTimer = setTimeout(() => arrowUp.classList.remove('active'), 1500); }
+    }
+    if(detail === 'conflict') _syncLog('warn', 'Push conflict — remote has newer data');
+    if(detail === 'error') _syncLog('error', 'Push failed');
+    if(detail === 'auth_failed') _syncLog('error', 'Push auth failed');
+  }
+  if(dir === 'pull'){
+    if(arrowDn){
+      if(detail === 'start'){ arrowDn.classList.add('active'); clearTimeout(_syncArrowDnTimer); }
+      else { _syncArrowDnTimer = setTimeout(() => arrowDn.classList.remove('active'), 1500); }
+    }
+    if(detail === 'error') _syncLog('error', 'Pull failed');
+  }
+
+  // Update error badge
+  const errCount = Sync.getErrorCount();
+  if(badge){
+    if(errCount > 0){ badge.style.display = ''; badge.textContent = errCount > 9 ? '9+' : errCount; }
+    else { badge.style.display = 'none'; }
+  }
+}
+
+/* ── Conflict resolution handler ── */
+function _syncHandleConflict(conflict){
+  _syncLog('warn', 'Conflict detected! Remote timestamp: ' + new Date(conflict.remoteTimestamp).toLocaleString());
+
+  // Show conflict bar at top of screen
+  let bar = document.getElementById('syncConflictBar');
+  if(bar) bar.remove();
+  bar = document.createElement('div');
+  bar.id = 'syncConflictBar';
+  bar.className = 'sync-conflict-bar';
+  bar.innerHTML = '<span>⚠ Sync conflict — another device changed the plan</span>' +
+    '<button id="conflictKeepLocal">Keep Mine</button>' +
+    '<button id="conflictUseRemote">Use Remote</button>';
+  document.body.appendChild(bar);
+
+  document.getElementById('conflictKeepLocal').addEventListener('click', async () => {
+    bar.remove();
+    _syncLog('info', 'Conflict resolved: keeping local state');
+    const envelope = _buildEnvelope();
+    await conflict.resolve(envelope.plan);
+    showToast('Local changes pushed to cloud', 'ok');
+  });
+  document.getElementById('conflictUseRemote').addEventListener('click', () => {
+    bar.remove();
+    _syncLog('info', 'Conflict resolved: using remote state');
+    _syncApplyRemote(conflict.remoteState);
+  });
+
+  // Auto-dismiss after 30s (default to keeping local)
+  setTimeout(() => {
+    if(document.getElementById('syncConflictBar')){
+      document.getElementById('syncConflictBar').remove();
+      _syncLog('info', 'Conflict auto-resolved: keeping local (timeout)');
+      const envelope = _buildEnvelope();
+      conflict.resolve(envelope.plan);
+    }
+  }, 30000);
+}
+
 function _syncUpdateUI(status){
   const dotBp = document.getElementById('syncDotBp');
   const textBp = document.getElementById('syncStatusBp');
   const dotSt = document.getElementById('syncDot');
   const descSt = document.getElementById('syncDesc');
   const secBp = document.getElementById('bpSyncSection');
+  const labels = {
+    synced:'Synced', syncing:'Syncing...', offline:'Offline',
+    error:'Error', disabled:'Sync', auth_failed:'Auth Failed'
+  };
+  const colors = {
+    synced:'#3ea36a', syncing:'#c89a38', offline:'#888',
+    error:'#c0392b', disabled:'#888', auth_failed:'#c0392b'
+  };
   if(dotBp) dotBp.className = 'sync-dot-bp ' + status;
-  if(textBp) textBp.textContent = status === 'synced' ? 'Synced' : status === 'syncing' ? 'Syncing...' : status === 'offline' ? 'Offline' : status === 'error' ? 'Error' : 'Sync';
+  if(textBp) textBp.textContent = labels[status] || status;
   if(secBp) secBp.style.display = status === 'disabled' ? 'none' : '';
   if(dotSt){
-    dotSt.style.background = status==='synced'?'#3ea36a':status==='syncing'?'#c89a38':status==='error'?'#c0392b':'#888';
-    if(status==='syncing') dotSt.style.animation='syncPulse 1.2s infinite'; else dotSt.style.animation='';
+    dotSt.style.background = colors[status] || '#888';
+    dotSt.style.animation = status==='syncing' ? 'syncPulse 1.2s infinite' : '';
   }
   if(descSt){
-    if(status==='synced'){ const t=Sync.getLastSyncTime(); descSt.textContent=t?'Last sync: '+new Date(t).toLocaleTimeString():'Synced'; }
-    else if(status==='syncing') descSt.textContent='Syncing...';
-    else if(status==='offline') descSt.textContent='Offline — local only';
-    else if(status==='error') descSt.textContent='Sync error';
-    else if(status==='disabled') descSt.textContent='Not configured';
+    const t = Sync.getLastSyncTime();
+    const timeStr = t ? new Date(t).toLocaleTimeString() : '';
+    const errCount = Sync.getErrorCount();
+    const errSuffix = errCount > 0 ? ' · ' + errCount + ' error' + (errCount>1?'s':'') : '';
+    if(status==='synced') descSt.textContent = 'Connected' + (timeStr ? ' · Last: ' + timeStr : '');
+    else if(status==='syncing') descSt.textContent = 'Syncing...';
+    else if(status==='offline') descSt.textContent = 'Offline — local only' + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
+    else if(status==='error') descSt.textContent = 'Sync error — will retry' + errSuffix;
+    else if(status==='auth_failed') descSt.textContent = 'Authentication failed — check credentials';
+    else if(status==='disabled') descSt.textContent = 'Not configured';
   }
 }
 
@@ -8269,17 +8380,38 @@ function _syncApplyRemote(remoteState){
   showToast('Plan updated from another device', 'ok');
 }
 
+/* ── Sync config storage — password stored separately in encrypted store ── */
 async function _syncSaveConfig(cfg){
+  const publicCfg = { url:cfg.url, db:cfg.db, username:cfg.username }; // NO password
   try {
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
-      await store.set('syncConfig', cfg);
+      await store.set('syncConfig', publicCfg);
+      await store.set('syncAuth', cfg.password || ''); // separate key for password
       await store.save();
     } else {
-      localStorage.setItem('spicaTide_syncConfig', JSON.stringify(cfg));
+      localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg));
+      sessionStorage.setItem('spicaTide_syncAuth', cfg.password || ''); // session only in browser
     }
-  } catch(e){ localStorage.setItem('spicaTide_syncConfig', JSON.stringify(cfg)); }
+  } catch(e){ localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg)); }
+}
+
+async function _syncLoadConfig(){
+  try {
+    let cfg = null, pwd = '';
+    if(_isTauri()){
+      const { load } = await import('@tauri-apps/plugin-store');
+      const store = await load('sync-config.json');
+      cfg = await store.get('syncConfig');
+      pwd = await store.get('syncAuth') || '';
+    } else {
+      cfg = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
+      pwd = sessionStorage.getItem('spicaTide_syncAuth') || '';
+    }
+    if(cfg && cfg.url) return { ...cfg, password: pwd };
+    return null;
+  } catch(e){ return null; }
 }
 
 async function _syncDeleteConfig(){
@@ -8288,11 +8420,32 @@ async function _syncDeleteConfig(){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
       await store.delete('syncConfig');
+      await store.delete('syncAuth');
       await store.save();
     } else {
       localStorage.removeItem('spicaTide_syncConfig');
+      sessionStorage.removeItem('spicaTide_syncAuth');
     }
   } catch(e){ localStorage.removeItem('spicaTide_syncConfig'); }
+}
+
+/* ── Sync log ring buffer (last 100 entries) ── */
+const _syncLogs = [];
+const SYNC_LOG_MAX = 100;
+function _syncLog(type, msg){
+  const entry = { time: new Date().toLocaleTimeString(), type, msg };
+  _syncLogs.push(entry);
+  if(_syncLogs.length > SYNC_LOG_MAX) _syncLogs.shift();
+  // Update log panel if open
+  const panel = document.getElementById('syncLogContent');
+  if(panel) panel.textContent = _syncLogs.map(l => l.time + ' [' + l.type + '] ' + l.msg).join('\n');
+}
+
+function _syncWireCallbacks(){
+  Sync.onStatusChange(s => { _syncUpdateUI(s); _syncLog('status', s); });
+  Sync.onRemoteUpdate(state => { _syncApplyRemote(state); _syncLog('pull', 'Remote state applied'); });
+  Sync.onActivity((dir, detail) => { _syncShowActivity(dir, detail); _syncLog(dir, detail); });
+  Sync.onConflict(_syncHandleConflict);
 }
 
 function bindSyncSettings(){
@@ -8303,17 +8456,10 @@ function bindSyncSettings(){
   const resultEl = document.getElementById('syncResult');
   if(!toggle) return;
 
-  // Load saved sync config (tauri-plugin-store or localStorage fallback)
+  // Load saved sync config and auto-connect
   (async () => {
     try {
-      let saved = null;
-      if (_isTauri()) {
-        const { load } = await import('@tauri-apps/plugin-store');
-        const store = await load('sync-config.json');
-        saved = await store.get('syncConfig');
-      } else {
-        saved = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
-      }
+      const saved = await _syncLoadConfig();
       if (saved && saved.url) {
         document.getElementById('syncUrl').value = saved.url || '';
         document.getElementById('syncDb').value = saved.db || '';
@@ -8321,13 +8467,17 @@ function bindSyncSettings(){
         document.getElementById('syncPass').value = saved.password || '';
         toggle.checked = true;
         if (configPanel) configPanel.style.display = '';
+        _syncLog('info', 'Config loaded. Auto-connecting to ' + saved.url);
         Sync.setSyncConfig(saved);
-        Sync.onStatusChange(_syncUpdateUI);
-        Sync.onRemoteUpdate(_syncApplyRemote);
+        _syncWireCallbacks();
         Sync.startSync();
         _syncUpdateUI('offline');
+        // Try initial pull
+        const remote = await Sync.pullState();
+        if(remote) { _syncLog('pull', 'Initial pull ok'); }
+        else { _syncLog('info', 'No remote data or offline'); }
       }
-    } catch (e) {}
+    } catch (e) { _syncLog('error', 'Config load failed: ' + e.message); }
   })();
 
   // Toggle expand config panel
@@ -8350,13 +8500,16 @@ function bindSyncSettings(){
     Sync.setSyncConfig(cfg);
     resultEl.textContent = 'Testing...';
     resultEl.style.color = 'var(--txt3)';
+    _syncLog('info', 'Testing connection...');
     const r = await Sync.testConnection();
     if(r.ok){
       resultEl.textContent = '\u2713 Connected — ' + r.dbName + ' (' + r.docCount + ' docs)';
       resultEl.style.color = '#3ea36a';
+      _syncLog('info', 'Test OK: ' + r.dbName);
     } else {
       resultEl.textContent = '\u2717 ' + r.error;
       resultEl.style.color = '#c0392b';
+      _syncLog('error', 'Test failed: ' + r.error);
     }
   });
 
@@ -8366,8 +8519,7 @@ function bindSyncSettings(){
     if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
     _syncSaveConfig(cfg);
     Sync.setSyncConfig(cfg);
-    Sync.onStatusChange(_syncUpdateUI);
-    Sync.onRemoteUpdate(_syncApplyRemote);
+    _syncWireCallbacks();
 
     // Initial migration
     const envelope = _buildEnvelope();
@@ -8378,7 +8530,89 @@ function bindSyncSettings(){
     _syncUpdateUI('synced');
     resultEl.textContent = '\u2713 Sync enabled';
     resultEl.style.color = '#3ea36a';
+    _syncLog('info', 'Sync enabled and started');
     showToast('Cloud sync enabled', 'ok');
+  });
+
+  /* ── Backup button — download plan as JSON ── */
+  const backupBtn = document.getElementById('syncBackupBtn');
+  if(backupBtn) backupBtn.addEventListener('click', () => {
+    const envelope = _buildEnvelope();
+    const json = JSON.stringify(envelope, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    a.download = 'spica-tide-backup-' + ts + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    _syncLog('info', 'Backup downloaded');
+    showToast('Backup saved', 'ok');
+  });
+
+  /* ── Restore button — load plan from JSON file ── */
+  const restoreBtn = document.getElementById('syncRestoreBtn');
+  if(restoreBtn) restoreBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.spica';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if(!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const plan = data.plan || data.state || data;
+        if(plan.cargo){
+          _syncApplyRemote(plan);
+          _syncLog('info', 'Restored from backup: ' + file.name);
+          showToast('Plan restored from backup', 'ok');
+          // Push restored state to cloud if connected
+          if(Sync.getSyncStatus() !== 'disabled'){
+            _syncPushDebounced();
+          }
+        } else {
+          showToast('Invalid backup file', 'err');
+          _syncLog('error', 'Invalid backup format');
+        }
+      } catch(e){
+        showToast('Error reading backup: ' + e.message, 'err');
+        _syncLog('error', 'Restore failed: ' + e.message);
+      }
+      input.remove();
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
+
+  /* ── Force Pull button ── */
+  const forcePull = document.getElementById('syncForcePull');
+  if(forcePull) forcePull.addEventListener('click', async () => {
+    if(Sync.getSyncStatus() === 'disabled'){
+      showToast('Sync not enabled', 'err');
+      return;
+    }
+    _syncLog('info', 'Force pull requested');
+    const remote = await Sync.pullState();
+    if(remote){
+      _syncApplyRemote(remote);
+      _syncLog('pull', 'Force pull applied');
+      showToast('Latest plan pulled from cloud', 'ok');
+    } else {
+      showToast('No remote data available', 'err');
+      _syncLog('warn', 'Force pull: no data');
+    }
+  });
+
+  /* ── Error badge click → open log ── */
+  const errBadge = document.getElementById('syncErrorBadge');
+  if(errBadge) errBadge.addEventListener('click', () => {
+    const details = document.querySelector('.sync-log-details');
+    if(details) details.open = true;
   });
 }
 
