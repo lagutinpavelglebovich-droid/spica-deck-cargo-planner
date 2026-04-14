@@ -7,6 +7,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import * as Sync from './sync.js';
 
 /* ════════════════════════════════════════════════════════════
    APP CONFIG — centralised settings layer
@@ -3536,7 +3537,7 @@ function listPlans() {
 }
 
 /* ── Legacy shims — all 24 call sites of save() work unchanged ── */
-function save() { _pushUndo(); savePlan(); _dirty = true; _updateSaveIndicator(); }
+function save() { _pushUndo(); savePlan(); _dirty = true; _updateSaveIndicator(); _syncPushDebounced(); }
 function load() { loadPlan(); }
 
 let zoomLevel=1.0;const ZOOM_STEP=0.1,ZOOM_MIN=0.3,ZOOM_MAX=2.0;
@@ -8216,12 +8217,178 @@ function _sndLoadSettings(){
   }catch(e){}
 }
 
+/* ══════════════════════════════════════════════════════════
+   SYNC — CouchDB integration
+══════════════════════════════════════════════════════════ */
+let _syncPushTimer = null;
+function _syncPushDebounced(){
+  if(Sync.getSyncStatus() === 'disabled') return;
+  clearTimeout(_syncPushTimer);
+  _syncPushTimer = setTimeout(() => {
+    const envelope = _buildEnvelope();
+    Sync.pushState(envelope.plan);
+  }, 3000); // debounce 3s — don't push on every keystroke
+}
+
+function _syncUpdateUI(status){
+  const dotBp = document.getElementById('syncDotBp');
+  const textBp = document.getElementById('syncStatusBp');
+  const dotSt = document.getElementById('syncDot');
+  const descSt = document.getElementById('syncDesc');
+  const secBp = document.getElementById('bpSyncSection');
+  if(dotBp) dotBp.className = 'sync-dot-bp ' + status;
+  if(textBp) textBp.textContent = status === 'synced' ? 'Synced' : status === 'syncing' ? 'Syncing...' : status === 'offline' ? 'Offline' : status === 'error' ? 'Error' : 'Sync';
+  if(secBp) secBp.style.display = status === 'disabled' ? 'none' : '';
+  if(dotSt){
+    dotSt.style.background = status==='synced'?'#3ea36a':status==='syncing'?'#c89a38':status==='error'?'#c0392b':'#888';
+    if(status==='syncing') dotSt.style.animation='syncPulse 1.2s infinite'; else dotSt.style.animation='';
+  }
+  if(descSt){
+    if(status==='synced'){ const t=Sync.getLastSyncTime(); descSt.textContent=t?'Last sync: '+new Date(t).toLocaleTimeString():'Synced'; }
+    else if(status==='syncing') descSt.textContent='Syncing...';
+    else if(status==='offline') descSt.textContent='Offline — local only';
+    else if(status==='error') descSt.textContent='Sync error';
+    else if(status==='disabled') descSt.textContent='Not configured';
+  }
+}
+
+function _syncApplyRemote(remoteState){
+  if(!remoteState) return;
+  if(remoteState.cargo) S.cargo = remoteState.cargo;
+  if(remoteState.customLib) S.customLib = remoteState.customLib;
+  if(remoteState.customLocs && Array.isArray(remoteState.customLocs)) S.customLocs = remoteState.customLocs;
+  if(remoteState.activeLocs && remoteState.activeLocs.length) S.activeLocs = remoteState.activeLocs;
+  if(remoteState.selLoc) S.selLoc = remoteState.selLoc;
+  if(remoteState.voyage) document.getElementById('voyIn').value = remoteState.voyage;
+  if(remoteState.date){ selDate = new Date(remoteState.date); if(isNaN(selDate)) selDate = new Date(); }
+  if(remoteState.dynColors){ Object.keys(DYN_COLORS).forEach(k=>delete DYN_COLORS[k]); Object.assign(DYN_COLORS, remoteState.dynColors); }
+  if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
+  initDynColors(); setDateDisplay();
+  buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
+  renderAll(); updateStats(); updateDGSummary();
+  showToast('Plan updated from another device', 'ok');
+}
+
+async function _syncSaveConfig(cfg){
+  try {
+    if(_isTauri()){
+      const { load } = await import('@tauri-apps/plugin-store');
+      const store = await load('sync-config.json');
+      await store.set('syncConfig', cfg);
+      await store.save();
+    } else {
+      localStorage.setItem('spicaTide_syncConfig', JSON.stringify(cfg));
+    }
+  } catch(e){ localStorage.setItem('spicaTide_syncConfig', JSON.stringify(cfg)); }
+}
+
+async function _syncDeleteConfig(){
+  try {
+    if(_isTauri()){
+      const { load } = await import('@tauri-apps/plugin-store');
+      const store = await load('sync-config.json');
+      await store.delete('syncConfig');
+      await store.save();
+    } else {
+      localStorage.removeItem('spicaTide_syncConfig');
+    }
+  } catch(e){ localStorage.removeItem('spicaTide_syncConfig'); }
+}
+
+function bindSyncSettings(){
+  const toggle = document.getElementById('stSyncToggle');
+  const configPanel = document.getElementById('syncConfigPanel');
+  const testBtn = document.getElementById('syncTestBtn');
+  const saveBtn = document.getElementById('syncSaveBtn');
+  const resultEl = document.getElementById('syncResult');
+  if(!toggle) return;
+
+  // Load saved sync config (tauri-plugin-store or localStorage fallback)
+  (async () => {
+    try {
+      let saved = null;
+      if (_isTauri()) {
+        const { load } = await import('@tauri-apps/plugin-store');
+        const store = await load('sync-config.json');
+        saved = await store.get('syncConfig');
+      } else {
+        saved = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
+      }
+      if (saved && saved.url) {
+        document.getElementById('syncUrl').value = saved.url || '';
+        document.getElementById('syncDb').value = saved.db || '';
+        document.getElementById('syncUser').value = saved.username || '';
+        document.getElementById('syncPass').value = saved.password || '';
+        toggle.checked = true;
+        if (configPanel) configPanel.style.display = '';
+        Sync.setSyncConfig(saved);
+        Sync.onStatusChange(_syncUpdateUI);
+        Sync.onRemoteUpdate(_syncApplyRemote);
+        Sync.startSync();
+        _syncUpdateUI('offline');
+      }
+    } catch (e) {}
+  })();
+
+  // Toggle expand config panel
+  toggle.addEventListener('change', () => {
+    if(toggle.checked){
+      configPanel.style.display = '';
+    } else {
+      configPanel.style.display = 'none';
+      Sync.stopSync();
+      Sync.setSyncConfig(null);
+      _syncDeleteConfig();
+      _syncUpdateUI('disabled');
+    }
+  });
+  if(!toggle.checked && configPanel) configPanel.style.display = 'none';
+
+  // Test connection
+  if(testBtn) testBtn.addEventListener('click', async () => {
+    const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
+    Sync.setSyncConfig(cfg);
+    resultEl.textContent = 'Testing...';
+    resultEl.style.color = 'var(--txt3)';
+    const r = await Sync.testConnection();
+    if(r.ok){
+      resultEl.textContent = '\u2713 Connected — ' + r.dbName + ' (' + r.docCount + ' docs)';
+      resultEl.style.color = '#3ea36a';
+    } else {
+      resultEl.textContent = '\u2717 ' + r.error;
+      resultEl.style.color = '#c0392b';
+    }
+  });
+
+  // Save & Enable
+  if(saveBtn) saveBtn.addEventListener('click', async () => {
+    const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
+    if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
+    _syncSaveConfig(cfg);
+    Sync.setSyncConfig(cfg);
+    Sync.onStatusChange(_syncUpdateUI);
+    Sync.onRemoteUpdate(_syncApplyRemote);
+
+    // Initial migration
+    const envelope = _buildEnvelope();
+    const remote = await Sync.migrateIfNeeded(envelope.plan);
+    if(remote) _syncApplyRemote(remote);
+
+    Sync.startSync();
+    _syncUpdateUI('synced');
+    resultEl.textContent = '\u2713 Sync enabled';
+    resultEl.style.color = '#3ea36a';
+    showToast('Cloud sync enabled', 'ok');
+  });
+}
+
 function init(){
   bindMenuBar();
   bindAboutModal();
   _bindUpdateBanner();
   _scheduleUpdateCheck();
   bindContextMenu();
+  bindSyncSettings();
   bindStatusBar();
   bindThemeToggle();   /* apply saved theme immediately, before any render */
   initResponsiveHeader();  /* apply body.hdr-compact / body.hdr-tight */

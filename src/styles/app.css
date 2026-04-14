@@ -4315,6 +4315,19 @@ body.hdr-tight .save-state-text{ display:none; }
 }
 
 /* ═══════════════════════════════════════════════════════════
+   SYNC INDICATORS
+═══════════════════════════════════════════════════════════ */
+.sync-dot-bp{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:#888;transition:background .3s;}
+.sync-dot-bp.synced{background:#3ea36a;}
+.sync-dot-bp.syncing{background:#c89a38;animation:syncPulse 1.2s infinite;}
+.sync-dot-bp.offline{background:#888;}
+.sync-dot-bp.error{background:#c0392b;}
+@keyframes syncPulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sync-btn:hover{filter:brightness(1.1);}
+.sync-btn:active{transform:scale(.97);}
+[data-theme="dark"] .sync-config input{background:var(--surf3);border-color:var(--brd2);color:var(--txt);}
+
+/* ═══════════════════════════════════════════════════════════
    SOUND SETTINGS — 3-level hierarchical panel
 ═══════════════════════════════════════════════════════════ */
 .snd-chv{font-size:8px;color:var(--txt4);transition:transform .2s;display:inline-block;margin-left:4px;}
