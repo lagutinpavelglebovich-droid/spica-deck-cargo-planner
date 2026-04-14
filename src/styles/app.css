@@ -288,6 +288,7 @@ body.pdf-capture::before{ display:none !important; }
   transition:background .15s;cursor:text;
   letter-spacing:.3px;
 }
+.voy-input::placeholder{color:var(--txt4);opacity:.45;font-weight:400;letter-spacing:.2px;}
 .voy-input:focus{outline:none;background:rgba(72,96,131,.07);}
 .voy-date-btn{
   font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;
@@ -4314,6 +4315,36 @@ body.hdr-tight .save-state-text{ display:none; }
 }
 
 /* ═══════════════════════════════════════════════════════════
+   SOUND SETTINGS — 3-level hierarchical panel
+═══════════════════════════════════════════════════════════ */
+.snd-chv{font-size:8px;color:var(--txt4);transition:transform .2s;display:inline-block;margin-left:4px;}
+.snd-chv.open{transform:rotate(180deg);}
+.snd-sub-panel{display:none;padding:0 12px 8px;background:var(--surf2);border-top:1px solid var(--sep);}
+.snd-sub-panel.open{display:block;}
+.snd-cat{margin:6px 0;border-radius:var(--r-sm);background:var(--surf);border:1px solid var(--brd);overflow:hidden;}
+.snd-cat-hd{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:11px;font-weight:600;color:var(--txt);}
+.snd-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.snd-cat-title{flex:1;}
+.snd-badge{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(62,163,106,.12);color:#3ea36a;}
+.snd-badge.some{background:rgba(200,168,78,.12);color:var(--acc-warm);}
+.snd-badge.none{background:rgba(192,57,43,.1);color:#c0392b;}
+.snd-cat-body{padding:4px 8px 6px;border-top:1px solid var(--sep);}
+.snd-item{display:flex;align-items:center;gap:6px;padding:5px 4px;border-radius:4px;font-size:11px;color:var(--txt2);}
+.snd-item:hover{background:rgba(72,96,131,.05);}
+.snd-emoji{font-size:13px;width:20px;text-align:center;flex-shrink:0;}
+.snd-name{flex:1;font-weight:500;}
+.snd-preview{width:22px;height:22px;border-radius:50%;border:1px solid var(--brd);background:transparent;color:var(--txt3);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+.snd-preview:hover{border-color:var(--acc);color:var(--acc);background:rgba(72,96,131,.06);}
+.snd-preview:active{transform:scale(.9);}
+.st-toggle-sm{transform:scale(.85);transform-origin:right center;}
+.st-toggle-xs{transform:scale(.75);transform-origin:right center;}
+.snd-sub-panel.disabled .snd-cat{opacity:.4;pointer-events:none;}
+.snd-cat.disabled .snd-cat-body{opacity:.4;pointer-events:none;}
+[data-theme="dark"] .snd-sub-panel{background:var(--surf2);}
+[data-theme="dark"] .snd-cat{background:var(--surf);border-color:var(--brd);}
+[data-theme="dark"] .snd-item:hover{background:rgba(255,255,255,.04);}
+
+/* ═══════════════════════════════════════════════════════════
    VISUAL SMART TOOLS — 13 toggleable effects
 ═══════════════════════════════════════════════════════════ */
 
@@ -4573,7 +4604,7 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
 /* Prevent fullscreen flicker during drag — promote layers */
 .dcv{ contain:layout style; }
 .ghost{ will-change:left,top; }
-.cb{ contain:layout style paint; }
+.cb{ contain:layout style; } /* no 'paint' — it clips hover controls at -8px */
 
 /* ── V10: Smooth panel animations ────────────────────────
    Library panel already has .30s transform transition.

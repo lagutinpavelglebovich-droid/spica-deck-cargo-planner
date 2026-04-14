@@ -20,22 +20,7 @@
 
 <!-- SPLASH SCREEN — inline styles, visible before CSS/JS loads -->
 <div id="splash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a2a42;transition:opacity .4s;">
-  <svg width="72" height="72" viewBox="0 0 512 512" fill="none" style="margin-bottom:20px;">
-    <rect width="512" height="512" rx="100" fill="#26446E"/>
-    <rect x="252" y="52" width="8" height="90" rx="4" fill="#fff" opacity=".9"/>
-    <circle cx="256" cy="46" r="16" fill="none" stroke="#fff" stroke-width="7" opacity=".9"/>
-    <circle cx="256" cy="46" r="4.5" fill="#fff" opacity=".6"/>
-    <rect x="108" y="142" width="296" height="14" rx="7" fill="#fff" opacity=".95"/>
-    <rect x="138" y="156" width="7" height="34" rx="3.5" fill="#fff" opacity=".88"/>
-    <rect x="367" y="156" width="7" height="34" rx="3.5" fill="#fff" opacity=".88"/>
-    <rect x="112" y="188" width="288" height="176" rx="6" fill="#fff" opacity=".96"/>
-    <rect x="254" y="200" width="4" height="152" fill="#1A2E48" opacity=".18"/>
-    <rect x="112" y="274" width="288" height="4" fill="#1A2E48" opacity=".14"/>
-    <rect x="105" y="182" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
-    <rect x="381" y="182" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
-    <rect x="105" y="358" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
-    <rect x="381" y="358" width="26" height="18" rx="5" fill="#fff" opacity=".92"/>
-  </svg>
+  <img src="data:image/png;base64,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" width="72" height="72" style="margin-bottom:20px;border-radius:16px;">
   <div style="font-family:system-ui,sans-serif;font-weight:900;font-size:18px;letter-spacing:5px;color:#fff;text-transform:uppercase;">SPICA TIDE</div>
   <div style="font-family:system-ui,sans-serif;font-weight:500;font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,.5);text-transform:uppercase;margin-top:6px;">Deck Cargo Planner</div>
   <div style="margin-top:24px;width:32px;height:32px;border:2.5px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.7);border-radius:50%;animation:splashSpin .8s linear infinite;"></div>
@@ -105,7 +90,7 @@
     <div class="menu-dropdown">
       <div class="menu-action" data-action="about">About SPICA TIDE</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v1.0.0 &middot; Build 38.20</div>
+      <div class="menu-action menu-disabled" data-action="version">v1.8.0 &middot; Build 40</div>
     </div>
   </div>
 </div>
@@ -123,24 +108,12 @@
 <div class="about-overlay" id="aboutOverlay">
   <div class="about-modal">
     <button class="about-close" id="aboutClose">&times;</button>
-    <div class="about-icon">
-      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-        <rect width="48" height="48" rx="10" fill="#1E2E45"/>
-        <line x1="24" y1="6" x2="24" y2="16" stroke="white" stroke-width="1.5"/>
-        <rect x="20" y="14" x2="28" width="8" height="3" rx="1" fill="none" stroke="white" stroke-width="1.2"/>
-        <line x1="16" y1="17" x2="20" y2="20" stroke="white" stroke-width="1"/>
-        <line x1="32" y1="17" x2="28" y2="20" stroke="white" stroke-width="1"/>
-        <rect x="12" y="20" width="24" height="18" rx="2" fill="none" stroke="white" stroke-width="1.8"/>
-        <line x1="18" y1="20" x2="18" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
-        <line x1="24" y1="20" x2="24" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
-        <line x1="30" y1="20" x2="30" y2="38" stroke="white" stroke-width="0.8" opacity="0.5"/>
-      </svg>
-    </div>
+    <div class="about-icon"><img src="data:image/png;base64,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" width="48" height="48" style="border-radius:10px;"></div>
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 1.0.0<br>
-      Build 38.20<br>
+      Version 1.8.0<br>
+      Build 40<br>
       Release Channel: Beta
     </div>
     <div class="about-desc">
@@ -162,7 +135,7 @@
 <!-- HEADER -->
 <div class="hdr">
   <div class="brand" id="brandBlock">
-    <div class="brand-name" id="brandName"><svg class="brand-icon" width="22" height="22" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="10" fill="#1E2E45"/><rect x="23" y="5" width="2" height="12" rx="1" fill="#fff" opacity=".8"/><circle cx="24" cy="4.5" r="2.5" stroke="#fff" stroke-width="1.2" fill="none"/><rect x="14" y="17" width="20" height="3" rx="1.5" fill="#fff" opacity=".7"/><rect x="11" y="20" width="26" height="18" rx="2.5" stroke="#fff" stroke-width="1.8" fill="none"/><line x1="17" y1="20" x2="17" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/><line x1="24" y1="20" x2="24" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/><line x1="31" y1="20" x2="31" y2="38" stroke="#fff" stroke-width=".6" opacity=".35"/></svg> SPICA TIDE</div>
+    <div class="brand-name" id="brandName"><img class="brand-icon" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACYUlEQVQ4Ee1TPWsUURQ9b2Z23Q3BxARZg1qIkRhxQcWAvSBiZ2mbVGIXsdTCykLEn+APsA5YWoSAC4pkUbASRFnzIbuZndmZeV/e+yaysztrqVUuvJn7vs4999z7gCP71wqIvwQQV2+t3jbau26MDowxsDQAA/Z5aKNVFIXvO+03G7Rhx3EmAYvmzdXnFv66UsqBWGsghCBfQ0kFnvNQMkPc23vZ/bq1Pg7uj0e6cOPusvCqr5I08bSS0FoiSRKs3buD5cUz2Gp9JH4amoJaCkTBVnRmX+ust1vECooT9k2GBRlQ+lq79K21yKTE9x8/0dnZAWfhe4RN68waEL7xK6fI+cT3/xgdGTUlNBHJdZQEkmYZTjfmQUJgZnoKC405WpMuQA5O8oqyxiXGUMS0QsUhxo2TJ3Dt8iL6/T7effjs7jeXzmHlykW0aN7Z3SfEUt0c0xKwomXBHUCpPnv8AJeWziPsx/AD36WvKPDs8Wm83Wzh/sOnEHRukpWAAa66pS4A6rUaFPm1+jEO5zokCAISBQgoELdUDst0Rm0CMB0gMNdSh9dyUqPMeMYE+OwkKwMrK2zFOnZRFENSoVhvNlesw3+SpEN1bVB6DyXgQRrF9UqdgC0ePXlBclRhuK1cFpxJLlMYRvA8D4Y0p8/ARS58SsC/el/ac/C3q1Mzzc5eF66fHSi/tjx17gR+iZ4XQKXdtgrj7QKmc0svD3Gc6dTb1EI3CWneGGmslsoalQ+rqbpa0VqaDQ5ag4P9NcjOt3HgkjaFAz5qs2epqSuFtaEr6DkmXQbMCzDcOfL+kwK/Afdld135tfkzAAAAAElFTkSuQmCC" width="22" height="22" style="border-radius:5px;vertical-align:middle;margin-right:6px;margin-top:-2px;"> SPICA TIDE</div>
     <div class="brand-dcp"  id="brandDcp">Deck Cargo Plan</div>
     <div class="brand-sub"  id="brandSub">PSV · SPICA TIDE · NEO Energy · North Sea</div>
     <!-- Admin edit trigger — pencil icon, appears on hover -->
@@ -206,7 +179,7 @@
     <div class="voy-card">
       <div class="voy-row">
         <span class="voy-lbl">Voyage</span>
-        <input class="voy-input" type="text" id="voyIn" placeholder="NN/074/26">
+        <input class="voy-input" type="text" id="voyIn" placeholder="Voyage No.">
       </div>
       <div class="voy-row">
         <span class="voy-lbl">Date</span>
@@ -513,9 +486,7 @@
   </div>
 </div>
 
-<!-- DG + WARN -->
-<div class="dg-bar"><span class="dg-bar-lbl">DG on board:</span><span class="dg-empty" id="dgSumContent">none</span></div>
-<div class="dgw" id="dgW"><b>⚠ DG Segregation:</b>&nbsp;<span id="dgWTxt"></span></div>
+<!-- DG bar removed — segregation handled via modal only -->
 
 <!-- ZOOM -->
 <div class="zoom-bar">
@@ -1028,6 +999,78 @@
 
       <!-- Section: Actions -->
       <!-- Section: Visual Effects -->
+      <!-- Section: Sound — 3-level hierarchy -->
+      <div class="st-sec-hdr">Sound</div>
+
+      <!-- Master row -->
+      <div class="st-row snd-master-row" id="sndMasterRow">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 6h2l3-3v10l-3-3H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" stroke="var(--acc)" stroke-width="1.2" fill="none"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5" stroke="var(--acc)" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="st-row-body" style="cursor:pointer" id="sndMasterExpand">
+          <div class="st-row-title">Sound Effects <span class="snd-chv" id="sndMasterChv">&#9660;</span></div>
+          <div class="st-row-desc">9 sounds &middot; 3 categories &middot; click to expand</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <input type="range" id="stSoundVolume" min="0" max="100" value="70" style="flex:1;height:3px;accent-color:var(--acc);">
+            <span id="stSoundVolLabel" style="font-size:9px;color:var(--txt4);font-family:'JetBrains Mono',monospace;width:28px;text-align:right;">70%</span>
+          </div>
+        </div>
+        <label class="st-toggle" title="Master Sound ON/OFF">
+          <input type="checkbox" id="stSoundToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Expandable sub-panel -->
+      <div class="snd-sub-panel" id="sndSubPanel">
+
+        <!-- Basic Sounds -->
+        <div class="snd-cat" id="sndCat-basic">
+          <div class="snd-cat-hd" id="sndCatHd-basic">
+            <span class="snd-dot" style="background:#3ea36a"></span>
+            <span class="snd-cat-title">Basic Sounds</span>
+            <span class="snd-badge" id="sndBadge-basic">4/4</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-basic" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+          </div>
+          <div class="snd-cat-body" id="sndCatBody-basic">
+            <div class="snd-item"><span class="snd-emoji">📦</span><span class="snd-name">Cargo Drop</span><button class="snd-preview" data-snd="drop">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-drop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">🗑️</span><span class="snd-name">Cargo Remove</span><button class="snd-preview" data-snd="remove">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-remove" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">⚠️</span><span class="snd-name">DG Warning</span><button class="snd-preview" data-snd="warning">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-warning" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">💾</span><span class="snd-name">Save Plan</span><button class="snd-preview" data-snd="save">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-save" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          </div>
+        </div>
+
+        <!-- Ambient -->
+        <div class="snd-cat" id="sndCat-ambient">
+          <div class="snd-cat-hd" id="sndCatHd-ambient">
+            <span class="snd-dot" style="background:#c89a38"></span>
+            <span class="snd-cat-title">Ambient & Context</span>
+            <span class="snd-badge" id="sndBadge-ambient">3/3</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-ambient" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+          </div>
+          <div class="snd-cat-body" id="sndCatBody-ambient" style="display:none">
+            <div class="snd-item"><span class="snd-emoji">🌊</span><span class="snd-name">Ocean Ambient</span><button class="snd-preview" data-snd="ocean">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-ocean" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">☢️</span><span class="snd-name">DG Placement</span><button class="snd-preview" data-snd="dgDrop">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-dgDrop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">⚖️</span><span class="snd-name">Overweight</span><button class="snd-preview" data-snd="overweight">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-overweight" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          </div>
+        </div>
+
+        <!-- Advanced -->
+        <div class="snd-cat" id="sndCat-advanced">
+          <div class="snd-cat-hd" id="sndCatHd-advanced">
+            <span class="snd-dot" style="background:#c0392b"></span>
+            <span class="snd-cat-title">Advanced / Voice</span>
+            <span class="snd-badge" id="sndBadge-advanced">2/2</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-advanced" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+          </div>
+          <div class="snd-cat-body" id="sndCatBody-advanced" style="display:none">
+            <div class="snd-item"><span class="snd-emoji">🗣️</span><span class="snd-name">Voice Alert</span><button class="snd-preview" data-snd="voice">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-voice" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">📻</span><span class="snd-name">VHF Radio</span><button class="snd-preview" data-snd="radio">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-radio" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          </div>
+        </div>
+
+      </div>
+
       <div class="st-sec-hdr">Visual Effects</div>
 
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Corner Badges</div><div class="st-row-desc">DG class / status badge on cargo block corners</div></div><label class="st-toggle"><input type="checkbox" id="stCornerBadges"><div class="st-track"><div class="st-thumb"></div></div></label></div>

@@ -1851,7 +1851,7 @@ function renderBlock(cv,cargo){
   const dgd=cargo.dgClass?DG_DATA.find(d=>d.cls===cargo.dgClass):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
 
-  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();}));
+  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
   b.appendChild(mkBtn('cb-rot','↻',e=>{
     e.stopPropagation();
     const cx=cargo.x+cargo.w/2,cy=cargo.y+cargo.h/2;
@@ -1935,7 +1935,7 @@ function renderBlock(cv,cargo){
               renderAll();
               if(bouncePos) triggerBounceAnim(cargo.id);
               updateStats();buildActiveLocStrip();
-              checkSeg();save();if(typeof setLastAction==='function')setLastAction('Moved '+(cargo.ccu||cargo.desc||'cargo'));}else{ kbSelect(cargo.id); openModal(cargo.id); }
+              checkSeg();save();playSound('drop');if(typeof setLastAction==='function')setLastAction('Moved '+(cargo.ccu||cargo.desc||'cargo'));}else{ kbSelect(cargo.id); openModal(cargo.id); }
     };
     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
@@ -2028,7 +2028,7 @@ const hintEl=document.getElementById('emptyDeckHint');if(hintEl){hintEl.classLis
 /* V9: Status bar update */
 if(typeof updateStatusBar==='function') updateStatusBar();
 }
-function updateDGSummary(){const counts={};S.cargo.filter(c=>c.dgClass).forEach(c=>{counts[c.dgClass]=(counts[c.dgClass]||0)+1;});const el=document.getElementById('dgSumContent');const entries=Object.entries(counts);if(!entries.length){el.className='dg-empty';el.innerHTML='none';return;}el.className='';el.innerHTML=entries.map(([cls,n])=>{const dg=DG_DATA.find(d=>d.cls===cls);return`<span class="dg-sum-item" style="background:${dg?.bg||'#888'};color:${dg?.tc||'#fff'};border-color:${dg?.bc||'#888'};">◆${cls} ×${n}</span>`;}).join('');}
+function updateDGSummary(){/* DG summary bar removed — function kept as no-op for callers */}
 /* ════════════════════════════════════════════════════════════
    DG AUTO-SEGREGATION CHECK ENGINE  v38.8
    
@@ -2119,8 +2119,6 @@ function acknowledgeDGCheck(){
   const ov = document.getElementById('dgCheckOv');
   if(ov) ov.classList.remove('open');
   clearDGViolationHighlights();
-  const wBar = document.getElementById('dgW');
-  if(wBar) wBar.classList.remove('on');
 }
 
 /* When a cargo block is deleted: evict all pairs that reference its ID
@@ -2185,11 +2183,7 @@ function checkSeg(){
   const newViolations = violations.filter(v => !DG_ACK_PAIRS.has(v.key));
   const ackViolations = violations.filter(v =>  DG_ACK_PAIRS.has(v.key));
 
-  /* ── 4. Legacy bar — only shows if there are NEW (unacknowledged) violations ── */
-  const wTxt = document.getElementById('dgWTxt');
-  const wBar = document.getElementById('dgW');
-  if(wTxt) wTxt.textContent = legacyWarns.join(' | ');
-  if(wBar) wBar.classList.toggle('on', newViolations.length > 0);
+  /* Legacy DG warning bar removed */
 
   /* ── 5. Feature disabled → clear and exit ── */
   if(!SMART.dgSeg){
@@ -2226,6 +2220,9 @@ function checkSeg(){
       }
     });
   });
+
+  /* Play DG warning sound if new violations found */
+  if(newViolations.length > 0) playSound('warning');
 
   /* ── 9. Build and show modal for NEW violations only ── */
   const ov   = document.getElementById('dgCheckOv');
@@ -2960,7 +2957,7 @@ function importLegacy(raw) {
   return {
     _schema: PLAN_SCHEMA_CURRENT,
     _savedAt: new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
     _legacyScaleWarn: needsScaleWarn,
     name: raw.voyage || 'Imported Plan',
     plan: {
@@ -3132,7 +3129,7 @@ function _buildEnvelope() {
   return {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3454,7 +3451,7 @@ function savePlan(key) {
   const envelope = {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v38.20'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -4675,9 +4672,9 @@ async function buildPDF(deckCanvas, data){
   };
   cell('Voyage',voyageNum,ML+82,C.navy); cell('Date',dateStr,ML+122,C.ink);
   doc.setDrawColor(...C.brd); doc.line(ML+160,y+4,ML+160,y+HDR_H-4);
-  [{lbl:'Total Lifts',val:String(lifts),col:C.ink,dx:0},{lbl:'Load',val:String(loadCount),col:C.green,dx:32},
-   {lbl:'Backload',val:String(blCount),col:C.navy,dx:58},{lbl:'ROB',val:String(robCount),col:C.amber,dx:82},
-   {lbl:'Weight',val:weightStr,col:C.ink2,dx:106}].forEach(s=>cell(s.lbl,s.val,ML+165+s.dx,s.col));
+  [{lbl:'Total Lifts',val:String(lifts),col:C.ink,dx:0},{lbl:'Load',val:String(loadCount),col:C.green,dx:34},
+   {lbl:'Backload',val:String(blCount),col:C.navy,dx:68},{lbl:'ROB',val:String(robCount),col:C.amber,dx:100}
+  ].forEach(s=>cell(s.lbl,s.val,ML+165+s.dx,s.col));
   y += HDR_H+3;
 
   /* 2. LOCATIONS — enlarged for print readability */
@@ -6688,6 +6685,8 @@ const SMART_DEFAULTS = {
   btnMicro:      true,  /* Button micro-interactions */
   deckShadow:    true,  /* Deck edge shadow */
   customScroll:  true,  /* Custom scrollbar styling */
+  soundEnabled:  true,  /* Sound effects on/off */
+  soundVolume:   70,    /* Master volume 0-100 */
 };
 
 let SMART = { ...SMART_DEFAULTS };
@@ -7135,6 +7134,9 @@ function bindSmartTools(){
   const gridSnapChk     = document.getElementById('stGridSnapToggle');
   const kbShortcutsChk  = document.getElementById('stKbShortcutsToggle');
   const locHighlightChk = document.getElementById('stLocHighlightToggle');
+  const soundChk        = document.getElementById('stSoundToggle');
+  const soundVolSlider  = document.getElementById('stSoundVolume');
+  const soundVolLabel   = document.getElementById('stSoundVolLabel');
   const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
   const emptyHintChk    = document.getElementById('stEmptyHintToggle');
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
@@ -7150,6 +7152,8 @@ function bindSmartTools(){
   if(gridSnapChk)    gridSnapChk.checked    = SMART.gridSnap;
   if(kbShortcutsChk) kbShortcutsChk.checked = SMART.kbShortcuts;
   if(locHighlightChk) locHighlightChk.checked = SMART.locHighlight;
+  if(soundChk) soundChk.checked = SMART.soundEnabled;
+  if(soundVolSlider){ soundVolSlider.value = SMART.soundVolume; if(soundVolLabel) soundVolLabel.textContent = SMART.soundVolume+'%'; }
   if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
   if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
@@ -7229,6 +7233,79 @@ function bindSmartTools(){
     saveSmartSettings();
     updateSmartDot();
     if(!SMART.locHighlight && LOC_FILTER) clearLocFilter();
+  });
+
+  /* ── Sound Settings — 3-level hierarchy wiring ── */
+  if(soundChk) soundChk.addEventListener('change', () => {
+    SMART.soundEnabled = soundChk.checked;
+    saveSmartSettings(); updateSmartDot();
+    const subPanel = document.getElementById('sndSubPanel');
+    if(subPanel) subPanel.classList.toggle('disabled', !SMART.soundEnabled);
+    if(_sndMaster) _sndMaster.gain.setTargetAtTime(SMART.soundEnabled ? SMART.soundVolume/100 : 0, _sndCtx?.currentTime||0, 0.05);
+    if(SMART.soundEnabled) playSound('save');
+  });
+  if(soundVolSlider) soundVolSlider.addEventListener('input', () => {
+    SMART.soundVolume = parseInt(soundVolSlider.value);
+    if(soundVolLabel) soundVolLabel.textContent = SMART.soundVolume+'%';
+    if(_sndMaster && SMART.soundEnabled) _sndMaster.gain.setTargetAtTime(SMART.soundVolume/100, _sndCtx.currentTime, 0.03);
+    saveSmartSettings();
+  });
+  /* Master expand/collapse */
+  const sndExpand = document.getElementById('sndMasterExpand');
+  const sndPanel = document.getElementById('sndSubPanel');
+  const sndChv = document.getElementById('sndMasterChv');
+  if(sndExpand && sndPanel) sndExpand.addEventListener('click', e => {
+    if(e.target.tagName === 'INPUT') return;
+    sndPanel.classList.toggle('open');
+    if(sndChv) sndChv.classList.toggle('open', sndPanel.classList.contains('open'));
+  });
+  /* Category expand/collapse + toggle */
+  ['basic','ambient','advanced'].forEach(cat => {
+    const hd = document.getElementById('sndCatHd-'+cat);
+    const bd = document.getElementById('sndCatBody-'+cat);
+    const tgl = document.getElementById('sndCatTgl-'+cat);
+    if(hd && bd) hd.addEventListener('click', e => {
+      if(e.target.tagName === 'INPUT' || e.target.closest('.st-toggle')) return;
+      bd.style.display = bd.style.display === 'none' ? '' : 'none';
+    });
+    if(tgl) {
+      tgl.checked = _sndCats[cat].on;
+      tgl.addEventListener('change', () => {
+        _sndCats[cat].on = tgl.checked;
+        const catEl = document.getElementById('sndCat-'+cat);
+        if(catEl) catEl.classList.toggle('disabled', !tgl.checked);
+        _sndUpdateBadge(cat);
+        _sndSaveSettings();
+      });
+    }
+  });
+  /* Individual sound toggles + preview buttons */
+  Object.keys(_sndState).forEach(id => {
+    const tgl = document.getElementById('sndTgl-'+id);
+    if(tgl) {
+      tgl.checked = _sndState[id];
+      tgl.addEventListener('change', () => {
+        _sndState[id] = tgl.checked;
+        _sndUpdateBadge(_sndCatMap[id]);
+        _sndSaveSettings();
+      });
+    }
+  });
+  document.querySelectorAll('.snd-preview').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.snd;
+      if(id) { try{ _sndInit(); if(soundFns[id]) soundFns[id](); }catch(e){} }
+    });
+  });
+  /* Load saved sound settings */
+  _sndLoadSettings();
+  /* Apply disabled states */
+  if(sndPanel && !SMART.soundEnabled) sndPanel.classList.add('disabled');
+  ['basic','ambient','advanced'].forEach(cat => {
+    _sndUpdateBadge(cat);
+    const catEl = document.getElementById('sndCat-'+cat);
+    if(catEl && !_sndCats[cat].on) catEl.classList.add('disabled');
   });
 
   if(weightGaugeChk) weightGaugeChk.addEventListener('change', () => {
@@ -7648,9 +7725,9 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v38.20';
-const APP_VERSION   = '1.0.0';
-const BUILD_NUMBER  = '38.20';
+const CURRENT_BUILD = 'v1.8.0';
+const APP_VERSION   = '1.8.0';
+const BUILD_NUMBER  = '40';
 const RELEASE_CHANNEL = 'Beta';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -8073,6 +8150,72 @@ function _scheduleUpdateCheck(){
   }
 }
 
+/* ══════════════════════════════════════════════════════════
+   SOUND ENGINE v3 — 3-level hierarchy: Master → Category → Individual
+   Apple-inspired organic synthesis. 9 sounds. Ambient loop.
+══════════════════════════════════════════════════════════ */
+let _sndCtx=null, _sndMaster=null, _sndAnalyser=null;
+const _sndCats={basic:{on:true,sounds:['drop','remove','warning','save']},ambient:{on:true,sounds:['ocean','dgDrop','overweight']},advanced:{on:true,sounds:['voice','radio']}};
+const _sndState={drop:true,remove:true,warning:true,save:true,ocean:true,dgDrop:true,overweight:true,voice:true,radio:true};
+const _sndCatMap={drop:'basic',remove:'basic',warning:'basic',save:'basic',ocean:'ambient',dgDrop:'ambient',overweight:'ambient',voice:'advanced',radio:'advanced'};
+let _ambNodes=null;
+
+function _sndInit(){
+  if(!_sndCtx){_sndCtx=new(window.AudioContext||window.webkitAudioContext)();_sndMaster=_sndCtx.createGain();_sndMaster.gain.value=SMART.soundVolume/100;_sndMaster.connect(_sndCtx.destination);}
+  if(_sndCtx.state==='suspended')_sndCtx.resume();
+}
+function canPlaySound(id){if(!SMART.soundEnabled)return false;const c=_sndCatMap[id];if(!_sndCats[c].on)return false;if(!_sndState[id])return false;return true;}
+function softTone(freq,{start=0,attack=0.04,hold=0,decay=0.3,peak=0.2,type='sine',detune=0}={}){const t=start+_sndCtx.currentTime;const o=_sndCtx.createOscillator(),g=_sndCtx.createGain();o.type=type;o.frequency.value=freq;if(detune)o.detune.value=detune;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+attack);if(hold>0)g.gain.setValueAtTime(peak,t+attack+hold);g.gain.setTargetAtTime(0.0001,t+attack+hold,decay/4);o.connect(g);g.connect(_sndMaster);o.start(t);o.stop(t+attack+hold+decay+0.1);}
+function softNoise({start=0,attack=0.03,hold=0,decay=0.25,peak=0.08,filterFreq=800,filterQ=1,filterType='bandpass'}={}){const t=start+_sndCtx.currentTime;const dur=attack+hold+decay+0.1;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.1)*0.98;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type=filterType;filt.frequency.value=filterFreq;filt.Q.value=filterQ;const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+attack);if(hold>0)g.gain.setValueAtTime(peak,t+attack+hold);g.gain.setTargetAtTime(0.0001,t+attack+hold,decay/4);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);}
+function addTail(freq,delay,vol,tailDecay){softTone(freq,{start:delay,attack:0.01,decay:tailDecay,peak:vol});}
+
+const soundFns={
+  drop(){softTone(150,{attack:0.008,decay:0.35,peak:0.30});softTone(75,{attack:0.012,decay:0.45,peak:0.18});softTone(220,{attack:0.005,decay:0.15,peak:0.06,detune:-15});softNoise({attack:0.003,decay:0.08,peak:0.06,filterFreq:300,filterType:'lowpass'});addTail(75,0.12,0.04,0.5);addTail(150,0.08,0.03,0.4);},
+  remove(){const t=_sndCtx.currentTime,dur=0.4;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.08)*0.99;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type='bandpass';filt.Q.value=0.8;filt.frequency.setValueAtTime(300,t);filt.frequency.exponentialRampToValueAtTime(2500,t+0.25);filt.frequency.setTargetAtTime(600,t+0.25,0.08);const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.12,t+0.06);g.gain.setTargetAtTime(0.0001,t+0.2,0.06);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);softTone(1800,{attack:0.05,decay:0.2,peak:0.02});softTone(2400,{attack:0.07,decay:0.18,peak:0.012,detune:8});},
+  warning(){softTone(587,{start:0,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(587*2,{start:0,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(698,{start:0.18,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(698*2,{start:0.18,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(587,{start:0.36,attack:0.04,hold:0.06,decay:0.35,peak:0.12});softTone(294,{start:0,attack:0.06,decay:0.6,peak:0.06});},
+  save(){[{f:523,s:0,p:0.14},{f:659,s:0.07,p:0.12},{f:784,s:0.14,p:0.10}].forEach(n=>{softTone(n.f,{start:n.s,attack:0.03,decay:0.45,peak:n.p});softTone(n.f*2,{start:n.s,attack:0.04,decay:0.3,peak:n.p*0.12,detune:3});addTail(n.f,n.s+0.15,n.p*0.08,0.6);});softTone(262,{start:0,attack:0.06,decay:0.6,peak:0.04});},
+  dgDrop(){soundFns.drop();softTone(93,{start:0.2,attack:0.15,decay:0.8,peak:0.06});softTone(139,{start:0.2,attack:0.18,decay:0.7,peak:0.04});for(let i=0;i<6;i++){const d=0.3+Math.random()*0.6;softTone(3000+Math.random()*1500,{start:d,attack:0.001,decay:0.02,peak:0.015+Math.random()*0.01});}},
+  overweight(){softTone(70,{attack:0.25,hold:0.3,decay:1.0,peak:0.18});softTone(71.5,{attack:0.28,hold:0.28,decay:0.9,peak:0.12});softTone(140,{attack:0.3,hold:0.2,decay:0.8,peak:0.05});softNoise({attack:0.2,hold:0.25,decay:0.8,peak:0.04,filterFreq:200,filterQ:0.5,filterType:'lowpass'});addTail(70,0.8,0.03,1.2);},
+  voice(){if(!('speechSynthesis' in window))return;softTone(880,{attack:0.05,decay:0.3,peak:0.06});softTone(1320,{attack:0.06,decay:0.25,peak:0.03});setTimeout(()=>{const u=new SpeechSynthesisUtterance('DG segregation violation, Bay 4');u.rate=0.92;u.pitch=0.85;u.volume=SMART.soundEnabled?Math.min(SMART.soundVolume/100*1.2,1):0;const voices=speechSynthesis.getVoices();const v=voices.find(v=>v.lang.startsWith('en')&&/female|samantha/i.test(v.name))||voices.find(v=>v.lang.startsWith('en'));if(v)u.voice=v;speechSynthesis.speak(u);},350);},
+  radio(){const t=_sndCtx.currentTime;const sDur=0.45;const sBuf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*sDur,_sndCtx.sampleRate);const sD=sBuf.getChannelData(0);let sL=0;for(let i=0;i<sD.length;i++){sL=(sL+(Math.random()*2-1)*0.12)*0.97;sD[i]=sL;}const sSrc=_sndCtx.createBufferSource();sSrc.buffer=sBuf;const sF=_sndCtx.createBiquadFilter();sF.type='bandpass';sF.frequency.value=1800;sF.Q.value=0.6;const sG=_sndCtx.createGain();sG.gain.setValueAtTime(0.0001,t);sG.gain.exponentialRampToValueAtTime(0.1,t+0.08);sG.gain.setTargetAtTime(0.02,t+0.1,0.1);sG.gain.setTargetAtTime(0.0001,t+0.35,0.04);sSrc.connect(sF);sF.connect(sG);sG.connect(_sndMaster);sSrc.start(t);sSrc.stop(t+sDur);softTone(1100,{attack:0.01,decay:0.06,peak:0.05});setTimeout(()=>{if(!('speechSynthesis' in window))return;const u=new SpeechSynthesisUtterance('Cargo status update, all bays secured');u.rate=1.0;u.pitch=0.75;u.volume=SMART.soundEnabled?Math.min(SMART.soundVolume/100*0.85,1):0;speechSynthesis.speak(u);},450);setTimeout(()=>{softNoise({attack:0.02,hold:0.05,decay:0.2,peak:0.06,filterFreq:2000,filterQ:0.5});softTone(1100,{start:0.02,attack:0.005,decay:0.05,peak:0.04});},2200);}
+};
+
+function _sndStopAmb(){if(!_ambNodes)return;try{_ambNodes.waveSrc.stop();_ambNodes.waveLFO.stop();_ambNodes.windSrc.stop();_ambNodes.windLFO.stop();}catch(e){}_ambNodes=null;}
+
+function playSound(type){
+  if(!canPlaySound(type)) return;
+  try{_sndInit();if(soundFns[type])soundFns[type]();}catch(e){}
+}
+if('speechSynthesis' in window){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();}
+
+function _sndUpdateBadge(cat){
+  const sounds=_sndCats[cat].sounds;
+  const on=sounds.filter(s=>_sndState[s]).length;
+  const badge=document.getElementById('sndBadge-'+cat);
+  if(!badge)return;
+  badge.textContent=on+'/'+sounds.length;
+  badge.className='snd-badge'+(on===sounds.length?'':on===0?' none':' some');
+}
+function _sndSaveSettings(){
+  try{
+    localStorage.setItem('spicaTide_soundSettings',JSON.stringify({
+      cats:{basic:_sndCats.basic.on,ambient:_sndCats.ambient.on,advanced:_sndCats.advanced.on},
+      sounds:_sndState
+    }));
+  }catch(e){}
+}
+function _sndLoadSettings(){
+  try{
+    const d=JSON.parse(localStorage.getItem('spicaTide_soundSettings')||'null');
+    if(!d)return;
+    if(d.cats){['basic','ambient','advanced'].forEach(c=>{if(typeof d.cats[c]==='boolean')_sndCats[c].on=d.cats[c];});}
+    if(d.sounds){Object.keys(_sndState).forEach(s=>{if(typeof d.sounds[s]==='boolean')_sndState[s]=d.sounds[s];});}
+    /* Sync UI toggles */
+    ['basic','ambient','advanced'].forEach(c=>{const t=document.getElementById('sndCatTgl-'+c);if(t)t.checked=_sndCats[c].on;});
+    Object.keys(_sndState).forEach(s=>{const t=document.getElementById('sndTgl-'+s);if(t)t.checked=_sndState[s];});
+  }catch(e){}
+}
+
 function init(){
   bindMenuBar();
   bindAboutModal();
@@ -8177,7 +8320,36 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   bindAutosaveToggle();
   _updateSaveIndicator();
 
-  /* ── Unsaved changes warning on window close ── */
+  /* ── Close confirmation — Tauri native dialog + browser fallback ── */
+  if(window.__TAURI__){
+    /* Tauri: intercept close request, show native confirm dialog */
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        await win.onCloseRequested(async (event) => {
+          event.preventDefault();
+          try {
+            const dlg = await import('@tauri-apps/plugin-dialog');
+            const msg = S.cargo.length > 0
+              ? 'You have ' + S.cargo.length + ' cargo items on deck. Unsaved changes will be lost.'
+              : 'Are you sure you want to close the application?';
+            const confirmed = await dlg.ask(msg, {
+              title: 'Confirm Exit',
+              kind: 'warning',
+              okLabel: 'Exit',
+              cancelLabel: 'Cancel'
+            });
+            if(confirmed) await win.destroy();
+          } catch(e){
+            /* If dialog fails, allow close */
+            await win.destroy();
+          }
+        });
+      } catch(e){ /* fallback to beforeunload if Tauri API unavailable */ }
+    })();
+  }
+  /* Browser fallback */
   window.addEventListener('beforeunload', e => {
     if(_dirty){
       e.preventDefault();
@@ -8228,6 +8400,7 @@ function _showSaveState(state){
 function _markSaved(){
   _dirty = false;
   _updateSaveIndicator();
+  playSound('save');
 }
 
 /* ── Manual Save (Cmd+S) — overwrite or dialog ────────── */

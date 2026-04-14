@@ -3,3 +3,5 @@ node_modules/
 dist/
 src-tauri/target/
 node_modules/.vite/
+CLAUDE.local.md
+.claude/settings.local.json
