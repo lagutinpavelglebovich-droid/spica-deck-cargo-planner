@@ -92,29 +92,49 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
 
-          SIG=$(cat "$NSIS_SIG_FILE")
+          # Validate required artifacts exist
+          if [ -z "$NSIS_SIG_FILE" ] || [ ! -f "$NSIS_SIG_FILE" ]; then
+            echo "::error::NSIS signature file not found: '$NSIS_SIG_FILE'"
+            echo "Updater artifacts may not have been generated."
+            echo "Check that TAURI_SIGNING_PRIVATE_KEY secret is set and createUpdaterArtifacts is true."
+            exit 1
+          fi
+          if [ -z "$NSIS_ZIP_NAME" ]; then
+            echo "::error::NSIS zip filename is empty — artifact discovery failed"
+            exit 1
+          fi
+
+          # Read signature — strip whitespace/newlines to keep JSON safe
+          SIG=$(tr -d '\n\r ' < "$NSIS_SIG_FILE")
+          if [ -z "$SIG" ]; then
+            echo "::error::Signature file is empty: $NSIS_SIG_FILE"
+            exit 1
+          fi
+
           URL="https://github.com/${REPO}/releases/download/${TAG}/${NSIS_ZIP_NAME}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          cat > latest.json << ENDJSON
-          {
-            "version": "${VERSION}",
-            "notes": "SPICA TIDE ${TAG}",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "windows-x86_64-nsis": {
-                "signature": "${SIG}",
-                "url": "${URL}"
+          # Generate JSON with node to avoid heredoc quoting issues
+          node -e "
+            const j = {
+              version: '${VERSION}',
+              notes: 'SPICA TIDE ${TAG}',
+              pub_date: '${PUB_DATE}',
+              platforms: {
+                'windows-x86_64': {
+                  signature: process.argv[1],
+                  url: '${URL}'
+                }
               }
-            }
-          }
-          ENDJSON
+            };
+            require('fs').writeFileSync('latest.json', JSON.stringify(j, null, 2));
+            console.log('latest.json written');
+          " "$SIG"
 
           echo "=== Generated latest.json ==="
           cat latest.json
-          echo ""
 
-          # Validate JSON
+          # Validate JSON parses correctly
           node -e "JSON.parse(require('fs').readFileSync('latest.json','utf8')); console.log('JSON valid')"
 
       - name: Create GitHub Release
