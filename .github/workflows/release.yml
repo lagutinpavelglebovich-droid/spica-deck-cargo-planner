@@ -151,7 +151,8 @@ jobs:
             exit 1
           fi
 
-          URL="https://github.com/${REPO}/releases/download/${TAG}/${NSIS_ZIP_NAME}"
+          ENCODED_NAME=$(python -c "import urllib.parse; print(urllib.parse.quote('${NSIS_ZIP_NAME}'))")
+          URL="https://github.com/${REPO}/releases/download/${TAG}/${ENCODED_NAME}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           # Generate JSON with node to avoid heredoc quoting issues
