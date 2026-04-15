@@ -52,6 +52,7 @@ jobs:
       - name: Build Tauri app
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --verbose --target x86_64-pc-windows-msvc
@@ -61,21 +62,35 @@ jobs:
         shell: bash
         run: |
           BUNDLE_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
-          echo "=== Bundle directory ==="
-          ls -la "$BUNDLE_DIR"
+
+          echo "=== Bundle directory contents ==="
+          ls -la "$BUNDLE_DIR" || { echo "::error::Bundle directory not found: $BUNDLE_DIR"; exit 1; }
+          echo ""
+
+          echo "=== All files recursively ==="
+          find "$BUNDLE_DIR" -type f
+          echo ""
 
           NSIS_ZIP=$(find "$BUNDLE_DIR" -name "*.nsis.zip" | head -1)
           NSIS_SIG=$(find "$BUNDLE_DIR" -name "*.nsis.zip.sig" | head -1)
           EXE=$(find "$BUNDLE_DIR" -name "*.exe" ! -name "*.nsis.*" | head -1)
           EXE_SIG=$(find "$BUNDLE_DIR" -name "*.exe.sig" | head -1)
 
+          echo "Found: EXE=$EXE"
+          echo "Found: NSIS_ZIP=$NSIS_ZIP"
+          echo "Found: NSIS_SIG=$NSIS_SIG"
+          echo "Found: EXE_SIG=$EXE_SIG"
+
+          if [ -z "$NSIS_ZIP" ]; then echo "::warning::No .nsis.zip found — updater bundle missing"; fi
+          if [ -z "$NSIS_SIG" ]; then echo "::warning::No .nsis.zip.sig found — signing may have failed"; fi
+
           echo "NSIS_ZIP=$NSIS_ZIP" >> $GITHUB_OUTPUT
           echo "NSIS_SIG=$NSIS_SIG" >> $GITHUB_OUTPUT
           echo "EXE=$EXE" >> $GITHUB_OUTPUT
           echo "EXE_SIG=$EXE_SIG" >> $GITHUB_OUTPUT
 
-          NSIS_ZIP_NAME=$(basename "$NSIS_ZIP")
-          EXE_NAME=$(basename "$EXE")
+          NSIS_ZIP_NAME=$(basename "$NSIS_ZIP" 2>/dev/null || echo "")
+          EXE_NAME=$(basename "$EXE" 2>/dev/null || echo "")
           echo "NSIS_ZIP_NAME=$NSIS_ZIP_NAME" >> $GITHUB_OUTPUT
           echo "EXE_NAME=$EXE_NAME" >> $GITHUB_OUTPUT
 
@@ -151,7 +166,6 @@ jobs:
           ### Update
           Running installations will automatically detect this update." \
             "${{ steps.artifacts.outputs.EXE }}" \
-            "${{ steps.artifacts.outputs.EXE_SIG }}" \
             "${{ steps.artifacts.outputs.NSIS_ZIP }}" \
             "${{ steps.artifacts.outputs.NSIS_SIG }}" \
             latest.json \
