@@ -61,33 +61,56 @@ jobs:
         id: artifacts
         shell: bash
         run: |
-          BUNDLE_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          TARGET_DIR="src-tauri/target"
 
-          echo "=== Bundle directory contents ==="
-          ls -la "$BUNDLE_DIR" || { echo "::error::Bundle directory not found: $BUNDLE_DIR"; exit 1; }
+          echo "=== Searching entire target tree for bundle artifacts ==="
+          echo ""
+          echo "--- All .exe files ---"
+          find "$TARGET_DIR" -name "*.exe" -path "*/bundle/*" 2>/dev/null || echo "(none)"
+          echo ""
+          echo "--- All .nsis.zip files ---"
+          find "$TARGET_DIR" -name "*.nsis.zip" 2>/dev/null || echo "(none)"
+          echo ""
+          echo "--- All .nsis.zip.sig files ---"
+          find "$TARGET_DIR" -name "*.nsis.zip.sig" 2>/dev/null || echo "(none)"
+          echo ""
+          echo "--- All .sig files ---"
+          find "$TARGET_DIR" -name "*.sig" 2>/dev/null || echo "(none)"
+          echo ""
+          echo "--- All bundle directories ---"
+          find "$TARGET_DIR" -type d -name "bundle" 2>/dev/null | while read d; do
+            echo "  $d:"
+            ls -la "$d"/ 2>/dev/null
+            for sub in "$d"/*/; do
+              [ -d "$sub" ] && echo "    $(basename "$sub"):" && ls -la "$sub" 2>/dev/null
+            done
+          done
           echo ""
 
-          echo "=== All files recursively ==="
-          find "$BUNDLE_DIR" -type f
-          echo ""
+          # Search entire target tree — not just one hardcoded path
+          EXE=$(find "$TARGET_DIR" -name "*setup*.exe" -path "*/bundle/nsis/*" ! -name "*.nsis.*" 2>/dev/null | head -1)
+          NSIS_ZIP=$(find "$TARGET_DIR" -name "*.nsis.zip" 2>/dev/null | head -1)
+          NSIS_SIG=$(find "$TARGET_DIR" -name "*.nsis.zip.sig" 2>/dev/null | head -1)
 
-          NSIS_ZIP=$(find "$BUNDLE_DIR" -name "*.nsis.zip" | head -1)
-          NSIS_SIG=$(find "$BUNDLE_DIR" -name "*.nsis.zip.sig" | head -1)
-          EXE=$(find "$BUNDLE_DIR" -name "*.exe" ! -name "*.nsis.*" | head -1)
-          EXE_SIG=$(find "$BUNDLE_DIR" -name "*.exe.sig" | head -1)
+          echo "Resolved: EXE=$EXE"
+          echo "Resolved: NSIS_ZIP=$NSIS_ZIP"
+          echo "Resolved: NSIS_SIG=$NSIS_SIG"
 
-          echo "Found: EXE=$EXE"
-          echo "Found: NSIS_ZIP=$NSIS_ZIP"
-          echo "Found: NSIS_SIG=$NSIS_SIG"
-          echo "Found: EXE_SIG=$EXE_SIG"
-
-          if [ -z "$NSIS_ZIP" ]; then echo "::warning::No .nsis.zip found — updater bundle missing"; fi
-          if [ -z "$NSIS_SIG" ]; then echo "::warning::No .nsis.zip.sig found — signing may have failed"; fi
+          if [ -z "$EXE" ]; then
+            echo "::error::No installer .exe found anywhere in target tree"
+            exit 1
+          fi
+          if [ -z "$NSIS_ZIP" ]; then
+            echo "::warning::No .nsis.zip found — updater bundle not generated"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY length: ${#TAURI_SIGNING_PRIVATE_KEY}"
+          fi
+          if [ -z "$NSIS_SIG" ]; then
+            echo "::warning::No .nsis.zip.sig found — signing did not produce signature"
+          fi
 
           echo "NSIS_ZIP=$NSIS_ZIP" >> $GITHUB_OUTPUT
           echo "NSIS_SIG=$NSIS_SIG" >> $GITHUB_OUTPUT
           echo "EXE=$EXE" >> $GITHUB_OUTPUT
-          echo "EXE_SIG=$EXE_SIG" >> $GITHUB_OUTPUT
 
           NSIS_ZIP_NAME=$(basename "$NSIS_ZIP" 2>/dev/null || echo "")
           EXE_NAME=$(basename "$EXE" 2>/dev/null || echo "")
@@ -96,6 +119,8 @@ jobs:
 
           echo "Installer: $EXE_NAME"
           echo "Updater bundle: $NSIS_ZIP_NAME"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
       - name: Build latest.json
         id: manifest
