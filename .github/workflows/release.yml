@@ -198,6 +198,8 @@ jobs:
             --latest
 
       - name: Verify release
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           echo "=== Release assets ==="
