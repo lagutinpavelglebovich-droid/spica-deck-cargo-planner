@@ -49,35 +49,110 @@ jobs:
           fi
           echo "Versions match: $TAG"
 
-      - name: Build Tauri release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'SPICA TIDE ${{ github.ref_name }}'
-          releaseBody: |
-            ## SPICA TIDE Deck Cargo Planner ${{ github.ref_name }}
+        run: npx tauri build --verbose --target x86_64-pc-windows-msvc
 
-            ### Update
-            Running installations will automatically detect this update.
-          releaseDraft: false
-          prerelease: false
-          args: --verbose --target x86_64-pc-windows-msvc
+      - name: Locate build artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          BUNDLE_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          echo "=== Bundle directory ==="
+          ls -la "$BUNDLE_DIR"
+
+          NSIS_ZIP=$(find "$BUNDLE_DIR" -name "*.nsis.zip" | head -1)
+          NSIS_SIG=$(find "$BUNDLE_DIR" -name "*.nsis.zip.sig" | head -1)
+          EXE=$(find "$BUNDLE_DIR" -name "*.exe" ! -name "*.nsis.*" | head -1)
+          EXE_SIG=$(find "$BUNDLE_DIR" -name "*.exe.sig" | head -1)
+
+          echo "NSIS_ZIP=$NSIS_ZIP" >> $GITHUB_OUTPUT
+          echo "NSIS_SIG=$NSIS_SIG" >> $GITHUB_OUTPUT
+          echo "EXE=$EXE" >> $GITHUB_OUTPUT
+          echo "EXE_SIG=$EXE_SIG" >> $GITHUB_OUTPUT
+
+          NSIS_ZIP_NAME=$(basename "$NSIS_ZIP")
+          EXE_NAME=$(basename "$EXE")
+          echo "NSIS_ZIP_NAME=$NSIS_ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "EXE_NAME=$EXE_NAME" >> $GITHUB_OUTPUT
+
+          echo "Installer: $EXE_NAME"
+          echo "Updater bundle: $NSIS_ZIP_NAME"
+
+      - name: Build latest.json
+        id: manifest
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NSIS_SIG_FILE="${{ steps.artifacts.outputs.NSIS_SIG }}"
+          NSIS_ZIP_NAME="${{ steps.artifacts.outputs.NSIS_ZIP_NAME }}"
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+
+          SIG=$(cat "$NSIS_SIG_FILE")
+          URL="https://github.com/${REPO}/releases/download/${TAG}/${NSIS_ZIP_NAME}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > latest.json << ENDJSON
+          {
+            "version": "${VERSION}",
+            "notes": "SPICA TIDE ${TAG}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "windows-x86_64-nsis": {
+                "signature": "${SIG}",
+                "url": "${URL}"
+              }
+            }
+          }
+          ENDJSON
+
+          echo "=== Generated latest.json ==="
+          cat latest.json
+          echo ""
+
+          # Validate JSON
+          node -e "JSON.parse(require('fs').readFileSync('latest.json','utf8')); console.log('JSON valid')"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+
+          gh release create "$TAG" \
+            --title "SPICA TIDE $TAG" \
+            --notes "## SPICA TIDE Deck Cargo Planner $TAG
+
+          ### Update
+          Running installations will automatically detect this update." \
+            "${{ steps.artifacts.outputs.EXE }}" \
+            "${{ steps.artifacts.outputs.EXE_SIG }}" \
+            "${{ steps.artifacts.outputs.NSIS_ZIP }}" \
+            "${{ steps.artifacts.outputs.NSIS_SIG }}" \
+            latest.json \
+            --latest
+
+      - name: Verify release
+        shell: bash
+        run: |
+          echo "=== Release assets ==="
+          gh release view ${{ github.ref_name }} --json assets --jq '.assets[].name'
+          echo ""
+          echo "=== latest.json content ==="
+          cat latest.json
 
       - name: Upload build logs on failure
         if: failure()
         shell: bash
         run: |
-          echo "=== Tauri build log ==="
-          cat src-tauri/target/x86_64-pc-windows-msvc/release/.cargo-lock 2>/dev/null || echo "No cargo lock"
-          echo "=== Last 100 lines of any build log ==="
-          find src-tauri/target -name "*.log" -exec tail -50 {} \; 2>/dev/null || echo "No log files found"
-          echo "=== NSIS output ==="
-          find src-tauri/target -name "nsis-output*" -exec cat {} \; 2>/dev/null || echo "No NSIS output"
           echo "=== dist/ contents ==="
           ls -la dist/ 2>/dev/null || echo "dist/ directory missing!"
           echo "=== Bundle output ==="
           find src-tauri/target -path "*/release/bundle/*" -type f 2>/dev/null || echo "No bundle output found"
+          echo "=== Cargo build errors ==="
+          find src-tauri/target -name "*.stderr" -exec cat {} \; 2>/dev/null || true

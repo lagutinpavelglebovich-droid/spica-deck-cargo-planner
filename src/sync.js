@@ -124,6 +124,8 @@ export async function testConnection() {
 ══════════════════════════════════════════════════════════ */
 export async function pushState(stateData) {
   if (!_cfg?.url || !_cfg?.db || _status === 'disabled') return false;
+  /* Viewer mode: never write to CouchDB */
+  if (typeof window !== 'undefined' && window.__spicaIsViewer && window.__spicaIsViewer()) return false;
 
   _setStatus('syncing');
   _emitActivity('push', 'start');
@@ -132,7 +134,7 @@ export async function pushState(stateData) {
     _id: SYNC_DOC_ID,
     timestamp: Date.now(),
     type: 'deck_plan',
-    version: '1.8.1',
+    version: '2.3.0',
     state: stateData
   };
   if (_rev) doc._rev = _rev;

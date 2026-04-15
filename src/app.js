@@ -8,6 +8,25 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as Sync from './sync.js';
+import { invoke } from '@tauri-apps/api/core';
+import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
+import { RELEASE_NOTES } from './releaseNotes.js';
+
+/* ════════════════════════════════════════════════════════════
+   OPERATOR / VIEWER MODE
+   Two-tier access: Operator (full edit) and Viewer (read-only).
+   Persists across restarts via localStorage.
+════════════════════════════════════════════════════════════ */
+const OPERATOR_PW = 'spica';
+let _currentMode = localStorage.getItem('spicaTideOperatorMode') || 'viewer';
+function isOperator(){ return _currentMode === 'operator'; }
+function setMode(mode){
+  _currentMode = mode;
+  localStorage.setItem('spicaTideOperatorMode', mode);
+  applyModeUI();
+}
+/* Expose viewer check for sync.js (ES module — avoids import coupling) */
+window.__spicaIsViewer = () => !isOperator();
 
 /* ════════════════════════════════════════════════════════════
    APP CONFIG — centralised settings layer
@@ -54,6 +73,38 @@ const SPICA_CONFIG = {
   },
 
 };
+
+/* ── Apply Operator/Viewer mode to all UI elements ── */
+function applyModeUI(){
+  const op = isOperator();
+  const btn = document.getElementById('modeBtn');
+  const iconEl = document.getElementById('modeBtnIcon');
+  const labelEl = document.getElementById('modeBtnLabel');
+  const banner = document.getElementById('viewerBanner');
+  if(btn){
+    btn.classList.toggle('mode-operator', op);
+    btn.classList.toggle('mode-viewer', !op);
+  }
+  if(iconEl) iconEl.textContent = op ? '\u2699' : '\uD83D\uDC41';
+  if(labelEl) labelEl.textContent = op ? 'OPERATOR' : 'VIEWER';
+  /* NEW badge on mode button — purely additive, no-op if expired */
+  if(btn){
+    const oldBadge = btn.querySelector('.feature-badge');
+    if(oldBadge) oldBadge.remove();
+    if(shouldShowBadge('operatorViewerMode')) btn.appendChild(renderBadge());
+  }
+  if(banner) banner.style.display = op ? 'none' : '';
+
+  /* Disable / enable mutation controls */
+  const mutBtns = ['btnClrDeck','btnSmartTools'];
+  mutBtns.forEach(id => {
+    const el = document.getElementById(id);
+    if(el){ el.classList.toggle('mode-disabled', !op); el.style.pointerEvents = op ? '' : 'none'; el.style.opacity = op ? '' : '0.4'; }
+  });
+
+  /* Re-render cargo blocks to show/hide handles */
+  if(typeof renderAll === 'function') renderAll();
+}
 
 /* ── Load persisted brand labels from localStorage ── */
 (function loadBrandConfig(){
@@ -928,6 +979,21 @@ function dgBg(d){
   if(d.half)return`linear-gradient(180deg,${d.bg} 50%,${d.half} 50%)`;
   return d.bg;
 }
+/* ── Multi-DG migration helper ─────────────────────────────
+   Converts legacy single dgClass to dgClasses array.
+   Run on any cargo array after load/import.                  */
+function _migrateDgClasses(cargoArr){
+  if(!Array.isArray(cargoArr)) return;
+  cargoArr.forEach(c => {
+    if(!Array.isArray(c.dgClasses)){
+      c.dgClasses = (c.dgClass && c.dgClass !== '') ? [c.dgClass] : [];
+    }
+    delete c.dgClass;
+    /* Deduplicate & cap at 3 */
+    c.dgClasses = [...new Set(c.dgClasses)].slice(0, 3);
+  });
+}
+
 /* ════════════════════════════════════
    FULL UKCS DG SEGREGATION MATRIX
    Source: UKCS Supplement §2.3, Rev 2 (2017)
@@ -1100,13 +1166,19 @@ function showDragSegOverlay(dragCls, excludeId){
   const borderCol={1:'#f97316',2:'#dc2626',3:'#7f1d1d'};
   const levelLabel={1:'1 MINI','2':'2 MINI',2:'2 MINI',3:'3 MINI'};
 
+  /* dragCls can be a single string or array of classes */
+  const dragArr = Array.isArray(dragCls) ? dragCls : (dragCls ? [dragCls] : []);
+  if(dragArr.length === 0) return;
+
   S.cargo.forEach(placed=>{
-    if(placed.id===excludeId||!placed.dgClass)return;
-    const level=getSeg(dragCls, placed.dgClass);
+    const placedArr = placed.dgClasses || [];
+    if(placed.id===excludeId||placedArr.length===0)return;
+    /* Check all combos — use most restrictive level */
+    let level=0;
+    for(const dc of dragArr){ for(const pc of placedArr){ level=Math.max(level,getSeg(dc,pc)); } }
     if(level<1)return;
 
     const pad=segClearancePx(level);
-    /* Expand placed cargo footprint by pad on all sides */
     const zx=Math.max(0,   placed.x - pad);
     const zy=Math.max(0,   placed.y - pad);
     const zx2=Math.min(TW, placed.x + placed.w + pad);
@@ -1133,7 +1205,7 @@ function showDragSegOverlay(dragCls, excludeId){
       'background:rgba(255,255,255,.85)','white-space:nowrap',
       'pointer-events:none',
     ].join(';');
-    lbl.textContent=`${level} MINI · DG${placed.dgClass}`;
+    lbl.textContent=`${level} MINI · DG${placedArr.join(',')}`;
     z.appendChild(lbl);
     ovl.appendChild(z);
   });
@@ -1414,6 +1486,7 @@ function buildLocGrid(){
 }
 
 function toggleLoc(id){
+  if(!isOperator()) return;            /* Viewer: block location changes */
   if(S.activeLocs.includes(id)){
     if(S.cargo.some(c=>c.platform===id)){alert(`Remove cargo for "${locById(id)?.name}" first.`);return;}
     S.activeLocs=S.activeLocs.filter(x=>x!==id);
@@ -1783,7 +1856,7 @@ function _placeAtCore(cx,cy){
     wt:isC?it.wt:0,
     platform:S.selLoc||(S.activeLocs[0]||'BLEO'),
     status:S.selStatus,
-    dgClass:p.type==='dg'?it.cls:'',
+    dgClasses:p.type==='dg'?[it.cls]:[],
     priority:false,
     trDest:''};
   S.cargo.push(c);renderAll();updateStats();buildActiveLocStrip();
@@ -1822,12 +1895,13 @@ function renderBlock(cv,cargo){
 
   /* Make the cargo block itself a flex column so the label is truly centred
      regardless of how many lines it wraps to.                                 */
-  const b=document.createElement('div');b.className='cb';b.dataset.id=cargo.id;
+  const b=document.createElement('div');b.className='cb' + (isOperator() ? '' : ' cb-viewer');b.dataset.id=cargo.id;
   /* Location id for Quick Filter — used by #locFilterStyle CSS rule */
   b.dataset.loc = cargo.platform || '';
-  if(cargo.dgClass) b.dataset.dg = cargo.dgClass;
+  const _dgList = cargo.dgClasses || [];
+  if(_dgList.length > 0) b.dataset.dg = _dgList[0];
   /* Corner badge text for Visual Smart Tool */
-  if(cargo.dgClass) b.dataset.cornerBadge = cargo.dgClass;
+  if(_dgList.length > 0) b.dataset.cornerBadge = _dgList.join(',');
   else if(cargo.status === 'BL') b.dataset.cornerBadge = 'BL';
   else if(cargo.status === 'ROB') b.dataset.cornerBadge = 'ROB';
   /* Premium tactile finish — subtle inset highlight + ambient shadow */
@@ -1846,10 +1920,10 @@ function renderBlock(cv,cargo){
     trExtra,
   ].filter(Boolean).join(';');
 
-  /* Right-click context menu */
-  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(cargo.id, e.clientX, e.clientY); });
+  /* Right-click context menu (Operator only — Viewer can still see block but not act) */
+  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); if(!isOperator()) return; showCtxMenu(cargo.id, e.clientX, e.clientY); });
 
-  const dgd=cargo.dgClass?DG_DATA.find(d=>d.cls===cargo.dgClass):null;
+  const dgd=_dgList.length>0?DG_DATA.find(d=>d.cls===_dgList[0]):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
 
   b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
@@ -1876,10 +1950,18 @@ function renderBlock(cv,cargo){
   const labelShadow = isDark(fill) ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.5)';
   idEl.style.cssText=`font-size:${textSz};color:${textCol};font-weight:700;text-shadow:0 1px 2px ${labelShadow};letter-spacing:0px;`;
   idEl.textContent=cargo.ccu||'';
-  idEl.addEventListener('dblclick',e=>{e.stopPropagation();startInlineEdit(idEl,cargo,textSz,textCol);});b.appendChild(idEl);
+  idEl.addEventListener('dblclick',e=>{e.stopPropagation();if(!isOperator())return;startInlineEdit(idEl,cargo,textSz,textCol);});b.appendChild(idEl);
 
-  /* DG badge — position:absolute so it floats above flex flow */
-  if(dgd){const badge=document.createElement('div');badge.className='cb-dg-badge';badge.style.cssText=`background:${dgd.bg};color:${dgd.tc};border-color:${dgd.bc};font-size:${badgeSz};font-family:'Inter',system-ui,sans-serif;font-weight:800;letter-spacing:.3px;`;badge.textContent=`${cargo.dgClass}`;b.appendChild(badge);}
+  /* DG badges — one per class, position:absolute so they float above flex flow */
+  _dgList.forEach((cls,idx) => {
+    const dd = DG_DATA.find(d => d.cls === cls);
+    if(!dd) return;
+    const badge = document.createElement('div');
+    badge.className = 'cb-dg-badge';
+    badge.style.cssText = `background:${dd.bg};color:${dd.tc};border-color:${dd.bc};font-size:${badgeSz};font-family:'Inter',system-ui,sans-serif;font-weight:800;letter-spacing:.3px;${idx > 0 ? 'right:'+(4+idx*28)+'px;' : ''}`;
+    badge.textContent = cls;
+    b.appendChild(badge);
+  });
   /* Heavy Lift badge — bottom-left, opposite corner from DG */
   if(cargo.heavyLift){const hl=document.createElement('div');hl.className='cb-hl-badge';hl.style.fontSize=badgeSz;hl.textContent='⬆HL';b.appendChild(hl);}
   /* Priority Lift — amber outline + badge */
@@ -1901,6 +1983,7 @@ function renderBlock(cv,cargo){
   b.addEventListener('mousedown',e=>{
     if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-id')||e.target.classList.contains('cb-rot'))return;
     if(e.button!==0)return;e.preventDefault();e.stopPropagation();
+    if(!isOperator()) return;          /* Viewer: block drag */
     if(S.pending){cancelPending();return;}
     const sx=e.clientX,sy=e.clientY,rect=b.getBoundingClientRect();
     const ox=(e.clientX-rect.left)/zoomLevel,oy=(e.clientY-rect.top)/zoomLevel;let moved=false;
@@ -1921,7 +2004,7 @@ function renderBlock(cv,cargo){
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
-      if(cargo.dgClass&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClass,cargo.id);_dragSegTimer=0;});}
+      if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id);_dragSegTimer=0;});}
     };
     const onUp=ev=>{
       document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);ghost.remove();
@@ -1944,6 +2027,7 @@ function renderBlock(cv,cargo){
   /* ── Touch support — mirrors mouse drag for tablets ── */
   b.addEventListener('touchstart', e => {
     if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-rot')) return;
+    if(!isOperator()) return;          /* Viewer: block touch drag */
     if(S.pending){cancelPending();return;}
     const touch = e.touches[0];
     const sx=touch.clientX, sy=touch.clientY, rect=b.getBoundingClientRect();
@@ -1957,7 +2041,7 @@ function renderBlock(cv,cargo){
       const t = ev.touches[0];
       if(Math.abs(t.clientX-sx)>4||Math.abs(t.clientY-sy)>4) moved=true;
       ghost.style.left=(t.clientX-ox*zoomLevel)+'px'; ghost.style.top=(t.clientY-oy*zoomLevel)+'px';
-      if(cargo.dgClass) showDragSegOverlay(cargo.dgClass, cargo.id);
+      if(cargo.dgClasses&&cargo.dgClasses.length>0) showDragSegOverlay(cargo.dgClasses, cargo.id);
     };
     const onTouchEnd = ev => {
       document.removeEventListener('touchmove',onTouchMove); document.removeEventListener('touchend',onTouchEnd);
@@ -2033,8 +2117,8 @@ function updateDGSummary(){
   const el = document.getElementById('dgOnBoardText');
   if(!el) return;
   const counts = {};
-  S.cargo.filter(c => c.dgClass).forEach(c => {
-    counts[c.dgClass] = (counts[c.dgClass]||0) + 1;
+  S.cargo.forEach(c => {
+    (c.dgClasses||[]).forEach(cls => { counts[cls] = (counts[cls]||0) + 1; });
   });
   const entries = Object.keys(counts).sort((a,b) => parseFloat(a)-parseFloat(b));
   if(entries.length === 0){
@@ -2171,7 +2255,7 @@ function bindDGAutoCheck(){
 
 function checkSeg(){
   /* ── 1. Collect all DG blocks ── */
-  const dgs = S.cargo.filter(c => c.dgClass);
+  const dgs = S.cargo.filter(c => c.dgClasses && c.dgClasses.length > 0);
 
   /* ── 2. Compute ALL violations (geometry check) ── */
   const legacyWarns = [];
@@ -2180,15 +2264,23 @@ function checkSeg(){
   for(let i = 0; i < dgs.length; i++){
     for(let j = i+1; j < dgs.length; j++){
       const a = dgs[i], b = dgs[j];
-      const level = getSeg(a.dgClass, b.dgClass);
+      /* Check ALL class combinations — most restrictive wins */
+      let level = 0;
+      let worstA = '', worstB = '';
+      for(const clsA of a.dgClasses){
+        for(const clsB of b.dgClasses){
+          const l = getSeg(clsA, clsB);
+          if(l > level){ level = l; worstA = clsA; worstB = clsB; }
+        }
+      }
       if(level < 1) continue;
       const required = segClearancePx(level);
       const gapX = Math.max(0, Math.max(a.x,b.x) - Math.min(a.x+a.w, b.x+b.w));
       const gapY = Math.max(0, Math.max(a.y,b.y) - Math.min(a.y+a.h, b.y+b.h));
       const gap  = Math.min(gapX, gapY);
       if(gap < required){
-        legacyWarns.push(`DG${a.dgClass}↔DG${b.dgClass}: ${SEG_LEVEL_LABEL[level]||level+' MINI'}`);
-        violations.push({ a, b, level, key: dgPairKey(a.id, b.id) });
+        legacyWarns.push(`DG${worstA}↔DG${worstB}: ${SEG_LEVEL_LABEL[level]||level+' MINI'}`);
+        violations.push({ a, b, level, worstA, worstB, key: dgPairKey(a.id, b.id) });
       }
     }
   }
@@ -2265,11 +2357,13 @@ function checkSeg(){
 
   /* Violation cards — only new pairs */
   newViolations.forEach(v => {
-    const { a, b, level } = v;
-    const dgA = DG_DATA.find(d => d.cls === a.dgClass) || { bg:'#888', tc:'#fff', bc:'#888' };
-    const dgB = DG_DATA.find(d => d.cls === b.dgClass) || { bg:'#888', tc:'#fff', bc:'#888' };
+    const { a, b, level, worstA, worstB } = v;
+    const dgA = DG_DATA.find(d => d.cls === (worstA||a.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
+    const dgB = DG_DATA.find(d => d.cls === (worstB||b.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
+    const clsLblA = worstA || a.dgClasses[0] || '?';
+    const clsLblB = worstB || b.dgClasses[0] || '?';
     const reqLabel = SEG_LEVEL_LABEL[level] || `${level} MINI`;
-    const descHtml = (SEG_LEVEL_DESC[level] || (() => ''))(a.dgClass, b.dgClass);
+    const descHtml = (SEG_LEVEL_DESC[level] || (() => ''))(clsLblA, clsLblB);
 
     const card = document.createElement('div');
     card.className = 'dg-viol-card';
@@ -2277,9 +2371,9 @@ function checkSeg(){
       <div class="dg-viol-head">
         <span class="dg-viol-sev sev-${level}">${reqLabel.toUpperCase()}</span>
         <div class="dg-viol-pair">
-          <span class="dg-viol-badge" style="background:${dgA.bg};color:${dgA.tc};border:1px solid ${dgA.bc};">◆ ${a.dgClass}</span>
+          <span class="dg-viol-badge" style="background:${dgA.bg};color:${dgA.tc};border:1px solid ${dgA.bc};">◆ ${clsLblA}</span>
           <span class="dg-viol-arrow">⟷</span>
-          <span class="dg-viol-badge" style="background:${dgB.bg};color:${dgB.tc};border:1px solid ${dgB.bc};">◆ ${b.dgClass}</span>
+          <span class="dg-viol-badge" style="background:${dgB.bg};color:${dgB.tc};border:1px solid ${dgB.bc};">◆ ${clsLblB}</span>
         </div>
         <span class="dg-viol-req">${level} MINI req.</span>
       </div>
@@ -2309,8 +2403,10 @@ function updateDGZones(){
   const ovl=document.getElementById('dgExclOverlay');if(!ovl)return;ovl.innerHTML='';
   const pc=S.pending&&S.pending.type==='dg'?S.pending.item.cls:null;
   if(!pc)return;
-  S.cargo.filter(c=>c.dgClass).forEach(cargo=>{
-    const rule=getSeg(pc,cargo.dgClass);
+  S.cargo.filter(c=>c.dgClasses&&c.dgClasses.length>0).forEach(cargo=>{
+    /* Check pending DG class against ALL classes of placed cargo — most restrictive wins */
+    let rule=0;
+    cargo.dgClasses.forEach(cls=>{ rule=Math.max(rule,getSeg(pc,cls)); });
     if(rule<1)return;
     const pad=segClearancePx(rule);
     const bg={1:'rgba(251,146,60,.14)',2:'rgba(220,38,38,.18)',3:'rgba(139,0,0,.28)'}[rule]||'rgba(220,38,38,.18)';
@@ -2319,7 +2415,7 @@ function updateDGZones(){
     const zw=Math.min(TW,cargo.x+cargo.w+pad)-zx,zh=Math.min(CVH,cargo.y+cargo.h+pad)-zy;
     const z=document.createElement('div');z.className='dg-excl-zone';
     z.style.cssText=`left:${zx}px;top:${zy}px;width:${zw}px;height:${zh}px;background:${bg};border:1.5px dashed ${bc};`;
-    z.innerHTML=`<span class="dg-excl-lbl" style="color:${bc};">${rule} MINI · DG${cargo.dgClass}</span>`;
+    z.innerHTML=`<span class="dg-excl-lbl" style="color:${bc};">${rule} MINI · DG${cargo.dgClasses.join(',')}</span>`;
     ovl.appendChild(z);
   });
 }
@@ -2328,7 +2424,7 @@ function updateDGZones(){
    MODAL
 ════════════════════════════════════ */
 let editId=null,modalSt=null;
-function openModal(id){editId=id;const c=S.cargo.find(x=>x.id===id);if(!c)return;buildModalDescSelect();document.getElementById('mCCU').value=c.ccu||'';document.getElementById('mDesc').value=c.desc||'';document.getElementById('mWT').value=c.wt||'';document.getElementById('mDG').value=c.dgClass||'';dgPickerSetValue(c.dgClass||'');modalSt=c.status||'L';buildModalLocs(c.platform);document.querySelectorAll('.mdl-st').forEach(b=>b.classList.toggle('sel',b.dataset.s===modalSt));
+function openModal(id){editId=id;const c=S.cargo.find(x=>x.id===id);if(!c)return;buildModalDescSelect();document.getElementById('mCCU').value=c.ccu||'';document.getElementById('mDesc').value=c.desc||'';document.getElementById('mWT').value=c.wt||'';_dgMultiSelected=Array.isArray(c.dgClasses)?[...c.dgClasses]:[];_dgMultiRenderTags();modalSt=c.status||'L';buildModalLocs(c.platform);document.querySelectorAll('.mdl-st').forEach(b=>b.classList.toggle('sel',b.dataset.s===modalSt));
 /* Heavy Lift toggle */
 const hlBtn=document.getElementById('mHL');
 const hlLbl=document.getElementById('mHLlbl');
@@ -2524,6 +2620,135 @@ function bindDGPicker(){
   dgPickerSetValue('');
 }
 
+/* ══════════════════════════════════════════════════════════
+   MULTI-DG PICKER — tag-based multi-select (up to 3 classes)
+══════════════════════════════════════════════════════════ */
+let _dgMultiSelected = [];   /* ordered array of selected DG class strings */
+
+function _dgMultiRenderTags(){
+  const container = document.getElementById('dgMultiTags');
+  const msgEl     = document.getElementById('dgMultiMsg');
+  if(!container) return;
+  container.innerHTML = '';
+
+  if(_dgMultiSelected.length === 0){
+    container.innerHTML = '<span class="dg-multi-empty">— Not DG —</span>';
+  }
+
+  _dgMultiSelected.forEach(cls => {
+    const dg = DG_DATA.find(d => d.cls === cls);
+    const tag = document.createElement('span');
+    tag.className = 'dg-multi-tag';
+    tag.style.cssText = dg ? `background:${dg.bg};color:${dg.tc};border:1px solid ${dg.bc};` : '';
+    tag.innerHTML = `<span class="dg-multi-tag-label">${cls}</span><span class="dg-multi-tag-rm">&times;</span>`;
+    tag.querySelector('.dg-multi-tag-rm').addEventListener('click', e => {
+      e.stopPropagation();
+      _dgMultiSelected = _dgMultiSelected.filter(c => c !== cls);
+      _dgMultiRenderTags();
+    });
+    container.appendChild(tag);
+  });
+
+  if(msgEl) msgEl.textContent = '';
+}
+
+function _dgMultiOpenDropdown(){
+  const dropdown = document.getElementById('dgMultiDropdown');
+  const list     = document.getElementById('dgMultiList');
+  const search   = document.getElementById('dgMultiSearch');
+  if(!dropdown || !list) return;
+
+  function build(query){
+    list.innerHTML = '';
+    const q = (query||'').toLowerCase().trim();
+    DG_DATA.forEach(d => {
+      if(_dgMultiSelected.includes(d.cls)) return;  /* already selected */
+      const label = `${d.cls} — ${d.nm}`;
+      if(q && !d.cls.includes(q) && !label.toLowerCase().includes(q)) return;
+
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'dg-picker-opt';
+      row.innerHTML = `
+        <span class="dg-picker-opt-badge" style="background:${d.bg};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
+        <span class="dg-picker-opt-name">${d.nm}</span>`;
+      row.addEventListener('click', () => {
+        _dgMultiSelectClass(d.cls);
+        dropdown.classList.remove('open');
+      });
+      list.appendChild(row);
+    });
+  }
+
+  build('');
+  dropdown.classList.add('open');
+  if(search){ search.value = ''; search.focus(); }
+}
+
+function _dgMultiSelectClass(cls){
+  const msgEl = document.getElementById('dgMultiMsg');
+  if(_dgMultiSelected.includes(cls)) return;  /* duplicate guard */
+  if(_dgMultiSelected.length >= 3){
+    if(msgEl) msgEl.textContent = 'Maximum 3 DG classes per item';
+    setTimeout(() => { if(msgEl) msgEl.textContent = ''; }, 3000);
+    return;
+  }
+  _dgMultiSelected.push(cls);
+  _dgMultiRenderTags();
+}
+
+function bindDGMultiPicker(){
+  const addBtn   = document.getElementById('dgMultiAdd');
+  const dropdown = document.getElementById('dgMultiDropdown');
+  const search   = document.getElementById('dgMultiSearch');
+  if(!addBtn) return;
+
+  addBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if(dropdown && dropdown.classList.contains('open')){
+      dropdown.classList.remove('open');
+    } else {
+      _dgMultiOpenDropdown();
+    }
+  });
+
+  if(search){
+    search.addEventListener('input', () => {
+      const list = document.getElementById('dgMultiList');
+      if(!list) return;
+      list.innerHTML = '';
+      const q = search.value.toLowerCase().trim();
+      DG_DATA.forEach(d => {
+        if(_dgMultiSelected.includes(d.cls)) return;
+        const label = `${d.cls} — ${d.nm}`;
+        if(q && !d.cls.includes(q) && !label.toLowerCase().includes(q)) return;
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'dg-picker-opt';
+        row.innerHTML = `
+          <span class="dg-picker-opt-badge" style="background:${d.bg};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
+          <span class="dg-picker-opt-name">${d.nm}</span>`;
+        row.addEventListener('click', () => {
+          _dgMultiSelectClass(d.cls);
+          dropdown.classList.remove('open');
+        });
+        list.appendChild(row);
+      });
+    });
+    search.addEventListener('keydown', e => {
+      if(e.key === 'Escape'){ dropdown.classList.remove('open'); e.stopPropagation(); }
+    });
+    search.addEventListener('click', e => e.stopPropagation());
+  }
+
+  /* Close dropdown on outside click */
+  document.addEventListener('click', e => {
+    if(dropdown && !dropdown.contains(e.target) && e.target !== addBtn) dropdown.classList.remove('open');
+  });
+
+  _dgMultiRenderTags();
+}
+
 function closeModal(){document.getElementById('ov').classList.remove('open');editId=null;}
 function bindModal(){
   document.getElementById('mCan').onclick=closeModal;
@@ -2561,8 +2786,9 @@ function bindModal(){
   });
   document.getElementById('ov').onclick=e=>{if(e.target===document.getElementById('ov'))closeModal();};
   document.querySelectorAll('.mdl-st').forEach(b=>{b.onclick=()=>{modalSt=b.dataset.s;document.querySelectorAll('.mdl-st').forEach(x=>x.classList.toggle('sel',x===b));};});
-  document.getElementById('mRm').onclick=()=>{const _rmId=editId;S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();};
+  document.getElementById('mRm').onclick=()=>{if(!isOperator())return;const _rmId=editId;S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();};
   document.getElementById('mSav').onclick=()=>{
+    if(!isOperator()) return;          /* Viewer: block save */
     const c=S.cargo.find(x=>x.id===editId);if(!c)return;
     c.ccu=document.getElementById('mCCU').value;
     const newDesc=document.getElementById('mDesc').value;
@@ -2586,7 +2812,7 @@ function bindModal(){
     const sl=document.getElementById('mLocGrid').querySelector('.mdl-loc.sel');
     c.platform=sl?sl.dataset.lid:(S.selLoc||S.activeLocs[0]||'BLEO');
     c.status=modalSt||'L';
-    c.dgClass=document.getElementById('mDG').value;
+    c.dgClasses=[..._dgMultiSelected];
     c.heavyLift=document.getElementById('mHL').classList.contains('on');
     c.priority=document.getElementById('mPriority')?.classList.contains('on')||false;
     c.trDest=(c.status==='TR')?(document.getElementById('mdlTrDest')?.value||''):'';
@@ -2971,7 +3197,7 @@ function importLegacy(raw) {
   return {
     _schema: PLAN_SCHEMA_CURRENT,
     _savedAt: new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
     _legacyScaleWarn: needsScaleWarn,
     name: raw.voyage || 'Imported Plan',
     plan: {
@@ -3114,7 +3340,7 @@ const TauriFileAdapter = {
   save(key, envelope) {
     const json = JSON.stringify(envelope, null, 2);
     if (_currentFilePath) {
-      window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: json }).catch(e => {
+      invoke('write_file', { path: _currentFilePath, contents: json }).catch(e => {
         console.warn('[TauriFileAdapter] Save failed:', e);
       });
     }
@@ -3143,7 +3369,7 @@ function _buildEnvelope() {
   return {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3181,7 +3407,7 @@ async function _nativeSaveDialog(defaultName, filterName, extensions) {
 
 /* ── Write bytes or string to a chosen path via Tauri ─── */
 async function _tauriWriteBytes(path, uint8arr) {
-  await window.__TAURI__.core.invoke('write_file_bytes', { path, bytes: Array.from(uint8arr) });
+  await invoke('write_file_bytes', { path, bytes: Array.from(uint8arr) });
 }
 
 function _updateWindowTitle(filePath) {
@@ -3195,7 +3421,7 @@ function _updateWindowTitle(filePath) {
 
 async function _addToRecent(path, name) {
   try {
-    await window.__TAURI__.core.invoke('add_recent_file', { path, name: name || 'Untitled' });
+    await invoke('add_recent_file', { path, name: name || 'Untitled' });
   } catch (e) { /* non-critical */ }
 }
 
@@ -3215,7 +3441,7 @@ async function savePlanToFile(path) {
 
     const envelope = _buildEnvelope();
     const json = JSON.stringify(envelope, null, 2);
-    await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
+    await invoke('write_file', { path: targetPath, contents: json });
 
     _currentFilePath = targetPath;
     _updateWindowTitle(targetPath);
@@ -3242,7 +3468,7 @@ async function openPlanFromFile() {
     if (!selected) return; /* user cancelled */
 
     const filePath = typeof selected === 'string' ? selected : selected.path;
-    const contents = await window.__TAURI__.core.invoke('read_file', { path: filePath });
+    const contents = await invoke('read_file', { path: filePath });
     let envelope = JSON.parse(contents);
 
     /* Run migrations if needed */
@@ -3252,7 +3478,7 @@ async function openPlanFromFile() {
 
     /* Apply to app state (same logic as loadPlan) */
     const d = envelope.plan;
-    if (d.cargo) S.cargo = d.cargo;
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -3287,13 +3513,13 @@ async function openPlanFromFile() {
 async function openRecentFile(path) {
   if (!_isTauri() || !path) return;
   try {
-    const contents = await window.__TAURI__.core.invoke('read_file', { path });
+    const contents = await invoke('read_file', { path });
     let envelope = JSON.parse(contents);
     if (envelope._schema < PLAN_SCHEMA_CURRENT) {
       envelope = migratePlan(envelope);
     }
     const d = envelope.plan;
-    if (d.cargo) S.cargo = d.cargo;
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -3321,7 +3547,7 @@ function saveQuick() {
   if (_isTauri() && _currentFilePath) {
     const envelope = _buildEnvelope();
     const json = JSON.stringify(envelope, null, 2);
-    window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: json }).catch(() => {});
+    invoke('write_file', { path: _currentFilePath, contents: json }).catch(() => {});
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
   } else {
     savePlan();
@@ -3342,7 +3568,7 @@ async function saveProjectFile() {
     const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
     if (!targetPath) return;
     try {
-      await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
+      await invoke('write_file', { path: targetPath, contents: json });
       _currentFilePath = targetPath;
       _updateWindowTitle(targetPath);
       _addToRecent(targetPath, envelope.name);
@@ -3380,7 +3606,7 @@ function openProjectFile() {
         });
         if (!selected) return;
         const filePath = typeof selected === 'string' ? selected : selected.path;
-        const contents = await window.__TAURI__.core.invoke('read_file', { path: filePath });
+        const contents = await invoke('read_file', { path: filePath });
         _applyProjectData(contents, filePath.split(/[/\\]/).pop());
         _currentFilePath = filePath;
         _updateWindowTitle(filePath);
@@ -3413,7 +3639,7 @@ function _applyProjectData(jsonString, fileName) {
       envelope = migratePlan(envelope);
     }
     const d = envelope.plan;
-    if (d.cargo) S.cargo = d.cargo;
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -3465,7 +3691,7 @@ function savePlan(key) {
   const envelope = {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v1.8.1'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3522,7 +3748,7 @@ function loadPlan(key) {
 
   /* Apply plan data to app state */
   const d = envelope.plan;
-  if (d.cargo) S.cargo = d.cargo;
+  if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
   if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
   if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
   if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -3728,37 +3954,31 @@ function sizeToCanvasPx(length_m, width_m){
 }
 
 /* ── DG class extraction ────────────────────────────────────
-   Checks Hazard Class column OR description for "HAZ CLASS" keyword */
-function extractDGClass(hazardCell, description){
-  /* Extract the first valid IMDG class from a string.
-     Handles: "3", "2.2", "9, 3", "2.1, 9", "LQ" (non-DG food qualifier). */
-  const parseFirst = v => {
-    if(!v) return '';
-    const s = String(v).trim();
-    if(!s || s.toUpperCase() === 'LQ') return '';
-    /* Try the whole value first */
-    if(/^\d+(\.\d+)?$/.test(s)) return s;
-    /* Comma-separated list — e.g. "9, 3" or "2.1, 9" → return first valid class */
-    for(const part of s.split(/[,&]/)){
-      const p = part.trim();
-      if(/^\d+(\.\d+)?$/.test(p)) return p;
+   Checks Hazard Class column OR description for "HAZ CLASS" keyword.
+   Returns ARRAY of unique IMDG classes (max 3).                    */
+function extractDGClasses(hazardCell, description){
+  const results = [];
+  const addCls = v => { const s = String(v).trim(); if(s && /^\d+(\.\d+)?$/.test(s) && !results.includes(s)) results.push(s); };
+
+  /* Parse hazard cell — may contain comma/ampersand-separated list */
+  if(hazardCell){
+    const s = String(hazardCell).trim();
+    if(s && s.toUpperCase() !== 'LQ'){
+      for(const part of s.split(/[,&]/)){
+        addCls(part);
+      }
     }
-    return '';
-  };
+  }
 
-  const cls = parseFirst(hazardCell);
-  if(cls) return cls;
-
-  /* Fallback: scan description text for HAZ CLASS / CLASS patterns
-     e.g. "***HAZ CLASS 2.2***", "****HAZ CLASS 8****", "CLASS 9 & 3" */
+  /* Fallback: scan description text for HAZ CLASS / CLASS patterns */
   if(description){
     const d = String(description);
-    const m = d.match(/(?:haz(?:ard)?\s*class|class)\s*(\d+(?:\.\d+)?)/i);
-    if(m) return m[1];
-    const m2 = d.match(/\*+\s*(?:haz(?:ard)?\s*class|class)\s*(\d+(?:\.\d+)?)\s*\*+/i);
-    if(m2) return m2[1];
+    const re = /(?:haz(?:ard)?\s*class|class)\s*(\d+(?:\.\d+)?)/gi;
+    let m;
+    while((m = re.exec(d)) !== null) addCls(m[1]);
   }
-  return '';
+
+  return results.slice(0, 3);
 }
 
 /* ════════════════════════════════════
@@ -3938,24 +4158,36 @@ function parseASCOSheet(sheetName, sheetData){
 
     /* Hazard / DG */
     const hazardCell = row[hazCol] ?? null;
-    const dgClass    = extractDGClass(hazardCell, desc);
+    const dgClasses  = extractDGClasses(hazardCell, desc);
     const heavyLift  = wt >= HL_THRESHOLD;
 
     /* Size detection from description */
     const detected = detectSizeFromDesc(desc);
-    const dims = detected
+    let dims = detected
       ? sizeToCanvasPx(detected.length_m, detected.width_m)
       : sizeToCanvasPx(null, null);
+    let sizeDetected = !!detected;
+    let autoAssigned = '';
+
+    /* Auto-assign rule: "food" in description → Mini Container (DNV) */
+    if(/food/i.test(desc.trim())){
+      const foodPreset = CCU_PRESETS.find(p => p.key === 'cont_mini_std');
+      if(foodPreset){
+        dims = sizeToCanvasPx(foodPreset.length_m, foodPreset.width_m);
+        sizeDetected = true;
+        autoAssigned = foodPreset.label;
+      }
+    }
 
     items.push({
-      desc, ccu, wt, dgClass, heavyLift,
-      dims,
+      desc, ccu, wt, dgClasses, heavyLift,
+      dims, autoAssigned,
       platform:   loadlistId || sheetLocation || sheetName,
       loadlistId: loadlistId,
       location:   sheetLocation,
       noLifts,
       sheetName,
-      sizeDetected: !!detected,
+      sizeDetected,
     });
   }
 
@@ -4083,11 +4315,12 @@ function renderAscoContent(sheets, stats){
 
       /* Badges */
       let badges = '';
-      if(item.dgClass)        badges += `<span class="asco-badge dg">◆ DG ${escHtml(item.dgClass)}</span>`;
+      if(item.dgClasses&&item.dgClasses.length>0) badges += `<span class="asco-badge dg">◆ DG ${escHtml(item.dgClasses.join(', '))}</span>`;
       if(item.heavyLift)      badges += `<span class="asco-badge hl">⬆ Heavy Lift</span>`;
       if(!item.sizeDetected)  badges += `<span class="asco-badge no-size">⚠ Size not detected</span>`;
       else badges += `<span class="asco-badge size">${item.dims.length_m.toFixed(2)}×${item.dims.width_m.toFixed(2)} m</span>`;
       if(item.wt > 0) badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
+      if(item.autoAssigned) badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
 
       el.innerHTML = `
         <div class="asco-cb" data-key="${key}"></div>
@@ -4160,7 +4393,7 @@ function performAscoImport(){
         name: item.desc,
         ccu: item.ccu,
         wt: item.wt,
-        dgClass: item.dgClass,
+        dgClasses: item.dgClasses || [],
         heavyLift: item.heavyLift,
         w: item.dims.w,
         h: item.dims.h,
@@ -4174,6 +4407,7 @@ function performAscoImport(){
         sheetName: item.sheetName,
         loadlistId: item.loadlistId,
         sizeDetected: item.sizeDetected,
+        autoAssigned: item.autoAssigned || '',
       };
       IMPORT_QUEUE.push(qItem);
       added.push(qItem);
@@ -4231,13 +4465,15 @@ function buildQueueList(){
     el.className = 'asco-qitem';
 
     let badges = '';
-    if(item.dgClass)       badges += `<span class="asco-badge dg">◆ DG ${escHtml(item.dgClass)}</span>`;
+    const _qdg = item.dgClasses||[];
+    if(_qdg.length>0)      badges += `<span class="asco-badge dg">◆ DG ${escHtml(_qdg.join(', '))}</span>`;
     if(item.heavyLift)     badges += `<span class="asco-badge hl">⬆ HL</span>`;
     if(item.wt > 0)        badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
     if(!item.sizeDetected) badges += `<span class="asco-badge no-size">default size</span>`;
+    if(item.autoAssigned)  badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
 
     el.innerHTML = `
-      <div class="asco-qitem-icon">${item.dgClass ?
+      <div class="asco-qitem-icon">${_qdg.length>0 ?
         '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d=\"M7 1.5L13 12H1L7 1.5Z\" stroke=\"#785a1a\" stroke-width=\"1.3\" stroke-linejoin=\"round\"/><path d=\"M7 5.5v3M7 10v.5\" stroke=\"#785a1a\" stroke-width=\"1.3\" stroke-linecap=\"round\"/></svg>' :
         '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x=\"1.5\" y=\"4.5\" width=\"11\" height=\"8\" rx=\"1\" stroke=\"currentColor\" stroke-width=\"1.3\"/><path d=\"M1.5 4.5L4 1.5h6l2.5 3\" stroke=\"currentColor\" stroke-width=\"1.3\" stroke-linejoin=\"round\"/><path d=\"M5 4.5v1.5h4V4.5\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/></svg>'
       }</div>
@@ -4264,6 +4500,7 @@ function buildQueueList(){
 }
 
 function selectQueueItem(qi){
+  if(!isOperator()){ showToast('Switch to Operator mode to place cargo'); return; }
   const item = IMPORT_QUEUE[qi];
   if(!item) return;
 
@@ -4290,10 +4527,10 @@ function selectQueueItem(qi){
   };
 
   document.getElementById('hint').innerHTML =
-    `<b>📋 ${escHtml(item.name)}</b> — click deck to place${item.dgClass ? ` · DG ${item.dgClass}` : ''}`;
+    `<b>📋 ${escHtml(item.name)}</b> — click deck to place${item.dgClasses&&item.dgClasses.length>0 ? ` · DG ${item.dgClasses.join(', ')}` : ''}`;
 
   /* If DG, show pending exclusion zones */
-  if(item.dgClass){
+  if(item.dgClasses&&item.dgClasses.length>0){
     updateDGZones();
   }
 }
@@ -4402,6 +4639,7 @@ function processASCOFile(file){
 
 /* ── Unified placeAt: handles queue items AND standard library placement ── */
 function placeAt(cx, cy){
+  if(!isOperator()) return;            /* Viewer: block placement */
   if(!S.pending) return;
 
   /* ── Queue item path ── */
@@ -4431,7 +4669,7 @@ function placeAt(cx, cy){
       wt:        item.wt       || 0,
       platform:  platformId,
       status:    S.selStatus,
-      dgClass:   item.dgClass  || '',
+      dgClasses: item.dgClasses || [],
       heavyLift: !!item.heavyLift,
       priority: false,
       trDest: '',
@@ -4527,8 +4765,8 @@ function exportPDF(){
 
   /* ── DG classes actually on deck ── */
   const dgOnDeck = {};
-  S.cargo.filter(c => c.dgClass).forEach(c => {
-    dgOnDeck[c.dgClass] = (dgOnDeck[c.dgClass]||0) + 1;
+  S.cargo.forEach(c => {
+    (c.dgClasses||[]).forEach(cls => { dgOnDeck[cls] = (dgOnDeck[cls]||0) + 1; });
   });
   const dgEntries = Object.entries(dgOnDeck).map(([cls, count]) => {
     const dg = DG_DATA.find(d => d.cls === cls);
@@ -4817,7 +5055,7 @@ async function buildPDF(deckCanvas, data){
     try {
       const pdfOutput = doc.output('arraybuffer');
       const bytes = Array.from(new Uint8Array(pdfOutput));
-      await window.__TAURI__.core.invoke('write_file_bytes', { path: pdfPath, bytes });
+      await invoke('write_file_bytes', { path: pdfPath, bytes });
       showToast(t('toast_pdf_ok') + ' \u2014 ' + pdfPath.split(/[/\\]/).pop(), 'ok');
     } catch(e) {
       showToast('PDF save failed: ' + (e && e.message || e), 'warn');
@@ -4936,7 +5174,7 @@ async function _populateRecentFiles(){
   if(!listEl) return;
 
   try {
-    const recents = await window.__TAURI__.core.invoke('get_recent_files');
+    const recents = await invoke('get_recent_files');
     listEl.innerHTML = '';
     if(!recents || !recents.length){
       if(lblEl) lblEl.style.display = 'none';
@@ -5147,7 +5385,7 @@ function cpMatch(item){
 function cpPassFilter(item, src){
   const f = CP_FILTER;
   if(f==='all')     return true;
-  if(f==='dg')      return !!(item.dgClass||item.cls||(src==='dg'));
+  if(f==='dg')      return !!((item.dgClasses&&item.dgClasses.length>0)||item.cls||(src==='dg'));
   if(f==='hl')      return !!(item.heavyLift);
   if(f==='pri')     return !!(item.priority||item.pri);
   if(f==='ondk')    return src==='deck' || (src==='queue' && !!S.cargo.find(c=>c.ccu&&item.ccu&&c.ccu===item.ccu));
@@ -5206,7 +5444,7 @@ function cpRenderQueue(){
     if(item.heavyLift){
       dot.innerHTML='<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L4 7M8 3l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       dot.style.color='#785a1a';
-    } else if(item.dgClass){
+    } else if(item.dgClasses&&item.dgClasses.length>0){
       dot.innerHTML='<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2L14.5 13H1.5L8 2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6v4M8 11.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
       dot.style.color='#785a1a';
     } else {
@@ -5231,9 +5469,10 @@ function cpRenderQueue(){
     const tags = document.createElement('div'); tags.className='cp-qi-tags';
     const mkTag=(cls,txt)=>{ const t=document.createElement('span'); t.className='cp-tag '+cls; t.textContent=txt; tags.appendChild(t); };
     if(locName)         mkTag('cp-tag-loc',            locName);
-    if(item.dgClass)    mkTag('cp-tag-dg',             '⬥ DG '+item.dgClass);
+    if(item.dgClasses&&item.dgClasses.length>0) mkTag('cp-tag-dg', '⬥ DG '+item.dgClasses.join(', '));
     if(item.heavyLift)  mkTag('cp-tag-hl',             '⬆ HL');
     if(item.status)     mkTag('cp-tag-'+item.status,   item.status);
+    if(item.autoAssigned) mkTag('cp-tag-auto',           'Auto: '+item.autoAssigned);
     if(isPlaced)        mkTag('cp-tag-ondk',           '✓ On Deck');
     bd.appendChild(tags);
     card.appendChild(bd);
@@ -5297,7 +5536,7 @@ function cpRenderLib(){
           <div class="cp-qi-tags">
             ${loc?`<span class="cp-tag cp-tag-loc">${loc.name.replace(/</g,'&lt;')}</span>`:''}
             <span class="cp-tag cp-tag-${cargo.status}">${cargo.status}</span>
-            ${cargo.dgClass?`<span class="cp-tag cp-tag-dg">DG ${cargo.dgClass}</span>`:''}
+            ${cargo.dgClasses&&cargo.dgClasses.length>0?`<span class="cp-tag cp-tag-dg">DG ${cargo.dgClasses.join(', ')}</span>`:''}
             ${cargo.heavyLift?'<span class="cp-tag cp-tag-hl">⬆ HL</span>':''}
           </div>
         </div>`;
@@ -5369,7 +5608,7 @@ function cpRenderLib(){
       const tags = document.createElement('div'); tags.className = 'cp-qi-tags';
       if(loc){ const t=document.createElement('span');t.className='cp-tag cp-tag-loc';t.textContent=loc.name;tags.appendChild(t); }
       const hl=document.createElement('span');hl.className='cp-tag cp-tag-hl';hl.textContent='⬆ HL';tags.appendChild(hl);
-      if(cargo.dgClass){ const d=document.createElement('span');d.className='cp-tag cp-tag-dg';d.textContent='⬥ DG '+cargo.dgClass;tags.appendChild(d); }
+      if(cargo.dgClasses&&cargo.dgClasses.length>0){ const d=document.createElement('span');d.className='cp-tag cp-tag-dg';d.textContent='⬥ DG '+cargo.dgClasses.join(', ');tags.appendChild(d); }
       bd.appendChild(tags); card.appendChild(bd);
       card.addEventListener('click', () => {
         const el = document.querySelector(`.cb[data-id="${cargo.id}"]`);
@@ -5402,10 +5641,11 @@ function cpRenderLib(){
 
       /* Icon dot */
       const dot = document.createElement('div'); dot.className = 'cp-qi-dot';
-      dot.innerHTML = cargo.dgClass
+      const _cdg = cargo.dgClasses||[];
+      dot.innerHTML = _cdg.length>0
         ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 5.5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="5" width="13" height="9.5" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 5l2.5-3.5h8L14.5 5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 5v2h4V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-      if(cargo.dgClass) dot.style.color = '#785a1a';
+      if(_cdg.length>0) dot.style.color = '#785a1a';
       card.appendChild(dot);
 
       /* Body */
@@ -5425,7 +5665,7 @@ function cpRenderLib(){
         t.textContent = txt; tags.appendChild(t);
       };
       if(locName)       mkTag('cp-tag-loc',              locName);
-      if(cargo.dgClass) mkTag('cp-tag-dg',               '⬥ DG ' + cargo.dgClass);
+      if(_cdg.length>0)  mkTag('cp-tag-dg',               '⬥ DG ' + _cdg.join(', '));
       if(cargo.heavyLift) mkTag('cp-tag-hl',             '⬆ HL');
       bd.appendChild(tags);
       card.appendChild(bd);
@@ -5708,6 +5948,7 @@ function cpBindCustomForm(){
   const btn=document.getElementById('cpBtnAdd');
   if(!btn) return;
   btn.addEventListener('click',()=>{
+    if(!isOperator()){ showToast('Switch to Operator mode'); return; }
     const desc=document.getElementById('cpDesc').value.trim();
     if(!desc){ alert('Enter description'); return; }
     const sz=document.getElementById('cpSize').value||'3.0x2.44';
@@ -5954,6 +6195,7 @@ function kbHandleKey(e){
   /* ── Arrow key movement (always active even if kbShortcuts=false) ── */
   if(isArrow){
     if(!KB_SEL) return;
+    if(!isOperator()) return;          /* Viewer: block keyboard move */
     e.preventDefault();
     e.stopPropagation();
     let step;
@@ -5995,6 +6237,9 @@ function kbHandleKey(e){
     }
     return;
   }
+
+  /* Viewer mode: block all mutation shortcuts below this point */
+  if(!isOperator()) return;
 
   /* E — edit */
   if(key === 'e' && KB_SEL){
@@ -6310,7 +6555,7 @@ async function exportExcel(){
       parseFloat(c.wt)||0,
       c.status==='L'?'Load':c.status==='BL'?'Backload':c.status==='ROB'?'ROB':c.status==='TR'?'Transfer':'',
       loc?loc.name:(c.platform||''),
-      c.dgClass||'',
+      (c.dgClasses||[]).join(', ')||'',
       c.heavyLift?'YES':'',
       c.priority?'YES':'',
       trLoc?trLoc.name:(c.trDest||''),
@@ -6346,7 +6591,7 @@ async function exportExcel(){
   const ROB = S.cargo.filter(c=>c.status==='ROB').length;
   const TR  = S.cargo.filter(c=>c.status==='TR').length;
   const wt  = S.cargo.reduce((a,c)=>a+(parseFloat(c.wt)||0),0);
-  const DGs = [...new Set(S.cargo.filter(c=>c.dgClass).map(c=>c.dgClass))];
+  const DGs = [...new Set(S.cargo.flatMap(c=>c.dgClasses||[]))];
   const pris = S.cargo.filter(c=>c.priority).length;
 
   const sumRows = [
@@ -6410,7 +6655,7 @@ async function _saveWorkbook(wb){
     try {
       const xlsxData = XLSX.write(wb, { bookType:'xlsx', type:'array' });
       const bytes = Array.from(new Uint8Array(xlsxData));
-      await window.__TAURI__.core.invoke('write_file_bytes', { path: xlsxPath, bytes });
+      await invoke('write_file_bytes', { path: xlsxPath, bytes });
       showToast(t('toast_xlsx_ok') + ' \u2014 ' + xlsxPath.split(/[/\\]/).pop(), 'ok');
     } catch(e){
       showToast('Excel save failed: ' + (e && e.message || e), 'warn');
@@ -7739,10 +7984,9 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v1.8.1';
-const APP_VERSION   = '1.8.1';
-const BUILD_NUMBER  = '40';
-const RELEASE_CHANNEL = 'Beta';
+const CURRENT_BUILD = 'v2.3.0';
+const APP_VERSION   = '2.3.0';
+const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
 function parseBuildVersion(str){
@@ -7781,6 +8025,45 @@ function applyNewBadges(){
 }
 
 /* ══════════════════════════════════════════════════════════
+   FEATURE BADGE — registry-based NEW badge system
+   Uses FEATURE_BADGE_REGISTRY (src/badgeRegistry.js).
+   shouldShowBadge(key) → true/false based on semver distance.
+   renderBadge() → DOM span element.
+══════════════════════════════════════════════════════════ */
+function _parseSemver(str){
+  const m = String(str||'').replace(/^v/,'').match(/^(\d+)\.(\d+)\.(\d+)/);
+  return m ? { major:+m[1], minor:+m[2], patch:+m[3] } : null;
+}
+
+function _semverDistance(from, to){
+  /* Count how many version increments from → to.
+     major change = large jump; minor = medium; patch = 1 each. */
+  if(!from || !to) return Infinity;
+  if(to.major > from.major) return (to.major - from.major) * 100;
+  if(to.major < from.major) return 0;
+  if(to.minor > from.minor) return (to.minor - from.minor) * 10 + (to.patch || 0);
+  if(to.minor < from.minor) return 0;
+  return Math.max(0, to.patch - from.patch);
+}
+
+function shouldShowBadge(featureKey){
+  const entry = FEATURE_BADGE_REGISTRY[featureKey];
+  if(!entry) return false;
+  const introduced = _parseSemver(entry.introducedInVersion);
+  const current    = _parseSemver(APP_VERSION);
+  if(!introduced || !current) return false;
+  return _semverDistance(introduced, current) < entry.expiresAfterVersions;
+}
+
+function renderBadge(){
+  const span = document.createElement('span');
+  span.className = 'feature-badge feature-badge--new';
+  span.setAttribute('aria-label', 'New feature');
+  span.textContent = 'NEW';
+  return span;
+}
+
+/* ══════════════════════════════════════════════════════════
    MENU ACTIONS — standalone handlers with direct dialog calls.
    These do NOT depend on _isTauri() or _nativeSaveDialog().
    They import @tauri-apps/plugin-dialog directly at call time.
@@ -7793,7 +8076,7 @@ async function menuSaveAs(){
     const path = await dlg.save({ title:'Save Project As', defaultPath:'SPICA TIDE Project - '+dd+'.'+mm+'.'+yyyy+'.json', filters:[{name:'SPICA Project',extensions:['json']}] });
     if(!path) return;
     const envelope = _buildEnvelope();
-    await window.__TAURI__.core.invoke('write_file', { path, contents: JSON.stringify(envelope,null,2) });
+    await invoke('write_file', { path, contents: JSON.stringify(envelope,null,2) });
     _currentFilePath = path;
     _updateWindowTitle(path);
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
@@ -7809,7 +8092,7 @@ async function menuSave(){
   if(_currentFilePath){
     try {
       const envelope = _buildEnvelope();
-      await window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: JSON.stringify(envelope,null,2) });
+      await invoke('write_file', { path: _currentFilePath, contents: JSON.stringify(envelope,null,2) });
       LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
       _markSaved();
       showToast('Saved \u2014 ' + _currentFilePath.split(/[/\\]/).pop(), 'ok');
@@ -7853,7 +8136,7 @@ async function menuOpen(){
     const selected = await dlg.open({ title:'Open Project', filters:[{name:'SPICA Project',extensions:['json','spica']}], multiple:false });
     if(!selected) return;
     const filePath = typeof selected === 'string' ? selected : selected.path;
-    const contents = await window.__TAURI__.core.invoke('read_file', { path: filePath });
+    const contents = await invoke('read_file', { path: filePath });
     _applyProjectData(contents, filePath.split(/[/\\]/).pop());
     _currentFilePath = filePath;
     _updateWindowTitle(filePath);
@@ -7873,7 +8156,7 @@ async function _populateMenuRecent(){
 
   let recents = [];
   try {
-    if(window.__TAURI__) recents = await window.__TAURI__.core.invoke('get_recent_files');
+    if(window.__TAURI__) recents = await invoke('get_recent_files');
   } catch(e){}
 
   if(!recents.length){
@@ -7957,7 +8240,8 @@ function bindMenuBar(){
     zoomFit:       () => fitToScreen(),
     toggleLibrary: () => cpToggle(),
     about:         () => document.getElementById('aboutOverlay').classList.add('open'),
-    checkUpdate:   () => { if(_isTauri()) _checkForUpdates(true); else showToast('Updates available in desktop app only','info'); },
+    checkUpdate:   () => _checkForUpdates(true),
+    releaseHistory:() => openReleaseHistory(),
   };
 
   /* Wire each menu action — click fires the action and closes the menu */
@@ -8033,6 +8317,7 @@ function bindContextMenu(){
     const cargo = S.cargo.find(c => c.id === _ctxCargoId);
     hideCtxMenu();
     if(!cargo) return;
+    if(!isOperator()) return;          /* Viewer: block all context actions */
 
     if(action === 'edit'){
       openModal(cargo.id);
@@ -8079,58 +8364,333 @@ function bindAboutModal(){
 }
 
 /* ══════════════════════════════════════════════════════════
+   OPERATOR / VIEWER — Modal & binding
+══════════════════════════════════════════════════════════ */
+function openModeModal(){
+  const ov = document.getElementById('modeOverlay');
+  const modal = document.getElementById('modeModal');
+  if(!ov || !modal) return;
+
+  if(isOperator()){
+    /* Currently Operator → offer downgrade */
+    modal.innerHTML = `
+      <h3>Switch to Viewer?</h3>
+      <p>Viewer mode is read-only. You can still view the deck, export, and receive sync updates.</p>
+      <div class="mode-modal-btns">
+        <button class="mode-modal-btn primary" id="modeSwitchViewer">Switch to Viewer</button>
+        <button class="mode-modal-btn secondary" id="modeCancelBtn">Cancel</button>
+      </div>`;
+    document.getElementById('modeSwitchViewer').onclick = () => { setMode('viewer'); closeModeModal(); };
+  } else {
+    /* Currently Viewer → password prompt */
+    modal.innerHTML = `
+      <h3>Enter Operator Mode</h3>
+      <p>Operator mode allows full cargo editing, placement, and sync push.</p>
+      <div class="mode-pw-wrap">
+        <input type="password" class="mode-pw-input" id="modePwInput" placeholder="Password" autocomplete="off">
+        <div class="mode-pw-error" id="modePwError"></div>
+      </div>
+      <div class="mode-modal-btns">
+        <button class="mode-modal-btn primary" id="modeLoginBtn">Enter Operator Mode</button>
+        <button class="mode-modal-btn secondary" id="modeCancelBtn">Cancel</button>
+      </div>`;
+    const inp = document.getElementById('modePwInput');
+    const err = document.getElementById('modePwError');
+    document.getElementById('modeLoginBtn').onclick = () => {
+      if(inp.value === OPERATOR_PW){
+        setMode('operator');
+        closeModeModal();
+        showToast('Operator mode activated');
+      } else {
+        inp.value = '';
+        inp.classList.add('shake');
+        err.textContent = 'Wrong password';
+        setTimeout(() => inp.classList.remove('shake'), 450);
+        inp.focus();
+      }
+    };
+    /* Enter key submits */
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') document.getElementById('modeLoginBtn').click(); });
+    setTimeout(() => inp.focus(), 100);
+  }
+
+  document.getElementById('modeCancelBtn').onclick = closeModeModal;
+  ov.addEventListener('click', e => { if(e.target === ov) closeModeModal(); });
+  ov.classList.add('open');
+}
+
+function closeModeModal(){
+  const ov = document.getElementById('modeOverlay');
+  if(ov) ov.classList.remove('open');
+}
+
+function bindModeButton(){
+  const btn = document.getElementById('modeBtn');
+  if(btn) btn.addEventListener('click', openModeModal);
+  /* Apply initial mode state to UI */
+  applyModeUI();
+}
+
+/* ══════════════════════════════════════════════════════════
+   RELEASE NOTES — What's New modal & Update History panel
+   Reads from RELEASE_NOTES registry (src/releaseNotes.js).
+══════════════════════════════════════════════════════════ */
+
+const _RN_CHANGE_ICONS = {
+  feature:     '\u2605',   /* ★ */
+  improvement: '\u2191',   /* ↑ */
+  fix:         '\u2713',   /* ✓ */
+  ui:          '\u25C8',   /* ◈ */
+  sync:        '\u27F3',   /* ⟳ */
+  breaking:    '\u26A0',   /* ⚠ */
+};
+
+function _getReleaseEntry(version){
+  return RELEASE_NOTES.find(r => r.version === version) || null;
+}
+
+/* ── What's New: check on launch ── */
+function _checkWhatsNew(){
+  const current = APP_VERSION;
+  const lastSeen = localStorage.getItem('spicaTideLastSeenVersion');
+
+  /* Fresh install — no stored value: skip modal, just record */
+  if(!lastSeen){
+    localStorage.setItem('spicaTideLastSeenVersion', current);
+    return;
+  }
+
+  /* Same version: nothing to show */
+  if(lastSeen === current) return;
+
+  /* Version changed — look up notes */
+  const entry = _getReleaseEntry(current);
+  if(!entry){
+    /* No registry entry for this version: silently mark as seen */
+    localStorage.setItem('spicaTideLastSeenVersion', current);
+    return;
+  }
+
+  _showWhatsNew(entry);
+}
+
+function _showWhatsNew(entry){
+  const modal = document.getElementById('wnModal');
+  const ov    = document.getElementById('wnOverlay');
+  if(!modal || !ov) return;
+
+  /* Build highlights */
+  const hlHtml = entry.highlights.map(h => `<li>${escHtml(h)}</li>`).join('');
+
+  /* Build changes */
+  const chHtml = entry.changes.map(c => {
+    const icon = _RN_CHANGE_ICONS[c.type] || '\u2022';
+    return `<li><span class="wn-change-icon">${icon}</span>${escHtml(c.text)}</li>`;
+  }).join('');
+
+  /* Format date */
+  const dateFmt = _formatReleaseDate(entry.date);
+
+  modal.innerHTML = `
+    <div class="wn-header">
+      <h3 class="wn-title">\u2726 What's New in ${escHtml(entry.version)}</h3>
+      <p class="wn-date">Released ${dateFmt}</p>
+    </div>
+    <div class="wn-section">
+      <div class="wn-section-label">Highlights</div>
+      <ul class="wn-highlights">${hlHtml}</ul>
+    </div>
+    <div class="wn-section">
+      <div class="wn-section-label">All Changes</div>
+      <ul class="wn-changes">${chHtml}</ul>
+    </div>
+    <div class="wn-footer">
+      <button class="mode-modal-btn secondary" id="wnHistoryBtn">View Update History</button>
+      <button class="mode-modal-btn primary" id="wnGotItBtn">Got it</button>
+    </div>`;
+
+  /* Bind buttons */
+  document.getElementById('wnGotItBtn').onclick = () => _closeWhatsNew();
+  document.getElementById('wnHistoryBtn').onclick = () => {
+    _closeWhatsNew();
+    openReleaseHistory();
+  };
+  ov.addEventListener('click', e => { if(e.target === ov) _closeWhatsNew(); });
+  document.addEventListener('keydown', _wnEscHandler);
+
+  ov.classList.add('open');
+}
+
+function _wnEscHandler(e){
+  if(e.key === 'Escape') _closeWhatsNew();
+}
+
+function _closeWhatsNew(){
+  const ov = document.getElementById('wnOverlay');
+  if(ov) ov.classList.remove('open');
+  localStorage.setItem('spicaTideLastSeenVersion', APP_VERSION);
+  document.removeEventListener('keydown', _wnEscHandler);
+}
+
+/* ── Release History panel ── */
+function openReleaseHistory(){
+  const panel = document.getElementById('rhPanel');
+  const ov    = document.getElementById('rhOverlay');
+  if(!panel || !ov) return;
+
+  /* Show last 3 versions */
+  const entries = RELEASE_NOTES.slice(0, 3);
+  if(entries.length === 0){
+    panel.innerHTML = `<h3 class="rh-title">Update History</h3><p style="text-align:center;color:var(--txt3);font-size:11px;">No release notes available.</p>
+    <div class="rh-close-row"><button class="mode-modal-btn secondary" id="rhCloseBtn">Close</button></div>`;
+  } else {
+    const entriesHtml = entries.map(entry => {
+      const items = entry.changes.map(c => {
+        const icon = _RN_CHANGE_ICONS[c.type] || '\u2022';
+        return `<li><span class="wn-change-icon">${icon}</span>${escHtml(c.text)}</li>`;
+      }).join('');
+      return `
+        <div class="rh-entry">
+          <div class="rh-entry-header">
+            <span class="rh-ver">v${escHtml(entry.version)}</span>
+            <span class="rh-date">${_formatReleaseDate(entry.date)}</span>
+          </div>
+          <ul class="rh-list">${items}</ul>
+        </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <h3 class="rh-title">Update History</h3>
+      ${entriesHtml}
+      <div class="rh-close-row"><button class="mode-modal-btn secondary" id="rhCloseBtn">Close</button></div>`;
+  }
+
+  document.getElementById('rhCloseBtn').onclick = () => _closeReleaseHistory();
+  ov.addEventListener('click', e => { if(e.target === ov) _closeReleaseHistory(); });
+  ov.classList.add('open');
+}
+
+function _closeReleaseHistory(){
+  const ov = document.getElementById('rhOverlay');
+  if(ov) ov.classList.remove('open');
+}
+
+function _formatReleaseDate(dateStr){
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+  } catch(e){ return dateStr; }
+}
+
+/* ══════════════════════════════════════════════════════════
    AUTO-UPDATE SYSTEM — checks every 5 days, shows banner
 ══════════════════════════════════════════════════════════ */
 const UPDATE_CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; /* 5 days in ms */
 let _updateAvailable = null;
 
+/* Semantic version comparison: returns true if a > b (e.g. "2.1.0" > "1.8.1") */
+function _semverNewer(a, b){
+  const pa = (a||'').split('.').map(Number);
+  const pb = (b||'').split('.').map(Number);
+  for(let i = 0; i < 3; i++){
+    const va = pa[i] || 0, vb = pb[i] || 0;
+    if(va > vb) return true;
+    if(va < vb) return false;
+  }
+  return false; /* equal */
+}
+
 async function _checkForUpdates(manual){
   const resultEl = document.getElementById('aboutCheckResult');
   const lastEl = document.getElementById('aboutLastCheck');
 
-  try {
-    if(manual) {
-      showToast('Checking for updates...', 'info');
-      if(resultEl) resultEl.textContent = 'Checking...';
+  if(manual) {
+    showToast('Checking for updates...', 'info');
+    if(resultEl) resultEl.textContent = 'Checking...';
+  }
+
+  /* Strategy 1: Tauri plugin updater (desktop builds — supports download+install) */
+  if(_isTauri()){
+    try {
+      const updaterMod = await import('@tauri-apps/plugin-updater');
+      const update = await updaterMod.check();
+
+      localStorage.setItem('spicaTide_lastUpdateCheck', String(Date.now()));
+      if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
+
+      if(update && update.available){
+        const ver = update.version || '';
+        /* Only offer update if remote version is actually newer */
+        if(_semverNewer(ver, APP_VERSION)){
+          _updateAvailable = update;
+          _showUpdateBanner(ver);
+          if(manual){
+            showToast('Update available: v' + ver, 'ok');
+            if(resultEl) resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+          }
+        } else {
+          /* Remote is older or same — ignore */
+          if(manual){
+            showToast('You are on the latest version', 'ok');
+            if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+          }
+        }
+      } else {
+        if(manual){
+          showToast('You are on the latest version', 'ok');
+          if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+        }
+      }
+      return;
+    } catch(e) {
+      /* Tauri plugin failed — fall through to GitHub API check */
+      if(!manual) return; /* silent fail for auto-check */
     }
+  }
 
-    const updaterMod = await import('@tauri-apps/plugin-updater');
-    const update = await updaterMod.check();
+  /* Strategy 2: GitHub API check (browser dev mode or Tauri plugin failure) */
+  try {
+    const res = await fetch('https://api.github.com/repos/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
+    if(!res.ok) throw new Error('GitHub API ' + res.status);
+    const data = await res.json();
+    const latest = data.tag_name ? data.tag_name.replace(/^v/,'') : '';
 
-    /* Save check timestamp */
     localStorage.setItem('spicaTide_lastUpdateCheck', String(Date.now()));
     if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
 
-    if(update && update.available){
-      _updateAvailable = update;
-      const ver = update.version || 'new';
-
-      /* Show banner */
-      const banner = document.getElementById('updateBanner');
-      const textEl = document.getElementById('ubText');
-      if(banner && textEl){
-        textEl.textContent = 'New version ' + ver + ' available';
-        banner.classList.add('show');
-        /* Auto-dismiss after 30 seconds */
-        setTimeout(() => banner.classList.remove('show'), 30000);
-      }
-
+    if(latest && _semverNewer(latest, APP_VERSION)){
       if(manual){
-        showToast('Update available: v' + ver, 'ok');
-        if(resultEl) resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+        showToast('Update available: v' + latest, 'ok');
+        if(resultEl) resultEl.innerHTML = 'Version <b>' + latest + '</b> available — <a href="' + (data.html_url||'#') + '" target="_blank" style="color:var(--acc);">View release</a>';
       }
+      _showUpdateBanner(latest);
     } else {
       if(manual){
         showToast('You are on the latest version', 'ok');
         if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
       }
     }
-  } catch(e) {
+  } catch(e){
     if(manual){
       showToast('Update check failed', 'warn');
       if(resultEl) resultEl.textContent = 'Check failed: ' + (e && e.message || e);
     }
-    /* Automatic checks fail silently */
+  }
+}
+
+function _showUpdateBanner(ver){
+  const banner = document.getElementById('updateBanner');
+  const textEl = document.getElementById('ubText');
+  if(banner && textEl){
+    /* Enrich with highlights from release notes registry if available */
+    const entry = _getReleaseEntry(ver);
+    if(entry && entry.highlights && entry.highlights.length > 0){
+      textEl.textContent = 'v' + ver + ': ' + entry.highlights.slice(0, 2).join(' \u00B7 ');
+    } else {
+      textEl.textContent = 'New version ' + ver + ' available';
+    }
+    banner.classList.add('show');
+    setTimeout(() => banner.classList.remove('show'), 30000);
   }
 }
 
@@ -8247,6 +8807,7 @@ function _sndLoadSettings(){
 ══════════════════════════════════════════════════════════ */
 let _syncPushTimer = null;
 function _syncPushDebounced(){
+  if(!isOperator()) return;            /* Viewer: never push to CouchDB */
   if(Sync.getSyncStatus() === 'disabled') return;
   clearTimeout(_syncPushTimer);
   _syncPushTimer = setTimeout(() => {
@@ -8361,6 +8922,7 @@ function _syncUpdateUI(status){
     else if(status==='auth_failed') descSt.textContent = 'Authentication failed — check credentials';
     else if(status==='disabled') descSt.textContent = 'Not configured';
   }
+  _syncUpdateConnectedTime();
 }
 
 function _syncApplyRemote(remoteState){
@@ -8382,17 +8944,17 @@ function _syncApplyRemote(remoteState){
 
 /* ── Sync config storage — password stored separately in encrypted store ── */
 async function _syncSaveConfig(cfg){
-  const publicCfg = { url:cfg.url, db:cfg.db, username:cfg.username }; // NO password
+  const publicCfg = { url:cfg.url, db:cfg.db, username:cfg.username, enabled:true };
   try {
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
       await store.set('syncConfig', publicCfg);
-      await store.set('syncAuth', cfg.password || ''); // separate key for password
+      await store.set('syncAuth', cfg.password || '');
       await store.save();
     } else {
       localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg));
-      sessionStorage.setItem('spicaTide_syncAuth', cfg.password || ''); // session only in browser
+      localStorage.setItem('spicaTide_syncAuth', cfg.password || '');
     }
   } catch(e){ localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg)); }
 }
@@ -8407,7 +8969,7 @@ async function _syncLoadConfig(){
       pwd = await store.get('syncAuth') || '';
     } else {
       cfg = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
-      pwd = sessionStorage.getItem('spicaTide_syncAuth') || '';
+      pwd = localStorage.getItem('spicaTide_syncAuth') || '';
     }
     if(cfg && cfg.url) return { ...cfg, password: pwd };
     return null;
@@ -8424,7 +8986,7 @@ async function _syncDeleteConfig(){
       await store.save();
     } else {
       localStorage.removeItem('spicaTide_syncConfig');
-      sessionStorage.removeItem('spicaTide_syncAuth');
+      localStorage.removeItem('spicaTide_syncAuth');
     }
   } catch(e){ localStorage.removeItem('spicaTide_syncConfig'); }
 }
@@ -8436,9 +8998,40 @@ function _syncLog(type, msg){
   const entry = { time: new Date().toLocaleTimeString(), type, msg };
   _syncLogs.push(entry);
   if(_syncLogs.length > SYNC_LOG_MAX) _syncLogs.shift();
-  // Update log panel if open
-  const panel = document.getElementById('syncLogContent');
-  if(panel) panel.textContent = _syncLogs.map(l => l.time + ' [' + l.type + '] ' + l.msg).join('\n');
+  // Update both log panels (config view + connected view)
+  const logText = _syncLogs.map(l => l.time + ' [' + l.type + '] ' + l.msg).join('\n');
+  const p1 = document.getElementById('syncLogContent');
+  const p2 = document.getElementById('syncLogContent2');
+  if(p1) p1.textContent = logText;
+  if(p2) p2.textContent = logText;
+}
+
+/* ── Sync connected/edit view toggle ── */
+function _syncShowConnected(cfg){
+  const configPanel = document.getElementById('syncConfigPanel');
+  const connView = document.getElementById('syncConnectedView');
+  if(configPanel) configPanel.style.display = 'none';
+  if(connView){
+    connView.style.display = '';
+    const dbEl = document.getElementById('syncInfoDb');
+    const userEl = document.getElementById('syncInfoUser');
+    const timeEl = document.getElementById('syncInfoTime');
+    if(dbEl) dbEl.textContent = cfg.db || 'spica_tide';
+    if(userEl) userEl.textContent = cfg.username || '—';
+    _syncUpdateConnectedTime();
+  }
+}
+function _syncShowEditForm(){
+  const configPanel = document.getElementById('syncConfigPanel');
+  const connView = document.getElementById('syncConnectedView');
+  if(connView) connView.style.display = 'none';
+  if(configPanel) configPanel.style.display = '';
+}
+function _syncUpdateConnectedTime(){
+  const timeEl = document.getElementById('syncInfoTime');
+  if(!timeEl) return;
+  const t = Sync.getLastSyncTime();
+  timeEl.textContent = t ? new Date(t).toLocaleTimeString() : 'not yet';
 }
 
 function _syncWireCallbacks(){
@@ -8448,31 +9041,97 @@ function _syncWireCallbacks(){
   Sync.onConflict(_syncHandleConflict);
 }
 
+/* ── Shared action handlers (used in both config and connected views) ── */
+function _syncDoBackup(){
+  const envelope = _buildEnvelope();
+  const json = JSON.stringify(envelope, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.download = 'spica-tide-backup-' + ts + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  _syncLog('info', 'Backup downloaded');
+  showToast('Backup saved', 'ok');
+}
+function _syncDoRestore(){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,.spica';
+  input.style.display = 'none';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if(!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const plan = data.plan || data.state || data;
+      if(plan.cargo){
+        _syncApplyRemote(plan);
+        _syncLog('info', 'Restored from backup: ' + file.name);
+        showToast('Plan restored from backup', 'ok');
+        if(Sync.getSyncStatus() !== 'disabled') _syncPushDebounced();
+      } else {
+        showToast('Invalid backup file', 'err');
+        _syncLog('error', 'Invalid backup format');
+      }
+    } catch(e){
+      showToast('Error reading backup: ' + e.message, 'err');
+      _syncLog('error', 'Restore failed: ' + e.message);
+    }
+    input.remove();
+  });
+  document.body.appendChild(input);
+  input.click();
+}
+async function _syncDoForcePull(){
+  if(Sync.getSyncStatus() === 'disabled'){ showToast('Sync not enabled', 'err'); return; }
+  _syncLog('info', 'Force pull requested');
+  const remote = await Sync.pullState();
+  if(remote){
+    _syncApplyRemote(remote);
+    _syncLog('pull', 'Force pull applied');
+    showToast('Latest plan pulled from cloud', 'ok');
+  } else {
+    showToast('No remote data available', 'err');
+    _syncLog('warn', 'Force pull: no data');
+  }
+}
+
 function bindSyncSettings(){
   const toggle = document.getElementById('stSyncToggle');
   const configPanel = document.getElementById('syncConfigPanel');
+  const connView = document.getElementById('syncConnectedView');
   const testBtn = document.getElementById('syncTestBtn');
   const saveBtn = document.getElementById('syncSaveBtn');
   const resultEl = document.getElementById('syncResult');
   if(!toggle) return;
 
-  // Load saved sync config and auto-connect
+  /* ── Load saved config and auto-connect ── */
   (async () => {
     try {
       const saved = await _syncLoadConfig();
       if (saved && saved.url) {
+        /* Populate form fields (in case user clicks Edit) */
         document.getElementById('syncUrl').value = saved.url || '';
         document.getElementById('syncDb').value = saved.db || '';
         document.getElementById('syncUser').value = saved.username || '';
         document.getElementById('syncPass').value = saved.password || '';
         toggle.checked = true;
-        if (configPanel) configPanel.style.display = '';
+
+        /* Show connected summary, not form */
+        _syncShowConnected(saved);
+
         _syncLog('info', 'Config loaded. Auto-connecting to ' + saved.url);
         Sync.setSyncConfig(saved);
         _syncWireCallbacks();
         Sync.startSync();
         _syncUpdateUI('offline');
-        // Try initial pull
+
         const remote = await Sync.pullState();
         if(remote) { _syncLog('pull', 'Initial pull ok'); }
         else { _syncLog('info', 'No remote data or offline'); }
@@ -8480,21 +9139,36 @@ function bindSyncSettings(){
     } catch (e) { _syncLog('error', 'Config load failed: ' + e.message); }
   })();
 
-  // Toggle expand config panel
+  /* ── Toggle: on → show form (if no saved config) or connected view; off → disconnect ── */
   toggle.addEventListener('change', () => {
     if(toggle.checked){
-      configPanel.style.display = '';
+      /* Check if already configured */
+      const hasUrl = document.getElementById('syncUrl').value.trim();
+      if(hasUrl && Sync.getSyncStatus() !== 'disabled'){
+        /* Already configured — show connected view */
+        _syncShowConnected({
+          db: document.getElementById('syncDb').value,
+          username: document.getElementById('syncUser').value
+        });
+      } else {
+        _syncShowEditForm();
+      }
     } else {
-      configPanel.style.display = 'none';
+      if(configPanel) configPanel.style.display = 'none';
+      if(connView) connView.style.display = 'none';
       Sync.stopSync();
       Sync.setSyncConfig(null);
       _syncDeleteConfig();
       _syncUpdateUI('disabled');
     }
   });
-  if(!toggle.checked && configPanel) configPanel.style.display = 'none';
+  /* Hide both views if toggle is off */
+  if(!toggle.checked){
+    if(configPanel) configPanel.style.display = 'none';
+    if(connView) connView.style.display = 'none';
+  }
 
-  // Test connection
+  /* ── Test connection ── */
   if(testBtn) testBtn.addEventListener('click', async () => {
     const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
     Sync.setSyncConfig(cfg);
@@ -8513,112 +9187,50 @@ function bindSyncSettings(){
     }
   });
 
-  // Save & Enable
+  /* ── Save & Enable → persist, connect, switch to connected view ── */
   if(saveBtn) saveBtn.addEventListener('click', async () => {
     const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
     if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
-    _syncSaveConfig(cfg);
+    await _syncSaveConfig(cfg);
     Sync.setSyncConfig(cfg);
     _syncWireCallbacks();
 
-    // Initial migration
     const envelope = _buildEnvelope();
     const remote = await Sync.migrateIfNeeded(envelope.plan);
     if(remote) _syncApplyRemote(remote);
 
     Sync.startSync();
     _syncUpdateUI('synced');
-    resultEl.textContent = '\u2713 Sync enabled';
-    resultEl.style.color = '#3ea36a';
     _syncLog('info', 'Sync enabled and started');
     showToast('Cloud sync enabled', 'ok');
+
+    /* Switch to connected summary view */
+    _syncShowConnected(cfg);
   });
 
-  /* ── Backup button — download plan as JSON ── */
-  const backupBtn = document.getElementById('syncBackupBtn');
-  if(backupBtn) backupBtn.addEventListener('click', () => {
-    const envelope = _buildEnvelope();
-    const json = JSON.stringify(envelope, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-    a.download = 'spica-tide-backup-' + ts + '.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    _syncLog('info', 'Backup downloaded');
-    showToast('Backup saved', 'ok');
-  });
+  /* ── Edit Connection button (in connected view) → switch back to form ── */
+  const editBtn = document.getElementById('syncEditBtn');
+  if(editBtn) editBtn.addEventListener('click', _syncShowEditForm);
 
-  /* ── Restore button — load plan from JSON file ── */
-  const restoreBtn = document.getElementById('syncRestoreBtn');
-  if(restoreBtn) restoreBtn.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json,.spica';
-    input.style.display = 'none';
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if(!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        const plan = data.plan || data.state || data;
-        if(plan.cargo){
-          _syncApplyRemote(plan);
-          _syncLog('info', 'Restored from backup: ' + file.name);
-          showToast('Plan restored from backup', 'ok');
-          // Push restored state to cloud if connected
-          if(Sync.getSyncStatus() !== 'disabled'){
-            _syncPushDebounced();
-          }
-        } else {
-          showToast('Invalid backup file', 'err');
-          _syncLog('error', 'Invalid backup format');
-        }
-      } catch(e){
-        showToast('Error reading backup: ' + e.message, 'err');
-        _syncLog('error', 'Restore failed: ' + e.message);
-      }
-      input.remove();
-    });
-    document.body.appendChild(input);
-    input.click();
-  });
+  /* ── Action buttons in connected view ── */
+  const pull2 = document.getElementById('syncForcePull2');
+  const backup2 = document.getElementById('syncBackupBtn2');
+  const restore2 = document.getElementById('syncRestoreBtn2');
+  if(pull2) pull2.addEventListener('click', _syncDoForcePull);
+  if(backup2) backup2.addEventListener('click', _syncDoBackup);
+  if(restore2) restore2.addEventListener('click', _syncDoRestore);
 
-  /* ── Force Pull button ── */
-  const forcePull = document.getElementById('syncForcePull');
-  if(forcePull) forcePull.addEventListener('click', async () => {
-    if(Sync.getSyncStatus() === 'disabled'){
-      showToast('Sync not enabled', 'err');
-      return;
-    }
-    _syncLog('info', 'Force pull requested');
-    const remote = await Sync.pullState();
-    if(remote){
-      _syncApplyRemote(remote);
-      _syncLog('pull', 'Force pull applied');
-      showToast('Latest plan pulled from cloud', 'ok');
-    } else {
-      showToast('No remote data available', 'err');
-      _syncLog('warn', 'Force pull: no data');
-    }
-  });
-
-  /* ── Error badge click → open log ── */
+  /* ── Error badge → open log ── */
   const errBadge = document.getElementById('syncErrorBadge');
   if(errBadge) errBadge.addEventListener('click', () => {
-    const details = document.querySelector('.sync-log-details');
-    if(details) details.open = true;
+    document.querySelectorAll('.sync-log-details').forEach(d => d.open = true);
   });
 }
 
 function init(){
   bindMenuBar();
   bindAboutModal();
+  bindModeButton();
   _bindUpdateBanner();
   _scheduleUpdateCheck();
   bindContextMenu();
@@ -8634,7 +9246,7 @@ function init(){
   /* Initialise dynamic colour assignments for restored active locations */
   initDynColors();
   buildActiveLocStrip();buildLocGrid();buildCargoList();buildDGList();
-  bindTabs();bindStatusBtns();bindModal();bindDGPicker();bindCustomForm();bindLibPanel();
+  bindTabs();bindStatusBtns();bindModal();bindDGMultiPicker();bindCustomForm();bindLibPanel();
   bindLocsPanel();bindLocDrawer();bindLocDeleteDlg();bindDatePicker();
   bindAscoUpload();
   bindSaveAs();
@@ -8668,23 +9280,8 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
     setTimeout(() => showToast('Previous session restored', 'ok'), 400);
   }
 
-  /* ── Auto-update checker — checks GitHub Releases ── */
-  setTimeout(async () => {
-    try {
-      const res = await fetch('https://api.github.com/repos/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
-      if(!res.ok) return;
-      const data = await res.json();
-      const latest = data.tag_name ? data.tag_name.replace(/^v/,'') : '';
-      if(latest && latest !== APP_VERSION){
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:10px 16px;border-radius:8px;background:var(--acc);color:#fff;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:600;z-index:9000;box-shadow:var(--sh-md);cursor:pointer;';
-        toast.innerHTML = '\u2B06 Update available: v' + escHtml(latest) + ' <span style="opacity:.6;margin-left:6px;font-size:9px;">Click to view</span>';
-        toast.addEventListener('click', () => { window.open(data.html_url || 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases','_blank'); toast.remove(); });
-        document.body.appendChild(toast);
-        setTimeout(() => { if(toast.parentNode) toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 15000);
-      }
-    } catch(e){ /* silently ignore — no internet or no repo */ }
-  }, 3000);
+  /* ── What's New modal (after update) ── */
+  setTimeout(() => _checkWhatsNew(), 800);
 
   /* ── File association: open file passed as CLI argument ── */
   if(window.__TAURI__){
@@ -8698,7 +9295,7 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
             const fp = ev.payload.paths[0];
             if(fp.endsWith('.json') || fp.endsWith('.spica')){
               try {
-                const contents = await window.__TAURI__.core.invoke('read_file', { path: fp });
+                const contents = await invoke('read_file', { path: fp });
                 _applyProjectData(contents, fp.split(/[/\\]/).pop());
                 _currentFilePath = fp;
                 _updateWindowTitle(fp);
@@ -8810,7 +9407,7 @@ function saveProject(){
     /* Overwrite current file silently */
     const envelope = _buildEnvelope();
     const json = JSON.stringify(envelope, null, 2);
-    window.__TAURI__.core.invoke('write_file', { path: _currentFilePath, contents: json })
+    invoke('write_file', { path: _currentFilePath, contents: json })
       .then(() => {
         LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
         _markSaved();
@@ -8836,7 +9433,7 @@ async function saveProjectAs(){
     const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
     if(!targetPath) return;
     try {
-      await window.__TAURI__.core.invoke('write_file', { path: targetPath, contents: json });
+      await invoke('write_file', { path: targetPath, contents: json });
       _currentFilePath = targetPath;
       _updateWindowTitle(targetPath);
       _addToRecent(targetPath, envelope.name);

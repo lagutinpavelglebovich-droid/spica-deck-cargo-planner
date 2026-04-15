@@ -2,6 +2,51 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [2.3.0] - 2026-04-15
+
+### Added
+- **Multiple DG classes per cargo item** — each item can carry up to 3 IMDG hazard classes
+- Multi-select DG class picker in cargo editor with colored tags and search
+- Individual DG class badges displayed on deck cargo blocks for all assigned classes
+- Segregation engine checks all class combinations between item pairs — most restrictive wins
+- Drag overlay and exclusion zones updated for multi-class cargo
+- ASCO import extracts multiple DG classes from comma-separated hazard cells
+
+### Changed
+- Data model: `dgClass` (string) migrated to `dgClasses` (array) — backward compatible
+- Excel export includes all DG classes per item (comma-separated)
+- DG summary counts each class independently across multi-class items
+
+## [2.2.1] - 2026-04-15
+
+### Added
+- Universal NEW badge system — centralized registry (`src/badgeRegistry.js`) for marking new features with auto-expiring badges
+- `shouldShowBadge()` / `renderBadge()` utilities for one-line badge integration at any render site
+- NEW badge applied to Operator/Viewer mode button (expires after 3 version increments)
+
+## [2.2.0] - 2026-04-15
+
+### Added
+- **Operator / Viewer mode** — two-tier access control with persistent mode selection
+  - Operator: full edit rights (password: `spica`)
+  - Viewer: read-only deck view with live sync receive, export, and settings access
+- Mode selector button in toolbar with password-protected Operator login modal
+- All cargo mutations (drag, resize, rotate, delete, duplicate, keyboard shortcuts) blocked in Viewer mode
+- CouchDB sync push blocked in Viewer mode; pull/receive remains active
+- Subtle "VIEWER MODE — Read Only" banner in Viewer mode
+- Mode persists across app restarts via localStorage
+
+## [2.1.2] - 2026-04-15
+
+### Added
+- ASCO import auto-assignment rule: entries containing "food" in description are automatically assigned Mini Container (DNV) dimensions (1.95m x 1.65m)
+- Green "Auto: Mini Container (DNV)" badge shown in import modal, queue list, and cargo panel for auto-assigned items
+
+## [2.1.1] - 2026-04-15
+
+### Changed
+- Replaced inline base64 About modal icon with local asset reference (`src-tauri/icons/icon.png`)
+
 ## [1.0.0] - 2026-04-13
 
 ### Added

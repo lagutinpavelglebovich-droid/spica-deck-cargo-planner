@@ -89,9 +89,10 @@
     <span class="menu-label">Help</span>
     <div class="menu-dropdown">
       <div class="menu-action" data-action="about">About SPICA TIDE</div>
+      <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v1.8.1 &middot; Build 40</div>
+      <div class="menu-action menu-disabled" data-action="version">v2.3.0</div>
     </div>
   </div>
 </div>
@@ -109,13 +110,12 @@
 <div class="about-overlay" id="aboutOverlay">
   <div class="about-modal">
     <button class="about-close" id="aboutClose">&times;</button>
-    <div class="about-icon"><img src="data:image/png;base64,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" width="48" height="48" style="border-radius:10px;"></div>
+    <div class="about-icon"><img src="src-tauri/icons/icon.png" width="48" height="48" style="border-radius:10px;"></div>
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 1.8.1<br>
-      Build 40<br>
-      Release Channel: Beta
+      Version 2.3.0<br>
+      Release: Stable
     </div>
     <div class="about-desc">
       Built for offshore PSV cargo planning.<br>
@@ -132,6 +132,30 @@
     <div class="about-footer">&copy; 2026 SPICA TIDE Marine Operations<br>Developed by Pavlo Lagutin</div>
   </div>
 </div>
+
+<!-- MODE MODAL (Operator / Viewer) -->
+<div class="mode-overlay" id="modeOverlay">
+  <div class="mode-modal" id="modeModal">
+    <!-- Content generated dynamically by openModeModal() -->
+  </div>
+</div>
+
+<!-- WHAT'S NEW MODAL -->
+<div class="wn-overlay" id="wnOverlay">
+  <div class="wn-modal" id="wnModal">
+    <!-- Content generated dynamically by _showWhatsNew() -->
+  </div>
+</div>
+
+<!-- RELEASE HISTORY PANEL -->
+<div class="rh-overlay" id="rhOverlay">
+  <div class="rh-panel" id="rhPanel">
+    <!-- Content generated dynamically by openReleaseHistory() -->
+  </div>
+</div>
+
+<!-- VIEWER MODE BANNER -->
+<div class="viewer-banner" id="viewerBanner">&#x1F441; VIEWER MODE — Read Only</div>
 
 <!-- HEADER -->
 <div class="hdr">
@@ -175,6 +199,12 @@
         <div class="sb" data-s="TR">Transfer</div>
       </div>
     </div>
+
+    <!-- Mode selector (Operator / Viewer) -->
+    <button class="mode-btn mode-viewer" id="modeBtn" title="Current access mode">
+      <span class="mode-btn-icon" id="modeBtnIcon">&#x1F441;</span>
+      <span class="mode-btn-label" id="modeBtnLabel">VIEWER</span>
+    </button>
 
     <!-- Voyage + Date card -->
     <div class="voy-card">
@@ -713,36 +743,18 @@
       <option value="">— select destination —</option>
     </select>
   </div>
-  <label>DG Class</label>
-  <!-- Hidden native select — preserves .value API used by openModal / save -->
-  <select id="mDG" style="display:none" aria-hidden="true">
-    <option value="">— Not DG —</option>
-    <option value="1.1">1.1 Explosives (mass)</option><option value="1.2">1.2 Explosives (proj.)</option>
-    <option value="1.3">1.3 Explosives (fire)</option><option value="1.4">1.4 Explosives (minor)</option>
-    <option value="1.5">1.5 Very insensitive</option><option value="1.6">1.6 Extr. insensitive</option>
-    <option value="2.1">2.1 Flammable Gas</option><option value="2.2">2.2 Non-flammable Gas</option>
-    <option value="2.3">2.3 Toxic Gas</option><option value="3">3 Flammable Liquid</option>
-    <option value="4.1">4.1 Flammable Solid</option><option value="4.2">4.2 Spont. Combustion</option>
-    <option value="4.3">4.3 Dangerous Wet</option><option value="5.1">5.1 Oxidizing Agent</option>
-    <option value="5.2">5.2 Org. Peroxide</option><option value="6.1">6.1 Toxic</option>
-    <option value="6.2">6.2 Infectious</option><option value="7">7 Radioactive</option>
-    <option value="8">8 Corrosive</option><option value="9">9 Miscellaneous</option>
-  </select>
-  <!-- Custom DG picker — fully styled, theme-aware -->
-  <div class="dg-picker" id="dgPicker">
-    <button type="button" class="dg-picker-btn" id="dgPickerBtn" aria-haspopup="listbox" aria-expanded="false">
-      <span class="dg-picker-dot" id="dgPickerDot"></span>
-      <span class="dg-picker-label" id="dgPickerLabel">— Not DG —</span>
-      <svg class="dg-picker-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
-        <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
-    <div class="dg-picker-dropdown" id="dgPickerDropdown" role="listbox">
+  <label>DG Classes <span style="font-weight:400;color:var(--txt4);font-size:9px;">(up to 3)</span></label>
+  <!-- Multi-DG picker — tag-based, up to 3 classes -->
+  <div class="dg-multi" id="dgMulti">
+    <div class="dg-multi-tags" id="dgMultiTags"></div>
+    <button type="button" class="dg-multi-add" id="dgMultiAdd">+ Add DG Class</button>
+    <div class="dg-multi-dropdown" id="dgMultiDropdown">
       <div class="dg-picker-search-wrap">
-        <input class="dg-picker-search" id="dgPickerSearch" type="text" placeholder="Search DG class…" autocomplete="off" spellcheck="false">
+        <input class="dg-picker-search" id="dgMultiSearch" type="text" placeholder="Search DG class..." autocomplete="off" spellcheck="false">
       </div>
-      <div class="dg-picker-list" id="dgPickerList"></div>
+      <div class="dg-multi-list" id="dgMultiList"></div>
     </div>
+    <div class="dg-multi-msg" id="dgMultiMsg"></div>
   </div>
   <label>Heavy Lift</label>
   <div class="mdl-hl-toggle" id="mHL">
@@ -1019,29 +1031,33 @@
         <div class="st-row-body">
           <div class="st-row-title">Cloud Sync <span class="sync-status-dot" id="syncDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#888;margin-left:6px;vertical-align:middle;"></span></div>
           <div class="st-row-desc" id="syncDesc">Not configured</div>
-          <div class="sync-config" id="syncConfigPanel" style="margin-top:8px;display:none;">
-            <input type="text" id="syncUrl" placeholder="https://your-couch.railway.app" style="width:100%;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf2);color:var(--txt);font-size:10px;font-family:'JetBrains Mono',monospace;margin-bottom:4px;">
-            <input type="text" id="syncDb" placeholder="spica_tide" style="width:100%;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf2);color:var(--txt);font-size:10px;font-family:'JetBrains Mono',monospace;margin-bottom:4px;">
-            <div style="display:flex;gap:4px;margin-bottom:4px;">
-              <input type="text" id="syncUser" placeholder="username" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf2);color:var(--txt);font-size:10px;font-family:'JetBrains Mono',monospace;">
-              <input type="password" id="syncPass" placeholder="password" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf2);color:var(--txt);font-size:10px;font-family:'JetBrains Mono',monospace;">
+          <!-- Connected summary view (shown after successful save) -->
+          <div class="sync-connected" id="syncConnectedView" style="margin-top:8px;display:none;">
+            <div class="sync-info-row"><span class="sync-info-label">Database:</span> <span id="syncInfoDb">—</span></div>
+            <div class="sync-info-row"><span class="sync-info-label">User:</span> <span id="syncInfoUser">—</span></div>
+            <div class="sync-info-row"><span class="sync-info-label">Last sync:</span> <span id="syncInfoTime">—</span></div>
+            <div style="display:flex;gap:4px;margin-top:6px;">
+              <button class="sync-btn" id="syncForcePull2" title="Pull latest from cloud" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">⟳ Pull</button>
+              <button class="sync-btn" id="syncBackupBtn2" title="Download backup" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↓ Backup</button>
+              <button class="sync-btn" id="syncRestoreBtn2" title="Restore from backup" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↑ Restore</button>
             </div>
-            <div style="display:flex;gap:4px;">
+            <button class="sync-btn" id="syncEditBtn" style="width:100%;margin-top:4px;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt3);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">Edit Connection</button>
+            <details class="sync-log-details" style="margin-top:6px;">
+              <summary style="font-size:9px;color:var(--txt3);cursor:pointer;user-select:none;">Sync Log</summary>
+              <pre class="sync-log-content" id="syncLogContent2" style="margin:4px 0 0;padding:6px;background:var(--surf);border:1px solid var(--brd);border-radius:var(--r-xs);font-size:8px;font-family:'JetBrains Mono',monospace;color:var(--txt3);max-height:140px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.4;"></pre>
+            </details>
+          </div>
+          <!-- Config form (shown for initial setup or when editing) -->
+          <div class="sync-config" id="syncConfigPanel" style="margin-top:8px;display:none;">
+            <input class="sync-input" type="text" id="syncUrl" placeholder="https://your-couch.railway.app">
+            <input class="sync-input" type="text" id="syncDb" placeholder="spica_tide">
+            <input class="sync-input" type="text" id="syncUser" placeholder="username">
+            <input class="sync-input" type="password" id="syncPass" placeholder="password">
+            <div style="display:flex;gap:4px;margin-top:4px;">
               <button class="sync-btn" id="syncTestBtn" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">Test Connection</button>
               <button class="sync-btn" id="syncSaveBtn" style="flex:1;padding:4px 8px;border:1px solid var(--acc);border-radius:var(--r-xs);background:rgba(72,96,131,.1);color:var(--acc);font-size:9px;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;">Save & Enable</button>
             </div>
             <div class="sync-result" id="syncResult" style="font-size:9px;color:var(--txt3);margin-top:4px;font-family:'JetBrains Mono',monospace;"></div>
-            <!-- Backup / Restore -->
-            <div class="sync-backup-row" style="display:flex;gap:4px;margin-top:6px;">
-              <button class="sync-btn" id="syncBackupBtn" title="Download full plan as backup JSON" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↓ Backup</button>
-              <button class="sync-btn" id="syncRestoreBtn" title="Restore plan from backup JSON" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">↑ Restore</button>
-              <button class="sync-btn" id="syncForcePull" title="Force pull latest from cloud" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">⟳ Pull</button>
-            </div>
-            <!-- Debug Log -->
-            <details class="sync-log-details" style="margin-top:6px;">
-              <summary style="font-size:9px;color:var(--txt3);cursor:pointer;user-select:none;">Sync Log</summary>
-              <pre class="sync-log-content" id="syncLogContent" style="margin:4px 0 0;padding:6px;background:var(--surf);border:1px solid var(--brd);border-radius:var(--r-xs);font-size:8px;font-family:'JetBrains Mono',monospace;color:var(--txt3);max-height:140px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.4;"></pre>
-            </details>
           </div>
         </div>
         <label class="st-toggle" title="Cloud Sync">
