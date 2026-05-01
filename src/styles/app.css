@@ -12771,6 +12771,23 @@ body.is-viewer .shell-ribbon::after{
 [data-theme="dark"] .toast-msg.is-warn .toast-msg-icon{ color:#f0b760; }
 [data-theme="dark"] .toast-msg.is-info .toast-msg-icon{ color:#93b2da; }
 
+/* ── Undo toast action button ── */
+.toast-undo-btn{
+  margin-left:auto;
+  padding:2px 10px;
+  border:none;
+  border-radius:4px;
+  background:var(--accent, #486083);
+  color:#fff;
+  font:600 11px/1.4 var(--ff);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s;
+}
+.toast-undo-btn:hover{ background:var(--accent-hover, #3a5070); }
+[data-theme="dark"] .toast-undo-btn{ background:#6b9fd4; color:#1a1a1a; }
+[data-theme="dark"] .toast-undo-btn:hover{ background:#8ab6e0; }
+
 @media print{ .toast-stack{ display:none !important; } }
 .update-banner{ background:var(--glass-ribbon) !important;backdrop-filter:blur(16px) !important;-webkit-backdrop-filter:blur(16px) !important;border-bottom:1px solid var(--glass-brd-dim) !important; }
 /* Viewer banner visibility is governed by the premium rule near the top

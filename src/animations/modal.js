@@ -1,6 +1,7 @@
 /* ════════════════════════════════════════════════════════════
    Modal animations — Family-style spring transitions
    Uses Motion One for Apple-like spring physics.
+   Block 3: State machine guards against race conditions.
    ════════════════════════════════════════════════════════════ */
 
 import { animate } from 'motion';
@@ -11,10 +12,31 @@ const SPRING_SNAP = { type: 'spring', stiffness: 420, damping: 34 };
 
 let _inFlight = null;
 
+/* ── Modal State Machine ────────────────────────────────────
+   States: closed | opening | open | closing
+   Guards prevent double-close, close-during-open races, etc. */
+
+const _modalStates = new WeakMap();
+
+export function getModalState(overlay) {
+  return _modalStates.get(overlay) || 'closed';
+}
+
+function _setState(overlay, state) {
+  _modalStates.set(overlay, state);
+}
+
 /* ── Spring entrance ─────────────────────────────────────── */
 
 export function animateModalIn(overlay, modal) {
+  const state = getModalState(overlay);
+  /* Block opening if already open/opening */
+  if (state === 'open' || state === 'opening') return;
+
+  /* If closing, cancel in-flight exit animation */
   if (_inFlight) { _inFlight.cancel(); _inFlight = null; }
+
+  _setState(overlay, 'opening');
 
   modal.style.opacity = '0';
   modal.style.transform = 'scale(0.92) translateY(20px)';
@@ -24,16 +46,29 @@ export function animateModalIn(overlay, modal) {
 
   animate(overlay, { opacity: [0, 1] }, { duration: 0.22, easing: 'ease-out' });
 
-  animate(
+  const entrance = animate(
     modal,
     { opacity: [0, 1], transform: ['scale(0.92) translateY(20px)', 'scale(1) translateY(0px)'] },
     SPRING_IN
   );
+
+  entrance.finished.then(() => {
+    /* Only transition to 'open' if we're still in 'opening' (not interrupted) */
+    if (getModalState(overlay) === 'opening') {
+      _setState(overlay, 'open');
+    }
+  }).catch(() => {});
 }
 
 /* ── Spring exit ─────────────────────────────────────────── */
 
 export async function animateModalOut(overlay, modal) {
+  const state = getModalState(overlay);
+  /* Guard: ignore close if already closed or currently closing */
+  if (state === 'closed' || state === 'closing') return;
+
+  _setState(overlay, 'closing');
+
   const exit = animate(
     modal,
     { opacity: [1, 0], transform: ['scale(1) translateY(0px)', 'scale(0.94) translateY(10px)'] },
@@ -47,6 +82,12 @@ export async function animateModalOut(overlay, modal) {
   _inFlight = null;
 
   overlay.style.display = 'none';
+  _setState(overlay, 'closed');
+}
+
+/* ── Check if actions are allowed (only when state === 'open') ── */
+export function isModalActionable(overlay) {
+  return getModalState(overlay) === 'open';
 }
 
 /* ── Swipe-down dismiss ──────────────────────────────────── */

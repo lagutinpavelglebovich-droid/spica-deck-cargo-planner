@@ -11,7 +11,7 @@ import * as Sync from './sync.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
-import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss } from './animations/modal.js';
+import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
@@ -3464,7 +3464,8 @@ if(trWrap){
   trWrap.classList.toggle('visible',c.status==='TR');
   buildTrDestSelect(c.trDest||'');
 }
-const _ovEl=document.getElementById('ov');const _mdlEl=_ovEl.querySelector('.mdl');_ovEl.classList.add('open');animateModalIn(_ovEl,_mdlEl);setTimeout(()=>document.getElementById('mCCU').focus(),50);}
+const _ovEl=document.getElementById('ov');const _mdlEl=_ovEl.querySelector('.mdl');_ovEl.classList.add('open');animateModalIn(_ovEl,_mdlEl);setTimeout(()=>document.getElementById('mCCU').focus(),50);
+}
 function buildModalLocs(selId){const g=document.getElementById('mLocGrid');g.innerHTML='';const show=S.activeLocs.length?S.activeLocs.map(id=>locById(id)).filter(Boolean):LOC_ALL;show.forEach(loc=>{const el=document.createElement('div');el.className='mdl-loc'+(loc.id===selId?' sel':'');el.style.setProperty('--lc',getLocBase(loc.id));el.dataset.lid=loc.id;el.innerHTML=`<div class="mdl-loc-dot"></div><div class="mdl-loc-name">${loc.name}</div>`;el.onclick=()=>{g.querySelectorAll('.mdl-loc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');};g.appendChild(el);}); }
 
 /* Populate #mDesc <select> dynamically from CCU_PRESETS, grouped by category.
@@ -3826,7 +3827,9 @@ function bindDGMultiPicker(){
 }
 
 let _modalClosing = false;
-async function closeModal(){
+
+/* Force-close modal (used after Save/Remove/Cancel) */
+async function _forceCloseModal(){
   const ov = document.getElementById('ov');
   if(!ov.classList.contains('open') || _modalClosing) return;
   _modalClosing = true;
@@ -3839,14 +3842,19 @@ async function closeModal(){
   await animateModalOut(ov, mdl);
   ov.classList.remove('open');
   _modalClosing = false;
-  /* If the inspector is open on the same cargo (e.g. modal was triggered
-     by keyboard E), pull the latest values back so the two surfaces stay
-     in sync. The "Edit details…" path already sets `mdl-over-insp`; clear
-     it here as a safety net. */
   if(document.body.classList.contains('mdl-over-insp')){
     document.body.classList.remove('mdl-over-insp');
   }
   if(typeof inspRefreshIfOpen === 'function') inspRefreshIfOpen();
+}
+
+/* Close modal (dismiss paths: Escape, backdrop, swipe, Cancel) */
+async function closeModal(){
+  const ov = document.getElementById('ov');
+  if(!ov || !ov.classList.contains('open') || _modalClosing) return;
+  const mState = getModalState(ov);
+  if(mState === 'closing' || mState === 'closed') return;
+  await _forceCloseModal();
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -4321,8 +4329,9 @@ function bindModal(){
   });
   document.getElementById('ov').onclick=e=>{if(e.target===document.getElementById('ov'))closeModal();};
   document.querySelectorAll('.mdl-st').forEach(b=>{b.onclick=()=>{modalSt=b.dataset.s;document.querySelectorAll('.mdl-st').forEach(x=>x.classList.toggle('sel',x===b));};});
-  document.getElementById('mRm').onclick=()=>{if(!isOperator())return;const _rmId=editId;animateCargoExit(_rmId);S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();};
+  document.getElementById('mRm').onclick=()=>{if(!isModalActionable(document.getElementById('ov')))return;if(!isOperator())return;const _rmId=editId;animateCargoExit(_rmId);S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();};
   document.getElementById('mSav').onclick=()=>{
+    if(!isModalActionable(document.getElementById('ov'))) return;
     if(!isOperator()) return;          /* Viewer: block save */
     const c=S.cargo.find(x=>x.id===editId);if(!c)return;
     c.ccu=document.getElementById('mCCU').value;
@@ -4351,7 +4360,7 @@ function bindModal(){
     c.heavyLift=document.getElementById('mHL').classList.contains('on');
     c.priority=document.getElementById('mPriority')?.classList.contains('on')||false;
     c.trDest=(c.status==='TR')?(document.getElementById('mdlTrDest')?.value||''):'';
-    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();cancelPending();
+    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();cancelPending();
   };
   document.getElementById('ov').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('mSav').click();});
   /* Family-style dismiss: Escape key + swipe-down gesture */
@@ -9237,6 +9246,19 @@ function bindClearDeck(){
 let _newDeckHtcCleanup = null;
 
 function _execNewDeck(){
+  /* ── Block 1: snapshot current state before clearing ── */
+  const snap = {
+    cargo: JSON.parse(JSON.stringify(S.cargo)),
+    activeLocs: [...S.activeLocs],
+    selLoc: S.selLoc,
+    customLib: JSON.parse(JSON.stringify(S.customLib)),
+    customLocs: JSON.parse(JSON.stringify(S.customLocs)),
+    voyRemarks: S.voyRemarks,
+    dynColors: JSON.parse(JSON.stringify(DYN_COLORS)),
+    timestamp: Date.now()
+  };
+  try { localStorage.setItem('spicaTide_lastSnapshot_v1', JSON.stringify(snap)); } catch(e){}
+
   S.cargo=[];
   _currentFilePath=null;
   _updateWindowTitle(null);
@@ -9245,7 +9267,59 @@ function _execNewDeck(){
   buildActiveLocStrip();
   updateDGSummary();
   save();
-  showToast(t('htc_new_deck_label'),'ok');
+  _showUndoToast();
+}
+
+/* ── Restore deck from snapshot ── */
+function _restoreFromSnapshot(){
+  let raw;
+  try { raw = localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
+  if(!raw) return false;
+  const snap = JSON.parse(raw);
+  S.cargo = snap.cargo || [];
+  S.activeLocs = snap.activeLocs || ['BLEO','TART'];
+  S.selLoc = snap.selLoc || S.activeLocs[0];
+  S.customLib = snap.customLib || [];
+  S.customLocs = snap.customLocs || [];
+  S.voyRemarks = snap.voyRemarks || '';
+  if(snap.dynColors){ Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, snap.dynColors); }
+  renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save();
+  return true;
+}
+
+/* ── Undo toast with action button (8s, Apple-style) ── */
+function _showUndoToast(){
+  const stack = _ensureToastStack();
+  let active = stack.querySelectorAll('.toast-msg:not(.is-leaving)');
+  while(active.length >= _TOAST_CAP){ _dismissToast(active[0]); active = stack.querySelectorAll('.toast-msg:not(.is-leaving)'); }
+
+  const el = document.createElement('div');
+  el.className = 'toast-msg is-info toast-undo';
+  el.setAttribute('role', 'status');
+  el.innerHTML = _toastIcon('info') +
+    `<span class="toast-msg-text">${_escHtml(t('restore_toast'))}</span>` +
+    `<button class="toast-undo-btn">${_escHtml(t('restore_undo'))}</button>`;
+
+  el.querySelector('.toast-undo-btn').addEventListener('click', () => {
+    _restoreFromSnapshot();
+    _dismissToast(el);
+  });
+
+  stack.appendChild(el);
+  void el.offsetWidth;
+  el.classList.add('is-visible');
+  const auto = setTimeout(() => _dismissToast(el), 8000);
+  el.dataset.toastTimer = String(auto);
+}
+
+function _escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function _updateRestoreMenuItem(){
+  const el = document.getElementById('menuRestoreDeck');
+  if(!el) return;
+  let hasSnap = false;
+  try { hasSnap = !!localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
+  el.style.display = hasSnap ? '' : 'none';
 }
 
 function bindNewDeckModal(){
@@ -11267,6 +11341,11 @@ const LANG = {
     htc_tooltip_hold:     'Hold to confirm',
     htc_new_deck_label:   'New Deck Plan',
     htc_new_deck_warning: 'This will erase all cargo and locations',
+
+    /* Recovery / Undo */
+    restore_toast:    'Deck plan cleared.',
+    restore_undo:     'Undo',
+    restore_menu:     'Restore previous deck plan',
   },
 
   ru: {
@@ -11333,6 +11412,11 @@ const LANG = {
     htc_tooltip_hold:     'Удержите для подтверждения',
     htc_new_deck_label:   'Новый план',
     htc_new_deck_warning: 'Это удалит весь груз и локации',
+
+    /* Recovery / Undo */
+    restore_toast:    'План очищен.',
+    restore_undo:     'Отменить',
+    restore_menu:     'Восстановить предыдущий план',
   },
 
   uk: {
@@ -11399,6 +11483,11 @@ const LANG = {
     htc_tooltip_hold:     'Утримайте для підтвердження',
     htc_new_deck_label:   'Новий план',
     htc_new_deck_warning: 'Це видалить весь вантаж і локації',
+
+    /* Recovery / Undo */
+    restore_toast:    'План очищено.',
+    restore_undo:     'Скасувати',
+    restore_menu:     'Відновити попередній план',
   },
 };
 
@@ -11732,7 +11821,7 @@ function bindMenuBar(){
       else {
         closeAll(); item.classList.add('open'); openMenu = item;
         /* Populate recent files when File menu opens */
-        if(item.dataset.menu === 'file') _populateMenuRecent();
+        if(item.dataset.menu === 'file'){ _populateMenuRecent(); _updateRestoreMenuItem(); }
       }
     });
     /* Hover-switch when a menu is already open */
@@ -11753,6 +11842,7 @@ function bindMenuBar(){
   /* Action dispatch — uses module-level menu* functions */
   const actions = {
     newDeck:       () => openNewDeckModal(),
+    restoreDeck:   () => { if(_restoreFromSnapshot()) showToast(t('restore_menu'),'ok'); },
     /* Clear Deck moved out of the main ribbon into the File menu.
        Delegates to the existing #btnClrDeck handler which opens the
        confirmation modal — destructive action path unchanged. */
