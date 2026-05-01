@@ -11,6 +11,7 @@ import * as Sync from './sync.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
+import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss } from './animations/modal.js';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
    convention. Used by the Phase W1 weather block (~line 12462). */
@@ -3462,7 +3463,7 @@ if(trWrap){
   trWrap.classList.toggle('visible',c.status==='TR');
   buildTrDestSelect(c.trDest||'');
 }
-document.getElementById('ov').classList.add('open');setTimeout(()=>document.getElementById('mCCU').focus(),50);}
+const _ovEl=document.getElementById('ov');const _mdlEl=_ovEl.querySelector('.mdl');_ovEl.classList.add('open');animateModalIn(_ovEl,_mdlEl);setTimeout(()=>document.getElementById('mCCU').focus(),50);}
 function buildModalLocs(selId){const g=document.getElementById('mLocGrid');g.innerHTML='';const show=S.activeLocs.length?S.activeLocs.map(id=>locById(id)).filter(Boolean):LOC_ALL;show.forEach(loc=>{const el=document.createElement('div');el.className='mdl-loc'+(loc.id===selId?' sel':'');el.style.setProperty('--lc',getLocBase(loc.id));el.dataset.lid=loc.id;el.innerHTML=`<div class="mdl-loc-dot"></div><div class="mdl-loc-name">${loc.name}</div>`;el.onclick=()=>{g.querySelectorAll('.mdl-loc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');};g.appendChild(el);}); }
 
 /* Populate #mDesc <select> dynamically from CCU_PRESETS, grouped by category.
@@ -3823,12 +3824,20 @@ function bindDGMultiPicker(){
   _dgMultiRenderTags();
 }
 
-function closeModal(){
-  document.getElementById('ov').classList.remove('open');
+let _modalClosing = false;
+async function closeModal(){
+  const ov = document.getElementById('ov');
+  if(!ov.classList.contains('open') || _modalClosing) return;
+  _modalClosing = true;
+  const mdl = ov.querySelector('.mdl');
   editId=null;
   /* Ensure the portaled DG picker dropdown doesn't outlive the modal. */
   const _dgDd = document.getElementById('dgMultiDropdown');
   if(_dgDd) _dgDd.classList.remove('open');
+  /* Animated exit — spring out + backdrop fade */
+  await animateModalOut(ov, mdl);
+  ov.classList.remove('open');
+  _modalClosing = false;
   /* If the inspector is open on the same cargo (e.g. modal was triggered
      by keyboard E), pull the latest values back so the two surfaces stay
      in sync. The "Edit details…" path already sets `mdl-over-insp`; clear
@@ -4344,6 +4353,11 @@ function bindModal(){
     renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();cancelPending();
   };
   document.getElementById('ov').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('mSav').click();});
+  /* Family-style dismiss: Escape key + swipe-down gesture */
+  const _ovRef = document.getElementById('ov');
+  const _mdlRef = _ovRef.querySelector('.mdl');
+  bindEscapeDismiss(_ovRef, closeModal);
+  bindSwipeDismiss(_mdlRef, closeModal);
 }
 
 /* ════════════════════════════════════
