@@ -1,0 +1,645 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic:
+      - generic: ✎
+      - text: Edit
+      - generic: E
+    - generic:
+      - generic: ↻
+      - text: Rotate 90°
+      - generic: R
+    - generic:
+      - generic: +
+      - text: Duplicate
+      - generic: D
+    - generic:
+      - generic: ×
+      - text: Delete
+      - generic: Del
+  - generic [ref=e2]:
+    - generic [ref=e4]: File
+    - generic [ref=e6]: Edit
+    - generic [ref=e8]: View
+    - generic [ref=e10]: Export
+    - generic [ref=e12]: Help
+  - complementary:
+    - generic:
+      - generic:
+        - generic: Cargo
+        - generic: —
+      - button: ×
+    - generic:
+      - generic:
+        - generic: Identity
+        - generic:
+          - generic: CCU / ID
+          - textbox
+        - generic:
+          - generic: Description
+          - combobox
+      - generic:
+        - generic: Deck & Physical
+        - generic:
+          - generic: Weight (T)
+          - spinbutton
+        - generic:
+          - generic: Location
+      - generic:
+        - generic: Status
+        - group:
+          - button: Load
+          - button: Backload
+          - button: ROB
+          - button: Transfer
+      - generic:
+        - text: Additional properties
+        - generic:
+          - generic: DG classes
+          - generic: —
+        - generic:
+          - generic: Heavy Lift
+          - generic: "off"
+        - generic:
+          - generic: Priority
+          - generic: "off"
+        - button: Edit details…
+    - generic:
+      - button: Rotate
+      - button: Duplicate
+      - button: Remove
+  - generic:
+    - generic [ref=e15]:
+      - generic [ref=e16]: SPICA TIDE
+      - generic [ref=e17]: Deck Cargo Plan
+      - button "Edit header" [ref=e18] [cursor=pointer]: ✎
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]: Lifts on deck
+        - generic [ref=e24]: "3"
+        - generic [ref=e25]:
+          - generic [ref=e26]: 10.5 T
+          - generic [ref=e27]: total
+      - generic [ref=e29]:
+        - generic [ref=e30]: Load
+        - generic [ref=e31]: "1"
+      - generic [ref=e32]:
+        - generic [ref=e33]: Backload
+        - generic [ref=e34]: "2"
+      - generic [ref=e35]:
+        - generic [ref=e36]: ROB
+        - generic [ref=e37]: "0"
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e310]: Placing as
+        - generic [ref=e40]:
+          - generic [ref=e41] [cursor=pointer]: Load
+          - generic [ref=e42] [cursor=pointer]: Backload
+          - generic [ref=e43] [cursor=pointer]: ROB
+          - generic [ref=e44] [cursor=pointer]: Transfer
+      - button "⚙ OPERATOR" [ref=e212] [cursor=pointer]:
+        - generic [ref=e46]: ⚙
+        - generic [ref=e47]: OPERATOR
+    - generic [ref=e49]:
+      - textbox "Voyage No." [ref=e51]
+      - button "27 Apr 2026" [ref=e53] [cursor=pointer]
+    - button "Weather — click to edit" [ref=e56] [cursor=pointer]:
+      - generic [ref=e58]: Peterhead
+      - generic [ref=e214]: 9°
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - button "Upload ASCO Cargo List (Excel)" [ref=e64] [cursor=pointer]:
+          - img [ref=e66]
+        - button "Cargo & DG Library" [ref=e69] [cursor=pointer]:
+          - img [ref=e71]
+        - button "Smart Tools & Settings" [ref=e76] [cursor=pointer]:
+          - img [ref=e78]
+      - button "Select language" [ref=e83] [cursor=pointer]:
+        - img [ref=e84]
+        - generic [ref=e87]: "Language: EN"
+        - img [ref=e88]
+  - generic:
+    - generic [ref=e91]:
+      - generic [ref=e92]:
+        - generic [ref=e94]:
+          - button "−" [ref=e95] [cursor=pointer]
+          - button "+" [ref=e96] [cursor=pointer]
+          - button "1:1" [ref=e98] [cursor=pointer]
+          - button "Fit" [ref=e99] [cursor=pointer]
+          - generic [ref=e100]: 88%
+        - button "Toggle measure tool" [ref=e101] [cursor=pointer]:
+          - img [ref=e102]
+        - button "Add location" [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]: +
+      - generic [ref=e107]:
+        - generic [ref=e215] [cursor=pointer]:
+          - generic [ref=e216]:
+            - generic "Click to change colour" [ref=e217]:
+              - textbox: "#9aa0a8"
+            - generic [ref=e218]: Bleo Holm
+          - generic [ref=e220]:
+            - generic [ref=e221]: BL
+            - generic [ref=e222]: "1"
+        - generic [ref=e223] [cursor=pointer]:
+          - generic [ref=e224]:
+            - generic "Click to change colour" [ref=e225]:
+              - textbox: "#c0392b"
+            - generic [ref=e226]: Tartan
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e229]: L
+              - generic [ref=e230]: "1"
+            - generic [ref=e231]:
+              - generic [ref=e232]: BL
+              - generic [ref=e233]: "1"
+        - generic [ref=e234] [cursor=pointer]:
+          - generic [ref=e235]:
+            - generic "Click to change colour" [ref=e236]:
+              - textbox: "#117a8b"
+            - generic [ref=e237]: Claymore CPP
+          - generic [ref=e239]: no cargo on deck
+        - generic [ref=e240] [cursor=pointer]:
+          - generic [ref=e241]:
+            - generic "Click to change colour" [ref=e242]:
+              - textbox: "#9333ea"
+            - generic [ref=e243]: Fulmar
+          - generic [ref=e245]: no cargo on deck
+    - generic [ref=e120]:
+      - generic [ref=e121]:
+        - generic [ref=e122]: Select offshore locations for this voyage
+        - generic [ref=e123] [cursor=pointer]: ×
+      - generic [ref=e124]:
+        - generic [ref=e246] [cursor=pointer]:
+          - generic [ref=e248]: Bleo Holm
+          - generic [ref=e249]: ✓
+        - generic [ref=e252] [cursor=pointer]: Claymore CAP
+        - generic [ref=e253] [cursor=pointer]:
+          - generic [ref=e255]: Claymore CPP
+          - generic [ref=e256]: ✓
+        - generic [ref=e259] [cursor=pointer]: Claymore WOPS
+        - generic [ref=e262] [cursor=pointer]: Claymore Drill
+        - generic [ref=e265] [cursor=pointer]: Piper
+        - generic [ref=e268] [cursor=pointer]: Piper Drilling
+        - generic [ref=e271] [cursor=pointer]: Piper WOPS
+        - generic [ref=e274] [cursor=pointer]: Saltire
+        - generic [ref=e275] [cursor=pointer]:
+          - generic [ref=e277]: Tartan
+          - generic [ref=e278]: ✓
+        - generic [ref=e281] [cursor=pointer]: Beatrice
+        - generic [ref=e284] [cursor=pointer]: Clyde
+        - generic [ref=e285] [cursor=pointer]:
+          - generic [ref=e287]: Fulmar
+          - generic [ref=e288]: ✓
+        - generic [ref=e291] [cursor=pointer]: Auk
+        - generic [ref=e294] [cursor=pointer]: Montrose
+        - generic [ref=e297] [cursor=pointer]: Arbroath
+        - generic [ref=e300] [cursor=pointer]: GP3
+        - generic [ref=e301] [cursor=pointer]:
+          - generic [ref=e302]: ＋
+          - generic [ref=e303]: Add location…
+    - generic: "DG ON BOARD: none"
+  - generic [ref=e183]:
+    - img
+    - generic [ref=e184]:
+      - generic [ref=e185]: ◄ AFT / STERN — BAY 12
+      - generic [ref=e186]: SPICA TIDE · 54.92 m × 15 m · 752 m² · Max 2500 T · 10 T/m²
+      - generic [ref=e187]: BAY 1 — BOW / FORE ►
+    - generic [ref=e188]:
+      - generic: "12"
+      - generic: "11"
+      - generic: "10"
+      - generic: "9"
+      - generic: "8"
+      - generic: "7"
+      - generic: "6"
+      - generic: "5"
+      - generic: "4"
+      - generic: "3"
+      - generic: "2"
+      - generic: "1"
+      - generic: PORT ▶
+      - generic: STBD ▶
+      - generic:
+        - generic: HOSE BAY
+      - generic:
+        - generic: HOSE BAY
+      - generic:
+        - generic: STORE
+      - generic: DG LIMIT
+      - generic: DG LIMIT
+      - generic:
+        - generic: No DG Cargo
+      - img:
+        - generic: METHANOL ZONE
+      - generic:
+        - text: Ship's
+        - text: Waste
+        - text: Skip
+      - img
+      - generic [ref=e304]:
+        - generic: ×
+        - generic: ↻
+        - generic: +
+        - generic [ref=e305]: "111"
+      - generic [ref=e306]:
+        - generic: ×
+        - generic: ↻
+        - generic: +
+        - generic [ref=e307]: "555"
+        - generic: 4.0 t
+      - generic [ref=e308]:
+        - generic: ×
+        - generic: ↻
+        - generic: +
+        - generic [ref=e309]: "8888"
+        - generic: 4.0 t
+    - generic:
+      - img
+      - generic: No cargo on deck yet
+      - generic: Drag from the Library or import an ASCO manifest to begin
+  - generic [ref=e189]:
+    - generic [ref=e190]:
+      - generic [ref=e191]: Position
+      - generic [ref=e192]: "X: 42.6m · Y: 14.5m"
+    - generic [ref=e193]:
+      - generic [ref=e194]: Zoom
+      - generic [ref=e195]: 88%
+    - generic [ref=e196]:
+      - generic [ref=e197]: Cargo
+      - generic [ref=e198]: 3 items
+    - generic [ref=e200]: Ready
+    - button "Toggle autosave" [ref=e202] [cursor=pointer]:
+      - img [ref=e203]
+      - generic [ref=e206]: Autosave
+    - generic [ref=e209]: Unsaved
+  - text: Added in v38.7 Added in v38.13 Added in v2.4.0 Added in v2.4.0 Added in v38.17 Added in v38.7 Added in v38.8 · Safety-critical Added in v38.7 Added in v38.11 Added in v38.14
+  - generic: 10ft × 8ft Container → click deck to place
+  - generic:
+    - generic:
+      - generic "Open Cargo Library" [ref=e211]
+      - generic:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - generic: Cargo Library
+            - generic: Mission Control
+          - button "Collapse panel (L)":
+            - img
+          - generic "Close panel": ✕
+        - generic:
+          - textbox "Search cargo, CCU, location…"
+        - generic:
+          - generic: All
+          - generic: Unplaced
+          - generic: On Deck
+          - generic: ⬥ DG
+          - generic: ⬆ HL
+          - generic: Load
+          - generic: Backload
+          - generic: ROB
+          - generic: ⚡ Priority
+        - generic:
+          - generic: Manifest Matching
+          - button "?"
+          - generic "Compare ASCO list with deck":
+            - checkbox
+        - generic:
+          - generic:
+            - generic:
+              - generic: Imported Cargo
+              - generic: ▾
+            - generic:
+              - generic:
+                - text: No imported cargo yet.
+                - text: Upload an ASCO file to start.
+          - generic:
+            - generic:
+              - generic: Cargo Library
+              - generic: "60"
+              - generic: ▾
+            - generic:
+              - generic: Container
+              - generic:
+                - generic:
+                  - generic: 6ft Mini Container
+                  - generic: 1.83×1.83 m · 2.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Mini Container (DNV)
+                  - generic: 1.95×1.65 m · 2.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft × 8ft Container
+                  - generic: 3×2.43 m · 4T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Open Top
+                  - generic: 3×2.43 m · 3.2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Half Height
+                  - generic: 3×2.43 m · 3.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Dry Goods
+                  - generic: 3×2.43 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Freezer Container
+                  - generic: 3×2.43 m · 3.8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Insulated
+                  - generic: 3.05×2.44 m · 3.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 12ft × 8ft Open Top
+                  - generic: 3.66×2.44 m · 3.2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20ft × 8ft Container
+                  - generic: 6.06×2.44 m · 6T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20ft Open Top
+                  - generic: 6×2.43 m · 5.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20ft Half Height
+                  - generic: 6.06×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20ft Insulated
+                  - generic: 6.1×2.44 m · 5.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20ft Reefer
+                  - generic: 6.1×2.44 m · 5.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 22ft Half Height
+                  - generic: 6.7×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 23ft Half Height
+                  - generic: 7×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 8ft Container
+                  - generic: 2.44×2.44 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 5ft Container
+                  - generic: 1.52×1.52 m · 1.5T
+                - generic "Add to Favourites": ★
+              - generic: Module
+              - generic:
+                - generic:
+                  - generic: Tool House 10ft
+                  - generic: 3×2.43 m · 4T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Tool Shack 15ft
+                  - generic: 4.57×2.44 m · 4.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Equipment Frame 12ft
+                  - generic: 3.66×2.44 m · 4T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Generator Set 10ft
+                  - generic: 3×2.43 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Pipe Bundle 20ft
+                  - generic: 6.1×1.22 m · 8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Transporter 12ft
+                  - generic: 3.66×1.22 m · 2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Transporter 15ft
+                  - generic: 4.57×2.44 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Transporter 24ft
+                  - generic: 7.32×2.44 m · 4T
+                - generic "Add to Favourites": ★
+              - generic: Tank
+              - generic:
+                - generic:
+                  - generic: 7ft×6ft Chem. Tank
+                  - generic: 2.13×1.83 m · 4.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 7ft×7ft Chem. Tank
+                  - generic: 2.13×2.13 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 7ft×7ft Heli Fuel
+                  - generic: 2.13×2.13 m · 4T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 8ft Tote/Chem. Tank
+                  - generic: 2.44×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 2300L Chem. Tank
+                  - generic: 2.15×1.9 m · 4.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 4546L Chem. Tank
+                  - generic: 2.75×1.85 m · 6T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 8000L Chem. Tank
+                  - generic: 2.99×2.44 m · 8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 20000L Chem. Tank
+                  - generic: 6.06×2.44 m · 18T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 25 BBL Vertical Tank
+                  - generic: 1.98×1.98 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 50 BBL Horiz. Tank
+                  - generic: 3.05×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 125 BBL Horiz. Tank
+                  - generic: 6.1×2.44 m · 10T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: DNV Tote Tank / IBC
+                  - generic: 1.83×1.52 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Quad DNV IBC Carrier
+                  - generic: 3.05×3.05 m · 8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 350 Gal Tote Tank
+                  - generic: 1.22×1.07 m · 2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 550 Gal Tote Tank
+                  - generic: 1.22×1.07 m · 2.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Waste Oil Tank 2900L
+                  - generic: 2.15×1.9 m · 4T
+                - generic "Add to Favourites": ★
+              - generic: Basket
+              - generic:
+                - generic:
+                  - generic: 8ft×6ft Cargo Basket
+                  - generic: 2.44×1.83 m · 1.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 8ft Half-Height Basket
+                  - generic: 2.44×2.44 m · 2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 10ft Half-Height Basket
+                  - generic: 3.05×2.44 m · 2.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 12ft Half-Height Basket
+                  - generic: 3.66×2.44 m · 2.8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 16ft Half-Height Basket
+                  - generic: 4.88×2.44 m · 3.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 24ft Half-Height Basket
+                  - generic: 7.32×2.44 m · 5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Small Basket 4ft
+                  - generic: 1.22×1.22 m · 0.8T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Cargo Basket 8ft×4ft
+                  - generic: 2.44×1.22 m · 1.2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Cargo Basket 10ft×4ft
+                  - generic: 3.05×1.22 m · 1.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Mid Basket 16ft×4ft
+                  - generic: 4.88×1.22 m · 2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Mid Basket 20ft×4ft
+                  - generic: 6.1×1.22 m · 2.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Long Basket 25ft×4ft
+                  - generic: 7.62×1.22 m · 3T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Cargo Basket 24ft×6ft
+                  - generic: 7.32×1.83 m · 3.5T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Basket / PCE Skid 11ft×6ft
+                  - generic: 3.35×1.83 m · 2T
+                - generic "Add to Favourites": ★
+              - generic: Skip
+              - generic:
+                - generic:
+                  - generic: 6ft×6ft Vacuum Skip
+                  - generic: 1.83×1.83 m · 1.2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: 7ft×6ft Vacuum Skip
+                  - generic: 2.13×1.83 m · 1.2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Waste Skip 13ft
+                  - generic: 3.9×1.88 m · 2T
+                - generic "Add to Favourites": ★
+              - generic:
+                - generic:
+                  - generic: Waste Skip (Small)
+                  - generic: 2.8×1.82 m · 1.5T
+                - generic "Add to Favourites": ★
+          - generic:
+            - generic:
+              - generic: Custom Cargo
+              - generic: ▾
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Description
+                    - textbox "e.g. Special Frame"
+                - generic:
+                  - generic:
+                    - generic: Length (m)
+                    - spinbutton
+                  - generic:
+                    - generic: Width (m)
+                    - spinbutton
+                - button "+ Add Custom Cargo"
+                - button "🗑 Clear All Custom"
+  - generic: Autosaved ✓

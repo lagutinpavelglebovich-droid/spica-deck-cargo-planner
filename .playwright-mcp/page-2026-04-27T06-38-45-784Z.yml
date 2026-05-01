@@ -1,0 +1,298 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic:
+      - generic: ✎
+      - text: Edit
+      - generic: E
+    - generic:
+      - generic: ↻
+      - text: Rotate 90°
+      - generic: R
+    - generic:
+      - generic: +
+      - text: Duplicate
+      - generic: D
+    - generic:
+      - generic: ×
+      - text: Delete
+      - generic: Del
+  - generic [ref=e2]:
+    - generic [ref=e4]: File
+    - generic [ref=e6]: Edit
+    - generic [ref=e8]: View
+    - generic [ref=e10]: Export
+    - generic [ref=e12]: Help
+  - generic:
+    - text: Read only
+    - generic: Switch to Operator to edit
+  - complementary:
+    - generic:
+      - generic:
+        - generic: Cargo
+        - generic: —
+        - text: Read only
+      - button: ×
+    - generic:
+      - generic:
+        - generic: Identity
+        - generic:
+          - generic: CCU / ID
+          - textbox
+        - generic:
+          - generic: Description
+          - combobox
+      - generic:
+        - generic: Deck & Physical
+        - generic:
+          - generic: Weight (T)
+          - spinbutton
+        - generic:
+          - generic: Location
+      - generic:
+        - generic: Status
+        - group:
+          - button: Load
+          - button: Backload
+          - button: ROB
+          - button: Transfer
+      - generic:
+        - text: Additional properties
+        - generic:
+          - generic: DG classes
+          - generic: —
+        - generic:
+          - generic: Heavy Lift
+          - generic: "off"
+        - generic:
+          - generic: Priority
+          - generic: "off"
+        - button: Edit details…
+    - generic:
+      - button: Rotate
+      - button: Duplicate
+      - button: Remove
+  - generic:
+    - generic [ref=e15]:
+      - generic [ref=e16]: SPICA TIDE
+      - generic [ref=e17]: Deck Cargo Plan
+      - button "Edit header" [ref=e18] [cursor=pointer]: ✎
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]: Lifts on deck
+        - generic [ref=e24]: "0"
+        - generic [ref=e25]:
+          - generic [ref=e26]: 0.0 T
+          - generic [ref=e27]: total
+      - generic [ref=e29]:
+        - generic [ref=e30]: Load
+        - generic [ref=e31]: "0"
+      - generic [ref=e32]:
+        - generic [ref=e33]: Backload
+        - generic [ref=e34]: "0"
+      - generic [ref=e35]:
+        - generic [ref=e36]: ROB
+        - generic [ref=e37]: "0"
+    - generic [ref=e38]:
+      - generic [ref=e40]:
+        - generic [ref=e41] [cursor=pointer]: Load
+        - generic [ref=e42] [cursor=pointer]: Backload
+        - generic [ref=e43] [cursor=pointer]: ROB
+        - generic [ref=e44] [cursor=pointer]: Transfer
+      - button "🔒 VIEWER" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: 🔒
+        - generic [ref=e47]: VIEWER
+    - generic [ref=e49]:
+      - textbox "Voyage No." [ref=e51]
+      - button "27 Apr 2026" [ref=e53] [cursor=pointer]
+    - button "Weather — click to edit" [ref=e56] [cursor=pointer]:
+      - generic [ref=e58]: —
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - button "Upload ASCO Cargo List (Excel)" [ref=e64] [cursor=pointer]:
+          - img [ref=e66]
+        - button "Cargo & DG Library" [ref=e69] [cursor=pointer]:
+          - img [ref=e71]
+        - button "Smart Tools & Settings" [ref=e76] [cursor=pointer]:
+          - img [ref=e78]
+      - button "Select language" [ref=e83] [cursor=pointer]:
+        - img [ref=e84]
+        - generic [ref=e87]: "Language: EN"
+        - img [ref=e88]
+  - generic:
+    - generic [ref=e91]:
+      - generic [ref=e92]:
+        - generic [ref=e94]:
+          - button "−" [ref=e95] [cursor=pointer]
+          - button "+" [ref=e96] [cursor=pointer]
+          - button "1:1" [ref=e98] [cursor=pointer]
+          - button "Fit" [ref=e99] [cursor=pointer]
+          - generic [ref=e100]: 69%
+        - button "Toggle measure tool" [ref=e101] [cursor=pointer]:
+          - img [ref=e102]
+        - button "Add location" [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]: +
+      - generic [ref=e107]:
+        - generic [ref=e108] [cursor=pointer]:
+          - generic [ref=e109]:
+            - generic "Click to change colour" [ref=e110]:
+              - textbox: "#9aa0a8"
+            - generic [ref=e111]: Bleo Holm
+          - generic [ref=e113]: no cargo on deck
+        - generic [ref=e114] [cursor=pointer]:
+          - generic [ref=e115]:
+            - generic "Click to change colour" [ref=e116]:
+              - textbox: "#c0392b"
+            - generic [ref=e117]: Tartan
+          - generic [ref=e119]: no cargo on deck
+    - generic [ref=e120]:
+      - generic [ref=e121]:
+        - generic [ref=e122]: Select offshore locations for this voyage
+        - generic [ref=e123] [cursor=pointer]: ×
+      - generic [ref=e124]:
+        - generic [ref=e125] [cursor=pointer]:
+          - generic [ref=e127]: Bleo Holm
+          - generic [ref=e128]: ✓
+        - generic [ref=e131] [cursor=pointer]: Claymore CAP
+        - generic [ref=e134] [cursor=pointer]: Claymore CPP
+        - generic [ref=e137] [cursor=pointer]: Claymore WOPS
+        - generic [ref=e140] [cursor=pointer]: Claymore Drill
+        - generic [ref=e143] [cursor=pointer]: Piper
+        - generic [ref=e146] [cursor=pointer]: Piper Drilling
+        - generic [ref=e149] [cursor=pointer]: Piper WOPS
+        - generic [ref=e152] [cursor=pointer]: Saltire
+        - generic [ref=e153] [cursor=pointer]:
+          - generic [ref=e155]: Tartan
+          - generic [ref=e156]: ✓
+        - generic [ref=e159] [cursor=pointer]: Beatrice
+        - generic [ref=e162] [cursor=pointer]: Clyde
+        - generic [ref=e165] [cursor=pointer]: Fulmar
+        - generic [ref=e168] [cursor=pointer]: Auk
+        - generic [ref=e171] [cursor=pointer]: Montrose
+        - generic [ref=e174] [cursor=pointer]: Arbroath
+        - generic [ref=e177] [cursor=pointer]: GP3
+        - generic [ref=e178] [cursor=pointer]:
+          - generic [ref=e179]: ＋
+          - generic [ref=e180]: Add location…
+    - generic: "DG ON BOARD: none"
+  - generic [ref=e183]:
+    - img
+    - generic [ref=e184]:
+      - generic [ref=e185]: ◄ AFT / STERN — BAY 12
+      - generic [ref=e186]: SPICA TIDE · 54.92 m × 15 m · 752 m² · Max 2500 T · 10 T/m²
+      - generic [ref=e187]: BAY 1 — BOW / FORE ►
+    - generic [ref=e188]:
+      - generic: "12"
+      - generic: "11"
+      - generic: "10"
+      - generic: "9"
+      - generic: "8"
+      - generic: "7"
+      - generic: "6"
+      - generic: "5"
+      - generic: "4"
+      - generic: "3"
+      - generic: "2"
+      - generic: "1"
+      - generic: PORT ▶
+      - generic: STBD ▶
+      - generic:
+        - generic: HOSE BAY
+      - generic:
+        - generic: HOSE BAY
+      - generic:
+        - generic: STORE
+      - generic: DG LIMIT
+      - generic: DG LIMIT
+      - generic:
+        - generic: No DG Cargo
+      - img:
+        - generic: METHANOL ZONE
+      - generic:
+        - text: Ship's
+        - text: Waste
+        - text: Skip
+      - img
+    - generic:
+      - img
+      - generic: No cargo on deck yet
+      - generic: Drag from the Library or import an ASCO manifest to begin
+  - generic [ref=e189]:
+    - generic [ref=e190]:
+      - generic [ref=e191]: Position
+      - generic [ref=e192]: "X: 0.0m · Y: 0.0m"
+    - generic [ref=e193]:
+      - generic [ref=e194]: Zoom
+      - generic [ref=e195]: 100%
+    - generic [ref=e196]:
+      - generic [ref=e197]: Cargo
+      - generic [ref=e198]: 0 items
+    - generic [ref=e200]: Ready
+    - button "Toggle autosave" [ref=e202] [cursor=pointer]:
+      - img [ref=e203]
+      - generic [ref=e206]: Autosave
+    - generic [ref=e209]: Saved
+    - generic [ref=e210]: Viewer (read-only)
+  - text: Added in v38.7 Added in v38.13 Added in v2.4.0 Added in v2.4.0 Added in v38.17 Added in v38.7 Added in v38.8 · Safety-critical Added in v38.7 Added in v38.11 Added in v38.14
+  - generic:
+    - generic:
+      - generic "Open Cargo Library" [ref=e211]
+      - generic:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - generic: Cargo Library
+            - generic: Mission Control
+          - button "Collapse panel (L)":
+            - img
+          - generic "Close panel": ✕
+        - generic:
+          - textbox "Search cargo, CCU, location…"
+        - generic:
+          - generic: All
+          - generic: Unplaced
+          - generic: On Deck
+          - generic: ⬥ DG
+          - generic: ⬆ HL
+          - generic: Load
+          - generic: Backload
+          - generic: ROB
+          - generic: ⚡ Priority
+        - generic:
+          - generic: Manifest Matching
+          - button "?"
+          - generic "Compare ASCO list with deck":
+            - checkbox
+        - generic:
+          - generic:
+            - generic:
+              - generic: Imported Cargo
+              - generic: ▾
+            - generic:
+              - generic:
+                - text: No imported cargo yet.
+                - text: Upload an ASCO file to start.
+          - generic:
+            - generic:
+              - generic: Cargo Library
+              - generic: "0"
+              - generic: ▾
+          - generic:
+            - generic:
+              - generic: Custom Cargo
+              - generic: ▾
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Description
+                    - textbox "e.g. Special Frame"
+                - generic:
+                  - generic:
+                    - generic: Length (m)
+                    - spinbutton
+                  - generic:
+                    - generic: Width (m)
+                    - spinbutton
+                - button "+ Add Custom Cargo"
+                - button "🗑 Clear All Custom"

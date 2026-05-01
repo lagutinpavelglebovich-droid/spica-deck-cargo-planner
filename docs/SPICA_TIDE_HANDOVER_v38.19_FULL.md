@@ -255,13 +255,20 @@ Internal structure (in order):
 5. Main `<script>` — all JavaScript (~7,600 lines)
 
 ### Canvas / Deck Geometry
+
+> ⚠ HISTORIC — this block describes the v38.19 pre-correction model.
+> Superseded by the Phase 22 measured geometry. Current authoritative
+> model lives in `CLAUDE.md` and in `src/app.js` near `BAY_LENGTHS_M`
+> (12 measured bays + 11 × 0.15 m steel joints, `TW = 1707 px`, total
+> deck length = 54.92 m). Do not re-adopt the values below.
+
 ```
 M  = 31 px/m  (horizontal, aft→bow)
 YS = CVH/15 ≈ 25.33 px/m  (vertical, port→stbd)
 CVH = 380 px  (canvas height = 15 metres across)
-TW  = 1683 px (total canvas width = 12 bays)
-BW  = [129,126,147,126,147,147,126,147,126,147,144,139] px  (bay widths, Bay12→Bay1)
-BL_ = cumulative left edges of each bay
+TW  = 1683 px (total canvas width = 12 bays)                     — obsolete, now 1707
+BW  = [129,126,147,126,147,147,126,147,126,147,144,139] px        — obsolete
+BL_ = cumulative left edges of each bay (now accounts for joints)
 ```
 
 ### Deck Zones
@@ -500,7 +507,16 @@ Wrap in a Progressive Web App shell with a Service Worker. Cache jsPDF and Sheet
 
 ### What Must Be Preserved
 
-**Geometry constants are sacred.** `M = 31`, `CVH = 380`, `BW = [129,126,147,126,147,147,126,147,144,139]` — these are calibrated to the actual FAR SPICA deck. Any change breaks spatial accuracy. If vessel profile system is built, these must remain as the default `FAR_SPICA` profile.
+**Geometry constants are sacred.** `M = 31`, `CVH = 380` and the
+measured `BAY_LENGTHS_M` array in `src/app.js` (plus the 0.15 m joint
+model added in Phase 22) — these are calibrated to the actual SPICA
+TIDE deck by direct on-board measurement. Any change breaks spatial
+accuracy. The old `BW = [129,126,147,126,147,147,126,147,144,139]` shown
+here is the pre-correction v38.19 snapshot and is no longer authoritative;
+refer to `CLAUDE.md` and the `BAY_LENGTHS_M` block in `src/app.js` for
+the current measured geometry. If a vessel profile system is built,
+`BAY_LENGTHS_M` + `JOINT_WIDTH_M` must remain as the default `SPICA_TIDE`
+profile.
 
 **The `S.cargo` data model** should not change without a migration path. The `save()` function serialises `S.cargo` to localStorage. Any new field added to the cargo object must have a safe default when loading old saves (which won't have the field).
 

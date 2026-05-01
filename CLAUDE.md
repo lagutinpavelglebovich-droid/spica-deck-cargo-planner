@@ -28,17 +28,87 @@ src-tauri/          → Tauri v2 Rust backend (file I/O, dialog, updater)
 - All colors use CSS custom properties `var(--xxx)` — never hardcode hex in styles
 - Dark mode via `[data-theme="dark"]` on `<html>` — all overrides use this selector
 
-### Critical constants (DO NOT CHANGE)
+### Critical constants — AUTHORITATIVE DECK GEOMETRY (DO NOT CHANGE)
+
+The deck geometry model is defined as the single source of truth in
+`src/app.js` near the top. All downstream code (rendering, snap, drag,
+zones, PDF/Excel export, readouts) derives from these constants.
 
 ```
-M   = 31 px/m       (horizontal scale)
-YS  = CVH/15        (vertical scale)
-CVH = 380 px        (canvas height = 15m across deck)
-TW  = 1683 px       (total canvas width = 12 bays)
-BW  = [129,126,147,126,147,147,126,147,126,147,144,139]  (bay widths)
+M                = 31 px/m           (horizontal scale, along deck)
+YS               = CVH/15            (vertical scale, across deck)
+CVH              = 380 px            (canvas height = 15 m across deck)
+JOINT_WIDTH_M    = 0.15 m            (steel joint between adjacent bays)
+JOINT_PX         = round(0.15 × M)   ≈ 5 px
+
+BAY_LENGTHS_M    = [                 (metres — measured aboard SPICA TIDE)
+  4.15,  // [0]  Bay 12  (aft / stern / left edge on screen)
+  4.04,  // [1]  Bay 11
+  4.75,  // [2]  Bay 10
+  4.03,  // [3]  Bay 9
+  4.75,  // [4]  Bay 8
+  4.76,  // [5]  Bay 7
+  4.04,  // [6]  Bay 6
+  4.75,  // [7]  Bay 5
+  4.02,  // [8]  Bay 4
+  4.75,  // [9]  Bay 3
+  4.76,  // [10] Bay 2
+  4.47,  // [11] Bay 1  (bow / fore / right edge on screen)
+]
+
+BW               = BAY_LENGTHS_M.map(m => round(m × M))   (px widths)
+BL_              = cumulative bay-left-edge positions in px,
+                   accounting for one JOINT_PX gap between adjacent bays
+TW               = 1707 px           (total canvas width: 12 bays + 11 joints)
+DECK_LENGTH_M    = 54.92 m           (53.27 m bays + 1.65 m joints)
 ```
 
-These are calibrated to the physical vessel. Changing them breaks spatial accuracy.
+**Visual render order (do not reorder):**
+
+```
+Bay 12 → Bay 11 → Bay 10 → Bay 9 → Bay 8 → Bay 7 →
+Bay 6  → Bay 5  → Bay 4  → Bay 3 → Bay 2 → Bay 1
+```
+
+⚠ `BAY_LENGTHS_M` is stored in visual render order, NOT numerical
+Bay-1-to-Bay-12 order. Do not flip the array. Index `i` corresponds to
+Bay `12 − i`.
+
+⚠ Joints between bays are **physical 0.15 m steel plates**, NOT
+zero-width CSS borders. Rendered as `.bay-joint` elements with real
+proportional width.
+
+⚠ Do not hardcode the pre-correction values anywhere. The old deck
+length (53.7 m), old canvas width (1651 px), and the old
+`BW = [129,126,147,126,147,147,126,147,126,147,144,139]` are
+archaeologically wrong and must not be reintroduced.
+
+**Aft tiger-striped reference strip:** 1.00 m longitudinal, positioned
+INSIDE Bay 12 at its aft (stern) edge. Does NOT add to deck length —
+absorbed within Bay 12's 4.15 m span. Rendered via
+`addZone(cv, 0, 0, m2px_w(1.0), CVH, 'tiger', '')`.
+
+These values are calibrated to the physical vessel by direct on-board
+measurement. Changing any of them breaks spatial accuracy and cargo
+placement fidelity.
+
+### Scale model — metres vs pixels (authoritative)
+
+See the **FINAL SCALE MODEL** architecture block in `src/app.js`
+(just above `deckXToMeters`) for the full rules. Summary:
+
+- **Cargo size**: stored in metres (`length_m`, `width_m`); pixel size
+  derived via `m2px_w(length_m)` and `m2px_h(width_m)`. Metres are the
+  single source of truth.
+- **Position readouts** (ruler, status bar, keyboard coord tip):
+  MUST use `deckXToMeters(xPx)` and `deckYToMeters(yPx)`. These walk
+  the real bay/joint segments so the reading is the physical model,
+  not the rounded-pixel canvas.
+- **Ruler tool**: always uses `deckXToMeters` / `deckYToMeters`.
+- **Raw `xPx / M`** is acceptable ONLY for local cargo size math
+  (e.g. reading `cargo.w / M` back to metres inside one cargo), NEVER
+  for full-deck or position readouts — cumulative rounding drift
+  invalidates it across multiple bay/joint segments.
 
 ## File Locations to Update on Version Bump
 
