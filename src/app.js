@@ -12,6 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss } from './animations/modal.js';
+import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
    convention. Used by the Phase W1 weather block (~line 12462). */
@@ -9229,6 +9230,86 @@ function bindClearDeck(){
 
 
 /* ════════════════════════════════════════════════════════════
+   NEW DECK PLAN — Hold-to-confirm modal
+   Replaces the instant actions.newDeck with a confirmation gate.
+   Uses Family-style modal animations + holdToConfirm module.
+═══════════════════════════════════════════════════════════ */
+let _newDeckHtcCleanup = null;
+
+function _execNewDeck(){
+  S.cargo=[];
+  _currentFilePath=null;
+  _updateWindowTitle(null);
+  renderAll();
+  updateStats();
+  buildActiveLocStrip();
+  updateDGSummary();
+  save();
+  showToast(t('htc_new_deck_label'),'ok');
+}
+
+function bindNewDeckModal(){
+  const overlay = document.getElementById('newDeckOv');
+  const modal   = document.getElementById('newDeckModal');
+  const cancel  = document.getElementById('newDeckCancel');
+  const holdBtn = document.getElementById('newDeckHoldBtn');
+  if(!overlay || !modal || !holdBtn) return;
+
+  const closeModal = async () => {
+    await animateModalOut(overlay, modal);
+    overlay.classList.remove('open');
+    if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+  };
+
+  /* Cancel */
+  if(cancel) cancel.addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if(e.target === overlay) closeModal(); });
+  bindEscapeDismiss(overlay, closeModal);
+  bindSwipeDismiss(modal, closeModal);
+}
+
+function openNewDeckModal(){
+  const overlay = document.getElementById('newDeckOv');
+  const modal   = document.getElementById('newDeckModal');
+  const holdBtn = document.getElementById('newDeckHoldBtn');
+  if(!overlay || !modal || !holdBtn) return;
+
+  /* Clean up any previous hold binding */
+  if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+
+  /* Update labels from current language */
+  holdBtn.textContent = t('htc_new_deck_label');
+
+  overlay.classList.add('open');
+  animateModalIn(overlay, modal);
+
+  /* Bind hold-to-confirm */
+  _newDeckHtcCleanup = bindHoldToConfirm(holdBtn, () => {
+    /* 100% hold completed → execute + close */
+    const ov = document.getElementById('newDeckOv');
+    const md = document.getElementById('newDeckModal');
+    animateModalOut(ov, md).then(() => {
+      ov.classList.remove('open');
+    });
+    _execNewDeck();
+    if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+  }, {
+    variant: 'linear',
+    duration: 800,
+    holdLabel: t('htc_hold_to', t('htc_new_deck_label').toLowerCase()),
+    completedLabel: t('htc_completed'),
+    fallbackLabel: t('htc_fallback_confirm'),
+    hintText: t('htc_hint'),
+    tooltipText: t('htc_tooltip_hold'),
+  });
+
+  /* Focus cancel — safer UX */
+  const cancel = document.getElementById('newDeckCancel');
+  if(cancel) setTimeout(() => cancel.focus(), 60);
+}
+
+
+/* ════════════════════════════════════════════════════════════
    VOYAGE REMARKS SYSTEM
 ════════════════════════════════════════════════════════════ */
 function bindVoyageRemarks(){
@@ -11177,6 +11258,15 @@ const LANG = {
     mi_mismatch_title:  'Parameter mismatch',
     mi_extra_title:     'Extra cargo (not in ASCO)',
     mi_ok_title:        'Matches ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Hold to ${s}…`,
+    htc_completed:        'Done',
+    htc_fallback_confirm: 'Confirm',
+    htc_hint:             'Press and hold to confirm',
+    htc_tooltip_hold:     'Hold to confirm',
+    htc_new_deck_label:   'New Deck Plan',
+    htc_new_deck_warning: 'This will erase all cargo and locations',
   },
 
   ru: {
@@ -11234,6 +11324,15 @@ const LANG = {
     mi_mismatch_title:  'Расхождение параметров',
     mi_extra_title:     'Extra cargo (не в ASCO)',
     mi_ok_title:        'Совпадает с ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Удержите для ${s}…`,
+    htc_completed:        'Готово',
+    htc_fallback_confirm: 'Подтвердить',
+    htc_hint:             'Нажмите и удерживайте',
+    htc_tooltip_hold:     'Удержите для подтверждения',
+    htc_new_deck_label:   'Новый план',
+    htc_new_deck_warning: 'Это удалит весь груз и локации',
   },
 
   uk: {
@@ -11291,6 +11390,15 @@ const LANG = {
     mi_mismatch_title:  'Розбіжність параметрів',
     mi_extra_title:     'Extra cargo (не в ASCO)',
     mi_ok_title:        'Збігається з ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Утримайте для ${s}…`,
+    htc_completed:        'Готово',
+    htc_fallback_confirm: 'Підтвердити',
+    htc_hint:             'Натисніть і утримуйте',
+    htc_tooltip_hold:     'Утримайте для підтвердження',
+    htc_new_deck_label:   'Новий план',
+    htc_new_deck_warning: 'Це видалить весь вантаж і локації',
   },
 };
 
@@ -11644,7 +11752,7 @@ function bindMenuBar(){
 
   /* Action dispatch — uses module-level menu* functions */
   const actions = {
-    newDeck:       () => { S.cargo=[]; _currentFilePath=null; _updateWindowTitle(null); renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save(); showToast('New deck plan','ok'); },
+    newDeck:       () => openNewDeckModal(),
     /* Clear Deck moved out of the main ribbon into the File menu.
        Delegates to the existing #btnClrDeck handler which opens the
        confirmation modal — destructive action path unchanged. */
@@ -13586,6 +13694,7 @@ function init(){
   bindAscoUpload();
   bindSaveAs();
   bindClearDeck();
+  bindNewDeckModal();
   bindVoyageRemarks();
   bindModalExtensions();
   bindManifestMatch();
