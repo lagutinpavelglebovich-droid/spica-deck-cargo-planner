@@ -6462,9 +6462,14 @@ function buildQueueList(){
     });
     el.querySelector('.asco-qitem-rm').addEventListener('click', e => {
       e.stopPropagation();
-      IMPORT_QUEUE.splice(qi, 1);
+      const removed = IMPORT_QUEUE.splice(qi, 1)[0];
       buildQueueList();
       updateQueueBadge();
+      showUndoToast(
+        t('removed_prefix') + (removed.displayName || removed.name || 'item'),
+        t('undo'),
+        () => { IMPORT_QUEUE.splice(qi, 0, removed); buildQueueList(); updateQueueBadge(); }
+      );
     });
 
     list.appendChild(el);
@@ -8077,9 +8082,15 @@ function cpRenderCustom(){
     rm.textContent='×';
     rm.addEventListener('mousedown',e=>e.stopPropagation());
     rm.addEventListener('click',e=>{
-      e.stopPropagation(); S.customLib.splice(idx,1);
+      e.stopPropagation();
+      const removed = S.customLib.splice(idx,1)[0];
       if(typeof save==='function') save();
       cpRenderCustom();
+      showUndoToast(
+        t('removed_prefix') + (removed.name || 'custom cargo'),
+        t('undo'),
+        () => { S.customLib.splice(idx, 0, removed); if(typeof save==='function') save(); cpRenderCustom(); }
+      );
     });
     card.appendChild(rm);
     /* Shared pendingItem payload — both click-to-place (fallback) and
@@ -9287,8 +9298,8 @@ function _restoreFromSnapshot(){
   return true;
 }
 
-/* ── Undo toast with action button (8s, Apple-style) ── */
-function _showUndoToast(){
+/* ── Generic undo toast (Apple-style snackbar with action button) ── */
+function showUndoToast(msg, actionLabel, onUndo, duration = 6000){
   const stack = _ensureToastStack();
   let active = stack.querySelectorAll('.toast-msg:not(.is-leaving)');
   while(active.length >= _TOAST_CAP){ _dismissToast(active[0]); active = stack.querySelectorAll('.toast-msg:not(.is-leaving)'); }
@@ -9297,19 +9308,25 @@ function _showUndoToast(){
   el.className = 'toast-msg is-info toast-undo';
   el.setAttribute('role', 'status');
   el.innerHTML = _toastIcon('info') +
-    `<span class="toast-msg-text">${_escHtml(t('restore_toast'))}</span>` +
-    `<button class="toast-undo-btn">${_escHtml(t('restore_undo'))}</button>`;
+    `<span class="toast-msg-text">${_escHtml(msg)}</span>` +
+    `<button class="toast-undo-btn">${_escHtml(actionLabel)}</button>`;
 
   el.querySelector('.toast-undo-btn').addEventListener('click', () => {
-    _restoreFromSnapshot();
+    clearTimeout(Number(el.dataset.toastTimer));
+    onUndo();
     _dismissToast(el);
   });
 
   stack.appendChild(el);
   void el.offsetWidth;
   el.classList.add('is-visible');
-  const auto = setTimeout(() => _dismissToast(el), 8000);
+  const auto = setTimeout(() => _dismissToast(el), duration);
   el.dataset.toastTimer = String(auto);
+}
+
+/* ── Undo toast for New Deck Plan (wrapper) ── */
+function _showUndoToast(){
+  showUndoToast(t('restore_toast'), t('restore_undo'), () => _restoreFromSnapshot(), 8000);
 }
 
 function _escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -11346,6 +11363,8 @@ const LANG = {
     restore_toast:    'Deck plan cleared.',
     restore_undo:     'Undo',
     restore_menu:     'Restore previous deck plan',
+    removed_prefix:   'Removed: ',
+    undo:             'Undo',
   },
 
   ru: {
@@ -11417,6 +11436,8 @@ const LANG = {
     restore_toast:    'План очищен.',
     restore_undo:     'Отменить',
     restore_menu:     'Восстановить предыдущий план',
+    removed_prefix:   'Удалено: ',
+    undo:             'Отменить',
   },
 
   uk: {
@@ -11488,6 +11509,8 @@ const LANG = {
     restore_toast:    'План очищено.',
     restore_undo:     'Скасувати',
     restore_menu:     'Відновити попередній план',
+    removed_prefix:   'Видалено: ',
+    undo:             'Скасувати',
   },
 };
 
