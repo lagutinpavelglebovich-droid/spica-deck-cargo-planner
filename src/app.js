@@ -13,6 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
+import { flipLayout } from './animations/locations.js';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
    convention. Used by the Phase W1 weather block (~line 12462). */
@@ -2099,126 +2100,129 @@ function clearLocFilter(){
 }
 
 function buildActiveLocStrip(){
-  const strip=document.getElementById('activeLocStrip');strip.innerHTML='';
+  const strip=document.getElementById('activeLocStrip');
   const cnt=document.getElementById('locsCount');
   cnt.textContent=S.activeLocs.length;
   if(!S.activeLocs.length){
     strip.innerHTML='<div style="display:flex;align-items:center;padding:0 20px;font-size:11px;color:var(--txt3);">No locations — click ⊕ to add</div>';
     return;
   }
-  S.activeLocs.forEach(id=>{
-    const loc=locById(id);if(!loc)return;
+  flipLayout(strip, () => {
+    strip.innerHTML='';
+    S.activeLocs.forEach(id=>{
+      const loc=locById(id);if(!loc)return;
 
-    /* Only deck cargo counts — not queue, not library */
-    const mine=S.cargo.filter(c=>c.platform===id);
+      /* Only deck cargo counts — not queue, not library */
+      const mine=S.cargo.filter(c=>c.platform===id);
 
-    /* Render ONLY the pills for operations that actually exist on this
-       location (count > 0). No placeholder / zero pills. Card width
-       follows content. Fixed operation colors (L/BL/ROB/TR) per design. */
-    const statuses=[
-      {key:'L',   label:'L'},
-      {key:'BL',  label:'BL'},
-      {key:'ROB', label:'ROB'},
-      {key:'TR',  label:'TR'},
-    ].map(s => ({...s, count: mine.filter(c=>c.status===s.key).length}))
-     .filter(s => s.count > 0);
+      /* Render ONLY the pills for operations that actually exist on this
+         location (count > 0). No placeholder / zero pills. Card width
+         follows content. Fixed operation colors (L/BL/ROB/TR) per design. */
+      const statuses=[
+        {key:'L',   label:'L'},
+        {key:'BL',  label:'BL'},
+        {key:'ROB', label:'ROB'},
+        {key:'TR',  label:'TR'},
+      ].map(s => ({...s, count: mine.filter(c=>c.status===s.key).length}))
+       .filter(s => s.count > 0);
 
-    const effectiveBase=getLocBase(id);
-    const cols=locColors(effectiveBase,id);
+      const effectiveBase=getLocBase(id);
+      const cols=locColors(effectiveBase,id);
 
-    /* Card element — always rendered */
-    const el=document.createElement('div');
-    el.className='loc-card'+(S.selLoc===id?' sel':'');
-    el.style.setProperty('--lc',effectiveBase);
+      /* Card element — always rendered */
+      const el=document.createElement('div');
+      el.className='loc-card'+(S.selLoc===id?' sel':'');
+      el.style.setProperty('--lc',effectiveBase);
+      /* data-loc-id for FLIP identity + filter targeting */
+      el.dataset.locId = id;
 
-    /* Name row — dot is a color picker trigger */
-    const head=document.createElement('div');
-    head.className='loc-card-head';
+      /* Name row — dot is a color picker trigger */
+      const head=document.createElement('div');
+      head.className='loc-card-head';
 
-    const dot=document.createElement('div');
-    dot.className='loc-card-dot';
-    dot.title='Click to change colour';
-    dot.style.cursor='pointer';
+      const dot=document.createElement('div');
+      dot.className='loc-card-dot';
+      dot.title='Click to change colour';
+      dot.style.cursor='pointer';
 
-    /* Hidden native color input */
-    const colorInp=document.createElement('input');
-    colorInp.type='color';
-    colorInp.value=effectiveBase;
-    colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-    dot.appendChild(colorInp);
+      /* Hidden native color input */
+      const colorInp=document.createElement('input');
+      colorInp.type='color';
+      colorInp.value=effectiveBase;
+      colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+      dot.appendChild(colorInp);
 
-    dot.addEventListener('click', e=>{
-      e.stopPropagation();
-      colorInp.click();
-    });
-    colorInp.addEventListener('input', e=>{
-      e.stopPropagation();
-      const newCol=colorInp.value;
-      /* Update DYN_COLORS with user's chosen colour */
-      DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
-      /* Persist and rebuild */
-      renderAll(); updateStats(); buildActiveLocStrip(); save();
-    });
-    colorInp.addEventListener('click', e=>e.stopPropagation());
-
-    const nameLbl=document.createElement('div');
-    nameLbl.className='loc-card-name';
-    nameLbl.textContent=loc.name;
-
-    head.appendChild(dot);
-    head.appendChild(nameLbl);
-
-    /* Status pill strip — only present statuses */
-    const pillStrip=document.createElement('div');
-    pillStrip.className='loc-card-pills';
-
-    if(statuses.length === 0){
-      /* Graceful empty state — no cargo yet for this location */
-      const empty = document.createElement('div');
-      empty.className = 'loc-card-empty';
-      empty.textContent = 'no cargo on deck';
-      pillStrip.appendChild(empty);
-    } else {
-      statuses.forEach(s=>{
-        const pill=document.createElement('div');
-        pill.className='loc-pill';
-        pill.dataset.status = s.key;
-        const hex = opColor(id, s.key);
-        try{
-          const [r,g,b] = h2r(hex);
-          pill.style.setProperty('--op-color', `${r},${g},${b}`);
-        }catch(e){}
-        pill.innerHTML=
-          `<span class="loc-pill-lbl">${s.label}</span>`+
-          `<span class="loc-pill-val">${s.count}</span>`;
-        pillStrip.appendChild(pill);
+      dot.addEventListener('click', e=>{
+        e.stopPropagation();
+        colorInp.click();
       });
-    }
+      colorInp.addEventListener('input', e=>{
+        e.stopPropagation();
+        const newCol=colorInp.value;
+        /* Update DYN_COLORS with user's chosen colour */
+        DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
+        /* Persist and rebuild */
+        renderAll(); updateStats(); buildActiveLocStrip(); save();
+      });
+      colorInp.addEventListener('click', e=>e.stopPropagation());
 
-    /* Remove button */
-    const rm=document.createElement('div');
-    rm.className='loc-card-rm';rm.textContent='×';
-    rm.addEventListener('click',e=>{e.stopPropagation();toggleLoc(id);});
+      const nameLbl=document.createElement('div');
+      nameLbl.className='loc-card-name';
+      nameLbl.textContent=loc.name;
 
-    el.appendChild(head);
-    el.appendChild(pillStrip);
-    el.appendChild(rm);
-    /* data-loc-id for filter targeting */
-    el.dataset.locId = id;
-    el.addEventListener('click', e => {
-      /* Ignore if remove button was clicked */
-      if(e.target.closest('.loc-card-rm')) return;
-      /* Toggle filter: second click on active filter → clear */
-      if(LOC_FILTER === id){
-        clearLocFilter();
+      head.appendChild(dot);
+      head.appendChild(nameLbl);
+
+      /* Status pill strip — only present statuses */
+      const pillStrip=document.createElement('div');
+      pillStrip.className='loc-card-pills';
+
+      if(statuses.length === 0){
+        /* Graceful empty state — no cargo yet for this location */
+        const empty = document.createElement('div');
+        empty.className = 'loc-card-empty';
+        empty.textContent = 'no cargo on deck';
+        pillStrip.appendChild(empty);
       } else {
-        /* Set as sel loc (existing behaviour) + apply filter */
-        S.selLoc = id;
-        applyLocFilter(id);
-        buildActiveLocStrip();
+        statuses.forEach(s=>{
+          const pill=document.createElement('div');
+          pill.className='loc-pill';
+          pill.dataset.status = s.key;
+          const hex = opColor(id, s.key);
+          try{
+            const [r,g,b] = h2r(hex);
+            pill.style.setProperty('--op-color', `${r},${g},${b}`);
+          }catch(e){}
+          pill.innerHTML=
+            `<span class="loc-pill-lbl">${s.label}</span>`+
+            `<span class="loc-pill-val">${s.count}</span>`;
+          pillStrip.appendChild(pill);
+        });
       }
+
+      /* Remove button */
+      const rm=document.createElement('div');
+      rm.className='loc-card-rm';rm.textContent='×';
+      rm.addEventListener('click',e=>{e.stopPropagation();toggleLoc(id);});
+
+      el.appendChild(head);
+      el.appendChild(pillStrip);
+      el.appendChild(rm);
+      el.addEventListener('click', e => {
+        /* Ignore if remove button was clicked */
+        if(e.target.closest('.loc-card-rm')) return;
+        /* Toggle filter: second click on active filter → clear */
+        if(LOC_FILTER === id){
+          clearLocFilter();
+        } else {
+          /* Set as sel loc (existing behaviour) + apply filter */
+          S.selLoc = id;
+          applyLocFilter(id);
+          buildActiveLocStrip();
+        }
+      });
+      strip.appendChild(el);
     });
-    strip.appendChild(el);
   });
 
   /* Re-apply filter highlight if a filter is currently active */

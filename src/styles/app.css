@@ -963,7 +963,7 @@ body.is-viewer .bp-viewer-indicator{
   border:1px solid rgba(255,255,255,.48);
   border-radius:14px;
   box-shadow: var(--sh-float), var(--glass-inset-strong);
-  transition:background .18s, box-shadow .2s, transform .2s;
+  transition:background .18s, box-shadow .2s;
 }
 .loc-card:hover{
   box-shadow:
@@ -987,6 +987,7 @@ body.is-viewer .bp-viewer-indicator{
   background:var(--lc);flex-shrink:0;
   box-shadow:0 0 0 2px color-mix(in srgb,var(--lc) 18%,transparent);
   opacity:.9;
+  transition:background-color .25s ease, border-color .25s ease, box-shadow .25s ease;
 }
 .loc-card-name{
   font-size:13px;font-weight:700;color:var(--txt);
