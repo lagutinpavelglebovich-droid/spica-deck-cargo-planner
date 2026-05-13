@@ -19050,6 +19050,160 @@ body.insp-multi .insp-act-dup{ display:none; }
 .rc-lifts .gst-lift-hero .gst-val{ display:none; }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   DECK USAGE INDICATOR — area occupancy stat card
+═══════════════════════════════════════════════════════════════════════ */
+.gst-deck-usage{
+  position:relative;
+  min-width:80px;
+  max-width:120px;
+  padding:4px 12px !important;
+  gap:2px;
+  cursor:default;
+}
+
+/* Label — matches other stat card labels exactly */
+.gst-deck-usage .gst-lbl{
+  font-size:10px;
+  letter-spacing:.1px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+/* Primary percentage number */
+.gst-du-num{
+  font-family:'Manrope','Inter',sans-serif;
+  font-size:20px;
+  font-weight:800;
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+  color:var(--txt);
+  transition:color 250ms var(--ease);
+}
+
+/* Progress bar track — carved-in look */
+.gst-du-bar-track{
+  position:relative;
+  width:100%;
+  height:4px;
+  border-radius:2px;
+  background:rgba(0,0,0,.04);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
+  margin:3px 0 2px;
+  overflow:hidden;
+}
+[data-theme="dark"] .gst-du-bar-track{
+  background:rgba(255,255,255,.06);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.2);
+}
+
+/* Tick marks at 25/50/75% */
+.gst-du-tick{
+  position:absolute;
+  top:0;
+  width:1px;
+  height:100%;
+  background:currentColor;
+  opacity:.10;
+  z-index:1;
+  pointer-events:none;
+}
+
+/* Fill bar */
+.gst-du-bar-fill{
+  position:absolute;
+  top:0;
+  left:0;
+  height:100%;
+  width:0%;
+  border-radius:2px;
+  background:#1e3a5f;
+  background:linear-gradient(180deg, #2a4f7a 0%, #1e3a5f 100%);
+  transition:width 250ms var(--ease), background-color 250ms var(--ease);
+}
+
+/* Color thresholds */
+.deck-usage--calm .gst-du-bar-fill{
+  background:linear-gradient(180deg, #2a4f7a 0%, #1e3a5f 100%);
+}
+.deck-usage--calm .gst-du-num{ color:var(--txt); }
+
+.deck-usage--warn .gst-du-bar-fill{
+  background:linear-gradient(180deg, #d4a32c 0%, #ab8423 100%);
+}
+.deck-usage--warn .gst-du-num{ color:#9c6e1a; }
+
+.deck-usage--alert .gst-du-bar-fill{
+  background:linear-gradient(180deg, #f7b02e 0%, #f59e0b 100%);
+}
+.deck-usage--alert .gst-du-num{ color:#b47d0a; }
+
+.deck-usage--critical .gst-du-bar-fill{
+  background:linear-gradient(180deg, #e84040 0%, #dc2626 100%);
+}
+.deck-usage--critical .gst-du-num{ color:#dc2626; }
+
+/* Dark mode threshold overrides */
+[data-theme="dark"] .deck-usage--warn .gst-du-num{ color:#caa055; }
+[data-theme="dark"] .deck-usage--alert .gst-du-num{ color:#f5b74e; }
+[data-theme="dark"] .deck-usage--critical .gst-du-num{ color:#e0746a; }
+
+/* Free label */
+.gst-du-free{
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:9px;
+  font-weight:500;
+  color:var(--txt4);
+  letter-spacing:.1px;
+  white-space:nowrap;
+  line-height:1;
+}
+
+/* Tooltip — reuses htc-tooltip visual language */
+.gst-du-tooltip{
+  position:absolute;
+  bottom:calc(100% + 10px);
+  left:50%;
+  transform:translateX(-50%);
+  white-space:nowrap;
+  font-family:'JetBrains Mono','Inter',monospace;
+  font-size:11px;
+  font-weight:500;
+  line-height:1.5;
+  color:#fff;
+  background:#1c2128;
+  border:none;
+  border-radius:8px;
+  padding:8px 12px;
+  box-shadow:0 4px 12px rgba(0,0,0,.15);
+  pointer-events:none;
+  z-index:1000;
+  opacity:0;
+  transition:opacity 150ms var(--ease);
+}
+.gst-du-tooltip::after{
+  content:'';
+  position:absolute;
+  top:100%;
+  left:50%;
+  transform:translateX(-50%);
+  border:5px solid transparent;
+  border-top-color:#1c2128;
+}
+.gst-deck-usage:hover .gst-du-tooltip,
+.gst-deck-usage:focus .gst-du-tooltip{
+  opacity:1;
+}
+[data-theme="dark"] .gst-du-tooltip{
+  color:#1c2128;
+  background:#e8eaed;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+}
+[data-theme="dark"] .gst-du-tooltip::after{
+  border-top-color:#e8eaed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    PHASE 3A — PERSISTENT BOTTOM UTILITY RAIL
    Unhidden. Three visual zones, no dividers, tabular-num readouts, and a
    quiet autosave heartbeat pulse (.save-dot.pulse). The rail carries the

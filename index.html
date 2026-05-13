@@ -451,6 +451,26 @@
         <div class="wt-gauge-track"><div class="wt-gauge-fill" id="wtGaugeFill"></div></div>
         <div class="wt-gauge-label"><span id="wtGaugeText">0 / 2500 T</span></div>
       </div>
+
+      <div class="gst-sep"></div>
+
+      <!-- Deck Usage — area occupancy indicator -->
+      <div class="gst gst-deck-usage" id="gstDeckUsage" tabindex="0">
+        <span class="gst-lbl">DECK USED</span>
+        <div class="gst-du-num" id="sDeckPct">0%</div>
+        <div class="gst-du-bar-track">
+          <div class="gst-du-tick" style="left:25%"></div>
+          <div class="gst-du-tick" style="left:50%"></div>
+          <div class="gst-du-tick" style="left:75%"></div>
+          <div class="gst-du-bar-fill" id="sDeckBar"></div>
+        </div>
+        <span class="gst-du-free" id="sDeckFree">100% free</span>
+        <div class="gst-du-tooltip" id="sDeckTooltip">
+          <div>Usable: <strong id="sDeckTTUsable">0 m²</strong></div>
+          <div>Occupied: <strong id="sDeckTTOccupied">0 m²</strong></div>
+          <div>Free: <strong id="sDeckTTFree">0 m²</strong></div>
+        </div>
+      </div>
     </div>
   </div>
 

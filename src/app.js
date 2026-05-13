@@ -573,6 +573,18 @@ function deckYToMeters(yPx){
 
 const CVH = 380, YS = CVH / 15;
 
+/* Deck usable area in px² — total canvas minus permanent exclusion zones.
+   Zone pixel sizes are from the actual rendered geometry. */
+const DECK_USABLE_AREA_PX = TW * CVH
+  - (124 * 95)    /* Store PORT bow */
+  - (157 * 55)    /* Hose Bay PORT */
+  - (258 * 55)    /* Hose Bay STBD */
+  - (90 * 60)     /* Ship's Waste Skip */
+  - (20 * CVH);   /* Bay 12 stern tiger zone */
+
+/* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
+const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
+
 /* ════════════════════════════════════
    COLOR ENGINE — Smart Dynamic Palette
    Bleo Holm = grey family (mandatory)
@@ -3117,6 +3129,37 @@ function updateStats(){
   /* V12: Empty deck hint */
   const hintEl=document.getElementById('emptyDeckHint');
   if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
+
+  /* ── Deck Usage indicator ─────────────────────────────── */
+  const duCard = document.getElementById('gstDeckUsage');
+  if(duCard){
+    let occupiedPx = 0;
+    S.cargo.forEach(c => { occupiedPx += (c.w || 0) * (c.h || 0); });
+    const usedPct = Math.min(100, Math.round((occupiedPx / DECK_USABLE_AREA_PX) * 100));
+    const freePct = 100 - usedPct;
+
+    document.getElementById('sDeckPct').textContent = usedPct + '%';
+    document.getElementById('sDeckBar').style.width = usedPct + '%';
+    document.getElementById('sDeckFree').textContent = freePct + '% free';
+
+    /* Threshold class */
+    const cls = usedPct >= 95 ? 'deck-usage--critical'
+              : usedPct >= 85 ? 'deck-usage--alert'
+              : usedPct >= 70 ? 'deck-usage--warn'
+              :                 'deck-usage--calm';
+    duCard.className = 'gst gst-deck-usage ' + cls;
+
+    /* Tooltip m² breakdown */
+    const usableM2  = Math.round(DECK_USABLE_AREA_PX / PX2_TO_M2);
+    const occupiedM2 = Math.round(occupiedPx / PX2_TO_M2);
+    const freeM2    = usableM2 - occupiedM2;
+    const ttUsable   = document.getElementById('sDeckTTUsable');
+    const ttOccupied = document.getElementById('sDeckTTOccupied');
+    const ttFree     = document.getElementById('sDeckTTFree');
+    if(ttUsable)   ttUsable.textContent   = usableM2 + ' m²';
+    if(ttOccupied) ttOccupied.textContent = occupiedM2 + ' m²';
+    if(ttFree)     ttFree.textContent     = freeM2 + ' m²';
+  }
 
   /* V9: Status bar update */
   if(typeof updateStatusBar==='function') updateStatusBar();
