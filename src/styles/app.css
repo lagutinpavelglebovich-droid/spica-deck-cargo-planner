@@ -10960,7 +10960,7 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
 [data-theme="dark"] .rc-lifts .gst-val.tr  { color: #b8a3e8 !important; text-shadow: none !important; background: transparent !important; box-shadow: none !important; }
 
 /* Give the Lifts card a touch more breathing room */
-.rc-lifts .gstats{ padding:0 14px !important; gap:2px !important; }
+.rc-lifts .gstats{ padding:0 14px !important; gap:8px !important; }
 .rc-lifts .gst{ padding:8px 6px !important; min-width:46px !important; }
 .rc-lifts .gst-lbl{
   font-size:10px !important;letter-spacing:.1px !important;
