@@ -19072,8 +19072,8 @@ body.insp-multi .insp-act-dup{ display:none; }
 /* Primary percentage number */
 .gst-du-num{
   font-family:'Manrope','Inter',sans-serif;
-  font-size:20px;
-  font-weight:800;
+  font-size:18px;
+  font-weight:700;
   line-height:1;
   font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1;
@@ -19159,49 +19159,6 @@ body.insp-multi .insp-act-dup{ display:none; }
   line-height:1;
 }
 
-/* Tooltip — reuses htc-tooltip visual language */
-.gst-du-tooltip{
-  position:absolute;
-  bottom:calc(100% + 10px);
-  left:50%;
-  transform:translateX(-50%);
-  white-space:nowrap;
-  font-family:'JetBrains Mono','Inter',monospace;
-  font-size:11px;
-  font-weight:500;
-  line-height:1.5;
-  color:#fff;
-  background:#1c2128;
-  border:none;
-  border-radius:8px;
-  padding:8px 12px;
-  box-shadow:0 4px 12px rgba(0,0,0,.15);
-  pointer-events:none;
-  z-index:1000;
-  opacity:0;
-  transition:opacity 150ms var(--ease);
-}
-.gst-du-tooltip::after{
-  content:'';
-  position:absolute;
-  top:100%;
-  left:50%;
-  transform:translateX(-50%);
-  border:5px solid transparent;
-  border-top-color:#1c2128;
-}
-.gst-deck-usage:hover .gst-du-tooltip,
-.gst-deck-usage:focus .gst-du-tooltip{
-  opacity:1;
-}
-[data-theme="dark"] .gst-du-tooltip{
-  color:#1c2128;
-  background:#e8eaed;
-  box-shadow:0 4px 12px rgba(0,0,0,.3);
-}
-[data-theme="dark"] .gst-du-tooltip::after{
-  border-top-color:#e8eaed;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 3A — PERSISTENT BOTTOM UTILITY RAIL
