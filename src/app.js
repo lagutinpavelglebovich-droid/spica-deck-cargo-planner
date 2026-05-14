@@ -2398,7 +2398,7 @@ function _placeAtCore(cx,cy){
   const h=isC?(it.h||m2px_h(1.83)):m2px_h(1.83);
   /* Store real-world metres for rotation and display; preserve from preset */
   const length_m = isC&&it.length_m ? it.length_m : (w/M);
-  const width_m  = isC&&it.width_m  ? it.width_m  : (h/M);
+  const width_m  = isC&&it.width_m  ? it.width_m  : (h/YS);
   const c={id:Date.now()+Math.random(),side:'DECK',
     x:Math.max(0,Math.min(cx-w/2,TW-w)),
     y:Math.max(0,Math.min(cy-h/2,CVH-h)),
