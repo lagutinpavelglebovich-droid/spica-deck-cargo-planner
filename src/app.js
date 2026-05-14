@@ -3173,7 +3173,7 @@ function updateStats(){
         if(freeEl) freeEl.textContent = freePct + '% free';
         _du.displayedPct = usedPct;
       } else {
-        const dur = Math.min(800, delta * 30);
+        const dur = Math.min(800, Math.max(300, delta * 30));
         const t0 = performance.now();
         const cubicBezier = (t) => {
           /* cubic-bezier(0.34, 0.04, 0.20, 1.00) approximation via De Casteljau */
