@@ -6841,6 +6841,45 @@ function _dismissToast(el){
 ═══════════════════════════════════════════════════════════════ */
 let _isReportRendering = false;
 
+/* ── DOM pollutant removal for html2canvas ─────────────────────────────
+   WKWebView (Tauri on macOS) taints a canvas at the document level when
+   ANY element in the document contains: external images, <canvas>, or
+   SVG filters — even if those elements are display:none or outside the
+   capture target. The only reliable fix is to physically detach them
+   from the DOM before html2canvas runs and restore them after.
+   
+   Stash format: [{el, parent, next}] for ordered re-insertion. */
+function _stripExportPollutants(){
+  const stash = [];
+  /* External/local images outside the deck canvas (e.g. vessel-bg map) */
+  document.querySelectorAll('img').forEach(el => {
+    if(!el.closest('#cvDECK')){
+      stash.push({el, parent: el.parentNode, next: el.nextSibling});
+      el.remove();
+    }
+  });
+  /* Weather precipitation canvas elements */
+  document.querySelectorAll('.wx-scene canvas, canvas.wx-scene').forEach(el => {
+    stash.push({el, parent: el.parentNode, next: el.nextSibling});
+    el.remove();
+  });
+  /* SVG elements containing filters (feTurbulence etc.) outside deck canvas */
+  document.querySelectorAll('svg').forEach(svg => {
+    if(svg.querySelector('filter') && !svg.closest('#cvDECK')){
+      stash.push({el: svg, parent: svg.parentNode, next: svg.nextSibling});
+      svg.remove();
+    }
+  });
+  return stash;
+}
+
+function _restoreExportPollutants(stash){
+  stash.forEach(({el, parent, next}) => {
+    if(next && next.parentNode === parent) parent.insertBefore(el, next);
+    else parent.appendChild(el);
+  });
+}
+
 function exportPDF(){ return _renderReport('save'); }
 function printDeckPlan(){ return _renderReport('print'); }
 
@@ -6967,10 +7006,11 @@ async function _renderReport(mode){
   };
 
   /* 5. Capture live deck with html2canvas.
-        Double rAF ensures CSS repaint is committed before capture —
-        critical for WKWebView where repaint latency is higher than Chromium.
-        allowTaint removed: WKWebView (WebKit) marks canvas tainted even via
-        toBlob(), unlike Chromium. useCORS:true is fine for same-origin assets. */
+        DOM pollutants (img, wx canvas, svg filters) are physically detached
+        before capture — display:none is insufficient in WKWebView, taint check
+        operates at document level regardless of visibility.
+        Double rAF ensures CSS repaint is committed before capture. */
+  const _exportStash = _stripExportPollutants();
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   try {
@@ -6992,6 +7032,8 @@ async function _renderReport(mode){
     _isReportRendering = false;
     console.error('[PDF] html2canvas error:', err);
     showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
+  } finally {
+    _restoreExportPollutants(_exportStash);
   }
 }
 
