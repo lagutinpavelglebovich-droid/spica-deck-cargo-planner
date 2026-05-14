@@ -12953,6 +12953,7 @@ function _formatReleaseDate(dateStr){
 ══════════════════════════════════════════════════════════ */
 const UPDATE_CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; /* 5 days in ms */
 let _updateAvailable = null;
+let _updateFallback   = null; /* set by Strategy 2 (GitHub API) when Tauri plugin unavailable */
 
 /* Semantic version comparison: returns true if a > b (e.g. "2.1.0" > "1.8.1") */
 function _semverNewer(a, b){
@@ -13025,6 +13026,11 @@ async function _checkForUpdates(manual){
     if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
 
     if(latest && _semverNewer(latest, APP_VERSION)){
+      /* Store fallback so _doUpdate() can open the release page (Tauri plugin unavailable) */
+      _updateFallback = {
+        version: latest,
+        url: data.html_url || 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest'
+      };
       if(manual){
         showToast('Update available: v' + latest, 'ok');
         if(resultEl) resultEl.innerHTML = 'Version <b>' + latest + '</b> available — <a href="' + (data.html_url||'#') + '" target="_blank" style="color:var(--acc);">View release</a>';
@@ -13061,6 +13067,17 @@ function _showUpdateBanner(ver){
 }
 
 async function _doUpdate(){
+  /* Strategy 2 fallback: Tauri plugin unavailable — open GitHub release page in browser */
+  if(!_updateAvailable && _updateFallback){
+    try {
+      const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
+      await shellOpen(_updateFallback.url);
+    } catch(e){
+      showToast('Open browser: ' + _updateFallback.url, 'info');
+    }
+    _hideUpdateBanner();
+    return;
+  }
   if(!_updateAvailable) return;
   try {
     showToast('Downloading update...', 'ok');
