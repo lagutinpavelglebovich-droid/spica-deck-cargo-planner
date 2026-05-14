@@ -6863,20 +6863,46 @@ function _stripExportPollutants(){
     stash.push({el, parent: el.parentNode, next: el.nextSibling});
     el.remove();
   });
-  /* SVG elements containing filters (feTurbulence etc.) outside deck canvas */
+  /* SVG elements containing filters (feTurbulence etc.) outside deck canvas.
+     NOTE: only SVGs that have a <filter> child — preserves header icon SVGs. */
   document.querySelectorAll('svg').forEach(svg => {
     if(svg.querySelector('filter') && !svg.closest('#cvDECK')){
       stash.push({el: svg, parent: svg.parentNode, next: svg.nextSibling});
       svg.remove();
     }
   });
+  /* CSS injection — neutralize body::before/::after pseudo-elements (feTurbulence
+     noise texture, weather gradient wash) and backdrop-filter/filter outside #cvDECK.
+     These are the primary WKWebView taint triggers and cannot be removed via DOM. */
+  const exportStyle = document.createElement('style');
+  exportStyle.id = '__export-css-strip';
+  exportStyle.textContent = `
+    body, html {
+      background: none !important;
+      backdrop-filter: none !important;
+    }
+    *::before, *::after {
+      background-image: none !important;
+      content: none !important;
+    }
+    *:not(#cvDECK):not(#cvDECK *) {
+      backdrop-filter: none !important;
+      filter: none !important;
+    }
+  `;
+  document.head.appendChild(exportStyle);
+  stash.push({type: 'style', el: exportStyle});
   return stash;
 }
 
 function _restoreExportPollutants(stash){
-  stash.forEach(({el, parent, next}) => {
-    if(next && next.parentNode === parent) parent.insertBefore(el, next);
-    else parent.appendChild(el);
+  stash.forEach(({type, el, parent, next}) => {
+    if(type === 'style'){
+      el.remove();
+    } else {
+      if(next && next.parentNode === parent) parent.insertBefore(el, next);
+      else parent.appendChild(el);
+    }
   });
 }
 
