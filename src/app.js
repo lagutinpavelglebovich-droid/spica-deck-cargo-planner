@@ -13,6 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
+import { interRegularB64, interBoldB64 } from './inter-fonts.js';
 import { flipLayout } from './animations/locations.js';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
@@ -7068,6 +7069,13 @@ async function buildPDF(deckCanvas, data, opts){
   const { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs } = data;
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
 
+  /* Register Inter TTF — embedded at build time via inter-fonts.js.
+     addFileToVFS + addFont is the standard jsPDF custom-font pattern. */
+  doc.addFileToVFS('Inter-Regular.ttf', interRegularB64);
+  doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
+  doc.addFileToVFS('Inter-Bold.ttf', interBoldB64);
+  doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+
   const PW=297, PH=210, ML=10, MR=10, MT=8;
   const CW = PW - ML - MR;
 
@@ -7102,11 +7110,11 @@ async function buildPDF(deckCanvas, data, opts){
   doc.rect(ML, y + BAND_H - 2, CW, 2, 'F');
 
   /* Vessel name — reversed white on navy */
-  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.white);
+  doc.setFont('Inter','bold'); doc.setFontSize(10); doc.setTextColor(...C.white);
   doc.text('SPICA TIDE', ML+5, y+4.2);
 
   /* Subtitle — light on navy, all caps */
-  doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
+  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
   doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+39, y+4.2);
 
   /* Content area starts below band — 3mm top pad before label */
@@ -7114,9 +7122,9 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* Counter cell — tight uppercase label + prominent value */
   const cell = (label, value, cx, colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
     doc.text(label.toUpperCase(), cx, cy+4);
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
+    doc.setFont('Inter','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
     doc.text(value, cx, cy+13);
   };
 
@@ -7133,9 +7141,9 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* Voyage metadata — right zone */
   const vCell = (label, value, cx, colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
     doc.text(label.toUpperCase(), cx, cy+5);
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...colVal);
+    doc.setFont('Inter','bold'); doc.setFontSize(11); doc.setTextColor(...colVal);
     doc.text(value, cx, cy+13);
   };
   vCell('Voyage', voyageNum, ML+197, C.navy);
@@ -7156,11 +7164,11 @@ async function buildPDF(deckCanvas, data, opts){
       doc.rect(lx, y+1, locW, 2, 'F');
       /* Dot + name + weight on one line — 2mm below accent */
       doc.setFillColor(...rgb); doc.circle(lx+5,y+8,1.5,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
+      doc.setFont('Inter','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
       const maxChars = Math.floor(locW/2.6);
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'\u2026' : loc.name;
       doc.text(nm, lx+10, y+8.5);
-      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
+      doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
       doc.text(loc.wt+'T', lx+locW-3, y+8.5, {align:'right'});
       /* Pills — 2mm below name row, 2mm bottom pad before card edge */
       let px = lx+4; const py = y+13;
@@ -7172,7 +7180,7 @@ async function buildPDF(deckCanvas, data, opts){
           const pw = p.lbl==='ROB'?14:p.lbl==='BL'?12:10;
           const pillBg = p.col.map(v=>Math.round(v*0.20+230));
           roundRect(px,py-2,pw,5,1.5,pillBg,null);
-          doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...p.col);
+          doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.col);
           doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.2, {align:'center'}); px+=pw+2;
         });
     });
@@ -7224,7 +7232,7 @@ async function buildPDF(deckCanvas, data, opts){
     doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
 
     /* Title — white bold in band */
-    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
     doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.8);
 
     /* Pills — same render logic as Location pills */
@@ -7232,7 +7240,7 @@ async function buildPDF(deckCanvas, data, opts){
       const py = y + DG_BAND + DG_PAD_T + ri * (PILL_H + PILL_GAP);
       row.forEach(p => {
         roundRect(p.x, py, p.pw, PILL_H, 1.5, p.pillBg, null);
-        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...p.txtRgb);
+        doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.txtRgb);
         doc.text(p.label, p.x + p.pw/2, py + 3.3, {align:'center'});
       });
     });
@@ -7241,9 +7249,9 @@ async function buildPDF(deckCanvas, data, opts){
   }
 
   /* 4. DECK PLAN LABEL */
-  doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
+  doc.setFont('Inter','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
   doc.text('DECK CARGO PLAN', ML, y+3.5);
-  doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
+  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
   doc.text('\u2190 AFT / BAY 12', ML, y+7);
   doc.text('BAY 1 / BOW \u2192', ML+CW, y+7, {align:'right'});
   y += 8;
@@ -7280,7 +7288,7 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* 6. BAY LABELS */
   const bayNms = ['12','11','10','9','8','7','6','5','4','3','2','1'];
-  doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
+  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
   BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+4, {align:'center'}); });
 
   /* 7. VOYAGE NOTES */
@@ -7290,9 +7298,9 @@ async function buildPDF(deckCanvas, data, opts){
     const NOTE_H = Math.min(24, 6+noteLines.length*4.2);
     if(y+NOTE_H+FOOTER_H < PH-2){
       roundRect(ML,y,CW,NOTE_H,1.5,C.surf2,C.brd);
-      doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
+      doc.setFont('Inter','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
       doc.text('VOYAGE NOTES', ML+3, y+4.5);
-      doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.ink2);
+      doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.ink2);
       doc.text(noteLines, ML+3, y+9); y += NOTE_H+2;
     }
   }
@@ -7300,7 +7308,7 @@ async function buildPDF(deckCanvas, data, opts){
   /* 8. FOOTER */
   const fy = PH-FOOTER_H;
   sepLine(fy-1);
-  doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
+  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
   const now = new Date();
   const ts = now.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
   doc.text('Generated '+ts+'  \u00B7  SPICA TIDE  \u00B7  NEO Energy Resources UK', ML, fy+4);
