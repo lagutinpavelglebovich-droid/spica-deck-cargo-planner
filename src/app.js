@@ -15,6 +15,7 @@ import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, i
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 import { interRegularB64, interBoldB64 } from './inter-fonts.js';
 import { flipLayout } from './animations/locations.js';
+import { animate as motionAnimate } from 'motion';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
    convention. Used by the Phase W1 weather block (~line 12462). */
@@ -585,6 +586,14 @@ const DECK_USABLE_AREA_PX = TW * CVH
 
 /* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
 const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
+
+/* Deck usage animation state — shared across updateStats calls */
+const _du = {
+  prevPct: -1,              /* last displayed integer % (for threshold crossing) */
+  prevThreshold: '',        /* last threshold class name */
+  rafId: 0,                 /* in-flight rAF animation ID */
+  displayedPct: 0,          /* current displayed value (float during animation) */
+};
 
 /* ════════════════════════════════════
    COLOR ENGINE — Smart Dynamic Palette
@@ -3149,6 +3158,74 @@ function updateStats(){
               : usedPct >= 70 ? 'deck-usage--warn'
               :                 'deck-usage--calm';
     duCard.className = 'gst gst-deck-usage ' + cls;
+
+    /* ── Speedometer number animation (rAF count-up/down) ── */
+    const numEl = document.getElementById('sDeckPct');
+    const freeEl = document.getElementById('sDeckFree');
+    if(numEl){
+      if(_du.rafId) cancelAnimationFrame(_du.rafId);
+      const from = _du.displayedPct;
+      const to = usedPct;
+      const delta = Math.abs(to - from);
+      if(delta < 0.5 || _du.prevPct < 0){
+        /* First call or negligible change — set immediately */
+        numEl.textContent = usedPct + '%';
+        if(freeEl) freeEl.textContent = freePct + '% free';
+        _du.displayedPct = usedPct;
+      } else {
+        const dur = Math.min(800, Math.max(300, delta * 30));
+        const t0 = performance.now();
+        const cubicBezier = (t) => {
+          /* cubic-bezier(0.34, 0.04, 0.20, 1.00) approximation via De Casteljau */
+          const p1x=0.34,p1y=0.04,p2x=0.20,p2y=1.00;
+          let lo=0,hi=1;
+          for(let i=0;i<16;i++){
+            const mid=(lo+hi)/2;
+            const x=3*p1x*mid*(1-mid)*(1-mid)+3*p2x*mid*mid*(1-mid)+mid*mid*mid;
+            if(x<t) lo=mid; else hi=mid;
+          }
+          const mid=(lo+hi)/2;
+          return 3*p1y*mid*(1-mid)*(1-mid)+3*p2y*mid*mid*(1-mid)+mid*mid*mid;
+        };
+        const step = (now) => {
+          const elapsed = now - t0;
+          const progress = Math.min(1, elapsed / dur);
+          const eased = cubicBezier(progress);
+          const current = from + (to - from) * eased;
+          const display = Math.round(current);
+          numEl.textContent = display + '%';
+          if(freeEl) freeEl.textContent = (100 - display) + '% free';
+          _du.displayedPct = current;
+          if(progress < 1) _du.rafId = requestAnimationFrame(step);
+          else { _du.rafId = 0; _du.displayedPct = to; }
+        };
+        _du.rafId = requestAnimationFrame(step);
+      }
+    }
+
+    /* ── Bar width spring animation (Motion One) ── */
+    const barEl = document.getElementById('sDeckBar');
+    if(barEl){
+      if(_du.prevPct < 0){
+        /* First render — no animation */
+        barEl.style.width = usedPct + '%';
+      } else {
+        motionAnimate(
+          barEl,
+          { width: [_du.prevPct + '%', usedPct + '%'] },
+          { duration: 0.5, easing: 'spring(260, 26, 0, 1)' },
+        );
+      }
+    }
+
+    /* ── Threshold crossing scale flash ── */
+    if(_du.prevThreshold && _du.prevThreshold !== cls && numEl){
+      numEl.classList.remove('du-flash');
+      void numEl.offsetWidth; /* force reflow to restart animation */
+      numEl.classList.add('du-flash');
+    }
+    _du.prevThreshold = cls;
+    _du.prevPct = usedPct;
 
     /* Tooltip m² breakdown */
     const usableM2  = Math.round(DECK_USABLE_AREA_PX / PX2_TO_M2);
