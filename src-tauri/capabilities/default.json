@@ -18,6 +18,7 @@
     "updater:allow-download-and-install",
     "process:allow-restart",
     "shell:allow-open",
-    "opener:default"
+    "opener:default",
+    "opener:allow-open-path"
   ]
 }
