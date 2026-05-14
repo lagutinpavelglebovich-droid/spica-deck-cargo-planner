@@ -7130,7 +7130,9 @@ async function buildPDF(deckCanvas, data, opts){
       doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink3);
       doc.text(loc.wt+'T', lx+locW-3, y+11, {align:'right'});
       let px = lx+4; const py = y+15.5;
-      const colL=hex2rgb(loc.cols.L), colBL=hex2rgb(loc.cols.BL), colROB=hex2rgb(loc.cols.ROB);
+      const colL  = hex2rgb(opColor(loc.id, 'L'));
+      const colBL = hex2rgb(opColor(loc.id, 'BL'));
+      const colROB= hex2rgb(opColor(loc.id, 'ROB'));
       [{lbl:'L',val:loc.L,col:colL},{lbl:'BL',val:loc.BL,col:colBL},{lbl:'ROB',val:loc.ROB,col:colROB}]
         .filter(p=>p.val>0).forEach(p => {
           const pw = p.lbl==='ROB'?16:p.lbl==='BL'?14:12;
