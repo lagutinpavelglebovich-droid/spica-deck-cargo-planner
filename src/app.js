@@ -6982,11 +6982,22 @@ function _restoreExportPollutants(stash){
 }
 
 function exportPDF(){ return _renderReport('save'); }
-function printDeckPlan(){
-  /* WKWebView print() is silently broken — use PDF export + shell.open()
-     so the user gets a native print dialog in the system PDF viewer. */
+async function printDeckPlan(){
+  /* WKWebView print() is silently broken — save to OS temp dir silently,
+     then shell.open() so user gets a native print dialog in system viewer.
+     No Save As dialog — that's for Export PDF flow only. */
   if(_isTauri()){
-    menuExportPDF();
+    try {
+      const { tempDir } = await import('@tauri-apps/api/path');
+      const tmp = await tempDir();
+      const sep = tmp.endsWith('\\') || tmp.endsWith('/') ? '' : '/';
+      window._pendingPdfPath = tmp + sep + 'spica-tide-print-' + Date.now() + '.pdf';
+      _renderReport('save');
+    } catch(e){
+      console.error('[print] temp path error:', e);
+      /* Fallback: show Save As dialog via menuExportPDF */
+      menuExportPDF();
+    }
   } else {
     _renderReport('print');
   }
