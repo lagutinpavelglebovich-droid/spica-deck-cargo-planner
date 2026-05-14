@@ -6982,7 +6982,15 @@ function _restoreExportPollutants(stash){
 }
 
 function exportPDF(){ return _renderReport('save'); }
-function printDeckPlan(){ return _renderReport('print'); }
+function printDeckPlan(){
+  /* WKWebView print() is silently broken — use PDF export + shell.open()
+     so the user gets a native print dialog in the system PDF viewer. */
+  if(_isTauri()){
+    menuExportPDF();
+  } else {
+    _renderReport('print');
+  }
+}
 
 async function _renderReport(mode){
   if(_isReportRendering){ return; }
@@ -7409,6 +7417,13 @@ async function buildPDF(deckCanvas, data, opts){
       await invoke('write_file_bytes', { path: pdfPath, bytes });
       showToast(t('toast_pdf_ok') + ' \u2014 ' + pdfPath.split(/[/\\]/).pop(), 'ok');
       _phase27ExportComplete();
+      /* Auto-open in system viewer so user can print via native dialog */
+      try {
+        const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
+        await shellOpen(pdfPath);
+      } catch(shellErr){
+        showToast('PDF saved \u2014 open manually to print', 'info');
+      }
     } catch(e) {
       showToast('PDF save failed: ' + (e && e.message || e), 'warn');
     }
