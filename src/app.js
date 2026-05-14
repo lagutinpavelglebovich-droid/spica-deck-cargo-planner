@@ -7178,25 +7178,60 @@ async function buildPDF(deckCanvas, data, opts){
     y += LOC_H+3;
   }
 
-  /* 3. DG ON BOARD */
+  /* 3. DG ON BOARD — premium card, chestnut accent */
   if(dgEntries.length > 0){
-    const DG_H = 7.5;
-    roundRect(ML,y,CW,DG_H,1,[252,244,214],[C.amber[0],C.amber[1],C.amber[2]]);
-    doc.setFont('helvetica','bold'); doc.setFontSize(5); doc.setTextColor(...C.amber);
-    doc.text('DG ON BOARD', ML+2.5, y+5);
-    let bx = ML+26;
-    dgEntries.forEach(dg => {
-      const bgRgb=hex2rgb(dg.bg), textRgb=contrastText(bgRgb);
-      roundRect(bx,y+0.8,14,DG_H-1.6,1.5,bgRgb,bgRgb.map(v=>Math.max(0,v-30)));
-      doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...textRgb);
-      doc.text(dg.cls, bx+7, y+4.2, {align:'center'});
-      doc.setFontSize(4); doc.text('\u00D7'+dg.count, bx+7, y+6.2, {align:'center'}); bx+=16;
+    const DG_BAND  = 4;        /* chestnut accent band height mm */
+    const DG_CHIP  = 16;       /* chip width mm */
+    const DG_GAP   = 3;        /* gap between chips mm */
+    const DG_ROW_H = 16;       /* height per chip row mm */
+    const CHIPS_PER_ROW = 4;
+    const chestnut  = [168, 50, 50];   /* #a83232 — DG semantic red */
+    const chestnut2 = [140, 36, 36];   /* border darken */
+
+    const rows = Math.ceil(dgEntries.length / CHIPS_PER_ROW);
+    const DG_H = DG_BAND + 6 + rows * DG_ROW_H + 3;   /* min ~25mm for 1 row */
+
+    /* Card — white bg, thin border */
+    roundRect(ML, y, CW, DG_H, 2, C.white, C.brd);
+
+    /* Chestnut accent band — full width, squared bottom corners */
+    doc.setFillColor(...chestnut);
+    doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
+    doc.rect(ML, y + DG_BAND - 2, CW, 2, 'F');
+
+    /* Title — uppercase, white on chestnut band */
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
+    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.9);
+
+    /* Chips */
+    dgEntries.forEach((dg, idx) => {
+      const row = Math.floor(idx / CHIPS_PER_ROW);
+      const col = idx % CHIPS_PER_ROW;
+      const cx = ML + 5 + col * (DG_CHIP + DG_GAP);
+      const cy2 = y + DG_BAND + 4 + row * DG_ROW_H;
+
+      const bgRgb   = hex2rgb(dg.bg);
+      const textRgb = contrastText(bgRgb);
+      const bdRgb   = hex2rgb(dg.bc);
+
+      /* Chip background */
+      roundRect(cx, cy2, DG_CHIP, 11, 2, bgRgb, bdRgb);
+
+      /* Class number — large, centered */
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...textRgb);
+      doc.text(dg.cls, cx + DG_CHIP/2, cy2 + 7.2, {align:'center'});
+
+      /* Count — inline right of chip */
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink2);
+      doc.text('\u00D7' + dg.count, cx + DG_CHIP + 1.5, cy2 + 7.2);
+
+      /* Description — below chip, muted */
+      const shortNm = dg.nm.length > 18 ? dg.nm.slice(0, 17) + '\u2026' : dg.nm;
+      doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
+      doc.text(shortNm, cx + DG_CHIP/2, cy2 + 13.5, {align:'center'});
     });
-    if(bx < ML+CW-20){
-      doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink3);
-      doc.text(dgEntries.map(d=>'Cl.'+d.cls+' '+d.nm).join('  \u00B7  ').slice(0,120), bx+2, y+5);
-    }
-    y += DG_H+2;
+
+    y += DG_H + 2;
   }
 
   /* 4. DECK PLAN LABEL */
