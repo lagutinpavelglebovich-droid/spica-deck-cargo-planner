@@ -7430,9 +7430,10 @@ async function buildPDF(deckCanvas, data, opts){
       _phase27ExportComplete();
       /* Auto-open in system viewer so user can print via native dialog */
       try {
-        const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
-        await shellOpen(pdfPath);
-      } catch(shellErr){
+        const { openPath } = await import('@tauri-apps/plugin-opener');
+        await openPath(pdfPath);
+      } catch(openErr){
+        console.error('[print] openPath failed:', openErr);
         showToast('PDF saved \u2014 open manually to print', 'info');
       }
     } catch(e) {
