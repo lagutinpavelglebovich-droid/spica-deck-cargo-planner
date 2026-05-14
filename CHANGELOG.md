@@ -2,6 +2,18 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.0.1] - 2026-05-14 (hotfix)
+
+### Fixed
+- Auto-update silent fail on Windows — clicking "Update" did nothing due to multiple issues:
+  - Strategy 2 (GitHub API fallback) showed update banner but `_updateAvailable` reference was never set, causing `_doUpdate()` to return early
+  - Missing `process:allow-relaunch` capability — `relaunch()` threw after download (caught silently)
+  - `tauri-plugin-process` and `tauri-plugin-shell` referenced in JS imports but not registered in Rust backend (Cargo.toml + main.rs)
+- Strategy 2 fallback now opens GitHub release page via `shell.open()` for graceful manual install when Tauri updater plugin fails
+
+### Added (rolled in from v3.1.0 work)
+- Premium animations for DECK USED indicator — count-up on number (300ms floor), Motion One spring on progress bar, threshold-crossing flash on level transitions
+
 ## [3.0.0] - 2026-05-14
 
 ### Major

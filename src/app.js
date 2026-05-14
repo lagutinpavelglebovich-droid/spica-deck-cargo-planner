@@ -11978,8 +11978,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.0.0';
-const APP_VERSION   = '3.0.0';
+const CURRENT_BUILD = 'v3.0.1';
+const APP_VERSION   = '3.0.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
