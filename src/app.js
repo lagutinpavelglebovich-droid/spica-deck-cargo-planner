@@ -7179,18 +7179,41 @@ async function buildPDF(deckCanvas, data, opts){
     y += LOC_H+2;
   }
 
-  /* 3. DG ON BOARD — compact premium card: BAND(4)+GAP(2)+CHIP(9)+DESCR(3)+PAD(2) ≈ 20mm */
+  /* 3. DG ON BOARD — pill-based, matches Location card pills exactly
+        Structure: BAND(4) + GAP(2) + PILL-ROW(5) + PAD(3) = 14mm */
   if(dgEntries.length > 0){
-    const DG_BAND      = 4;    /* chestnut accent band mm — readable title */
-    const DG_CHIP_W    = 13;   /* chip width mm */
-    const DG_CHIP_H    = 9;    /* chip height mm */
-    const DG_GAP       = 2;    /* gap between chips mm */
-    const DG_ROW_H     = 14;   /* height per row: chip(9) + descr(3) + pad(2) mm */
-    const CHIPS_PER_ROW = 6;
-    const chestnut = [168, 50, 50];   /* #a83232 — DG semantic red */
+    const DG_BAND  = 4;     /* chestnut accent band mm */
+    const DG_PAD_T = 2;     /* gap below band before pills */
+    const DG_PAD_B = 3;     /* bottom padding */
+    const PILL_H   = 5;     /* matches Location card pills exactly */
+    const PILL_GAP = 2;     /* between pills */
+    const chestnut = [168, 50, 50];  /* #a83232 */
 
-    const rows = Math.ceil(dgEntries.length / CHIPS_PER_ROW);
-    const DG_H = DG_BAND + 2 + rows * DG_ROW_H + 2;
+    /* Build pill labels and measure widths for wrapping */
+    const dgPills = dgEntries.map(dg => {
+      const bgRgb  = hex2rgb(dg.bg);
+      const txtRgb = hex2rgb(dg.bc);  /* border color = saturated text color */
+      const label  = `${dg.cls} ${dg.nm} \u00D7${dg.count}`;
+      /* Estimate pill width: 7pt ≈ 1.85mm/char + 4mm padding */
+      const pw = Math.round(label.length * 1.85) + 6;
+      const pillBg = bgRgb.map(v => Math.round(v * 0.20 + 230));
+      return { label, pw, pillBg, txtRgb };
+    });
+
+    /* Layout: flow pills left-to-right, wrap rows if overflow */
+    const maxPillX = ML + CW - 5;
+    const rows = [];
+    let currentRow = [], rowX = ML + 5;
+    dgPills.forEach(p => {
+      if(currentRow.length > 0 && rowX + p.pw > maxPillX){
+        rows.push(currentRow); currentRow = []; rowX = ML + 5;
+      }
+      currentRow.push({...p, x: rowX});
+      rowX += p.pw + PILL_GAP;
+    });
+    if(currentRow.length) rows.push(currentRow);
+
+    const DG_H = DG_BAND + DG_PAD_T + rows.length * (PILL_H + PILL_GAP) - PILL_GAP + DG_PAD_B;
 
     /* Card — white bg, thin border */
     roundRect(ML, y, CW, DG_H, 2, C.white, C.brd);
@@ -7200,34 +7223,18 @@ async function buildPDF(deckCanvas, data, opts){
     doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
     doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
 
-    /* Title — vertically centred in band */
-    doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.white);
+    /* Title — white bold in band */
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
     doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.8);
 
-    /* Chips */
-    dgEntries.forEach((dg, idx) => {
-      const row = Math.floor(idx / CHIPS_PER_ROW);
-      const col = idx % CHIPS_PER_ROW;
-      const cx  = ML + 5 + col * (DG_CHIP_W + DG_GAP);
-      const cy2 = y + DG_BAND + 2 + row * DG_ROW_H;
-
-      const bgRgb   = hex2rgb(dg.bg);
-      const textRgb = contrastText(bgRgb);
-      const bdRgb   = hex2rgb(dg.bc);
-
-      /* Chip */
-      roundRect(cx, cy2, DG_CHIP_W, DG_CHIP_H, 2, bgRgb, bdRgb);
-      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...textRgb);
-      doc.text(dg.cls, cx + DG_CHIP_W/2, cy2 + 6, {align:'center'});
-
-      /* Count — right of chip, vertically centred with chip */
-      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...C.ink2);
-      doc.text('\u00D7' + dg.count, cx + DG_CHIP_W + 1.5, cy2 + 6);
-
-      /* Description — below chip, muted 5pt */
-      const shortNm = dg.nm.length > 16 ? dg.nm.slice(0, 15) + '\u2026' : dg.nm;
-      doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
-      doc.text(shortNm, cx + DG_CHIP_W/2, cy2 + DG_CHIP_H + 3, {align:'center'});
+    /* Pills — same render logic as Location pills */
+    rows.forEach((row, ri) => {
+      const py = y + DG_BAND + DG_PAD_T + ri * (PILL_H + PILL_GAP);
+      row.forEach(p => {
+        roundRect(p.x, py, p.pw, PILL_H, 1.5, p.pillBg, null);
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...p.txtRgb);
+        doc.text(p.label, p.x + p.pw/2, py + 3.3, {align:'center'});
+      });
     });
 
     y += DG_H + 2;
