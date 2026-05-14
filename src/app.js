@@ -4959,7 +4959,7 @@ let _planAdapter = LocalStorageAdapter;
 let _currentFilePath = null;   /* path of currently open .spica file (Tauri only) */
 /* _isTauri is a function, not a const — window.__TAURI__ may not exist
    at module load time in Tauri v2 (injected after ES module executes). */
-function _isTauri(){ return typeof window !== 'undefined' && !!window.__TAURI__; }
+function _isTauri(){ return typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__); }
 let _dirty = false;            /* true when unsaved changes exist */
 let _autosaveEnabled = true;   /* user-togglable autosave */
 
