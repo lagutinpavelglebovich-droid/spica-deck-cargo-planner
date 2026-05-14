@@ -4054,6 +4054,11 @@ function inspOpen(id){
     setTimeout(() => {
       if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
       headText.classList.remove('swap');
+      /* After populate rewrites ccu.value, ensure cursor is at end */
+      if(!isMulti){
+        const ccuEl = document.getElementById('inspCCU');
+        if(ccuEl){ const len = ccuEl.value.length; ccuEl.setSelectionRange(len, len); }
+      }
     }, 120);
   } else {
     if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
@@ -4062,6 +4067,22 @@ function inspOpen(id){
   rail.classList.add('open');
   rail.setAttribute('aria-hidden', 'false');
   document.body.classList.add('insp-open');
+
+  /* Place cursor at end of CCU / ID field after the rail slide-in transition
+     (260ms = --dur-medium). setSelectionRange fixes the race condition where
+     the browser positions the cursor at position 0 when focus arrives before
+     or during value assignment. Only fires on first open (not swap crossfade —
+     that path calls inspPopulate directly and the field stays focused). */
+  if(!alreadyOpen){
+    setTimeout(() => {
+      const ccuEl = document.getElementById('inspCCU');
+      if(ccuEl && document.activeElement !== ccuEl){
+        ccuEl.focus();
+        const len = ccuEl.value.length;
+        ccuEl.setSelectionRange(len, len);
+      }
+    }, 280);
+  }
 }
 
 /* Phase 4 — aggregate rendering when KB_SEL_SET.size > 1.
