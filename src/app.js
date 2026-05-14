@@ -7089,28 +7089,59 @@ async function buildPDF(deckCanvas, data, opts){
 
   let y = MT;
 
-  /* 1. HEADER — enlarged for print readability */
+  /* 1. HEADER — Marine Editorial style */
   const HDR_H = 32;
-  roundRect(ML,y,CW,HDR_H,2,C.ivory,C.brd);
-  doc.setFillColor(...C.navy); doc.roundedRect(ML,y,3,HDR_H,1,1,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(...C.ink);
-  doc.text('SPICA TIDE', ML+8, y+12);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...C.navy);
-  doc.text('Deck Cargo Plan', ML+8, y+18);
-  doc.setFontSize(7); doc.setTextColor(...C.ink3);
-  doc.text('PSV \u00B7 North Sea \u00B7 NEO Energy Resources UK', ML+8, y+24);
-  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2); doc.line(ML+75,y+4,ML+75,y+HDR_H-4);
-  const cell = (label,value,cx,colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(),cx,y+12);
-    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(...colVal);
-    doc.text(value,cx,y+24);
+  const BAND_H = 8;   /* navy masthead strip height */
+
+  /* Card background — ivory with thin border */
+  roundRect(ML, y, CW, HDR_H, 2, C.ivory, C.brd);
+
+  /* Navy masthead band — full width, top of card */
+  doc.setFillColor(...C.navy);
+  doc.roundedRect(ML, y, CW, BAND_H, 2, 2, 'F');
+  /* Square off bottom corners of band by overdrawing lower 2mm strip */
+  doc.rect(ML, y + BAND_H - 2, CW, 2, 'F');
+
+  /* Vessel name — reversed white on navy */
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...C.white);
+  doc.text('SPICA TIDE', ML+5, y+5.5);
+
+  /* Subtitle — light on navy, all caps */
+  doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(185,210,240);
+  doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+41, y+5.5);
+
+  /* Content area starts below band */
+  const cy = y + BAND_H;
+
+  /* Counter cell — tight uppercase label + prominent value */
+  const cell = (label, value, cx, colVal) => {
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+7);
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+18);
   };
-  cell('Voyage',voyageNum,ML+82,C.navy); cell('Date',dateStr,ML+122,C.ink);
-  doc.setDrawColor(...C.brd); doc.line(ML+160,y+4,ML+160,y+HDR_H-4);
-  [{lbl:'Total Lifts',val:String(lifts),col:C.ink,dx:0},{lbl:'Load',val:String(loadCount),col:C.green,dx:34},
-   {lbl:'Backload',val:String(blCount),col:C.navy,dx:68},{lbl:'ROB',val:String(robCount),col:C.amber,dx:100}
-  ].forEach(s=>cell(s.lbl,s.val,ML+165+s.dx,s.col));
+
+  /* Counters — left zone */
+  [{lbl:'Total Lifts',val:String(lifts),      col:C.ink,   dx:0},
+   {lbl:'Load',       val:String(loadCount),   col:C.green, dx:52},
+   {lbl:'Backload',   val:String(blCount),     col:C.navy,  dx:100},
+   {lbl:'ROB',        val:String(robCount),    col:C.amber, dx:145},
+  ].forEach(s => cell(s.lbl, s.val, ML+5+s.dx, s.col));
+
+  /* Thin divider between counters and voyage metadata */
+  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2);
+  doc.line(ML+192, cy+3, ML+192, cy+HDR_H-BAND_H-3);
+
+  /* Voyage metadata — right zone, slightly smaller value size */
+  const vCell = (label, value, cx, colVal) => {
+    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+7);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+18);
+  };
+  vCell('Voyage', voyageNum, ML+197, C.navy);
+  vCell('Date',   dateStr,   ML+240, C.ink);
+
   y += HDR_H+3;
 
   /* 2. LOCATIONS — enlarged for print readability */
@@ -7120,8 +7151,10 @@ async function buildPDF(deckCanvas, data, opts){
     const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
     filledLocs.forEach((loc,i) => {
       const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
-      roundRect(lx,y,locW,LOC_H,2,C.surf2,C.brd);
-      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
+      roundRect(lx,y,locW,LOC_H,2,C.white,C.brd);
+      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,4,1,1,'F');
+      /* Square off bottom corners of accent band */
+      doc.rect(lx, y+2, locW, 2, 'F');
       doc.setFillColor(...rgb); doc.circle(lx+5,y+10,2,'F');
       doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.ink);
       const maxChars = Math.floor(locW/2.8);
@@ -7136,7 +7169,7 @@ async function buildPDF(deckCanvas, data, opts){
       [{lbl:'L',val:loc.L,col:colL},{lbl:'BL',val:loc.BL,col:colBL},{lbl:'ROB',val:loc.ROB,col:colROB}]
         .filter(p=>p.val>0).forEach(p => {
           const pw = p.lbl==='ROB'?16:p.lbl==='BL'?14:12;
-          const pillBg = p.col.map(v=>Math.round(v*0.12+242));
+          const pillBg = p.col.map(v=>Math.round(v*0.20+230));
           roundRect(px,py-2.5,pw,6.5,2,pillBg,null);
           doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...p.col);
           doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.5, {align:'center'}); px+=pw+2.5;
