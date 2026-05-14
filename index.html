@@ -18,6 +18,91 @@
 </head>
 <body>
 
+<!-- Phase W3 — Cinematic weather sky scene. Layered primitives:
+       sky        — base gradient per condition
+       sun        — radial bloom orb for clear/partly-cloudy
+       moon       — pale disc for night
+       stars      — scattered dot field for night
+       cloud-a/b/c— three parallax-drifting cloud banks
+       precip     — rain streaks / snow particles
+       fog        — drifting mist bands
+       lightning  — rare wide flash for thunderstorm
+       glass-fx   — wet streaks / cold edge / warm bloom on the chrome
+     All sit fixed at z:0 behind operational layers; deck/cargo render
+     above. Hidden entirely under body.pdf-capture and @media print. -->
+<!-- Phase W4A — SVG filter defs for organic cloud edges. Single global
+     <feTurbulence> + <feDisplacementMap> referenced via filter:url(#…)
+     by .wx-cloud elements. The filter is restrained (low scale) so
+     edges feel photographic, not glitchy. Falls back gracefully if a
+     browser drops the displacement (clouds simply remain blurred). -->
+<svg class="wx-svg-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden;">
+  <defs>
+    <!-- Filter region sized at 140% (20% margin per side) — minimum viable
+         margin against two competing constraints:
+           1. Largest current cloud amplitude is ±15% of viewport (cloud-a
+              translateX). Filter region edge must stay off-screen at both
+              extremes of every cloud's animation cycle, otherwise displaced
+              pixels clip at the region edge and create a faint vertical seam
+              that slides as the region moves with the cloud.
+           2. feTurbulence + feDisplacementMap is GPU-expensive. Filter region
+              area scales quadratically with width%; doubling the region
+              quadruples the GPU work. With two full-viewport cloud filters
+              competing with deck canvas zoom rendering, oversized regions
+              cause visible zoom stutter.
+         Calibration history:
+           - 120% (10% margin): too tight — region edge slid into viewport at
+             ±15% cloud extremes (right edge at 95% viewport), visible seam.
+           - 200% (50% margin): too expensive — 4× viewport area, caused deck
+             zoom +/- to stutter during interaction.
+           - 160% (30% margin): still GPU-bound on M4 hardware, zoom stutter
+             present though reduced.
+           - 140% (20% margin): current. 5pp safety on top of ±15% cloud
+             amplitude. Filter area 1.96× viewport — 51% less GPU work than
+             200%, 23% less than 160%. The 5pp margin is tight; if a seam
+             flickers briefly at peak translate moments, the next move is to
+             reduce cloud animation amplitude (e.g. ±15% → ±10% on wxCloudA)
+             and restore region to 160% — region growth is quadratic, cloud
+             amplitude is linear, so amplitude shrink is the cheaper lever. -->
+    <filter id="wxCloudOrganic" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.022" numOctaves="2" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="38" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wxCloudOrganicSoft" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.018" numOctaves="2" seed="3" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="wx-scene" id="wxScene" aria-hidden="true">
+  <!-- Legacy single .wx-sky — used by engine=simple. Hidden under
+       engine=cinematic by W5 rule (.wx-scene > .wx-sky:not(.wx-sky-a):not(.wx-sky-b)). -->
+  <div class="wx-sky"        aria-hidden="true"></div>
+  <!-- W5/W6 — A/B sky pair for cinematic crossfade. Both carry the
+       .wx-sky class so legacy structural rules still apply; the
+       crossfade-specific rules key off .wx-sky-a / .wx-sky-b. -->
+  <div class="wx-sky wx-sky-a" aria-hidden="true"></div>
+  <div class="wx-sky wx-sky-b" aria-hidden="true"></div>
+  <div class="wx-sun"        aria-hidden="true"></div>
+  <div class="wx-moon"       aria-hidden="true"></div>
+  <div class="wx-stars"      aria-hidden="true"></div>
+  <div class="wx-cloud wx-cloud-a" aria-hidden="true"></div>
+  <div class="wx-cloud wx-cloud-b" aria-hidden="true"></div>
+  <div class="wx-cloud wx-cloud-c" aria-hidden="true"></div>
+  <!-- Phase 2 — lower-viewport cloud band, activated for cloudy / rain
+       only so the workspace below the chrome ribbon also reads as covered
+       sky. Idle (display: block, opacity: 0) for other conditions so the
+       layer is paint-cheap when off. -->
+  <div class="wx-cloud wx-cloud-d" aria-hidden="true"></div>
+  <div class="wx-precip"     aria-hidden="true"></div>
+  <!-- W5/W6 — canvas precipitation (rain/snow under cinematic engine).
+       Hidden under engine=simple; existing .wx-precip pseudos take over there. -->
+  <canvas class="wx-precip-canvas" aria-hidden="true"></canvas>
+  <div class="wx-fog"        aria-hidden="true"></div>
+  <div class="wx-lightning"  aria-hidden="true"></div>
+  <div class="wx-glass-fx"   aria-hidden="true"></div>
+</div>
+
 <!-- SPLASH SCREEN — inline styles, visible before CSS/JS loads -->
 <div id="splash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#1a2a42;transition:opacity .4s;">
   <img src="data:image/png;base64,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" width="72" height="72" style="margin-bottom:20px;border-radius:16px;">
@@ -42,6 +127,8 @@
     <span class="menu-label">File</span>
     <div class="menu-dropdown">
       <div class="menu-action" data-action="newDeck">New Deck Plan</div>
+      <div class="menu-action ctx-danger" data-action="clearDeck">Clear Deck Plan...</div>
+      <div class="menu-action" data-action="restoreDeck" id="menuRestoreDeck" style="display:none" data-i18n="restore_menu">Restore previous deck plan</div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="openProject">Open Project<span class="menu-shortcut">Ctrl+O</span></div>
       <div class="menu-action" data-action="saveProject">Save<span class="menu-shortcut">Ctrl+S</span></div>
@@ -52,6 +139,8 @@
       <div class="menu-sep" id="menuRecentSep" style="display:none"></div>
       <div class="menu-action" data-action="exportPDF">Export PDF</div>
       <div class="menu-action" data-action="exportExcel">Export Excel</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="print"><span class="menu-label" data-i18n="m_print">Print…</span><span class="menu-shortcut">Ctrl+P</span></div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="exit">Exit</div>
     </div>
@@ -92,7 +181,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v2.3.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.0.0</div>
     </div>
   </div>
 </div>
@@ -114,7 +203,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 2.3.0<br>
+      Version 3.0.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -154,41 +243,236 @@
   </div>
 </div>
 
-<!-- VIEWER MODE BANNER -->
-<div class="viewer-banner" id="viewerBanner">&#x1F441; VIEWER MODE — Read Only</div>
+<!-- VIEWER MODE INDICATOR — shown as a premium amber chip when body.is-viewer -->
+<div class="viewer-banner" id="viewerBanner"><span class="viewer-banner-dot" aria-hidden="true"></span>Read only<span class="viewer-banner-sep" aria-hidden="true"></span><span class="viewer-banner-hint">Switch to Operator to edit</span></div>
 
-<!-- HEADER -->
-<div class="hdr">
-  <div class="brand" id="brandBlock">
-    <div class="brand-name" id="brandName"><img class="brand-icon" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAACYUlEQVQ4Ee1TPWsUURQ9b2Z23Q3BxARZg1qIkRhxQcWAvSBiZ2mbVGIXsdTCykLEn+APsA5YWoSAC4pkUbASRFnzIbuZndmZeV/e+yaysztrqVUuvJn7vs4999z7gCP71wqIvwQQV2+t3jbau26MDowxsDQAA/Z5aKNVFIXvO+03G7Rhx3EmAYvmzdXnFv66UsqBWGsghCBfQ0kFnvNQMkPc23vZ/bq1Pg7uj0e6cOPusvCqr5I08bSS0FoiSRKs3buD5cUz2Gp9JH4amoJaCkTBVnRmX+ust1vECooT9k2GBRlQ+lq79K21yKTE9x8/0dnZAWfhe4RN68waEL7xK6fI+cT3/xgdGTUlNBHJdZQEkmYZTjfmQUJgZnoKC405WpMuQA5O8oqyxiXGUMS0QsUhxo2TJ3Dt8iL6/T7effjs7jeXzmHlykW0aN7Z3SfEUt0c0xKwomXBHUCpPnv8AJeWziPsx/AD36WvKPDs8Wm83Wzh/sOnEHRukpWAAa66pS4A6rUaFPm1+jEO5zokCAISBQgoELdUDst0Rm0CMB0gMNdSh9dyUqPMeMYE+OwkKwMrK2zFOnZRFENSoVhvNlesw3+SpEN1bVB6DyXgQRrF9UqdgC0ePXlBclRhuK1cFpxJLlMYRvA8D4Y0p8/ARS58SsC/el/ac/C3q1Mzzc5eF66fHSi/tjx17gR+iZ4XQKXdtgrj7QKmc0svD3Gc6dTb1EI3CWneGGmslsoalQ+rqbpa0VqaDQ5ag4P9NcjOt3HgkjaFAz5qs2epqSuFtaEr6DkmXQbMCzDcOfL+kwK/Afdld135tfkzAAAAAElFTkSuQmCC" width="22" height="22" style="border-radius:5px;vertical-align:middle;margin-right:6px;margin-top:-2px;"> SPICA TIDE</div>
-    <div class="brand-dcp"  id="brandDcp">Deck Cargo Plan</div>
-    <div class="brand-sub"  id="brandSub">PSV · SPICA TIDE · NEO Energy · North Sea</div>
-    <!-- Admin edit trigger — pencil icon, appears on hover -->
-    <button class="brand-edit-btn" id="brandEditBtn" title="Admin: edit header labels" aria-label="Edit header">✎</button>
+<!-- ═════════════════════════════════════════════════════════════════
+     COMMAND PALETTE — Cmd/Ctrl+K to open.
+     Grouped searchable command list. Maps every action to existing
+     functionality — no new domain logic. Dynamic cargo search when
+     query is non-empty. Kept entirely separate from the .cp (Cargo
+     Library) namespace to avoid CSS collisions.
+═══════════════════════════════════════════════════════════════════ -->
+<div class="cmdp-overlay" id="cmdpOv" aria-hidden="true">
+  <div class="cmdp-backdrop" id="cmdpBackdrop"></div>
+  <div class="cmdp-panel" role="dialog" aria-label="Command palette">
+    <div class="cmdp-input-wrap">
+      <svg class="cmdp-input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.3"/>
+        <path d="m9.2 9.2 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      <input type="text" id="cmdpInput" class="cmdp-input" placeholder="Type a command or search cargo…" autocomplete="off" spellcheck="false" />
+      <span class="cmdp-input-kbd" aria-hidden="true"><span>⌘</span><span>K</span></span>
+    </div>
+    <div class="cmdp-list" id="cmdpList" role="listbox" aria-label="Commands"></div>
+    <div class="cmdp-footer">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> select</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     INSPECTOR RAIL — Selection-first cargo editing surface.
+     Replaces the modal-first pattern as the primary editing flow.
+     Opens automatically when cargo is selected; shares right-rail
+     real estate with the Cargo Library (mutually exclusive).
+     Edit Details… button opens the legacy modal as a fallback for
+     complex fields (DG picker, HL, Priority, Transfer destination).
+═══════════════════════════════════════════════════════════════════ -->
+<aside class="insp" id="inspRail" aria-hidden="true" aria-label="Cargo inspector">
+  <div class="insp-head">
+    <div class="insp-status-bar" id="inspStatusBar" aria-hidden="true"></div>
+    <div class="insp-head-text">
+      <div class="insp-kicker" id="inspKicker">Cargo</div>
+      <div class="insp-title" id="inspTitle">—</div>
+    </div>
+    <button class="insp-close" id="inspClose" aria-label="Close inspector" type="button">&times;</button>
   </div>
 
-  <!-- Stats -->
-  <div class="gstats">
-    <div class="gst">
-      <span class="gst-lbl">Total Lifts</span>
-      <div class="gst-val total" id="sLifts">0</div>
-      <div class="gst-wt" id="sWT">0.0 T</div>
+  <!-- Empty state — only ever visible if an operator manually opts into
+       reserved-gutter mode via `body.deck-gutter`. Default (deck-first) UX
+       hides the rail entirely when nothing is selected, so this placeholder
+       stays dormant in normal use. Kept minimal on purpose: the deck is the
+       product hero, not a sidebar dashboard. -->
+  <div class="insp-empty" id="inspEmpty" aria-hidden="true">
+    <div class="insp-empty-glyph" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect x="5" y="8" width="18" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3" stroke-dasharray="3 2.5" opacity=".8"/>
+        <path d="M14 11v5M11.5 13.5h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity=".5"/>
+      </svg>
     </div>
-    <div class="gst-sep"></div>
-    <div class="gst"><span class="gst-lbl">Load</span><div class="gst-val load" id="sL">0</div></div>
-    <div class="gst"><span class="gst-lbl">Backload</span><div class="gst-val bl" id="sBL">0</div></div>
-    <div class="gst"><span class="gst-lbl">ROB</span><div class="gst-val rob" id="sROB">0</div></div>
-    <div class="gst" id="gstTR" style="display:none"><span class="gst-lbl">Transfer</span><div class="gst-val tr" id="sTR">0</div></div>
-    <!-- V2: Weight gauge -->
-    <div class="wt-gauge" id="wtGauge" style="display:none">
-      <div class="wt-gauge-track">
-        <div class="wt-gauge-fill" id="wtGaugeFill"></div>
+    <div class="insp-empty-title">No cargo selected</div>
+    <div class="insp-empty-hint">Click any cargo on the deck to inspect and edit its details.</div>
+  </div>
+
+  <div class="insp-body" id="inspBody">
+
+    <!-- Phase 4 — Multi-select aggregate. Shown only when body.insp-multi.
+         Hides the single-cargo sections below it via CSS. -->
+    <section class="insp-sec insp-multi-sec" id="inspMultiSec">
+      <div class="insp-multi-head">
+        <span class="insp-multi-count" id="inspMultiCount">0</span>
+        <span class="insp-multi-count-lbl">selected</span>
       </div>
-      <div class="wt-gauge-label"><span id="wtGaugeText">0 / 2500 T</span></div>
+      <div class="insp-multi-stats">
+        <div class="insp-multi-stat">
+          <span class="insp-multi-val" id="inspMultiWt">0.0 t</span>
+          <span class="insp-multi-k">total weight</span>
+        </div>
+        <div class="insp-multi-stat">
+          <span class="insp-multi-val" id="inspMultiLocs">—</span>
+          <span class="insp-multi-k">locations</span>
+        </div>
+      </div>
+      <div class="insp-multi-breakdown" id="inspMultiBreakdown"></div>
+      <div class="insp-multi-hint">
+        Shift-click to add or remove cargo from the selection.
+        <br>Single cargo edits are disabled while multiple are selected.
+      </div>
+    </section>
+
+    <section class="insp-sec">
+      <div class="insp-sec-title">Identity</div>
+      <div class="insp-field">
+        <label for="inspCCU">CCU / ID</label>
+        <input type="text" id="inspCCU" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="insp-field">
+        <label for="inspDesc">Description</label>
+        <select id="inspDesc"><option value="">— select type —</option></select>
+      </div>
+    </section>
+
+    <section class="insp-sec">
+      <div class="insp-sec-title">Deck &amp; Physical</div>
+      <div class="insp-field insp-field-short">
+        <label for="inspWT">Weight (T)</label>
+        <input type="number" id="inspWT" step="0.1" min="0">
+      </div>
+      <div class="insp-field">
+        <label>Location</label>
+        <div class="insp-locs" id="inspLocs"></div>
+      </div>
+    </section>
+
+    <section class="insp-sec">
+      <div class="insp-sec-title">Status</div>
+      <div class="insp-status-seg" id="inspStatusSeg" role="group" aria-label="Cargo status">
+        <button type="button" data-s="L">Load</button>
+        <button type="button" data-s="BL">Backload</button>
+        <button type="button" data-s="ROB">ROB</button>
+        <button type="button" data-s="TR">Transfer</button>
+      </div>
+    </section>
+
+    <section class="insp-sec insp-sec-details">
+      <div class="insp-detail-row">
+        <span class="insp-detail-k">DG classes</span>
+        <span class="insp-detail-v" id="inspDgDetail">—</span>
+      </div>
+      <div class="insp-detail-row">
+        <span class="insp-detail-k">Heavy Lift</span>
+        <span class="insp-detail-v" id="inspHlDetail">off</span>
+      </div>
+      <div class="insp-detail-row">
+        <span class="insp-detail-k">Priority</span>
+        <span class="insp-detail-v" id="inspPriDetail">off</span>
+      </div>
+      <button type="button" class="insp-btn-edit-details" id="inspEditDetails">Edit details…</button>
+    </section>
+
+  </div>
+
+  <div class="insp-footer">
+    <button type="button" class="insp-act insp-act-rot"  id="inspRot"  title="Rotate 90° (R)"><span>Rotate</span></button>
+    <button type="button" class="insp-act insp-act-dup"  id="inspDup"  title="Duplicate (D)"><span>Duplicate</span></button>
+    <button type="button" class="insp-act insp-act-del"  id="inspDel"  title="Remove (Del)"><span>Remove</span></button>
+  </div>
+</aside>
+
+<!-- WORKSPACE ATMOSPHERE LAYER -->
+<div class="ws"></div>
+
+<!-- FLOATING COMMAND RIBBON — 5 independent glass cards -->
+<div class="shell-ribbon">
+
+  <!-- Card 1: Brand Identity -->
+  <div class="rc rc-brand">
+    <div class="brand" id="brandBlock">
+      <div class="brand-name" id="brandName"><span class="brand-spica">SPICA</span> <span class="brand-tide">TIDE</span></div>
+      <div class="brand-dcp"  id="brandDcp">Deck Cargo Plan</div>
+      <div class="brand-sub"  id="brandSub">PSV · SPICA TIDE · NEO Energy · North Sea</div>
+      <!-- Phase W5 §13 — chip group RELOCATED to its own header card
+           (.rc.rc-wx) between .rc-voyage and .rc-tools. The brand block
+           returns to a clean wordmark + sub-line; weather is no longer
+           subordinated to document title. See .rc-wx markup below. -->
+      <button class="brand-edit-btn" id="brandEditBtn" title="Admin: edit header labels" aria-label="Edit header">✎</button>
     </div>
   </div>
 
-  <div class="hdr-right">
+  <!-- Card 2: Operations dashboard — weight is the hero, lifts + breakdown are secondary -->
+  <div class="rc rc-lifts">
+    <div class="gstats">
+
+      <!-- HERO: Lifts on deck. This is the operator's primary top-level metric.
+           Weight is demoted to a quiet meta line and keeps threshold coloring
+           (warn / crit) so vessel capacity is still visible at a glance — but
+           never competes with the lift count for visual primacy.
+           IDs preserved: #sLifts, #sWT drive off updateStats() unchanged.
+           #sWTbar is retained in DOM (hidden by default) in case threshold
+           signalling is desired again later. -->
+      <div class="gst gst-lift-hero">
+        <span class="gst-lbl">Lifts on deck</span>
+        <div class="gst-lift-row">
+          <span class="gst-lift-num" id="sLifts">0</span>
+        </div>
+        <div class="gst-lift-meta">
+          <span class="gst-lift-meta-val" id="sWT">0.0 T</span>
+          <span class="gst-lift-meta-lbl">total</span>
+        </div>
+        <!-- Retained for threshold-color JS hook (no longer rendered as a bar). -->
+        <div class="gst-wt-bar" aria-hidden="true" style="display:none">
+          <div class="gst-wt-bar-fill" id="sWTbar"></div>
+        </div>
+      </div>
+
+      <div class="gst-sep"></div>
+
+      <!-- Secondary: operational breakdown. Unchanged from before. -->
+      <div class="gst"><span class="gst-lbl">Load</span><div class="gst-val load" id="sL">0</div></div>
+      <div class="gst"><span class="gst-lbl">Backload</span><div class="gst-val bl" id="sBL">0</div></div>
+      <div class="gst"><span class="gst-lbl">ROB</span><div class="gst-val rob" id="sROB">0</div></div>
+      <div class="gst" id="gstTR" style="display:none"><span class="gst-lbl">Transfer</span><div class="gst-val tr" id="sTR">0</div></div>
+
+      <!-- Legacy gauge retained as hidden DOM; updateStats writes to it under
+           the SMART.weightGauge flag for backward compat. The new hero bar
+           above is the primary surface. -->
+      <div class="wt-gauge" id="wtGauge" style="display:none">
+        <div class="wt-gauge-track"><div class="wt-gauge-fill" id="wtGaugeFill"></div></div>
+        <div class="wt-gauge-label"><span id="wtGaugeText">0 / 2500 T</span></div>
+      </div>
+
+      <div class="gst-sep"></div>
+
+      <!-- Deck Usage — area occupancy indicator -->
+      <div class="gst gst-deck-usage" id="gstDeckUsage" tabindex="0">
+        <span class="gst-lbl">DECK USED</span>
+        <div class="gst-du-num" id="sDeckPct">0%</div>
+        <div class="gst-du-bar-track">
+          <div class="gst-du-tick" style="left:25%"></div>
+          <div class="gst-du-tick" style="left:50%"></div>
+          <div class="gst-du-tick" style="left:75%"></div>
+          <div class="gst-du-bar-fill" id="sDeckBar"></div>
+        </div>
+        <span class="gst-du-free" id="sDeckFree">100% free</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 3: Operation Mode -->
+  <div class="rc rc-ops">
     <!-- Status selector -->
     <div class="hst">
       <div class="hst-lbl">Placing as</div>
@@ -205,15 +489,15 @@
       <span class="mode-btn-icon" id="modeBtnIcon">&#x1F441;</span>
       <span class="mode-btn-label" id="modeBtnLabel">VIEWER</span>
     </button>
+  </div>
 
-    <!-- Voyage + Date card -->
+  <!-- Card 4: Voyage Info -->
+  <div class="rc rc-voyage">
     <div class="voy-card">
       <div class="voy-row">
-        <span class="voy-lbl">Voyage</span>
-        <input class="voy-input" type="text" id="voyIn" placeholder="Voyage No.">
+        <input class="voy-input" type="text" id="voyIn" placeholder="Voyage No." size="11">
       </div>
       <div class="voy-row">
-        <span class="voy-lbl">Date</span>
         <button class="voy-date-btn" id="dateBtn"></button>
       </div>
       <button class="voy-remarks-btn" id="voyRemarksBtn" title="Voyage Notes / Remarks">
@@ -221,8 +505,40 @@
         Voyage Notes
       </button>
     </div>
+  </div>
 
-    <!-- ASCO Upload -->
+  <!-- Card 4.5: Weather plate (Phase W5 §13)
+       Promoted from inline chip-in-brand to a dedicated header card.
+       Always visible — atmosphere toggle controls VFX rendering only,
+       not plate visibility. Layout adapts by mode:
+         auto  → city + temp + icon + wind + refresh
+         manual → city + condition name + icon (refresh hidden)
+       IDs preserved for JS continuity (wxChipGroup, wxChipCity,
+       wxChipTemp, wxChipIcon). Removed: wxChipRefresh, wxChipWind,
+       wxChipCondition (manual mode retired in v7 — atmosphere now
+       always reflects real weather data). -->
+  <div class="rc rc-wx">
+    <div class="wx-plate" id="wxChipGroup">
+      <button type="button" class="wx-plate-body" id="wxChip" title="Weather — click to edit" aria-label="Weather — click to edit">
+        <div class="wx-plate-top">
+          <span class="wx-plate-city" id="wxChipCity">—</span>
+        </div>
+        <div class="wx-plate-main">
+          <div class="wx-plate-readout">
+            <span class="wx-plate-temp" id="wxChipTemp"></span>
+          </div>
+          <span class="wx-plate-icon" id="wxChipIcon" aria-hidden="true"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Card 5: Tools & Actions — three distinct control groups -->
+  <div class="rc rc-tools">
+
+    <!-- ─── GROUP A: Utility icons row + Language bar (two-row card) ─── -->
+    <div class="rct-group rct-utility">
+      <div class="rct-icons-row">
     <button class="btn-asco-upload" id="btnAscoUpload" title="Upload ASCO Cargo List (Excel)">
       <div class="btn-asco-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
         <path d="M9 11V3M9 3L6.5 5.5M9 3L11.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -243,16 +559,6 @@
       <div class="btn-lib-open-badge" id="libOpenBadge"></div>
     </button>
 
-    <!-- Clear Deck -->
-    <button class="btn-clr-deck" id="btnClrDeck" title="Clear all cargo from deck">
-      <div class="btn-clr-deck-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
-        <path d="M3 5.5h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M7 5.5V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M6.5 5.5l.7 9a1 1 0 0 0 1 .9h1.6a1 1 0 0 0 1-.9l.7-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg></div>
-      <div class="btn-clr-deck-lbl">Clear Deck</div>
-    </button>
-
     <!-- Smart Tools button -->
     <button class="btn-smart-tools" id="btnSmartTools" title="Smart Tools &amp; Settings">
       <div class="btn-smart-tools-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -262,6 +568,7 @@
       <div class="btn-smart-tools-lbl">Smart Tools</div>
       <div class="btn-smart-tools-dot"></div>
     </button>
+      </div><!-- /rct-icons-row -->
 
     <!-- Language picker — compact dropdown -->
     <div class="lang-switch" id="langSwitch">
@@ -293,7 +600,11 @@
         </button>
       </div>
     </div>
+    </div><!-- /rct-utility -->
 
+    <!-- ─── CARD 2: Theme toggle (top row) + Back/Forward/Clear (bottom row) ─── -->
+    <div class="rct-group rct-card2">
+      <div class="rct-toggle-row">
     <!-- Theme toggle — compact icon pill -->
     <div class="theme-toggle" id="themeToggle">
       <div class="theme-pill" id="themeSeg">
@@ -310,8 +621,10 @@
         </button>
       </div>
     </div>
+      </div><!-- /rct-toggle-row -->
 
-    <!-- Undo / Redo -->
+      <div class="rct-actions-row">
+    <!-- Back / Forward (undo / redo) -->
     <div class="undo-redo-group">
       <button class="btn-undo" id="btnUndo" title="Undo (Ctrl+Z)" disabled>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 7h7a3 3 0 0 1 0 6H9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M7 4L4 7l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -321,8 +634,20 @@
       </button>
     </div>
 
-    <!-- Save As -->
-    <div class="btn-saveas-wrap" id="saveAsWrap">
+    <!-- Clear Deck -->
+    <button class="btn-clr-deck" id="btnClrDeck" title="Clear all cargo from deck">
+      <div class="btn-clr-deck-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
+        <path d="M3 5.5h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M7 5.5V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M6.5 5.5l.7 9a1 1 0 0 0 1 .9h1.6a1 1 0 0 0 1-.9l.7-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg></div>
+      <div class="btn-clr-deck-lbl">Clear Deck</div>
+    </button>
+      </div><!-- /rct-actions-row -->
+    </div><!-- /rct-card2 -->
+
+    <!-- Save As (hidden in ribbon — kept in DOM; use File menu or Ctrl+Shift+S) -->
+    <div class="btn-saveas-wrap" id="saveAsWrap" style="display:none">
       <button class="btn-saveas" id="btnSaveAs" title="Export deck plan">
         <div class="btn-saveas-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
           <path d="M4 14h10M9 3v8M9 11L6.5 8.5M9 11l2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -384,9 +709,9 @@
         </div>
       </div>
     </div>
-
   </div>
-</div>
+
+</div><!-- /shell-ribbon -->
 
 <!-- DG AUTO-SEGREGATION CHECK MODAL -->
 <div class="dg-check-ov" id="dgCheckOv">
@@ -428,15 +753,34 @@
       </div>
     </div>
     <div class="clr-deck-body">
-      <span data-i18n="clr_body">Are you sure you want to remove all cargo from the deck?</span>
-      <div class="clr-deck-count" id="clrDeckCount">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="3" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M4 3V2.5A1.5 1.5 0 0 1 8 2.5V3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        <span id="clrDeckCountNum">0</span> <span data-i18n="clr_items">cargo items will be removed</span>
-      </div>
+      <span data-i18n="clr_body">Clears all cargo and locations from the deck.</span>
     </div>
     <div class="clr-deck-actions">
       <button class="clr-deck-cancel" id="clrDeckCancel"><span data-i18n="btn_cancel">Cancel</span></button>
       <button class="clr-deck-confirm" id="clrDeckConfirm">Clear Deck</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW DECK PLAN CONFIRMATION MODAL -->
+<div class="new-deck-ov" id="newDeckOv">
+  <div class="new-deck-modal" id="newDeckModal">
+    <div class="clr-deck-head">
+      <div class="new-deck-icon-wrap">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="3" y="3" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <line x1="9" y1="6" x2="9" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="clr-deck-title" data-i18n="htc_new_deck_label">New Deck Plan</div>
+        <div class="clr-deck-sub"><span data-i18n="htc_new_deck_warning">This will erase all cargo and locations</span></div>
+      </div>
+    </div>
+    <div class="clr-deck-actions new-deck-actions">
+      <button class="clr-deck-cancel" id="newDeckCancel"><span data-i18n="btn_cancel">Cancel</span></button>
+      <button class="new-deck-hold-btn" id="newDeckHoldBtn">New Deck Plan</button>
     </div>
   </div>
 </div>
@@ -483,6 +827,9 @@
   <div class="cal-grid" id="calGrid"></div>
 </div>
 
+<!-- Secondary controls — floating sub-ribbon -->
+<div class="shell-sub">
+
 <!-- Admin mode indicator bar -->
 <div class="admin-mode-bar" id="adminModeBar">
   <div class="admin-mode-bar-dot"></div>
@@ -498,11 +845,44 @@
     <span class="locs-toggle-count" id="locsCount">0</span>
   </div>
   <div class="locs-content" id="locsContent">
-    <div class="btn-locs" id="btnAddLoc">
-      <div class="btn-locs-icon">⊕</div>
-      <div class="btn-locs-lbl">Locations</div>
+    <!-- Compact left-side control hub — order: zoom/fit/% then + Add Location.
+         The whole cluster is absolutely positioned and sits under the SPICA TIDE
+         brand column; location cards centre in the full ribbon beyond it. -->
+    <div class="loc-ctrl-group">
+      <div class="shell-zoom in-ribbon">
+        <div class="zoom-bar">
+          <button class="zbtn" id="zoomOut"   title="Zoom out">−</button>
+          <button class="zbtn" id="zoomIn"    title="Zoom in">+</button>
+          <div class="zdiv"></div>
+          <button class="zbtn" id="zoomReset" title="Reset to 100%">1:1</button>
+          <button class="zbtn" id="zoomFit"   title="Fit to screen">Fit</button>
+          <span class="zlbl" id="zoomLbl">100%</span>
+          <!-- Measure tool — moved into the shared zoom-bar pill so the
+               row reads as a single "view controls" cluster (zoom + tool)
+               instead of competing standalone glass pills. The .zdiv above
+               separates [zoom in/out] from [presets + readout] from [tool]. -->
+          <div class="zdiv"></div>
+          <button class="btn-ruler" id="btnRuler"
+                  title="Measure tool (M) — click two points to measure in metres"
+                  aria-label="Toggle measure tool" aria-pressed="false">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <!-- Slim ruler glyph: thin outline + minimal tick marks.
+                   width/height attrs added v5 — without them the SVG renders
+                   at the spec default 300×150 and the visible 30×30 button
+                   viewport shows empty space. -->
+              <rect x="1.75" y="6" width="12.5" height="4" rx="0.6"
+                    stroke="currentColor" stroke-width="1.1"/>
+              <path d="M4 6v1.6M6.25 6v2.2M8.5 6v1.6M10.75 6v2.2M13 6v1.6"
+                    stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <button class="btn-locs" id="btnAddLoc" title="Add Location" aria-label="Add location">
+        <span class="btn-locs-icon">+</span>
+      </button>
     </div>
-    <div id="activeLocStrip" style="display:flex;align-items:stretch;flex:1;overflow-x:auto;overflow-y:visible;"></div>
+    <div id="activeLocStrip"></div>
   </div>
 </div>
 
@@ -520,18 +900,133 @@
 <!-- DG ON BOARD summary line -->
 <div class="dg-onboard-line" id="dgOnBoardLine">DG ON BOARD: <span id="dgOnBoardText">none</span></div>
 
-<!-- ZOOM -->
-<div class="zoom-bar">
-  <button class="zbtn" id="zoomOut">−</button>
-  <button class="zbtn" id="zoomIn">+</button>
-  <div class="zdiv"></div>
-  <button class="zbtn" id="zoomReset">1:1</button>
-  <button class="zbtn" id="zoomFit">⊡ Fit</button>
-  <span class="zlbl" id="zoomLbl">100%</span>
+</div><!-- /shell-sub -->
+
+<!-- (Zoom pill relocated into the Locations ribbon control group — see above) -->
+
+<!-- Phase 23 — Measure tool floating label. Position:fixed so its text
+     size is invariant under deck zoom. Hidden until a measurement exists. -->
+<!-- Phase 30B — Auto Align Preview modal. Opens on Auto Align click,
+     shows a plan + summary, user commits with Apply or discards with
+     Cancel/Esc. Never mutates cargo state until Apply. -->
+<div class="aap-ov" id="aapOv" aria-hidden="true" hidden>
+  <div class="aap-backdrop" id="aapBackdrop"></div>
+  <div class="aap-modal" role="dialog" aria-labelledby="aapTitle">
+    <div class="aap-head">
+      <div class="aap-head-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="1" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <rect x="1" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <rect x="9" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M7 4h2M7 12h2M4 6v4M12 6v4" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".45"/>
+        </svg>
+      </div>
+      <div class="aap-title" id="aapTitle">Auto Align Preview</div>
+      <button class="aap-close" id="aapClose" aria-label="Close preview">✕</button>
+    </div>
+    <div class="aap-body">
+      <div class="aap-kpi-row">
+        <div class="aap-kpi">
+          <div class="aap-kpi-num" id="aapMovedNum">0</div>
+          <div class="aap-kpi-lbl">to move</div>
+        </div>
+        <div class="aap-kpi">
+          <div class="aap-kpi-num" id="aapSkippedNum">0</div>
+          <div class="aap-kpi-lbl">skipped</div>
+        </div>
+        <div class="aap-kpi">
+          <div class="aap-kpi-num aap-kpi-safe" id="aapConflictsNum">0</div>
+          <div class="aap-kpi-lbl">new conflicts</div>
+        </div>
+      </div>
+      <div class="aap-breakdown" id="aapBreakdown"></div>
+      <div class="aap-skip-list" id="aapSkipList" hidden></div>
+      <div class="aap-empty" id="aapEmpty" hidden>Deck is already aligned — nothing to move.</div>
+    </div>
+    <div class="aap-foot">
+      <button class="aap-btn aap-btn-cancel" id="aapCancel" type="button">Cancel</button>
+      <button class="aap-btn aap-btn-apply" id="aapApply" type="button">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="ruler-label" id="rulerLabel" aria-hidden="true" hidden>
+  <span class="ruler-label-dist" id="rulerLabelDist">—</span>
+  <span class="ruler-label-sep" aria-hidden="true"></span>
+  <span class="ruler-label-delta" id="rulerLabelDelta"></span>
+  <!-- Phase 29 — vessel-relative bearing chip. Appears when the ruler
+       line is > 0.2 m. Typography matches the family but is tertiary
+       (smaller, muted), so distance remains the headline value. -->
+  <span class="ruler-label-bearing" id="rulerLabelBearing" hidden></span>
+  <button class="ruler-label-clear" id="rulerLabelClear"
+          title="Clear measurement" aria-label="Clear measurement">×</button>
+</div>
+
+<!-- Phase 28 — Live drag readout pill. Floating glass pill that tracks the
+     ghost during cargo drag, showing the intended bay, position in metres,
+     and size. Same family as the ruler label (position:fixed, zoom-invariant
+     font, ink-glass surface). Hidden by default; drag onMove shows/positions;
+     onUp hides. Respects SMART.dragReadout and prefers-reduced-motion. -->
+<div class="drag-readout" id="dragReadout" aria-hidden="true" hidden>
+  <span class="drag-readout-bay" id="dragReadoutBay">Bay —</span>
+  <span class="drag-readout-sep" aria-hidden="true"></span>
+  <span class="drag-readout-pos" id="dragReadoutPos">X —  ·  Y —</span>
+  <span class="drag-readout-sep" aria-hidden="true"></span>
+  <span class="drag-readout-size" id="dragReadoutSize">— × —</span>
+</div>
+
+<!-- Phase 28 — Live resize readout pill. Shows the new cargo dimensions in
+     metres (and area) while a resize handle is being dragged. Pinned near
+     the active handle via JS. Uses the same glass surface as drag-readout. -->
+<div class="resize-readout" id="resizeReadout" aria-hidden="true" hidden>
+  <span class="resize-readout-dim" id="resizeReadoutDim">— × —</span>
+  <span class="drag-readout-sep" aria-hidden="true"></span>
+  <span class="resize-readout-area" id="resizeReadoutArea">— m²</span>
+</div>
+
+<!-- Phase 28 — Post-drop bay confirmation. Appears above a just-placed
+     cargo for ~700ms showing which bay it landed in, then fades. -->
+<div class="drop-bay-confirm" id="dropBayConfirm" aria-hidden="true" hidden>
+  <span id="dropBayConfirmText">Bay —</span>
 </div>
 
 <!-- DECK — "Spica Tide" in compass -->
 <div class="deck-area" id="deckArea">
+
+<!-- Phase 11 — Cargo hover info card (floating, contextual).
+     Shows a compact read-only summary of the hovered cargo after a brief
+     delay. Never interactive; never permanent. Hidden by default; the
+     hover wiring in renderBlock() populates + positions it on demand. -->
+<div class="chc" id="cargoHoverCard" aria-hidden="true" hidden>
+  <div class="chc-head">
+    <span class="chc-status-dot" id="chcStatusDot" aria-hidden="true"></span>
+    <span class="chc-ccu" id="chcCcu">—</span>
+    <span class="chc-status-lbl" id="chcStatusLbl">—</span>
+  </div>
+  <div class="chc-desc" id="chcDesc"></div>
+  <div class="chc-grid">
+    <div class="chc-cell">
+      <div class="chc-k">weight</div>
+      <div class="chc-v" id="chcWt">—</div>
+    </div>
+    <div class="chc-cell">
+      <div class="chc-k">location</div>
+      <div class="chc-v chc-v-loc">
+        <span class="chc-loc-swatch" id="chcLocSwatch" aria-hidden="true"></span>
+        <span id="chcLoc">—</span>
+      </div>
+    </div>
+    <div class="chc-cell">
+      <div class="chc-k">size</div>
+      <div class="chc-v" id="chcSize">—</div>
+    </div>
+  </div>
+  <div class="chc-flags" id="chcFlags" hidden>
+    <span class="chc-dg-list" id="chcDgList"></span>
+    <span class="chc-pri" id="chcPri" hidden>PRIORITY</span>
+  </div>
+</div>
 
 <!-- KEYBOARD SHORTCUTS CHEATSHEET MODAL -->
 <div class="kb-cheat-ov" id="kbCheatOv">
@@ -547,6 +1042,14 @@
       <div class="kb-row">
         <div class="kb-keys"><span class="kb-key">Click</span></div>
         <div class="kb-desc">Select cargo block</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key wide">Tab</span></div>
+        <div class="kb-desc"><b>Next</b> cargo on deck (reading order)</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">Shift</span><span class="kb-key-sep">+</span><span class="kb-key wide">Tab</span></div>
+        <div class="kb-desc"><b>Previous</b> cargo on deck</div>
       </div>
       <div class="kb-row">
         <div class="kb-keys"><span class="kb-key wide">Esc</span></div>
@@ -567,6 +1070,14 @@
 
       <div class="kb-cheat-sec">Cargo Actions</div>
       <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">S</span></div>
+        <div class="kb-desc"><b>Cycle status</b>: Load → Backload → ROB → Transfer</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">P</span></div>
+        <div class="kb-desc"><b>Toggle priority</b> (applies uniformly to multi-selection)</div>
+      </div>
+      <div class="kb-row">
         <div class="kb-keys"><span class="kb-key">E</span></div>
         <div class="kb-desc"><b>Edit</b> selected block (open modal)</div>
       </div>
@@ -584,6 +1095,14 @@
       </div>
 
       <div class="kb-cheat-sec">Zoom</div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">F</span></div>
+        <div class="kb-desc"><b>Fit selected cargo</b> to viewport (zoom in on selection)</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">0</span></div>
+        <div class="kb-desc"><b>Fit entire deck</b> to viewport (overview)</div>
+      </div>
       <div class="kb-row">
         <div class="kb-keys"><span class="kb-key">1</span><span class="kb-key-sep">–</span><span class="kb-key">5</span></div>
         <div class="kb-desc">Set zoom level: <b>50% · 75% · 100% · 125% · 150%</b></div>
@@ -614,44 +1133,61 @@
 <div id="kb-zoom-flash"></div>
   <div class="deck-zoom-wrap" id="deckZoomWrap">
     <div class="deck-outer">
+      <!-- Real vessel drawing — Main Deck GA, placed behind the cargo deck
+           as a pure visual background layer. Not traced, not modified. -->
+      <img class="vessel-bg" src="/src/assets/map/main-deck-transparent.png" alt="" aria-hidden="true" draggable="false"/>
       <div class="deck-compass">
         <span>◄ AFT / STERN — BAY 12</span>
-        <span>SPICA TIDE · 53.7 m × 15 m · 752 m² · Max 2500 T · 10 T/m²</span>
+        <span>SPICA TIDE · 54.92 m × 15 m · 752 m² · Max 2500 T · 10 T/m²</span>
         <span>BAY 1 — BOW / FORE ►</span>
       </div>
       <div class="dcv" id="cvDECK" data-side="DECK"></div>
-      <!-- V12: Empty deck hint -->
+      <!-- Phase 23 — Measure tool overlays.
+           ruler-click-layer sits above cargo only when body.ruler-active,
+           captures clicks to place measurement points. ruler-overlay is an
+           SVG inside cvDECK (via JS) that draws line + endpoint handles;
+           ruler-label is position:fixed in <body> so its size doesn't
+           scale with zoom. All three are pointer-events:none by default. -->
+      <div class="ruler-click-layer" id="rulerClickLayer" aria-hidden="true"></div>
+      <!-- Phase 16 — Premium empty deck hero.
+           Visible when no cargo is on deck (new plan / clear deck / fresh
+           session). pointer-events:none so it never interferes with drag
+           or library drops. Hidden via .hidden when cargo count > 0. -->
       <div class="empty-deck-hint" id="emptyDeckHint">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity=".4">
-          <rect x="4" y="10" width="32" height="20" rx="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
-          <path d="M20 16v8M16 20h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <svg class="edh-art" width="72" height="48" viewBox="0 0 72 48" fill="none" aria-hidden="true">
+          <!-- Dashed deck outline hinting at capacity -->
+          <rect x="2" y="10" width="68" height="30" rx="3"
+                stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 3" opacity=".42"/>
+          <!-- Three stacked cargo block suggestions — the deck's language -->
+          <rect x="10" y="22" width="14" height="10" rx="1.6"
+                fill="currentColor" opacity=".14"/>
+          <rect x="28" y="18" width="16" height="14" rx="1.6"
+                fill="currentColor" opacity=".22"/>
+          <rect x="48" y="24" width="12" height="8" rx="1.6"
+                fill="currentColor" opacity=".14"/>
+          <!-- Aft/fore tick marks to echo the bay-line language -->
+          <path d="M2 6v2M70 6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".35"/>
+          <path d="M2 42v2M70 42v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".35"/>
         </svg>
-        <div class="empty-deck-text">Drag cargo here or import ASCO file</div>
+        <div class="edh-title">No cargo on deck yet</div>
+        <div class="edh-sub">Drag from the Library or import an ASCO manifest to begin</div>
       </div>
     </div>
   </div>
 
 </div>
 
-<!-- ═══ BOTTOM UTILITY PANEL — outside deck-area, fixed footer ═══ -->
+<!-- ═══ BOTTOM UTILITY PANEL — floating glass status bar ═══ -->
+<div class="shell-status">
 <div class="bottom-panel" id="bottomPanel">
+  <!-- Total longitudinal span of all cargo on the deck (most-fore edge −
+       most-aft edge, gaps included). Empty deck → "—". Single info field;
+       Position / Zoom / Cargo count / Action readouts retired in favour of
+       this one operational metric — the others duplicated info already
+       visible elsewhere (zoom in controls, count in Lifts hero KPI). -->
   <div class="bp-section">
-    <span class="bp-label">Position</span>
-    <span class="bp-value" id="dsbPos">X: 0.0m &middot; Y: 0.0m</span>
-  </div>
-  <div class="bp-sep"></div>
-  <div class="bp-section">
-    <span class="bp-label">Zoom</span>
-    <span class="bp-value" id="dsbZoom">100%</span>
-  </div>
-  <div class="bp-sep"></div>
-  <div class="bp-section">
-    <span class="bp-label">Cargo</span>
-    <span class="bp-value" id="dsbCount">0 items</span>
-  </div>
-  <div class="bp-sep"></div>
-  <div class="bp-section bp-action-section">
-    <span class="bp-value bp-action" id="dsbAction">Ready</span>
+    <span class="bp-label">Cargo length</span>
+    <span class="bp-value" id="dsbLength">&mdash;</span>
   </div>
   <div class="bp-spacer"></div>
   <div class="bp-section">
@@ -662,9 +1198,29 @@
   </div>
   <div class="bp-sep"></div>
   <div class="bp-section bp-save-section">
-    <span class="save-dot" id="saveDotBottom"></span>
-    <span class="bp-save-text" id="saveStateText">Saved</span>
+    <!-- 4-state animated save indicator. State machine in app.js
+         (_setSaveState ~line 13711) toggles the .save-dot--{state}
+         class and writes label text via cross-fade between two layered
+         spans. Inner SVG carries spinner ring (visible during 'saving')
+         and checkmark path (drawn on entering 'autosaved'). -->
+    <span class="save-dot save-dot--saved" id="saveDotBottom" data-state="saved">
+      <svg class="save-dot__svg" viewBox="0 0 12 12" aria-hidden="true">
+        <circle class="save-dot__spinner" cx="6" cy="6" r="4"
+                fill="none" stroke="currentColor" stroke-width="1.4"
+                stroke-dasharray="18 25" stroke-linecap="round"/>
+        <path class="save-dot__check" d="M3.5 6.2 L5.2 8 L8.7 4.2"
+              fill="none" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round"
+              pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+      </svg>
+    </span>
+    <span class="bp-save-text" id="saveStateText">
+      <span class="bp-save-text__layer bp-save-text__layer--current">Saved</span>
+      <span class="bp-save-text__layer bp-save-text__layer--out"></span>
+    </span>
   </div>
+  <div class="bp-sep bp-viewer-sep"></div>
+  <div class="bp-section bp-viewer-indicator" aria-hidden="true">Viewer (read-only)</div>
   <div class="bp-sep"></div>
   <div class="bp-section" id="bpSyncSection" style="display:none;">
     <span class="sync-dot-bp" id="syncDotBp"></span>
@@ -674,6 +1230,7 @@
     <span class="sync-error-badge" id="syncErrorBadge" title="Sync errors — click for details" style="display:none;">!</span>
   </div>
 </div>
+</div><!-- /shell-status -->
 
 <!-- LIBRARY RESIZE HANDLE -->
 <!-- ═══ OLD LIBRARY REPLACED BY RIGHT PANEL ═══
@@ -718,56 +1275,102 @@
   </div>
 </div>
 
-<!-- MODAL -->
+<!-- MODAL — Edit Cargo
+     Restructured into three premium sections to match the current
+     SPICA TIDE design system. Every id is preserved so the existing
+     open/populate/save/remove JS handlers continue to work untouched. -->
 <div class="ov" id="ov">
 <div class="mdl">
-  <div class="mdl-title">Edit Cargo</div>
-  <label>CCU / ID</label><input type="text" id="mCCU">
-  <label>Description</label>
-  <select class="mdl-desc-sel" id="mDesc">
-    <option value="">— select type —</option>
-  </select>
-  <label>Weight (T)</label><input type="number" id="mWT" step="0.1" min="0">
-  <label>Location</label><div class="mdl-locs" id="mLocGrid"></div>
-  <label>Status</label>
-  <div class="mdl-status">
-    <div class="mdl-st" data-s="L">Load</div>
-    <div class="mdl-st" data-s="BL">Backload</div>
-    <div class="mdl-st" data-s="ROB">ROB</div>
-    <div class="mdl-st" data-s="TR">Transfer</div>
+  <div class="mdl-head">
+    <div class="mdl-title">Edit Cargo</div>
+    <div class="mdl-subtitle">Cargo record · operational edit</div>
   </div>
-  <!-- Transfer destination — shown only when status=TR -->
-  <div class="mdl-tr-wrap" id="mdlTrWrap">
-    <div class="mdl-tr-lbl">Transfer destination</div>
-    <select class="mdl-tr-sel" id="mdlTrDest">
-      <option value="">— select destination —</option>
-    </select>
-  </div>
-  <label>DG Classes <span style="font-weight:400;color:var(--txt4);font-size:9px;">(up to 3)</span></label>
-  <!-- Multi-DG picker — tag-based, up to 3 classes -->
-  <div class="dg-multi" id="dgMulti">
-    <div class="dg-multi-tags" id="dgMultiTags"></div>
-    <button type="button" class="dg-multi-add" id="dgMultiAdd">+ Add DG Class</button>
-    <div class="dg-multi-dropdown" id="dgMultiDropdown">
-      <div class="dg-picker-search-wrap">
-        <input class="dg-picker-search" id="dgMultiSearch" type="text" placeholder="Search DG class..." autocomplete="off" spellcheck="false">
+
+  <div class="mdl-body">
+
+    <!-- SECTION A — Identity -->
+    <section class="mdl-sec">
+      <div class="mdl-sec-title">Identity</div>
+      <div class="mdl-field">
+        <label>CCU / ID</label>
+        <input type="text" id="mCCU">
       </div>
-      <div class="dg-multi-list" id="dgMultiList"></div>
-    </div>
-    <div class="dg-multi-msg" id="dgMultiMsg"></div>
-  </div>
-  <label>Heavy Lift</label>
-  <div class="mdl-hl-toggle" id="mHL">
-    <span class="mdl-hl-icon">🏗</span>
-    <span class="mdl-hl-lbl" id="mHLlbl">Heavy Lift — off</span>
-  </div>
-  <label>Priority Lift</label>
-  <div class="mdl-priority-toggle" id="mPriority">
-    <span class="mdl-pri-icon">⚡</span>
-    <span class="mdl-pri-lbl" id="mPriorityLbl">Priority Lift — off</span>
-  </div>
+      <div class="mdl-field">
+        <label>Description</label>
+        <select class="mdl-desc-sel" id="mDesc">
+          <option value="">— select type —</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- SECTION B — Deck & Physical -->
+    <section class="mdl-sec">
+      <div class="mdl-sec-title">Deck &amp; Physical</div>
+      <div class="mdl-field">
+        <label>Weight (T)</label>
+        <input type="number" id="mWT" step="0.1" min="0">
+      </div>
+      <div class="mdl-field">
+        <label>Location</label>
+        <div class="mdl-locs" id="mLocGrid"></div>
+      </div>
+      <div class="mdl-field">
+        <label>Status</label>
+        <div class="mdl-status">
+          <div class="mdl-st" data-s="L">Load</div>
+          <div class="mdl-st" data-s="BL">Backload</div>
+          <div class="mdl-st" data-s="ROB">ROB</div>
+          <div class="mdl-st" data-s="TR">Transfer</div>
+        </div>
+      </div>
+      <!-- Transfer destination — shown only when status=TR -->
+      <div class="mdl-tr-wrap" id="mdlTrWrap">
+        <div class="mdl-tr-lbl">Transfer destination</div>
+        <select class="mdl-tr-sel" id="mdlTrDest">
+          <option value="">— select destination —</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- SECTION C — DG & Special Handling -->
+    <section class="mdl-sec">
+      <div class="mdl-sec-title">DG &amp; Special Handling</div>
+      <div class="mdl-field">
+        <label>DG Classes <span class="mdl-field-hint">(up to 3)</span></label>
+        <!-- Multi-DG picker — tag-based, up to 3 classes -->
+        <div class="dg-multi" id="dgMulti">
+          <div class="dg-multi-tags" id="dgMultiTags"></div>
+          <button type="button" class="dg-multi-add" id="dgMultiAdd">+ Add DG Class</button>
+          <div class="dg-multi-dropdown" id="dgMultiDropdown">
+            <div class="dg-picker-search-wrap">
+              <input class="dg-picker-search" id="dgMultiSearch" type="text" placeholder="Search DG class..." autocomplete="off" spellcheck="false">
+            </div>
+            <div class="dg-multi-list" id="dgMultiList"></div>
+          </div>
+          <div class="dg-multi-msg" id="dgMultiMsg"></div>
+        </div>
+      </div>
+      <div class="mdl-field mdl-field-toggle">
+        <label>Heavy Lift</label>
+        <div class="mdl-hl-toggle" id="mHL">
+          <span class="mdl-hl-icon">🏗</span>
+          <span class="mdl-hl-lbl" id="mHLlbl">Heavy Lift — off</span>
+        </div>
+      </div>
+      <div class="mdl-field mdl-field-toggle">
+        <label>Priority Lift</label>
+        <div class="mdl-priority-toggle" id="mPriority">
+          <span class="mdl-pri-icon">⚡</span>
+          <span class="mdl-pri-lbl" id="mPriorityLbl">Priority Lift — off</span>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /mdl-body -->
+
   <div class="mbtns">
     <button class="mrm" id="mRm">Remove</button>
+    <span class="mbtns-spacer"></span>
     <button class="mcancel" id="mCan">Cancel</button>
     <button class="msave" id="mSav">Save</button>
   </div>
@@ -792,8 +1395,93 @@
 
     <div class="st-body">
 
+      <!-- Phase 30A — search + presets bar. Live filter by title/desc
+           and four named presets (Operational / Premium / Minimal /
+           Night Watch) plus Reset to Recommended. -->
+      <div class="st-search-wrap">
+        <input type="text" class="st-search" id="stSearchInput" placeholder="Search Smart Tools…" autocomplete="off" spellcheck="false" aria-label="Search Smart Tools">
+        <button type="button" class="st-search-clear" id="stSearchClear" title="Clear search" aria-label="Clear search" hidden>×</button>
+      </div>
+      <div class="st-presets-bar" role="group" aria-label="Smart Tools presets">
+        <button type="button" class="st-preset" data-preset="operational" title="Operational — calm, safety-forward defaults">Operational</button>
+        <button type="button" class="st-preset" data-preset="premium"     title="Premium — full visual & audio language">Premium</button>
+        <button type="button" class="st-preset" data-preset="minimal"     title="Minimal — essentials only">Minimal</button>
+        <button type="button" class="st-preset" data-preset="nightwatch"  title="Night Watch — dark ambient + calm feedback">Night Watch</button>
+        <button type="button" class="st-preset st-preset-reset" data-preset="reset" title="Reset to Recommended">Reset</button>
+      </div>
+      <div class="st-empty-search" id="stEmptySearch" hidden>No matching settings.</div>
+
+      <!-- Section: System (autosave + last save + connection status).
+           Replaces the persistent indicators that used to live in the
+           bottom status bar. Updated by initSmartToolsSystem(). -->
+      <div class="st-section" data-section-id="system">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">System</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
+      <div class="st-system">
+        <div class="st-system-row">
+          <span>Autosave</span>
+          <button class="st-system-toggle on" id="autosaveToggleST" title="Toggle autosave" aria-pressed="true">
+            <span class="st-system-dot"></span>
+            <span id="autosaveToggleSTLbl">ON</span>
+          </button>
+        </div>
+        <div class="st-system-row">
+          <span>Last save</span>
+          <span id="stLastSave">—</span>
+        </div>
+        <div class="st-system-row">
+          <span>Status</span>
+          <span class="st-system-status ok" id="stSystemStatus">OK</span>
+        </div>
+      </div>
+      </div><!-- /st-sec-body --></div><!-- /st-section system -->
+
+      <!-- Section: Display
+           Theme selector relocated from the ribbon to reduce top-shell
+           congestion. Language remains in the ribbon (needs to be visible
+           at a glance across multi-language teams). -->
+      <div class="st-section" data-section-id="display">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Display</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
+      <div class="st-system">
+        <div class="st-system-row">
+          <span>Theme</span>
+          <div class="st-theme-choices" role="group" aria-label="Theme">
+            <button type="button" class="st-theme-btn" id="stThemeLight" data-theme-val="light" aria-pressed="true">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M9.5 2.5l-.7.7M3.2 8.8l-.7.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <span>Light</span>
+            </button>
+            <button type="button" class="st-theme-btn" id="stThemeDark" data-theme-val="dark" aria-pressed="false">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M10 7.5A4.5 4.5 0 0 1 4.5 2c0-.3.02-.6.07-.9A4.5 4.5 0 1 0 10.9 7.43 4.6 4.6 0 0 1 10 7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Dark</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- /st-sec-body --></div><!-- /st-section display -->
+
       <!-- Section: Cargo Placement -->
-      <div class="st-sec-hdr" data-i18n="st_sec_placement">Cargo Placement</div>
+      <div class="st-section" data-section-id="placement">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title" data-i18n="st_sec_placement">Cargo Placement</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- Smart Bounce / Magnetic Snap -->
       <div class="st-row">
@@ -836,6 +1524,51 @@
         </div>
         <label class="st-toggle" title="Smart Grid Snap">
           <input type="checkbox" id="stGridSnapToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Phase 28 — Drag & Resize Readouts -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="3" y="5" width="10" height="6" rx="1.2" stroke="var(--acc)" stroke-width="1.3"/>
+            <path d="M5 8h6" stroke="var(--acc)" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+            <circle cx="4.2" cy="8" r="1" fill="var(--acc)" opacity=".8"/>
+            <circle cx="11.8" cy="8" r="1" fill="var(--acc)" opacity=".8"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">
+            Drag &amp; Resize Readouts
+            <span class="feat-badge" data-since="v2.4.0" data-tooltip="Added in v2.4.0">NEW</span>
+          </div>
+          <div class="st-row-desc">Live position (bay + metres) while dragging, live dimensions while resizing, and a brief bay-placement confirmation after drop.</div>
+        </div>
+        <label class="st-toggle" title="Drag &amp; Resize Readouts">
+          <input type="checkbox" id="stDragReadoutToggle">
+          <div class="st-track"><div class="st-thumb"></div></div>
+        </label>
+      </div>
+
+      <!-- Phase 29 — Night Watch. Dark-mode-only ambient deck glint. -->
+      <div class="st-row">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M12 3.5a5 5 0 1 0 .5 6.5A4 4 0 0 1 12 3.5z" stroke="var(--acc)" stroke-width="1.3" stroke-linejoin="round"/>
+            <circle cx="4" cy="3" r=".8" fill="var(--acc)" opacity=".6"/>
+            <circle cx="2.5" cy="6" r=".6" fill="var(--acc)" opacity=".4"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">
+            Night Watch
+            <span class="feat-badge" data-since="v2.4.0" data-tooltip="Added in v2.4.0">NEW</span>
+          </div>
+          <div class="st-row-desc">Slow, very subtle ambient glint across the deck in dark theme. Pauses automatically while dragging or resizing.</div>
+        </div>
+        <label class="st-toggle" title="Night Watch (dark mode only)">
+          <input type="checkbox" id="stNightWatchToggle">
           <div class="st-track"><div class="st-thumb"></div></div>
         </label>
       </div>
@@ -938,7 +1671,15 @@
       </div>
 
       <!-- Section: Cargo Library -->
-      <div class="st-sec-hdr" data-i18n="st_sec_library">Cargo Library</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section placement -->
+
+      <div class="st-section" data-section-id="library">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title" data-i18n="st_sec_library">Cargo Library</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- Manifest Matching -->
       <div class="st-row">
@@ -959,7 +1700,15 @@
       </div>
 
       <!-- Section: Safety -->
-      <div class="st-sec-hdr">Safety</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section library -->
+
+      <div class="st-section" data-section-id="safety">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Safety</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- DG Auto-Segregation Check -->
       <div class="st-row">
@@ -980,7 +1729,15 @@
       </div>
 
       <!-- Section: Visual -->
-      <div class="st-sec-hdr" data-i18n="st_sec_visual">Visual</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section safety -->
+
+      <div class="st-section" data-section-id="cargoappearance">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Cargo Appearance</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- DG Hover Transparency -->
       <div class="st-row">
@@ -1023,7 +1780,15 @@
       <!-- Section: Visual Effects -->
       <!-- Section: Sound — 3-level hierarchy -->
       <!-- Section: Sync -->
-      <div class="st-sec-hdr">Sync</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section cargoappearance -->
+
+      <div class="st-section" data-section-id="sync">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Sync</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
       <div class="st-row">
         <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0 1 10.9-3.5M14 8a6 6 0 0 1-10.9 3.5" stroke="var(--acc)" stroke-width="1.3" stroke-linecap="round"/><path d="M13 1v4h-4M3 15v-4h4" stroke="var(--acc)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1066,7 +1831,15 @@
         </label>
       </div>
 
-      <div class="st-sec-hdr">Sound</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section sync -->
+
+      <div class="st-section" data-section-id="sound">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Sound</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- Master row -->
       <div class="st-row snd-master-row" id="sndMasterRow">
@@ -1095,7 +1868,7 @@
           <div class="snd-cat-hd" id="sndCatHd-basic">
             <span class="snd-dot" style="background:#3ea36a"></span>
             <span class="snd-cat-title">Basic Sounds</span>
-            <span class="snd-badge" id="sndBadge-basic">4/4</span>
+            <span class="snd-badge" id="sndBadge-basic">11/11</span>
             <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-basic" checked><div class="st-track"><div class="st-thumb"></div></div></label>
           </div>
           <div class="snd-cat-body" id="sndCatBody-basic">
@@ -1103,6 +1876,13 @@
             <div class="snd-item"><span class="snd-emoji">🗑️</span><span class="snd-name">Cargo Remove</span><button class="snd-preview" data-snd="remove">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-remove" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji">⚠️</span><span class="snd-name">DG Warning</span><button class="snd-preview" data-snd="warning">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-warning" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji">💾</span><span class="snd-name">Save Plan</span><button class="snd-preview" data-snd="save">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-save" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">✨</span><span class="snd-name">Select Tick</span><button class="snd-preview" data-snd="select">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-select" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">🧲</span><span class="snd-name">Snap Click</span><button class="snd-preview" data-snd="snap">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-snap" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">↶</span><span class="snd-name">Undo</span><button class="snd-preview" data-snd="undo">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-undo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">↷</span><span class="snd-name">Redo</span><button class="snd-preview" data-snd="redo">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-redo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">↻</span><span class="snd-name">Rotate</span><button class="snd-preview" data-snd="rotate">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-rotate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">⎘</span><span class="snd-name">Duplicate</span><button class="snd-preview" data-snd="duplicate">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-duplicate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">📤</span><span class="snd-name">Export Complete</span><button class="snd-preview" data-snd="export">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-export" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 
@@ -1111,13 +1891,14 @@
           <div class="snd-cat-hd" id="sndCatHd-ambient">
             <span class="snd-dot" style="background:#c89a38"></span>
             <span class="snd-cat-title">Ambient & Context</span>
-            <span class="snd-badge" id="sndBadge-ambient">3/3</span>
+            <span class="snd-badge" id="sndBadge-ambient">4/4</span>
             <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-ambient" checked><div class="st-track"><div class="st-thumb"></div></div></label>
           </div>
           <div class="snd-cat-body" id="sndCatBody-ambient" style="display:none">
             <div class="snd-item"><span class="snd-emoji">🌊</span><span class="snd-name">Ocean Ambient</span><button class="snd-preview" data-snd="ocean">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-ocean" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji">☢️</span><span class="snd-name">DG Placement</span><button class="snd-preview" data-snd="dgDrop">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-dgDrop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji">⚖️</span><span class="snd-name">Overweight</span><button class="snd-preview" data-snd="overweight">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-overweight" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji">✅</span><span class="snd-name">DG Resolved</span><button class="snd-preview" data-snd="resolved">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-resolved" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 
@@ -1137,7 +1918,15 @@
 
       </div>
 
-      <div class="st-sec-hdr">Visual Effects</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section sound -->
+
+      <div class="st-section" data-section-id="appearance">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Appearance</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Corner Badges</div><div class="st-row-desc">DG class / status badge on cargo block corners</div></div><label class="st-toggle"><input type="checkbox" id="stCornerBadges"><div class="st-track"><div class="st-thumb"></div></div></label></div>
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Animated Counter</div><div class="st-row-desc">Airport-style number animation on ASCO import</div></div><label class="st-toggle"><input type="checkbox" id="stAnimCounter"><div class="st-track"><div class="st-thumb"></div></div></label></div>
@@ -1153,7 +1942,82 @@
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Deck Shadow</div><div class="st-row-desc">Drop shadow under deck plan canvas</div></div><label class="st-toggle"><input type="checkbox" id="stDeckShadow"><div class="st-track"><div class="st-thumb"></div></div></label></div>
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Custom Scrollbars</div><div class="st-row-desc">Theme-coloured scrollbars in library panel</div></div><label class="st-toggle"><input type="checkbox" id="stCustomScroll"><div class="st-track"><div class="st-thumb"></div></div></label></div>
 
-      <div class="st-sec-hdr">Actions</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section appearance -->
+
+      <!-- Phase W1 — Weather widget (manual atmosphere for now). -->
+      <div class="st-section" data-section-id="weather">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Weather</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
+        <div class="wx-form">
+          <!-- Phase W5 §12 (6a) — Location strip replaces the legacy
+               <select id="wxLocation">. The select element is retired;
+               app.js handlers that referenced it are null-guarded and
+               will become dead paths until 6b rewires.
+               #wxSearch is hidden by default; #wxLocChange opens it. -->
+          <div class="wx-loc" id="wxLoc">
+            <div class="wx-loc-current" id="wxLocCurrent">
+              <span class="wx-loc-name" id="wxLocName">—</span>
+              <button type="button" class="wx-loc-change" id="wxLocChange">Change</button>
+            </div>
+            <div class="wx-search" id="wxSearch" hidden>
+              <div class="wx-search-hint" id="wxSearchHint">Pick a city for weather</div>
+              <input type="search" id="wxSearchInput" class="wx-search-input" placeholder="Search city…" autocomplete="off" />
+              <ul class="wx-search-results" id="wxSearchResults" role="listbox"></ul>
+              <div class="wx-search-state" id="wxSearchState">Type to search</div>
+            </div>
+          </div>
+          <div class="wx-row">
+            <label class="wx-label" for="wxIntensity">Intensity</label>
+            <select class="wx-select" id="wxIntensity">
+              <option value="subtle">Subtle</option>
+              <option value="normal" selected>Normal</option>
+              <option value="strong">Strong</option>
+            </select>
+          </div>
+          <div class="wx-row">
+            <label class="wx-label" for="wxMotion">Motion</label>
+            <select class="wx-select" id="wxMotion">
+              <option value="off">Off</option>
+              <option value="reduced">Reduced</option>
+              <option value="full" selected>Full</option>
+            </select>
+          </div>
+          <div class="wx-row">
+            <label class="wx-label" for="wxEngine">Engine</label>
+            <select class="wx-select" id="wxEngine">
+              <option value="cinematic" selected>Cinematic</option>
+              <option value="simple">Simple</option>
+            </select>
+          </div>
+          <div class="wx-row wx-row-toggle">
+            <div class="wx-row-body">
+              <div class="wx-row-title">Apply atmosphere</div>
+              <div class="wx-row-desc">Master switch for the subtle ambience layer behind the workspace. Never covers deck, cargo, or overlays.</div>
+            </div>
+            <label class="st-toggle" title="Apply atmosphere">
+              <input type="checkbox" id="wxEnableToggle">
+              <div class="st-track"><div class="st-thumb"></div></div>
+            </label>
+          </div>
+          <!-- Phase W5 §13 v7 — Manual override removed. Atmosphere
+               always reflects real weather from Open-Meteo for the
+               selected location. The Apply atmosphere toggle above
+               controls only whether the body VFX renders. -->
+        </div>
+      </div>
+      </div><!-- /st-sec-body --></div><!-- /st-section weather -->
+
+      <div class="st-section" data-section-id="actions">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Actions</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
 
       <!-- Auto Align Deck -->
       <div class="st-action-row">
@@ -1177,6 +2041,8 @@
           <span class="st-action-btn-arrow">→</span>
         </button>
       </div>
+
+      </div><!-- /st-sec-body --></div><!-- /st-section actions -->
 
       <!-- Footer note -->
       <div style="padding:16px 20px 0;font-size:9.5px;color:var(--txt4);font-family:'Inter',sans-serif;line-height:1.4;">
@@ -1287,7 +2153,8 @@
 <!-- Floating deck placement hint -->
 <div class="deck-float-hint" id="deckFloatHint"></div>
 
-<!-- Panel overlay container -->
+<!-- Panel overlay container — wrapped in shell-manifest for floating left layout -->
+<div class="shell-manifest">
 <div class="cp-overlay" id="cpOverlay">
   <div class="cp-backdrop" id="cpBackdrop"></div>
   <!-- Edge handle — visible when panel is closed, click to open -->
@@ -1408,25 +2275,25 @@
           <span class="cp-sec-arr">▾</span>
         </div>
         <div class="cp-sec-body" id="cpSecBodyCustom">
+          <!-- Custom Cargo = manual deck-footprint template.
+               Only description + footprint dimensions (length × width).
+               Weight is set per-instance after placement (it varies by
+               loading state). CCU / ID is not part of a manual template. -->
           <div class="cp-cform">
             <div class="cp-cf-row">
-              <div class="cp-cf-g" style="flex:2">
+              <div class="cp-cf-g" style="flex:1">
                 <span class="cp-cf-l">Description</span>
                 <input class="cp-cf-i" id="cpDesc" placeholder="e.g. Special Frame">
-              </div>
-              <div class="cp-cf-g">
-                <span class="cp-cf-l">CCU / ID</span>
-                <input class="cp-cf-i" id="cpCCU" placeholder="KA1980">
               </div>
             </div>
             <div class="cp-cf-row">
               <div class="cp-cf-g">
-                <span class="cp-cf-l">Size (m)</span>
-                <input class="cp-cf-i" id="cpSize" placeholder="3.0x2.4">
+                <span class="cp-cf-l">Length (m)</span>
+                <input type="number" class="cp-cf-i" id="cpLen" placeholder="3.0" step="0.1" min="0">
               </div>
               <div class="cp-cf-g">
-                <span class="cp-cf-l">Weight (T)</span>
-                <input type="number" class="cp-cf-i" id="cpWT" placeholder="3.0" step="0.1" min="0">
+                <span class="cp-cf-l">Width (m)</span>
+                <input type="number" class="cp-cf-i" id="cpWid" placeholder="2.44" step="0.1" min="0">
               </div>
             </div>
             <button class="cp-cf-add" id="cpBtnAdd">+ Add Custom Cargo</button>
@@ -1439,8 +2306,50 @@
     </div><!-- /cp-body -->
   </div><!-- /cp -->
 </div><!-- /cp-overlay -->
+</div><!-- /shell-manifest -->
 
 
+<!-- ═══ VESSEL BACKGROUND ALIGNMENT MODE — manual tuning panel ═══
+     Toggle with Ctrl/Cmd+Shift+V. Hidden by default. -->
+<div id="vesselAlignPanel" class="vap" hidden aria-hidden="true">
+  <div class="vap-head">
+    <span class="vap-title">Vessel Background Alignment</span>
+    <button class="vap-x" data-vap-action="cancel" title="Cancel — revert changes (Esc)">×</button>
+  </div>
+  <div class="vap-rows">
+    <div class="vap-row"><span>Width</span><span id="vapW">—</span><span class="vap-u">%</span></div>
+    <div class="vap-row"><span>Height</span><span id="vapH">—</span><span class="vap-u">%</span></div>
+    <div class="vap-row"><span>Shift X</span><span id="vapX">—</span><span class="vap-u">px</span></div>
+    <div class="vap-row"><span>Shift Y</span><span id="vapY">—</span><span class="vap-u">px</span></div>
+  </div>
+  <div class="vap-btns vap-btns-row1">
+    <button data-vap-action="zoom-in"  title="Scale both (+ key / Wheel up)">+</button>
+    <button data-vap-action="zoom-out" title="Scale both (− key / Wheel down)">−</button>
+    <button data-vap-action="reset"    title="Reset to defaults">Reset</button>
+  </div>
+  <div class="vap-btns vap-btns-row2">
+    <button data-vap-action="cancel"                  title="Discard changes and exit">Cancel</button>
+    <button data-vap-action="lock" class="vap-lock"   title="Save and exit (persists to localStorage)">Lock / Apply</button>
+  </div>
+  <div class="vap-hint">
+    Drag body to move · Side handles = 1-axis resize · Corners = free resize (Shift = lock aspect) ·
+    Arrows 1 px · Shift 10 px · Alt+Arrows adjust W/H (Shift+Alt = larger) · Wheel / ± keys scale both
+  </div>
+</div>
+
+<!-- Bounding box + 8 resize handles around the vessel overlay.
+     Fixed-position wrapper tracks .vessel-bg's screen rect. Visible only in align mode. -->
+<div id="vesselAlignHandles" class="vah" hidden aria-hidden="true">
+  <div class="vah-box"></div>
+  <div class="vah-h" data-vah="nw" title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="n"  title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="ne" title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="e"  title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="se" title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="s"  title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="sw" title="Resize (aspect locked)"></div>
+  <div class="vah-h" data-vah="w"  title="Resize (aspect locked)"></div>
+</div>
 
 
 </body>

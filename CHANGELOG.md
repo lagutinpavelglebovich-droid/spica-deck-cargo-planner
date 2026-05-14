@@ -2,6 +2,37 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.0.0] - 2026-05-14
+
+### Major
+- **PDF redesign** — premium typography (Inter v4 font, Latin + Cyrillic), pill-based DG
+  and Location cards, compressed info section to ~30% of page, Marine Editorial aesthetic
+  matching UI design language
+- **PDF color sync** — status pills (L/BL/ROB) in PDF now match deck cargo block colors
+  via `opColor()` (eliminates UI ↔ printed plan mismatch for crane operators and deck crew)
+- **PDF export reliability** — fixed canvas tainted-origin crash in Tauri WKWebView
+  (was preventing PDF export on macOS builds); fix uses DOM detach + CSS injection strategy
+
+### Fixes
+- **Edit Cargo Inspector** — cursor no longer jumps to start of input on each keystroke
+- **Height-to-metres calculation** — vertical fallback now uses `YS` instead of `M`
+  (eliminates edge-case miscalculation in custom container placement)
+- **Bay direction arrows in PDF** — render correctly as ← / → (were broken brackets
+  with default helvetica due to missing glyph)
+
+### Added
+- **Print menu** — Ctrl+P / Cmd+P opens system print dialog via `printDeckPlan()`
+- **Inter v4 font embedded in PDF** — Latin + Cyrillic + Greek subsets; replaces
+  jsPDF default helvetica throughout entire PDF output
+- **DG card in PDF** — pill-based layout matching Location cards; chestnut accent band,
+  IMDG class + short description + count in unified pill row
+
+### Known limitations
+- Print dialog not visible in Tauri WKWebView (`iframe.contentWindow.print()` blocked);
+  workaround: export PDF → open in external application → print
+- Cargo block labels in PDF remain ~6pt due to A4 aspect ratio cap at 62mm deck height;
+  A3 paper option or detail table planned for v3.1.0
+
 ## [2.3.0] - 2026-04-15
 
 ### Added

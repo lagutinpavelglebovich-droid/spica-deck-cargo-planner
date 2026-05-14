@@ -11,6 +11,34 @@ import * as Sync from './sync.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
+import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
+import { bindHoldToConfirm } from './animations/holdToConfirm.js';
+import { interRegularB64, interBoldB64 } from './inter-fonts.js';
+import { flipLayout } from './animations/locations.js';
+/* Phase W5/W6 — weather orchestrator + presets. ESM imports are
+   hoisted; placed here alongside the other top-level imports for
+   convention. Used by the Phase W1 weather block (~line 12462). */
+import { wxScene, _FALLBACK_MAP as _WX_FALLBACK_MAP } from './weather/index.js';
+import { DEFAULT_CONDITION } from './weather/presets.js';
+/* Phase W6 — Open-Meteo data layer (api.js, location.js, autoRefresh.js)
+   plus the Meteocons icon URL map. Aliased on import to keep call sites
+   readable (e.g. _wxSetLocation rather than `setLocation`, which is too
+   generic in app.js scope). */
+import { searchCities } from './weather/api.js';
+import { iconForCondition } from './weather/iconMap.js';
+import {
+  setLocation             as _wxSetLocation,
+  getLocation             as _wxGetLocation,
+  hydrate                 as _wxLocHydrate,
+  resolveInitialLocation  as _wxResolveInitialLocation,
+  onLocationChange,
+} from './weather/location.js';
+import {
+  start            as _wxAutoStart,
+  refreshNow       as _wxRefreshNow,
+  getCachedWeather as _wxGetCached,
+  onWeatherChange,
+} from './weather/autoRefresh.js';
 
 /* ════════════════════════════════════════════════════════════
    OPERATOR / VIEWER MODE
@@ -81,11 +109,15 @@ function applyModeUI(){
   const iconEl = document.getElementById('modeBtnIcon');
   const labelEl = document.getElementById('modeBtnLabel');
   const banner = document.getElementById('viewerBanner');
+  /* Body class drives subtle viewer indicator in the bottom status bar
+     (see .bp-viewer-indicator CSS). Replaces the old fixed banner. */
+  document.body.classList.toggle('is-viewer', !op);
   if(btn){
     btn.classList.toggle('mode-operator', op);
     btn.classList.toggle('mode-viewer', !op);
   }
-  if(iconEl) iconEl.textContent = op ? '\u2699' : '\uD83D\uDC41';
+  /* Operator = gear (⚙), Viewer = lock (🔒). Icon signals state. */
+  if(iconEl) iconEl.textContent = op ? '\u2699' : '\uD83D\uDD12';
   if(labelEl) labelEl.textContent = op ? 'OPERATOR' : 'VIEWER';
   /* NEW badge on mode button — purely additive, no-op if expired */
   if(btn){
@@ -95,12 +127,19 @@ function applyModeUI(){
   }
   if(banner) banner.style.display = op ? 'none' : '';
 
-  /* Disable / enable mutation controls */
-  const mutBtns = ['btnClrDeck','btnSmartTools'];
+  /* Disable / enable destructive mutation controls only.
+     Smart Tools is a settings panel (hover motion, grid snap, shortcuts,
+     sound, weight gauge etc.) — none of its toggles mutate cargo. It must
+     remain accessible in Viewer mode. Only Clear Deck is truly destructive. */
+  const mutBtns = ['btnClrDeck'];
   mutBtns.forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.classList.toggle('mode-disabled', !op); el.style.pointerEvents = op ? '' : 'none'; el.style.opacity = op ? '' : '0.4'; }
   });
+  /* Defensive: ensure Smart Tools button is always enabled in case a prior
+     Viewer session left pointerEvents/opacity set inline. */
+  const st = document.getElementById('btnSmartTools');
+  if(st){ st.classList.remove('mode-disabled'); st.style.pointerEvents = ''; st.style.opacity = ''; }
 
   /* Re-render cargo blocks to show/hide handles */
   if(typeof renderAll === 'function') renderAll();
@@ -118,14 +157,30 @@ function applyModeUI(){
   }catch(e){}
 })();
 
-/* ── Apply brand labels to DOM on load ── */
+/* ── Apply brand labels to DOM on load ──
+   Brand name rendered as two colored spans (first word + rest). No icon. */
 function applyBrandLabels(){
   const el = {
     name: document.getElementById('brandName'),
     dcp:  document.getElementById('brandDcp'),
     sub:  document.getElementById('brandSub'),
   };
-  if(el.name) el.name.textContent = SPICA_CONFIG.BRAND.name;
+  if(el.name){
+    const name = (SPICA_CONFIG.BRAND.name || '').trim();
+    const parts = name.split(/\s+/);
+    el.name.innerHTML = '';
+    const first = document.createElement('span');
+    first.className = 'brand-spica';
+    first.textContent = parts[0] || '';
+    el.name.appendChild(first);
+    if(parts.length > 1){
+      el.name.appendChild(document.createTextNode(' '));
+      const rest = document.createElement('span');
+      rest.className = 'brand-tide';
+      rest.textContent = parts.slice(1).join(' ');
+      el.name.appendChild(rest);
+    }
+  }
   if(el.dcp)  el.dcp.textContent  = SPICA_CONFIG.BRAND.title;
   if(el.sub)  el.sub.textContent  = SPICA_CONFIG.BRAND.subtitle;
 }
@@ -266,16 +321,270 @@ function bindAdmin(){
 
   /* Apply brand labels from config / localStorage */
   applyBrandLabels();
+
+  /* Lower base panel glow — circular blue light follows cursor across the
+     FULL slab surface (ribbon rect + 12px overhang on every side). Hides
+     over upper cards (Lifts / Ops / Voyage / Tools). Because `.shell-ribbon`
+     has `pointer-events:none`, we listen on window and test bounds ourselves
+     so the overhang and inter-card gaps still track. */
+  (function initSlabGlow(){
+    const ribbon = document.querySelector('.shell-ribbon');
+    if(!ribbon) return;
+    const PAD = 12; // slab overhang beyond ribbon, per ::before/::after inset:-12px
+    let pending = false;
+    let lastX = 0, lastY = 0;
+    window.addEventListener('mousemove', (e) => {
+      lastX = e.clientX; lastY = e.clientY;
+      if(pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        const rect = ribbon.getBoundingClientRect();
+        const inSlab =
+          lastX >= rect.left - PAD && lastX <= rect.right + PAD &&
+          lastY >= rect.top  - PAD && lastY <= rect.bottom + PAD;
+        if(!inSlab){
+          ribbon.classList.remove('glow-active');
+          return;
+        }
+        // Real element under cursor — reliable check across gaps/overhang
+        const under = document.elementFromPoint(lastX, lastY);
+        const overUpperCard = !!(under && under.closest &&
+          under.closest('.rc-lifts, .rc-ops, .rc-voyage, .rc-tools'));
+        // Glow position in slab's own coordinate space (slab origin = ribbon - 12px)
+        ribbon.style.setProperty('--glow-x', (lastX - rect.left + PAD) + 'px');
+        ribbon.style.setProperty('--glow-y', (lastY - rect.top  + PAD) + 'px');
+        ribbon.classList.toggle('glow-active', !overUpperCard);
+      });
+    }, { passive: true });
+    window.addEventListener('blur', () => {
+      ribbon.classList.remove('glow-active');
+    });
+  })();
+
+  /* (syncBrandCol removed — the left-side is now a compact icon + zoom
+     control hub; it no longer needs to occupy the brand column width.) */
 }
 
 /* ════════════════════════════════════
    CONSTANTS
 ════════════════════════════════════ */
-const M=31,ft=f=>Math.round(f*.3048*M);
-const BW=[129,126,147,126,147,147,126,147,126,147,144,139];
-const TW=BW.reduce((a,b)=>a+b,0);
-const BL_=BW.reduce((acc,w,i)=>{acc.push(i===0?0:acc[i-1]+BW[i-1]);return acc;},[]);
-const CVH=380,YS=CVH/15;
+/* ═══════════════════════════════════════════════════════════════════════
+   PHYSICAL DECK GEOMETRY — SPICA TIDE · AUTHORITATIVE · LOCKED
+   ─────────────────────────────────────────────────────────────────────
+   Single source of truth for longitudinal deck coordinates.
+
+   The deck is an alternating sequence of cargo bays and steel deck
+   joints. Bays are the planning slots; joints are real 0.15 m wide
+   structural plates separating adjacent bays. Previously the joints
+   were modelled as zero-width dividers — that introduced cumulative
+   measurement error across the full deck length. This is the
+   corrected, measured geometry.
+
+   ─────────────────────────────────────────────────────────────────────
+   BAY_LENGTHS_M — FINAL MEASURED VALUES, VISUAL RENDER ORDER
+   ─────────────────────────────────────────────────────────────────────
+
+   Orientation (do not flip):
+     Index 0  = Bay 12  (LEFT  / aft  / stern)
+     Index 11 = Bay 1   (RIGHT / bow  / fore)
+
+   Array walks the deck from aft/stern to bow/fore, i.e. left→right
+   on screen:
+
+     Bay 12 → Bay 11 → Bay 10 → Bay 9 → Bay 8 → Bay 7 →
+     Bay 6  → Bay 5  → Bay 4  → Bay 3 → Bay 2 → Bay 1
+
+   Final measured values (metres):
+     Bay 12 = 4.15
+     Bay 11 = 4.04
+     Bay 10 = 4.75
+     Bay 9  = 4.03
+     Bay 8  = 4.75
+     Bay 7  = 4.76
+     Bay 6  = 4.04
+     Bay 5  = 4.75
+     Bay 4  = 4.02
+     Bay 3  = 4.75
+     Bay 2  = 4.76
+     Bay 1  = 4.47
+
+   Steel joints: 11 joints × 0.15 m each = 1.65 m
+   Sum of bays:                            53.27 m
+   Total measured deck length:             54.92 m
+
+   ─────────────────────────────────────────────────────────────────────
+   ⚠  WARNING — DO NOT REORDER THIS ARRAY NUMERICALLY FROM BAY 1 → 12.
+       It is intentionally stored in visual RENDER order from
+       Bay 12 (aft, left) to Bay 1 (bow, right). Reordering will break
+       the canvas layout, snap logic, bay-number lookup, zones, the
+       Methanol curve, the DG limit line, PDF/Excel exports, and every
+       cargo position stored in pixels.
+   ⚠  DO NOT hardcode the old total deck length (53.7 m) or the old
+       canvas width (1651 px) anywhere. Those values predate this
+       measured geometry and are archaeologically wrong.
+   ─────────────────────────────────────────────────────────────────────
+═══════════════════════════════════════════════════════════════════════ */
+const M = 31;                                    /* px per metre */
+const ft = f => Math.round(f * 0.3048 * M);      /* feet → px helper (legacy) */
+const JOINT_WIDTH_M = 0.15;                      /* structural joint between bays */
+const BAY_LENGTHS_M = [
+  4.15, // [0]  Bay 12  (aft / stern / left)
+  4.04, // [1]  Bay 11
+  4.75, // [2]  Bay 10
+  4.03, // [3]  Bay 9
+  4.75, // [4]  Bay 8
+  4.76, // [5]  Bay 7
+  4.04, // [6]  Bay 6
+  4.75, // [7]  Bay 5
+  4.02, // [8]  Bay 4
+  4.75, // [9]  Bay 3
+  4.76, // [10] Bay 2
+  4.47, // [11] Bay 1  (bow / fore / right)
+];
+const BAY_COUNT  = BAY_LENGTHS_M.length;
+const JOINT_PX   = Math.round(JOINT_WIDTH_M * M); /* ≈ 5 px at M=31 */
+
+/* Pixel-width array, same indexing as BAY_LENGTHS_M. */
+const BW = BAY_LENGTHS_M.map(m => Math.round(m * M));
+
+/* Cumulative bay-left-edge positions in px. Each bay starts after the
+   previous bay's pixel width PLUS one joint width. Joint lives in the
+   gap between BL_[i]+BW[i] and BL_[i+1]. */
+const BL_ = (() => {
+  const out = [];
+  let x = 0;
+  for(let i = 0; i < BAY_COUNT; i++){
+    out.push(x);
+    x += BW[i];
+    if(i < BAY_COUNT - 1) x += JOINT_PX;
+  }
+  return out;
+})();
+
+/* Total deck canvas width in px — includes every bay and every joint. */
+const TW = BL_[BAY_COUNT - 1] + BW[BAY_COUNT - 1];
+
+/* Total measured deck length in metres (for readouts / exports). */
+const DECK_LENGTH_M = BAY_LENGTHS_M.reduce((a,b) => a + b, 0)
+                    + (BAY_COUNT - 1) * JOINT_WIDTH_M;
+
+/* Bay index lookup — returns the index into BW/BL_/BAY_LENGTHS_M for a
+   given x coordinate in pixels. Accounts for joint gaps: an x that
+   falls inside a joint is reported as the bay to its LEFT (the bay
+   whose right edge is the joint's left edge). Returns -1 for x < 0.
+   Out-of-range x past the deck is clamped to the last bay. */
+function bayIndexFromX(x){
+  if(x < 0) return -1;
+  for(let i = 0; i < BAY_COUNT; i++){
+    const start = BL_[i];
+    const end   = start + BW[i];
+    if(x < end) return i;
+    /* x falls in the joint after this bay — attribute to this bay. */
+    const jointEnd = end + (i < BAY_COUNT - 1 ? JOINT_PX : 0);
+    if(x < jointEnd) return i;
+  }
+  return BAY_COUNT - 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FINAL SCALE MODEL — metres vs pixels
+   ─────────────────────────────────────────────────────────────────────
+   1) CARGO DIMENSIONS (size)
+      Cargo size is stored in metres: cargo.length_m / cargo.width_m.
+      Rendered cargo pixel size is derived from those metres:
+        cargo.w = m2px_w(length_m) = round(length_m × M)
+        cargo.h = m2px_h(width_m)  = round(width_m  × YS)   (YS = CVH/15)
+      Metres are the single source of truth for cargo size. The pixel
+      cache on cargo.w/cargo.h always falls back to m2px_* if missing.
+
+   2) CARGO / DECK POSITION READOUTS (where something is)
+      Physical X position MUST use deckXToMeters(xPx).
+      Physical Y position MUST use deckYToMeters(yPx).
+      Never use raw `xPx / M` for a full-deck or physical-position
+      readout: the deck's longitudinal geometry is an alternating
+      sequence of bays and 0.15 m joints whose per-segment pixel widths
+      are rounded independently. A naive `xPx / M` across multiple
+      segments accumulates rounding drift (~+0.18 m across the full
+      deck). `deckXToMeters` walks BAY_LENGTHS_M + JOINT_WIDTH_M and
+      interpolates proportionally within the segment the pixel lands
+      in, so it reports the true physical model metres.
+      (For Y the scale is uniform, so `yPx / YS` is equivalent to
+      `deckYToMeters(yPx)`. The helper exists for symmetry and explicit
+      naming.)
+
+   3) RULER TOOL
+      The ruler MUST use deckXToMeters() and deckYToMeters() so it
+      reports the physical vessel model, not accumulated pixel
+      rounding. Cross-surface consistency: the status bar, the
+      keyboard coord tip, and the ruler all read the same underlying
+      model metres and agree at the same pixel.
+
+   4) WHERE `/M` (RAW DIVISION) IS STILL ACCEPTABLE
+      Only for LOCAL cargo size rendering — i.e. reading cargo.w back
+      to metres inside inspector/export code. Cargo pixel size is
+      directly derived from length_m via `round(length_m × M)`, so
+      `cargo.w / M ≈ length_m` with at most 1 px rounding inside a
+      single cargo block. Do NOT use `/M` for full-deck measurements,
+      position readouts, or ruler math — use deckXToMeters().
+═══════════════════════════════════════════════════════════════════════ */
+
+/* Pixel-X → physical metres along the deck.
+   Walks the real alternating bay/joint segments from the BAY_LENGTHS_M
+   + JOINT_WIDTH_M source of truth, interpolating PROPORTIONALLY within
+   whichever segment the pixel lands in. This reports the true physical
+   metre offset a click represents, without inheriting the pixel-grid
+   rounding drift that accumulates when you naively divide `xPx / M`
+   across the full deck. Used by the ruler tool so full-deck
+   measurements read 54.92 m exact instead of the 55.06 m pixel sum.   */
+function deckXToMeters(xPx){
+  if(xPx <= 0) return 0;
+  if(xPx >= TW) return DECK_LENGTH_M;
+  let pxCursor = 0;
+  let mCursor  = 0;
+  for(let i = 0; i < BAY_COUNT; i++){
+    const bayPx = BW[i];
+    const bayM  = BAY_LENGTHS_M[i];
+    if(xPx <= pxCursor + bayPx){
+      const t = bayPx > 0 ? (xPx - pxCursor) / bayPx : 0;
+      return mCursor + t * bayM;
+    }
+    pxCursor += bayPx;
+    mCursor  += bayM;
+    if(i < BAY_COUNT - 1){
+      if(xPx <= pxCursor + JOINT_PX){
+        const t = JOINT_PX > 0 ? (xPx - pxCursor) / JOINT_PX : 0;
+        return mCursor + t * JOINT_WIDTH_M;
+      }
+      pxCursor += JOINT_PX;
+      mCursor  += JOINT_WIDTH_M;
+    }
+  }
+  return DECK_LENGTH_M;
+}
+
+/* Pixel-Y → physical metres across the deck. The vertical scale is a
+   single uniform ratio (no segmentation), so this is a plain division.
+   Full deck (y = CVH) returns exactly 15.00 m. Exposed as a helper so
+   the ruler and any future consumer can use symmetric naming with
+   deckXToMeters and never compute coordinates inline. */
+function deckYToMeters(yPx){
+  return Math.max(0, Math.min(CVH, yPx)) / (CVH / 15);
+}
+
+const CVH = 380, YS = CVH / 15;
+
+/* Deck usable area in px² — total canvas minus permanent exclusion zones.
+   Zone pixel sizes are from the actual rendered geometry. */
+const DECK_USABLE_AREA_PX = TW * CVH
+  - (124 * 95)    /* Store PORT bow */
+  - (157 * 55)    /* Hose Bay PORT */
+  - (258 * 55)    /* Hose Bay STBD */
+  - (90 * 60)     /* Ship's Waste Skip */
+  - (20 * CVH);   /* Bay 12 stern tiger zone */
+
+/* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
+const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
 
 /* ════════════════════════════════════
    COLOR ENGINE — Smart Dynamic Palette
@@ -458,9 +767,93 @@ function assignLocColor(locId){
    - Get base HSL
    - BL: rotate hue +140° (complementary area), adjusted saturation
    - ROB: rotate hue +240° (triadic area), warm amber bias
-   
+
    This guarantees L/BL/ROB are NEVER similar shades.
    ─────────────────────────────────────────────────────────── */
+
+/* ──────────────────────────────────────────────────────────────
+   SINGLE SOURCE OF TRUTH — operation palette.
+   The same colour drives pills, deck cargo fill, and any indicator
+   showing an operation (L / BL / ROB / TR). Change here → changes
+   everywhere. No independent colour generation anywhere else.
+   ────────────────────────────────────────────────────────────── */
+const OP_HEX = {
+  L:   '#7c3aed',   // purple
+  BL:  '#eab308',   // yellow / amber
+  ROB: '#16a34a',   // green
+  TR:  '#3b82f6',   // blue
+};
+
+/* ── Per-(location, status) colour cache ─────────────────────────
+   Instead of every LOAD being purple / every ROB being green, each
+   (location, status) pair receives its own palette entry chosen to
+   maximise distance from ALL other active pairs currently on the
+   deck. Result: two ROBs from different locations are always
+   visibly different.
+   BLEO + LOAD is a fixed business override (always grey) and is
+   excluded from the cache / palette pool.                         */
+const CARGO_COLORS = {};   // key `${locId}|${status}` → { h: hex, palEntry: PALETTE_POOL item }
+
+function _cargoPairsInUse(excludeKey){
+  /* Iterate the persistent assignment map (not S.cargo) so a colour
+     stays "in use" even after every cargo block for that pair has been
+     deleted. Prevents collision when the user deletes a pair and then
+     re-adds another with a different (loc,status) — the deleted pair's
+     hue is still reserved by CARGO_COLORS, so the new pair is forced
+     onto a different palette slot. As a side benefit, once any colour
+     has been assigned the scoring loop in _assignCargoColor sees a
+     non-empty usedEntries and properly maximises hue distance instead
+     of degenerating to PALETTE_POOL[0].
+     BLEO|L is excluded because opColor() short-circuits to fixed grey
+     before reaching _assignCargoColor, so it never appears here. */
+  const used = [];
+  for(const k in CARGO_COLORS){
+    if(k === excludeKey) continue;
+    if(k === 'BLEO|L') continue;
+    used.push(CARGO_COLORS[k].palEntry);
+  }
+  return used;
+}
+
+function _assignCargoColor(locId, status){
+  const key = `${locId}|${status}`;
+  if(CARGO_COLORS[key]) return CARGO_COLORS[key].h;
+
+  const usedEntries = _cargoPairsInUse(key);
+  let best = null, bestScore = -1;
+  PALETTE_POOL.forEach(entry => {
+    /* Skip entries already taken verbatim — forces a different slot
+       while we still have unused ones. */
+    if(usedEntries.some(u => u === entry)) return;
+    const minDist = usedEntries.length
+      ? Math.min(...usedEntries.map(u => palDist(entry, u)))
+      : 999;
+    if(minDist > bestScore){ bestScore = minDist; best = entry; }
+  });
+
+  /* Fallback: palette exhausted — reuse the entry with the best
+     minimum distance (will still differ as much as possible from
+     the closest neighbour on deck). */
+  if(!best){
+    PALETTE_POOL.forEach(entry => {
+      const minDist = usedEntries.length
+        ? Math.min(...usedEntries.map(u => palDist(entry, u)))
+        : 999;
+      if(minDist > bestScore){ bestScore = minDist; best = entry; }
+    });
+  }
+  if(!best) best = PALETTE_POOL[0];
+  CARGO_COLORS[key] = { h: best.h, palEntry: best };
+  return best.h;
+}
+
+/* Business rule: Bleo Holm LOAD is ALWAYS grey. Everything else is
+   assigned uniquely per (location, status) from the shared pool. */
+function opColor(locId, status){
+  if(locId === 'BLEO' && status === 'L') return '#b8bcc2';
+  return _assignCargoColor(locId, status);
+}
+
 function locColors(base, locId){
   /* Bleo Holm: operational fixed grey family */
   if(locId === 'BLEO') return {
@@ -1092,10 +1485,13 @@ const SEG_FULL = {
     '6.1':2,'6.2':3,
     '7':2,'8':2,'9':0,
   },
-  /* Poisons 6.1 */
+  /* Poisons 6.1
+     NOTE: 6.1 × 8 is an X cell per UKCS Supplement §2.3 (and IMDG
+     segregation table 7.2.4) — no segregation required. Previously
+     stored as 1 which incorrectly displayed "1 MINI" to users. */
   '6.1': {
     '6.2':3,
-    '7':1,'8':1,'9':0,
+    '7':1,'8':0,'9':0,
   },
   /* Infectious 6.2 */
   '6.2': {
@@ -1151,69 +1547,79 @@ function segClearancePx(level){
    dragCls  = DG class of the cargo being dragged
    excludeId = id of dragged cargo (skip it in the placed list)
    ─────────────────────────────────────────────────────── */
+/* DG segregation preview during drag — refined visual.
+   Engine unchanged (getSeg + SEG_FULL + segClearancePx). Only the visual
+   presentation changed: class-based styling, muted palette, small corner
+   badge, AND a soft halo on each infringed cargo block (via .dg-violation
+   on its .cb element). Returns the count of violations so callers can
+   react (e.g., visually "safe" when zero). */
 function showDragSegOverlay(dragCls, excludeId){
-  const ovl=document.getElementById('dgDragOverlay');
-  if(!ovl)return;
-  ovl.innerHTML='';
-  if(!dragCls)return;
+  const ovl = document.getElementById('dgDragOverlay');
+  if(!ovl) return 0;
+  /* Clear previous zones + violation classes before redrawing */
+  ovl.innerHTML = '';
+  document.querySelectorAll('.cb.dg-violation').forEach(el => {
+    el.classList.remove('dg-violation', 'dg-violation-1', 'dg-violation-2', 'dg-violation-3');
+  });
 
-  const ndrag=normDG(dragCls);
-  const palette={
-    1:'rgba(251,146,60,.28)',   // A — amber / 1 MINI
-    2:'rgba(220,38,38,.32)',    // B — red   / 2 MINI
-    3:'rgba(139,0,0,.42)',      // C — deep red / 3 MINI
-  };
-  const borderCol={1:'#f97316',2:'#dc2626',3:'#7f1d1d'};
-  const levelLabel={1:'1 MINI','2':'2 MINI',2:'2 MINI',3:'3 MINI'};
-
-  /* dragCls can be a single string or array of classes */
+  if(!dragCls) return 0;
   const dragArr = Array.isArray(dragCls) ? dragCls : (dragCls ? [dragCls] : []);
-  if(dragArr.length === 0) return;
+  if(dragArr.length === 0) return 0;
 
-  S.cargo.forEach(placed=>{
+  let violationCount = 0;
+
+  S.cargo.forEach(placed => {
     const placedArr = placed.dgClasses || [];
-    if(placed.id===excludeId||placedArr.length===0)return;
-    /* Check all combos — use most restrictive level */
-    let level=0;
-    for(const dc of dragArr){ for(const pc of placedArr){ level=Math.max(level,getSeg(dc,pc)); } }
-    if(level<1)return;
+    if(placed.id === excludeId || placedArr.length === 0) return;
 
-    const pad=segClearancePx(level);
-    const zx=Math.max(0,   placed.x - pad);
-    const zy=Math.max(0,   placed.y - pad);
-    const zx2=Math.min(TW, placed.x + placed.w + pad);
-    const zy2=Math.min(CVH,placed.y + placed.h + pad);
-    const zw=zx2-zx, zh=zy2-zy;
+    /* Most restrictive level across all class pairs. */
+    let level = 0;
+    for(const dc of dragArr){
+      for(const pc of placedArr){
+        level = Math.max(level, getSeg(dc, pc));
+      }
+    }
+    if(level < 1) return;
+    violationCount++;
 
-    const z=document.createElement('div');
-    z.className='dg-drag-zone';
-    z.style.cssText=[
-      `left:${zx}px`,`top:${zy}px`,
-      `width:${zw}px`,`height:${zh}px`,
-      `background:${palette[level]||palette[2]}`,
-      `border:2px dashed ${borderCol[level]||borderCol[2]}`,
-      'position:absolute','pointer-events:none','z-index:8','border-radius:3px',
-      'display:flex','align-items:center','justify-content:center',
-    ].join(';');
+    /* ── Clearance zone (dotted, muted) ─────────────────────────── */
+    const pad = segClearancePx(level);
+    const zx  = Math.max(0,   placed.x - pad);
+    const zy  = Math.max(0,   placed.y - pad);
+    const zx2 = Math.min(TW,  placed.x + placed.w + pad);
+    const zy2 = Math.min(CVH, placed.y + placed.h + pad);
 
-    const lbl=document.createElement('span');
-    lbl.style.cssText=[
-      `font-family:'Manrope',sans-serif`,
-      'font-size:9px','font-weight:700','letter-spacing:1px','text-transform:uppercase',
-      `color:${borderCol[level]||borderCol[2]}`,
-      'padding:1px 5px','border-radius:3px',
-      'background:rgba(255,255,255,.85)','white-space:nowrap',
-      'pointer-events:none',
-    ].join(';');
-    lbl.textContent=`${level} MINI · DG${placedArr.join(',')}`;
+    const z = document.createElement('div');
+    z.className = 'dg-drag-zone dg-drag-zone-' + level;
+    z.style.left   = zx  + 'px';
+    z.style.top    = zy  + 'px';
+    z.style.width  = (zx2 - zx) + 'px';
+    z.style.height = (zy2 - zy) + 'px';
+
+    /* Small corner badge — replaces the old centered pill */
+    const lbl = document.createElement('span');
+    lbl.className = 'dg-drag-zone-badge';
+    lbl.textContent = level + ' MINI · DG ' + placedArr.join(', ');
     z.appendChild(lbl);
     ovl.appendChild(z);
+
+    /* ── Halo on the infringed cargo block itself ──────────────── */
+    const cbEl = document.querySelector(`.cb[data-id="${placed.id}"]`);
+    if(cbEl){
+      cbEl.classList.add('dg-violation', 'dg-violation-' + level);
+    }
   });
+
+  return violationCount;
 }
 
 function clearDragSegOverlay(){
-  const ovl=document.getElementById('dgDragOverlay');
-  if(ovl)ovl.innerHTML='';
+  const ovl = document.getElementById('dgDragOverlay');
+  if(ovl) ovl.innerHTML = '';
+  /* Remove halos from any cargo that was marked during the drag. */
+  document.querySelectorAll('.cb.dg-violation').forEach(el => {
+    el.classList.remove('dg-violation', 'dg-violation-1', 'dg-violation-2', 'dg-violation-3');
+  });
 }
 
 /* ════════════════════════════════════
@@ -1224,20 +1630,39 @@ function setupCanvas(){
   cv.style.width=TW+'px';
   const HB_H=Math.round(2.16*YS);
 
-  /* Bay stripes + ghost numbers */
-  let x=0;
-  BW.forEach((w,i)=>{
-    if(i%2===0){const s=document.createElement('div');s.className='bay-stripe';s.style.left=x+'px';s.style.width=w+'px';cv.appendChild(s);}
-    const bn=document.createElement('div');
-    bn.className='bay-num';
-    bn.style.cssText=`position:absolute;left:${x}px;width:${w}px;top:50%;transform:translateY(-50%);
+  /* Bay stripes + ghost bay-number watermarks.
+     Positions come from BL_/BW which already account for the 0.15 m
+     structural joints between bays, so stripes + numbers sit inside the
+     real usable bay segment (not centred on equal columns). */
+  BW.forEach((w, i) => {
+    const x = BL_[i];
+    if(i % 2 === 0){
+      const s = document.createElement('div');
+      s.className = 'bay-stripe';
+      s.style.left  = x + 'px';
+      s.style.width = w + 'px';
+      cv.appendChild(s);
+    }
+    const bn = document.createElement('div');
+    bn.className = 'bay-num';
+    bn.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:50%;transform:translateY(-50%);
       text-align:center;font-family:'Manrope',sans-serif;font-size:40px;font-weight:900;
       color:rgba(49,51,44,.14);pointer-events:none;z-index:1;user-select:none;line-height:1;`;
-    bn.textContent=12-i;cv.appendChild(bn);x+=w;
+    bn.textContent = 12 - i;
+    cv.appendChild(bn);
   });
 
-  /* Bay lines */
-  x=0;BW.slice(0,-1).forEach(w=>{x+=w;const l=document.createElement('div');l.className='bay-line';l.style.left=x+'px';cv.appendChild(l);});
+  /* Bay joints — physical 0.15 m steel plates between adjacent bays.
+     Rendered as real-width vertical bands (JOINT_PX wide), not hairline
+     borders. There are 11 joints between 12 bays. */
+  for(let i = 0; i < BAY_COUNT - 1; i++){
+    const jx = BL_[i] + BW[i];  /* right edge of bay i = joint left edge */
+    const jo = document.createElement('div');
+    jo.className = 'bay-joint';
+    jo.style.left  = jx + 'px';
+    jo.style.width = JOINT_PX + 'px';
+    cv.appendChild(jo);
+  }
 
   /* Centre line + PORT/STBD */
   const cl=document.createElement('div');cl.className='center-line';cl.style.top=(CVH/2)+'px';cv.appendChild(cl);
@@ -1247,7 +1672,11 @@ function setupCanvas(){
   });
 
   /* Zones */
-  addZone(cv,0,0,20,CVH,'tiger','');
+  /* Aft tiger-striped reference strip. 1.00 m longitudinal length,
+     positioned INSIDE Bay 12 at its aft (stern) edge. Does NOT add to
+     total deck length — Bay 12 still spans 4.15 m in total. Scaled via
+     m2px_w so it uses the same metre→pixel system as cargo and bays. */
+  addZone(cv, 0, 0, m2px_w(1.0), CVH, 'tiger', '');
   addZone(cv,Math.round(BL_[2]+BW[2]*0.4),0,Math.round(BW[2]*0.6+BW[3]*0.55),HB_H,'hose','HOSE BAY');
   addZone(cv,BL_[2],CVH-HB_H,Math.round(BW[2]+BW[3]*0.88),HB_H,'hose','HOSE BAY');
   addZone(cv,TW-Math.round(4*M),0,Math.round(4*M),Math.round(3.75*YS),'store','STORE');
@@ -1353,11 +1782,113 @@ function setupCanvas(){
   cv.appendChild(dgd);
 
   cv.addEventListener('mousedown',e=>{
-    if(!S.pending||e.target.closest('.cb'))return;
-    e.preventDefault();
-    const r=cv.getBoundingClientRect();
-    placeAt((e.clientX-r.left)/zoomLevel,(e.clientY-r.top)/zoomLevel);
+    /* Never interfere with clicks on existing cargo — those have their own handlers */
+    if(e.target.closest('.cb')) return;
+    /* Pending placement wins over marquee — if a library card is pending,
+       a click on the deck is a deliberate place-at action. */
+    if(S.pending){
+      e.preventDefault();
+      const r=cv.getBoundingClientRect();
+      placeAt((e.clientX-r.left)/zoomLevel,(e.clientY-r.top)/zoomLevel);
+      return;
+    }
+    /* Phase 4 — empty-deck mousedown starts a potential marquee. Below a
+       4px movement threshold the gesture collapses to the original
+       "click empty space = deselect" behaviour. */
+    _marqueeStart(e, cv);
   });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 4 — MARQUEE SELECTION on the deck canvas.
+   Click-drag on empty deck → rectangle → any cargo intersecting it on
+   release joins the selection set. Shift: additive. No shift: replaces.
+   Below 4px of movement, falls through to kbDeselect() so the existing
+   empty-deck-click = deselect gesture is preserved pixel-for-pixel.
+══════════════════════════════════════════════════════════════════════ */
+function _marqueeStart(startEv, cv){
+  if(!cv) return;
+  const cr = cv.getBoundingClientRect();
+  const sx = (startEv.clientX - cr.left) / zoomLevel;
+  const sy = (startEv.clientY - cr.top)  / zoomLevel;
+  const shiftHeld = startEv.shiftKey === true;
+
+  let rectEl = null;
+  let moved  = false;
+
+  const updateRect = (cx, cy) => {
+    const x0 = Math.min(sx, cx), x1 = Math.max(sx, cx);
+    const y0 = Math.min(sy, cy), y1 = Math.max(sy, cy);
+    rectEl.style.left   = x0 + 'px';
+    rectEl.style.top    = y0 + 'px';
+    rectEl.style.width  = (x1 - x0) + 'px';
+    rectEl.style.height = (y1 - y0) + 'px';
+  };
+
+  const onMove = ev => {
+    if(!moved){
+      if(Math.abs(ev.clientX - startEv.clientX) < 4
+      && Math.abs(ev.clientY - startEv.clientY) < 4) return;
+      moved = true;
+      rectEl = document.createElement('div');
+      rectEl.className = 'marquee-rect';
+      cv.appendChild(rectEl);
+      document.body.classList.add('marquee-active');
+    }
+    const cx = (ev.clientX - cr.left) / zoomLevel;
+    const cy = (ev.clientY - cr.top)  / zoomLevel;
+    updateRect(cx, cy);
+  };
+
+  const onUp = ev => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    document.body.classList.remove('marquee-active');
+
+    if(!moved){
+      /* Click-only: preserve original empty-deck-click = deselect behaviour. */
+      if(typeof kbDeselect === 'function') kbDeselect();
+      return;
+    }
+
+    /* Final rectangle, normalised */
+    const cx = (ev.clientX - cr.left) / zoomLevel;
+    const cy = (ev.clientY - cr.top)  / zoomLevel;
+    const x0 = Math.min(sx, cx), x1 = Math.max(sx, cx);
+    const y0 = Math.min(sy, cy), y1 = Math.max(sy, cy);
+
+    /* Intersect hit-test — any pixel overlap counts. */
+    const hits = S.cargo.filter(c =>
+      !(c.x + c.w < x0 || c.x > x1 || c.y + c.h < y0 || c.y > y1)
+    );
+
+    if(rectEl){ rectEl.remove(); rectEl = null; }
+
+    /* Apply selection. Shift = additive; otherwise replace. */
+    if(!shiftHeld){
+      KB_SEL_SET.clear();
+      document.querySelectorAll('.cb.kb-sel').forEach(el => el.classList.remove('kb-sel'));
+    }
+    hits.forEach(c => {
+      KB_SEL_SET.add(c.id);
+      const el = document.querySelector(`.cb[data-id="${c.id}"]`);
+      if(el) el.classList.add('kb-sel');
+    });
+
+    /* Resolve the outcome: update primary + inspector. */
+    if(KB_SEL_SET.size === 0){
+      KB_SEL = null;
+      if(typeof kbHideCoord === 'function') kbHideCoord();
+      if(typeof inspClose === 'function') inspClose();
+    } else {
+      KB_SEL = Array.from(KB_SEL_SET).pop();
+      if(typeof kbShowCoord === 'function') kbShowCoord(KB_SEL);
+      if(typeof inspOpen === 'function') inspOpen(KB_SEL);
+    }
+  };
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
 }
 
 function addZone(cv,x,y,w,h,type,label){const z=document.createElement('div');z.className=`zone z-${type}`;z.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;z.innerHTML=`<span class="z-lbl">${label}</span>`;cv.appendChild(z);}
@@ -1413,6 +1944,27 @@ function bindDatePicker(){
   document.getElementById('calPrev').onclick=e=>{e.stopPropagation();calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendar();};
   document.getElementById('calNext').onclick=e=>{e.stopPropagation();calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1);renderCalendar();};
   document.addEventListener('click',e=>{if(!document.getElementById('calPopup').contains(e.target)&&e.target!==document.getElementById('dateBtn'))document.getElementById('calPopup').classList.remove('open');});
+}
+
+/* Voyage date is rolling today — re-anchor selDate to today's local calendar
+   date if the day boundary has passed since last check. 5-min granularity
+   is intentional: laptop sleep/wake cycles on a vessel make a one-shot
+   setTimeout-to-midnight unreliable (timer fires lost on sleep). setInterval
+   keeps ticking on resume, so the user sees the date roll within 5 min of
+   midnight regardless of sleep state. Suppressed while the date picker is
+   open so we don't override a user mid-edit. No save() — auto-rollover is
+   implicit, not a user action; it shouldn't dirty autosave or create an
+   undo step. Started once during init() at the bindDatePicker() call site;
+   interval lifetime = page lifetime (Tauri reload destroys JS context). */
+function _rollDateToTodayIfNeeded(){
+  const calPopup = document.getElementById('calPopup');
+  if(calPopup && calPopup.classList.contains('open')) return;
+  const now = new Date();
+  if(selDate.getFullYear() === now.getFullYear() &&
+     selDate.getMonth()    === now.getMonth() &&
+     selDate.getDate()     === now.getDate()) return;
+  selDate = now;
+  setDateDisplay();
 }
 
 /* ════════════════════════════════════
@@ -1561,127 +2113,129 @@ function clearLocFilter(){
 }
 
 function buildActiveLocStrip(){
-  const strip=document.getElementById('activeLocStrip');strip.innerHTML='';
+  const strip=document.getElementById('activeLocStrip');
   const cnt=document.getElementById('locsCount');
   cnt.textContent=S.activeLocs.length;
   if(!S.activeLocs.length){
     strip.innerHTML='<div style="display:flex;align-items:center;padding:0 20px;font-size:11px;color:var(--txt3);">No locations — click ⊕ to add</div>';
     return;
   }
-  S.activeLocs.forEach(id=>{
-    const loc=locById(id);if(!loc)return;
+  flipLayout(strip, () => {
+    strip.innerHTML='';
+    S.activeLocs.forEach(id=>{
+      const loc=locById(id);if(!loc)return;
 
-    /* Only deck cargo counts — not queue, not library */
-    const mine=S.cargo.filter(c=>c.platform===id);
+      /* Only deck cargo counts — not queue, not library */
+      const mine=S.cargo.filter(c=>c.platform===id);
 
-    /* Compute per-status data — only statuses with ≥1 item are rendered */
-    const statuses=[
-      {key:'L',   label:'L'},
-      {key:'BL',  label:'BL'},
-      {key:'ROB', label:'ROB'},
-    ].map(s=>{
-      const items=mine.filter(c=>c.status===s.key);
-      const wt=items.reduce((a,c)=>a+(parseFloat(c.wt)||0),0);
-      return {...s, count:items.length, wt};
-    }).filter(s=>s.count>0);  // ← only present statuses
+      /* Render ONLY the pills for operations that actually exist on this
+         location (count > 0). No placeholder / zero pills. Card width
+         follows content. Fixed operation colors (L/BL/ROB/TR) per design. */
+      const statuses=[
+        {key:'L',   label:'L'},
+        {key:'BL',  label:'BL'},
+        {key:'ROB', label:'ROB'},
+        {key:'TR',  label:'TR'},
+      ].map(s => ({...s, count: mine.filter(c=>c.status===s.key).length}))
+       .filter(s => s.count > 0);
 
-    const effectiveBase=getLocBase(id);
-    const cols=locColors(effectiveBase,id);
+      const effectiveBase=getLocBase(id);
+      const cols=locColors(effectiveBase,id);
 
-    /* Card element — always rendered */
-    const el=document.createElement('div');
-    el.className='loc-card'+(S.selLoc===id?' sel':'');
-    el.style.setProperty('--lc',effectiveBase);
+      /* Card element — always rendered */
+      const el=document.createElement('div');
+      el.className='loc-card'+(S.selLoc===id?' sel':'');
+      el.style.setProperty('--lc',effectiveBase);
+      /* data-loc-id for FLIP identity + filter targeting */
+      el.dataset.locId = id;
 
-    /* Name row — dot is a color picker trigger */
-    const head=document.createElement('div');
-    head.className='loc-card-head';
+      /* Name row — dot is a color picker trigger */
+      const head=document.createElement('div');
+      head.className='loc-card-head';
 
-    const dot=document.createElement('div');
-    dot.className='loc-card-dot';
-    dot.title='Click to change colour';
-    dot.style.cursor='pointer';
+      const dot=document.createElement('div');
+      dot.className='loc-card-dot';
+      dot.title='Click to change colour';
+      dot.style.cursor='pointer';
 
-    /* Hidden native color input */
-    const colorInp=document.createElement('input');
-    colorInp.type='color';
-    colorInp.value=effectiveBase;
-    colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-    dot.appendChild(colorInp);
+      /* Hidden native color input */
+      const colorInp=document.createElement('input');
+      colorInp.type='color';
+      colorInp.value=effectiveBase;
+      colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+      dot.appendChild(colorInp);
 
-    dot.addEventListener('click', e=>{
-      e.stopPropagation();
-      colorInp.click();
-    });
-    colorInp.addEventListener('input', e=>{
-      e.stopPropagation();
-      const newCol=colorInp.value;
-      /* Update DYN_COLORS with user's chosen colour */
-      DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
-      /* Persist and rebuild */
-      renderAll(); updateStats(); buildActiveLocStrip(); save();
-    });
-    colorInp.addEventListener('click', e=>e.stopPropagation());
-
-    const nameLbl=document.createElement('div');
-    nameLbl.className='loc-card-name';
-    nameLbl.textContent=loc.name;
-
-    head.appendChild(dot);
-    head.appendChild(nameLbl);
-
-    /* Status pill strip — only present statuses */
-    const pillStrip=document.createElement('div');
-    pillStrip.className='loc-card-pills';
-
-    if(statuses.length===0){
-      /* Empty: no cargo on deck for this location */
-      const empty=document.createElement('div');
-      empty.className='loc-card-empty';
-      empty.textContent='no cargo on deck';
-      pillStrip.appendChild(empty);
-    } else {
-      statuses.forEach(s=>{
-        const bgCol=cols[s.key];
-        const pill=document.createElement('div');
-        pill.className='loc-pill';
-        pill.style.background=bgCol;
-        /* Derive border from colour */
-        pill.style.borderColor=darken(bgCol,.15);
-
-        const wtStr=s.wt>0?s.wt.toFixed(1)+'T':'';
-        pill.innerHTML=
-          `<span class="loc-pill-lbl">${s.label}</span>`+
-          `<span class="loc-pill-val">${s.count}</span>`+
-          (wtStr?`<span class="loc-pill-wt">${wtStr}</span>`:'');
-        pillStrip.appendChild(pill);
+      dot.addEventListener('click', e=>{
+        e.stopPropagation();
+        colorInp.click();
       });
-    }
+      colorInp.addEventListener('input', e=>{
+        e.stopPropagation();
+        const newCol=colorInp.value;
+        /* Update DYN_COLORS with user's chosen colour */
+        DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
+        /* Persist and rebuild */
+        renderAll(); updateStats(); buildActiveLocStrip(); save();
+      });
+      colorInp.addEventListener('click', e=>e.stopPropagation());
 
-    /* Remove button */
-    const rm=document.createElement('div');
-    rm.className='loc-card-rm';rm.textContent='×';
-    rm.addEventListener('click',e=>{e.stopPropagation();toggleLoc(id);});
+      const nameLbl=document.createElement('div');
+      nameLbl.className='loc-card-name';
+      nameLbl.textContent=loc.name;
 
-    el.appendChild(head);
-    el.appendChild(pillStrip);
-    el.appendChild(rm);
-    /* data-loc-id for filter targeting */
-    el.dataset.locId = id;
-    el.addEventListener('click', e => {
-      /* Ignore if remove button was clicked */
-      if(e.target.closest('.loc-card-rm')) return;
-      /* Toggle filter: second click on active filter → clear */
-      if(LOC_FILTER === id){
-        clearLocFilter();
+      head.appendChild(dot);
+      head.appendChild(nameLbl);
+
+      /* Status pill strip — only present statuses */
+      const pillStrip=document.createElement('div');
+      pillStrip.className='loc-card-pills';
+
+      if(statuses.length === 0){
+        /* Graceful empty state — no cargo yet for this location */
+        const empty = document.createElement('div');
+        empty.className = 'loc-card-empty';
+        empty.textContent = 'no cargo on deck';
+        pillStrip.appendChild(empty);
       } else {
-        /* Set as sel loc (existing behaviour) + apply filter */
-        S.selLoc = id;
-        applyLocFilter(id);
-        buildActiveLocStrip();
+        statuses.forEach(s=>{
+          const pill=document.createElement('div');
+          pill.className='loc-pill';
+          pill.dataset.status = s.key;
+          const hex = opColor(id, s.key);
+          try{
+            const [r,g,b] = h2r(hex);
+            pill.style.setProperty('--op-color', `${r},${g},${b}`);
+          }catch(e){}
+          pill.innerHTML=
+            `<span class="loc-pill-lbl">${s.label}</span>`+
+            `<span class="loc-pill-val">${s.count}</span>`;
+          pillStrip.appendChild(pill);
+        });
       }
+
+      /* Remove button */
+      const rm=document.createElement('div');
+      rm.className='loc-card-rm';rm.textContent='×';
+      rm.addEventListener('click',e=>{e.stopPropagation();toggleLoc(id);});
+
+      el.appendChild(head);
+      el.appendChild(pillStrip);
+      el.appendChild(rm);
+      el.addEventListener('click', e => {
+        /* Ignore if remove button was clicked */
+        if(e.target.closest('.loc-card-rm')) return;
+        /* Toggle filter: second click on active filter → clear */
+        if(LOC_FILTER === id){
+          clearLocFilter();
+        } else {
+          /* Set as sel loc (existing behaviour) + apply filter */
+          S.selLoc = id;
+          applyLocFilter(id);
+          buildActiveLocStrip();
+        }
+      });
+      strip.appendChild(el);
     });
-    strip.appendChild(el);
   });
 
   /* Re-apply filter highlight if a filter is currently active */
@@ -1845,7 +2399,7 @@ function _placeAtCore(cx,cy){
   const h=isC?(it.h||m2px_h(1.83)):m2px_h(1.83);
   /* Store real-world metres for rotation and display; preserve from preset */
   const length_m = isC&&it.length_m ? it.length_m : (w/M);
-  const width_m  = isC&&it.width_m  ? it.width_m  : (h/M);
+  const width_m  = isC&&it.width_m  ? it.width_m  : (h/YS);
   const c={id:Date.now()+Math.random(),side:'DECK',
     x:Math.max(0,Math.min(cx-w/2,TW-w)),
     y:Math.max(0,Math.min(cy-h/2,CVH-h)),
@@ -1882,8 +2436,11 @@ function renderAll(){
 
 function renderBlock(cv,cargo){
   const loc=locById(cargo.platform)||LOC_ALL[0];
-  const cols=locColors(getLocBase(loc.id),loc.id);
-  const fill=cols[cargo.status]||getLocBase(loc.id);
+  /* Cargo fill uses the SAME central operation palette as pills — one
+     source of truth, so L is purple / BL yellow / ROB green / TR blue
+     everywhere. Location-specific override (e.g. Bleo Holm LOAD = grey)
+     is handled inside opColor(). */
+  const fill=opColor(cargo.platform, cargo.status) || getLocBase(loc.id);
   const border=darken(fill,.18);
   const textCol=isDark(fill)?'#fff':'#0a0800';
   const minDim=Math.min(cargo.w,cargo.h);
@@ -1926,7 +2483,7 @@ function renderBlock(cv,cargo){
   const dgd=_dgList.length>0?DG_DATA.find(d=>d.cls===_dgList[0]):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
 
-  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
+  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;animateCargoExit(_delId);S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
   b.appendChild(mkBtn('cb-rot','↻',e=>{
     e.stopPropagation();
     const cx=cargo.x+cargo.w/2,cy=cargo.y+cargo.h/2;
@@ -1940,40 +2497,92 @@ function renderBlock(cv,cargo){
     cargo.length_m=cargo.width_m;
     cargo.width_m=tmp;
     cargo.rot=((cargo.rot||0)+1)%4;
+    const _rotId=cargo.id;
     renderAll();save();
+    playSound('rotate');
+    _pulseCargo(_rotId, 'cb-rotate-pulse');
   }));
-  b.appendChild(mkBtn('cb-copy','+',e=>{e.stopPropagation();S.cargo.push({...cargo,id:Date.now()+Math.random(),x:Math.min(cargo.x+cargo.w+6,TW-cargo.w),y:cargo.y});renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();}));
+  b.appendChild(mkBtn('cb-copy','+',e=>{e.stopPropagation();const _newId=Date.now()+Math.random();const _srcX=cargo.x,_srcY=cargo.y,_srcW=cargo.w,_srcH=cargo.h;S.cargo.push({...cargo,id:_newId,x:Math.min(cargo.x+cargo.w+6,TW-cargo.w),y:cargo.y});renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('duplicate');_emitDuplicateTrail(_srcX,_srcY,_srcW,_srcH,_newId);}));
 
   const idEl=document.createElement('div');idEl.className='cb-id';
   /* Inline style — font size only; layout handled by CSS + parent flex */
   /* Premium label: slightly bolder, soft text-shadow for depth */
   const labelShadow = isDark(fill) ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.5)';
   idEl.style.cssText=`font-size:${textSz};color:${textCol};font-weight:700;text-shadow:0 1px 2px ${labelShadow};letter-spacing:0px;`;
-  idEl.textContent=cargo.ccu||'';
-  idEl.addEventListener('dblclick',e=>{e.stopPropagation();if(!isOperator())return;startInlineEdit(idEl,cargo,textSz,textCol);});b.appendChild(idEl);
+  /* Phase 26 — Tiny-cargo label fallback. Below ~0.9 m on shortest side
+     the text font clips to 8 px and becomes unreadable anyway. Suppress
+     the text entirely: block stays selectable, hover card and inspector
+     still show full info, but the deck stays clean instead of noisy. */
+  const _tinyCargo = minDim < 28;
+  idEl.textContent = _tinyCargo ? '' : (cargo.ccu||'');
+  b.appendChild(idEl);
 
-  /* DG badges — one per class, position:absolute so they float above flex flow */
-  _dgList.forEach((cls,idx) => {
-    const dd = DG_DATA.find(d => d.cls === cls);
-    if(!dd) return;
-    const badge = document.createElement('div');
-    badge.className = 'cb-dg-badge';
-    badge.style.cssText = `background:${dd.bg};color:${dd.tc};border-color:${dd.bc};font-size:${badgeSz};font-family:'Inter',system-ui,sans-serif;font-weight:800;letter-spacing:.3px;${idx > 0 ? 'right:'+(4+idx*28)+'px;' : ''}`;
-    badge.textContent = cls;
-    b.appendChild(badge);
-  });
-  /* Heavy Lift badge — bottom-left, opposite corner from DG */
-  if(cargo.heavyLift){const hl=document.createElement('div');hl.className='cb-hl-badge';hl.style.fontSize=badgeSz;hl.textContent='⬆HL';b.appendChild(hl);}
-  /* Priority Lift — amber outline + badge */
+  /* DG badges — wrapped in a safe-area strip that owns layout.
+     The strip is pinned to the top with left:3px and right:3px so
+     its flex flow can never overflow the cargo card, even on tiny
+     containers. Badges justify to the right and wrap to additional
+     rows when the cargo is narrow, so 3 badges on a small card stack
+     into 2 rows instead of overflowing horizontally. Size modifiers
+     tighten font/padding for small and extra-small cargo widths. */
+  /* Hybrid layout (Phase 27): name reserves the MIDDLE 60% of the block
+     (centred, with symmetric 20% gutters on each side); DG badge sits in
+     the RIGHT 20% gutter, but only if that gutter is at least 12 px wide
+     (i.e. cargo.w * 0.2 >= 12 → cargo.w ≥ 60 px ≈ 1.95 m). Below that
+     threshold, the badge is hidden on canvas — DG data still surfaces in
+     the edit modal, hover tooltip, DG ON BOARD summary line, and PDF/
+     Excel exports. The CSS rule `.cb.cb-has-dg .cb-id` (in app.css near
+     ~line 5117) constrains the name to a symmetric 60%-wide centred box
+     so the badge and name never overlap and the visual reads balanced.
+     Threshold uses logical (zoom-independent) cargo.w, so behaviour is
+     consistent across zoom levels. */
+  const _dgFits = cargo.w * 0.2 >= 12;
+  if(_dgList.length > 0 && _dgFits){
+    b.classList.add('cb-has-dg');
+    const strip = document.createElement('div');
+    strip.className = 'cb-dg-strip';
+    /* Scale down badge metrics on small cargo so multi-class fits.
+       Thresholds picked against the deck's m2px scale (M=31px/m):
+       ≈ 2.6 m width triggers small, ≈ 1.5 m width triggers xs.     */
+    if(cargo.w < 82) strip.classList.add('cb-dg-strip-small');
+    if(cargo.w < 48) strip.classList.add('cb-dg-strip-xs');
+    _dgList.forEach(cls => {
+      const dd = DG_DATA.find(d => d.cls === cls);
+      if(!dd) return;
+      const badge = document.createElement('div');
+      badge.className = 'cb-dg-badge';
+      badge.style.cssText = `background:${dd.bg};color:${dd.tc};border-color:${dd.bc};font-family:'Inter',system-ui,sans-serif;font-weight:800;letter-spacing:.2px;`;
+      badge.textContent = cls;
+      strip.appendChild(badge);
+    });
+    b.appendChild(strip);
+  }
+  /* Heavy Lift badge — bottom-left, opposite corner from DG.
+     Phase 26 — matches DG strip tier classes at 82px/48px for unified
+     badge coherence. */
+  if(cargo.heavyLift){
+    const hl=document.createElement('div');hl.className='cb-hl-badge';
+    if(cargo.w < 82) hl.classList.add('cb-hl-badge-small');
+    if(cargo.w < 48) hl.classList.add('cb-hl-badge-xs');
+    hl.style.fontSize=badgeSz;hl.textContent='⬆HL';b.appendChild(hl);
+  }
+  /* Priority Lift — amber outline + badge. Phase 26 tier adaptation. */
   if(cargo.priority){
     b.classList.add('cb-priority');
-    const pri=document.createElement('div');pri.className='cb-pri-badge';pri.style.fontSize=badgeSz;pri.textContent='⚡';b.appendChild(pri);
+    const pri=document.createElement('div');pri.className='cb-pri-badge';
+    if(cargo.w < 82) pri.classList.add('cb-pri-badge-small');
+    if(cargo.w < 48) pri.classList.add('cb-pri-badge-xs');
+    pri.style.fontSize=badgeSz;pri.textContent='⚡';b.appendChild(pri);
   }
-  /* Transfer — teal badge showing destination */
+  /* Transfer — destination badge. Inherits cb-id's bg-adaptive textCol
+     so it stays readable on every dynamic fill (olive, brown, pastel,
+     saturated). Lower opacity + lighter weight + smaller size + corner
+     position keep it visually secondary to the cargo name. */
   if(cargo.status==='TR'&&cargo.trDest){
     const trd=document.createElement('div');trd.className='cb-tr-badge';
     const destLoc=locById(cargo.trDest);
-    trd.style.fontSize=Math.max(7,parseInt(badgeSz)-1)+'px';
+    const trdBg = isDark(fill) ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.08)';
+    const trdBd = isDark(fill) ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.22)';
+    trd.style.cssText = `font-size:${Math.max(7,parseInt(badgeSz)-1)}px;color:${textCol};opacity:.78;font-weight:500;background:${trdBg};border-color:${trdBd};`;
     trd.textContent='→'+(destLoc?destLoc.name.slice(0,8):cargo.trDest.slice(0,8));
     b.appendChild(trd);
   }
@@ -1983,7 +2592,8 @@ function renderBlock(cv,cargo){
   b.addEventListener('mousedown',e=>{
     if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-id')||e.target.classList.contains('cb-rot'))return;
     if(e.button!==0)return;e.preventDefault();e.stopPropagation();
-    if(!isOperator()) return;          /* Viewer: block drag */
+    /* Viewer: allow selection (opens read-only inspector) but never drag */
+    if(!isOperator()){ kbSelect(cargo.id); if(typeof inspOpen==='function') inspOpen(cargo.id); return; }
     if(S.pending){cancelPending();return;}
     const sx=e.clientX,sy=e.clientY,rect=b.getBoundingClientRect();
     const ox=(e.clientX-rect.left)/zoomLevel,oy=(e.clientY-rect.top)/zoomLevel;let moved=false;
@@ -1999,27 +2609,177 @@ function renderBlock(cv,cargo){
       const cv=document.getElementById('cvDECK');if(cv)cv.appendChild(_ghostTrail);
     }
     let _dragSegTimer=0;
+    /* Phase 29 — pause Night Watch glint during an active drag. Cleared
+       on mouseup below. No-op when SMART.nightWatch is off. */
+    if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(true);
     const onMove=ev=>{
       if(Math.abs(ev.clientX-sx)>4||Math.abs(ev.clientY-sy)>4)moved=true;
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
       if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id);_dragSegTimer=0;});}
+      /* Phase 10 — live snap guide preview. Mirrors the onUp math for the
+         intended drop position so guides show exactly what will fire on
+         release. Suppressed during group drag (snap math also skips then). */
+      if(moved){
+        const cv = document.getElementById('cvDECK');
+        if(cv){
+          const cr = cv.getBoundingClientRect();
+          const ix = Math.max(0, Math.min((ev.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
+          const iy = Math.max(0, Math.min((ev.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
+          const groupMove = (typeof KB_SEL_SET !== 'undefined'
+                          && KB_SEL_SET.size > 1
+                          && KB_SEL_SET.has(cargo.id));
+          scheduleSnapGuides(cargo, ix, iy, groupMove);
+          /* Phase 28 — live readout pill. Updates on every move while the
+             drag is beyond the 4 px threshold. Feeds bay (1..12), deck
+             x/y in metres, and cargo size in metres. Hidden if the user
+             disabled it in Smart Tools. */
+          _updateDragReadout(ev.clientX, ev.clientY, ix, iy, cargo);
+        }
+      }
     };
     const onUp=ev=>{
-      document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);ghost.remove();
+      document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+      /* Phase 27 — ghost landing dissolve. Instead of pop-off, the ghost
+         fades + micro-scales for 120ms so the drag's phantom "arrives"
+         before disappearing. Purely cosmetic; state flow is unchanged.
+         Only applied when the drag actually moved; zero-move clicks still
+         get instant cleanup to preserve selection semantics. */
+      if(moved){
+        ghost.classList.add('is-dissolving');
+        ghost.addEventListener('transitionend',
+          () => ghost.remove(),
+          { once: true });
+        /* Safety net in case transitionend is skipped (tab blur etc.) */
+        setTimeout(() => { if(ghost.parentNode) ghost.remove(); }, 240);
+      } else {
+        ghost.remove();
+      }
       if(_ghostTrail) _ghostTrail.remove();
       clearDragSegOverlay();
-      if(moved){b.style.visibility='hidden';const el=document.elementFromPoint(ev.clientX,ev.clientY);b.style.visibility='';const tc=el&&el.closest('.dcv');if(tc){const cr=tc.getBoundingClientRect();cargo.x=Math.max(0,Math.min((ev.clientX-cr.left)/zoomLevel-ox,TW-cargo.w));cargo.y=Math.max(0,Math.min((ev.clientY-cr.top)/zoomLevel-oy,CVH-cargo.h));}/* Smart Bounce: resolve overlap BEFORE grid snap */
-              const bouncePos=smartBounce(cargo);
-              if(bouncePos){ cargo.x=bouncePos.x; cargo.y=bouncePos.y; }
-              /* Smart Grid Snap: align to neighbour / bay / boundary (after bounce, before render) */
-              const snapPos=smartGridSnap(cargo);
-              if(snapPos){ cargo.x=snapPos.x; cargo.y=snapPos.y; }
-              renderAll();
-              if(bouncePos) triggerBounceAnim(cargo.id);
-              updateStats();buildActiveLocStrip();
-              checkSeg();save();playSound('drop');if(typeof setLastAction==='function')setLastAction('Moved '+(cargo.ccu||cargo.desc||'cargo'));}else{ kbSelect(cargo.id); openModal(cargo.id); }
+      clearSnapGuides();
+      /* Phase 28 — hide drag readout. Post-drop bay tag shows below
+         only if the drag actually moved AND SMART.dragReadout is on. */
+      _hideDragReadout();
+      /* Phase 29 — resume Night Watch glint. */
+      if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
+      if(moved){
+        /* Phase 4 — Group drag detection. If the cargo being dragged is
+           part of an active multi-selection, every other selected cargo
+           moves with it by the same delta. Relative positions preserved
+           exactly; Bounce / Grid-Snap suppressed in group mode (rigid move). */
+        const isGroupDrag = (typeof KB_SEL_SET !== 'undefined'
+                          && KB_SEL_SET.size > 1
+                          && KB_SEL_SET.has(cargo.id));
+        const groupOthers = isGroupDrag
+          ? Array.from(KB_SEL_SET)
+              .filter(id => id !== cargo.id)
+              .map(id => S.cargo.find(c => c.id === id))
+              .filter(Boolean)
+          : [];
+
+        b.style.visibility='hidden';
+        const el=document.elementFromPoint(ev.clientX,ev.clientY);
+        b.style.visibility='';
+        const tc=el&&el.closest('.dcv');
+
+        if(tc){
+          const cr=tc.getBoundingClientRect();
+          const attemptedX = Math.max(0, Math.min((ev.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
+          const attemptedY = Math.max(0, Math.min((ev.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
+
+          if(isGroupDrag){
+            /* Clamp the delta so no OTHER selected cargo slides off the deck.
+               The primary already sits within bounds thanks to the Max/Min
+               above; we only need to further constrain per-other. */
+            let dx = attemptedX - cargo.x;
+            let dy = attemptedY - cargo.y;
+            groupOthers.forEach(o => {
+              if(dx > 0) dx = Math.min(dx, TW  - o.w - o.x);
+              else       dx = Math.max(dx, -o.x);
+              if(dy > 0) dy = Math.min(dy, CVH - o.h - o.y);
+              else       dy = Math.max(dy, -o.y);
+            });
+            cargo.x += dx;
+            cargo.y += dy;
+            groupOthers.forEach(o => { o.x += dx; o.y += dy; });
+          } else {
+            cargo.x = attemptedX;
+            cargo.y = attemptedY;
+          }
+        }
+
+        /* Smart Bounce + Grid Snap — single-cargo only. In group drag we
+           preserve the operator's chosen formation; auto-adjusting would
+           break the intent. */
+        let bouncePos = null, snapPos = null;
+        if(!isGroupDrag){
+          bouncePos=smartBounce(cargo);
+          if(bouncePos){ cargo.x=bouncePos.x; cargo.y=bouncePos.y; }
+          snapPos=smartGridSnap(cargo);
+          if(snapPos){ cargo.x=snapPos.x; cargo.y=snapPos.y; }
+        }
+
+        renderAll();
+
+        if(isGroupDrag){
+          /* Re-apply multi-select ring to every set member (renderAll wipes it),
+             and fire the same placement-confirmation scale-in on each moved
+             block so the group visually lands as one. */
+          const movedIds = [cargo.id, ...groupOthers.map(o => o.id)];
+          movedIds.forEach(id => {
+            const domEl = document.querySelector(`.cb[data-id="${id}"]`);
+            if(!domEl) return;
+            domEl.classList.add('kb-sel');
+            domEl.classList.add('just-placed');
+            domEl.addEventListener('animationend', () => domEl.classList.remove('just-placed'), { once:true });
+          });
+        } else if(bouncePos){
+          triggerBounceAnim(cargo.id);
+        }
+
+        updateStats();buildActiveLocStrip();
+        checkSeg();save();playSound('drop');
+        /* Phase 28 — post-drop bay tag. Shows which bay (1..12) the
+           cargo landed in, fades after 700 ms. Only fires for moved
+           single-cargo drops; group moves get the existing .just-placed
+           group signal so this doesn't pile on visually. */
+        if(!isGroupDrag) _showDropBayConfirm(cargo);
+        /* Phase 25 — snap lock-in confirmation. When Smart Grid Snap
+           committed a snap target on this drop, fire a tiny pulse +
+           tick on the cargo so the operator sees "yes it locked on".
+           (Bounce already has its own bounce animation via
+           triggerBounceAnim; snap gets its own distinct cue.) */
+        if(snapPos && !isGroupDrag){
+          const snapEl = document.querySelector(`.cb[data-id="${cargo.id}"]`);
+          if(snapEl){
+            snapEl.classList.remove('cb-snap-pulse');
+            void snapEl.offsetWidth; /* force reflow so re-add restarts anim */
+            snapEl.classList.add('cb-snap-pulse');
+            snapEl.addEventListener('animationend',
+              () => snapEl.classList.remove('cb-snap-pulse'),
+              { once:true });
+          }
+          playSound('snap');
+        }
+      }else{
+                /* Click without drag → Phase 2: select + open inspector.
+                   Phase 4: shift-click toggles the cargo in the selection set
+                   without dismissing the current multi-selection.            */
+                const _shift = ev.shiftKey === true;
+                kbSelect(cargo.id, { shift: _shift });
+                if(typeof inspOpen==='function'){
+                  if(KB_SEL_SET.size === 0){
+                    /* All deselected (shift-click removed the last one) */
+                    if(typeof inspClose === 'function') inspClose();
+                  } else {
+                    inspOpen(cargo.id);
+                  }
+                } else {
+                  openModal(cargo.id);
+                }
+              }
     };
     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
@@ -2027,7 +2787,8 @@ function renderBlock(cv,cargo){
   /* ── Touch support — mirrors mouse drag for tablets ── */
   b.addEventListener('touchstart', e => {
     if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-rot')) return;
-    if(!isOperator()) return;          /* Viewer: block touch drag */
+    /* Viewer: tap to open read-only inspector, never drag */
+    if(!isOperator()){ kbSelect(cargo.id); if(typeof inspOpen==='function') inspOpen(cargo.id); return; }
     if(S.pending){cancelPending();return;}
     const touch = e.touches[0];
     const sx=touch.clientX, sy=touch.clientY, rect=b.getBoundingClientRect();
@@ -2042,10 +2803,23 @@ function renderBlock(cv,cargo){
       if(Math.abs(t.clientX-sx)>4||Math.abs(t.clientY-sy)>4) moved=true;
       ghost.style.left=(t.clientX-ox*zoomLevel)+'px'; ghost.style.top=(t.clientY-oy*zoomLevel)+'px';
       if(cargo.dgClasses&&cargo.dgClasses.length>0) showDragSegOverlay(cargo.dgClasses, cargo.id);
+      /* Phase 10 — live snap guide preview on touch drags. */
+      if(moved){
+        const cv = document.getElementById('cvDECK');
+        if(cv){
+          const cr = cv.getBoundingClientRect();
+          const ix = Math.max(0, Math.min((t.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
+          const iy = Math.max(0, Math.min((t.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
+          const groupMove = (typeof KB_SEL_SET !== 'undefined'
+                          && KB_SEL_SET.size > 1
+                          && KB_SEL_SET.has(cargo.id));
+          scheduleSnapGuides(cargo, ix, iy, groupMove);
+        }
+      }
     };
     const onTouchEnd = ev => {
       document.removeEventListener('touchmove',onTouchMove); document.removeEventListener('touchend',onTouchEnd);
-      ghost.remove(); clearDragSegOverlay();
+      ghost.remove(); clearDragSegOverlay(); clearSnapGuides();
       const t = ev.changedTouches[0];
       if(moved){
         b.style.visibility='hidden';const el=document.elementFromPoint(t.clientX,t.clientY);b.style.visibility='';
@@ -2055,29 +2829,229 @@ function renderBlock(cv,cargo){
         const snapPos=smartGridSnap(cargo);if(snapPos){cargo.x=snapPos.x;cargo.y=snapPos.y;}
         renderAll();if(bouncePos)triggerBounceAnim(cargo.id);
         updateStats();buildActiveLocStrip();checkSeg();save();
-      } else { kbSelect(cargo.id); openModal(cargo.id); }
+      } else { /* Tap without drag → select + inspector (modal is fallback) */ kbSelect(cargo.id); if(typeof inspOpen==='function'){ inspOpen(cargo.id); } else { openModal(cargo.id); } }
     };
     document.addEventListener('touchmove',onTouchMove,{passive:false}); document.addEventListener('touchend',onTouchEnd);
   }, {passive:false});
 
+  /* Phase 11 — hover info card wiring. Pointer-events:none card means
+     we never hand off hover to it; all state lives on the .cb element. */
+  b.addEventListener('mouseenter', () => cargoHoverCardSchedule(cargo, b));
+  b.addEventListener('mouseleave', () => cargoHoverCardHide());
+  /* Any mousedown (drag-start, click-select, resize handle, corner ctrl)
+     must kill the card instantly so it never lingers during an action. */
+  b.addEventListener('mousedown', () => cargoHoverCardHide(), true);
+
   cv.appendChild(b);
 }
 
-function startInlineEdit(el,cargo,sz,col){
-  const inp=document.createElement('input');
-  inp.type='text';inp.className='id-input';
-  inp.value=cargo.ccu||'';inp.placeholder='CCU / ID';
-  inp.style.cssText=`font-size:${sz};color:${col};width:90%;text-align:center;`;
-  el.replaceWith(inp);inp.focus();inp.select();
-  const commit=()=>{cargo.ccu=inp.value.trim();save();renderAll();};
-  inp.addEventListener('keydown',e=>{if(e.key==='Enter')commit();if(e.key==='Escape')renderAll();});
-  inp.addEventListener('blur',commit);
-  inp.addEventListener('mousedown',e=>e.stopPropagation());
+/* ════════════════════════════════════════════════════════════
+   PHASE 12 — CARGO EXIT ANIMATION
+   Clones the cargo's .cb DOM at its current screen position, pins
+   it to <body> with position:fixed, then fades + scales out.
+   renderAll() wipes the original underneath; the clone lives on
+   body so it survives the rebuild. Purely visual — underlying
+   state mutation flow unchanged.
+════════════════════════════════════════════════════════════ */
+function animateCargoExit(ids){
+  if(!ids) return;
+  const list = Array.isArray(ids) ? ids : [ids];
+  list.forEach(id => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(!el) return;
+    const rect = el.getBoundingClientRect();
+    if(rect.width === 0 || rect.height === 0) return;
+    const clone = el.cloneNode(true);
+    /* Drop interaction + semantic classes so the clone is purely visual. */
+    clone.classList.remove('kb-sel', 'dg-violation', 'dg-violation-warn',
+                           'dg-violation-1', 'dg-violation-2', 'dg-violation-3',
+                           'just-placed', 'st-bouncing');
+    clone.classList.add('cb-leaving');
+    clone.removeAttribute('data-id'); /* avoid duplicate data-id in DOM */
+    clone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;`
+                        + `width:${rect.width}px;height:${rect.height}px;`
+                        + `margin:0;z-index:9998;pointer-events:none;`;
+    document.body.appendChild(clone);
+    /* Force layout commit so the transition kicks in on class add. */
+    void clone.offsetWidth;
+    clone.classList.add('is-leaving');
+    const cleanup = () => { if(clone.parentNode) clone.parentNode.removeChild(clone); };
+    clone.addEventListener('transitionend', cleanup, { once:true });
+    /* Safety net — guarantee removal even if transitionend misses. */
+    setTimeout(cleanup, 500);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PHASE 11 — CARGO HOVER INFO CARD
+   Pointer-events:none floating card that shows read-only cargo
+   identity + meta on hover after a brief delay. Never interferes
+   with drag / select / inspector; auto-hides on mousedown, leave,
+   or when any modal / palette opens.
+════════════════════════════════════════════════════════════ */
+const CHC_DELAY_MS = 380;
+const CHC_GAP      = 10;   /* px gap between cargo and card */
+let _chcTimer = 0;
+let _chcCurrentId = null;
+
+function cargoHoverCardSchedule(cargo, cbEl){
+  /* Suppress while a modal / palette / cheatsheet is open — those are the
+     focal surfaces; hovering the deck behind them shouldn't summon a
+     second floating element. */
+  if(document.getElementById('ov')?.classList.contains('open')) return;
+  if(document.getElementById('ascoOv')?.classList.contains('open')) return;
+  if(document.getElementById('kbCheatOv')?.classList.contains('open')) return;
+  if(document.getElementById('cmdpOv')?.classList.contains('open')) return;
+  /* Don't race a pending library-card drop placement either. */
+  if(S.pending) return;
+
+  if(_chcTimer) clearTimeout(_chcTimer);
+  _chcTimer = setTimeout(() => {
+    _chcTimer = 0;
+    cargoHoverCardShow(cargo, cbEl);
+  }, CHC_DELAY_MS);
+}
+
+function cargoHoverCardHide(){
+  if(_chcTimer){ clearTimeout(_chcTimer); _chcTimer = 0; }
+  const card = document.getElementById('cargoHoverCard');
+  if(!card) return;
+  card.classList.remove('is-visible');
+  card.hidden = true;
+  card.setAttribute('aria-hidden', 'true');
+  /* Phase 24 — remove the inspection halo from whichever cargo the card
+     was describing. Creates the paired visual cue that connects the card
+     to the specific cargo it's about. */
+  if(_chcCurrentId != null){
+    const prev = document.querySelector(`.cb[data-id="${_chcCurrentId}"]`);
+    if(prev) prev.classList.remove('cb-inspecting');
+  }
+  _chcCurrentId = null;
+}
+
+function cargoHoverCardShow(cargo, cbEl){
+  const card = document.getElementById('cargoHoverCard');
+  if(!card || !cbEl) return;
+
+  /* Populate. Strings pulled straight from cargo state — no derived
+     calculations beyond formatting. */
+  const statusMap = { L:'LOAD', BL:'BACKLOAD', ROB:'ROB', TR:'TRANSFER' };
+  const statusKey = cargo.status || '';
+  const statusLbl = statusMap[statusKey] || '—';
+
+  /* If CCU is blank, the CCU slot falls back to desc — so we must also
+     avoid duplicating that same string in the description row below. */
+  const displayedCCU = cargo.ccu || cargo.desc || 'Unnamed';
+  const ccuEl = document.getElementById('chcCcu');
+  if(ccuEl) ccuEl.textContent = displayedCCU;
+
+  const descEl = document.getElementById('chcDesc');
+  if(descEl){
+    const d = cargo.desc || '';
+    descEl.textContent = (d && d !== displayedCCU) ? d : '';
+  }
+
+  const dot = document.getElementById('chcStatusDot');
+  if(dot){
+    dot.className = 'chc-status-dot' + (statusKey ? ' s-' + statusKey : '');
+  }
+  const slbl = document.getElementById('chcStatusLbl');
+  if(slbl) slbl.textContent = statusLbl;
+
+  const wtEl = document.getElementById('chcWt');
+  if(wtEl){
+    const w = parseFloat(cargo.wt);
+    wtEl.textContent = (isFinite(w) ? w.toFixed(1) : '0.0') + ' T';
+  }
+
+  const locEl = document.getElementById('chcLoc');
+  const locSw = document.getElementById('chcLocSwatch');
+  const locName = (typeof locById === 'function' && cargo.platform)
+    ? (locById(cargo.platform)?.name || cargo.platform)
+    : (cargo.platform || '—');
+  if(locEl) locEl.textContent = locName;
+  if(locSw){
+    try{
+      const base = (typeof getLocBase === 'function') ? getLocBase(cargo.platform) : null;
+      locSw.style.background = base || '';
+    }catch(e){ locSw.style.background = ''; }
+  }
+
+  const sizeEl = document.getElementById('chcSize');
+  if(sizeEl){
+    /* length_m × width_m when available, else pixel dims in metres via M. */
+    const lm = cargo.length_m != null ? cargo.length_m : (cargo.w / M);
+    const wm = cargo.width_m  != null ? cargo.width_m  : (cargo.h / (CVH/15));
+    sizeEl.textContent = lm.toFixed(2).replace(/\.?0+$/,'') + '×' +
+                         wm.toFixed(2).replace(/\.?0+$/,'') + ' m';
+  }
+
+  /* Flags row — DG pills + Priority */
+  const flagsWrap = document.getElementById('chcFlags');
+  const dgList    = document.getElementById('chcDgList');
+  const pri       = document.getElementById('chcPri');
+  const dg        = cargo.dgClasses || [];
+  const hasDG     = dg.length > 0;
+  const hasPri    = !!cargo.priority;
+  if(dgList){
+    dgList.innerHTML = '';
+    dg.forEach(cls => {
+      const tag = document.createElement('span');
+      tag.className = 'chc-dg-tag';
+      tag.textContent = 'DG ' + cls;
+      dgList.appendChild(tag);
+    });
+  }
+  if(pri) pri.hidden = !hasPri;
+  if(flagsWrap) flagsWrap.hidden = !(hasDG || hasPri);
+
+  /* Reveal the card first so we can measure it, then position. */
+  card.hidden = false;
+  card.setAttribute('aria-hidden', 'false');
+  /* Phase 24 — if the card moved from one cargo to another without a
+     hide in between, first clear the previous halo. Then mark this
+     cargo as the one being inspected. */
+  if(_chcCurrentId != null && _chcCurrentId !== cargo.id){
+    const prev = document.querySelector(`.cb[data-id="${_chcCurrentId}"]`);
+    if(prev) prev.classList.remove('cb-inspecting');
+  }
+  _chcCurrentId = cargo.id;
+  cbEl.classList.add('cb-inspecting');
+
+  /* Measure + position with clamping + flip fallback. */
+  const cr     = cbEl.getBoundingClientRect();
+  const cardR  = card.getBoundingClientRect();
+  const vw     = window.innerWidth;
+  const vh     = window.innerHeight;
+
+  /* Prefer right side of cargo. Flip to left if it would clip viewport. */
+  let left = cr.right + CHC_GAP;
+  if(left + cardR.width > vw - 8){
+    left = cr.left - cardR.width - CHC_GAP;
+  }
+  /* If even left doesn't fit, clamp to viewport edge. */
+  if(left < 8) left = 8;
+  if(left + cardR.width > vw - 8) left = vw - cardR.width - 8;
+
+  /* Align top with cargo top; clamp to viewport vertically. */
+  let top = cr.top;
+  if(top + cardR.height > vh - 8){
+    top = Math.max(8, vh - cardR.height - 8);
+  }
+  if(top < 8) top = 8;
+
+  card.style.left = left + 'px';
+  card.style.top  = top  + 'px';
+
+  /* Transition from hidden→visible. rAF to let hidden removal commit. */
+  requestAnimationFrame(() => card.classList.add('is-visible'));
 }
 
 function startResize(e,cargo,block,dir){
   const sx=e.clientX,sy=e.clientY,ox=cargo.x,oy=cargo.y,ow=cargo.w,oh=cargo.h;
   block.style.opacity='.55';
+  /* Phase 29 — pause Night Watch glint during an active resize. */
+  if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(true);
   const onMove=ev=>{
     const dx=(ev.clientX-sx)/zoomLevel,dy=(ev.clientY-sy)/zoomLevel;
     let nx=ox,ny=oy,nw=ow,nh=oh;
@@ -2087,6 +3061,9 @@ function startResize(e,cargo,block,dir){
     if(dir.includes('n')){nh=Math.max(20,oh-dy);ny=oy+oh-nh;}
     cargo.x=nx;cargo.y=ny;cargo.w=nw;cargo.h=nh;
     block.style.cssText+=`left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
+    /* Phase 28 — live resize readout. Pill near the active handle shows
+       the new dimensions in metres + area. Only when SMART.dragReadout. */
+    _updateResizeReadout(ev.clientX, ev.clientY, cargo);
   };
   const onUp=()=>{
     document.removeEventListener('mousemove',onMove);
@@ -2096,6 +3073,9 @@ function startResize(e,cargo,block,dir){
     cargo.length_m = parseFloat((cargo.w / M).toFixed(3));
     cargo.width_m  = parseFloat((cargo.h / (CVH/15)).toFixed(3));
     renderAll();save();
+    _hideResizeReadout();
+    /* Phase 29 — resume Night Watch glint. */
+    if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
   };
   document.addEventListener('mousemove',onMove);
   document.addEventListener('mouseup',onUp);
@@ -2104,14 +3084,86 @@ function startResize(e,cargo,block,dir){
 /* ════════════════════════════════════
    STATS + DG
 ════════════════════════════════════ */
-function updateStats(){let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;S.cargo.forEach(c=>{tot++;wt+=parseFloat(c.wt)||0;if(c.status==='L')L++;if(c.status==='BL')BL++;if(c.status==='ROB')ROB++;if(c.status==='TR')TR++;});document.getElementById('sLifts').textContent=tot;document.getElementById('sWT').textContent=wt.toFixed(1)+' T';document.getElementById('sL').textContent=L;document.getElementById('sBL').textContent=BL;document.getElementById('sROB').textContent=ROB;const trEl=document.getElementById('sTR');if(trEl)trEl.textContent=TR;const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';
-/* V2: Weight gauge update */
-const gaugeEl=document.getElementById('wtGauge');const fillEl=document.getElementById('wtGaugeFill');const gaugeTxt=document.getElementById('wtGaugeText');
-if(gaugeEl&&fillEl){gaugeEl.style.display=SMART.weightGauge?'':'none';if(SMART.weightGauge){const MAX_WT=2500;const pct=Math.min(100,wt/MAX_WT*100);fillEl.style.width=pct+'%';fillEl.className='wt-gauge-fill'+(pct>90?' crit':pct>70?' warn':'');if(gaugeTxt)gaugeTxt.textContent=wt.toFixed(0)+' / '+MAX_WT+' T';}}
-/* V12: Empty deck hint */
-const hintEl=document.getElementById('emptyDeckHint');if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
-/* V9: Status bar update */
-if(typeof updateStatusBar==='function') updateStatusBar();
+function updateStats(){
+  let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;
+  S.cargo.forEach(c=>{
+    tot++;
+    wt+=parseFloat(c.wt)||0;
+    if(c.status==='L')L++;
+    if(c.status==='BL')BL++;
+    if(c.status==='ROB')ROB++;
+    if(c.status==='TR')TR++;
+  });
+
+  document.getElementById('sLifts').textContent=tot;
+  document.getElementById('sWT').textContent=wt.toFixed(1)+' T';
+  document.getElementById('sL').textContent=L;
+  document.getElementById('sBL').textContent=BL;
+  document.getElementById('sROB').textContent=ROB;
+  const trEl=document.getElementById('sTR');if(trEl)trEl.textContent=TR;
+  const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';
+
+  /* Phase 3A — weight-as-hero capacity bar. Always visible in the ribbon;
+     threshold class shifts color calmly at 70 % (warn) and 90 % (crit). */
+  const MAX_WT = 2500;
+  const pct = Math.min(100, wt / MAX_WT * 100);
+  const bar = document.getElementById('sWTbar');
+  if(bar){
+    bar.style.width = pct.toFixed(1) + '%';
+    bar.classList.toggle('warn', pct > 70 && pct <= 90);
+    bar.classList.toggle('crit', pct > 90);
+  }
+
+  /* Legacy gauge — retained for Smart Tools toggle backward-compat. */
+  const gaugeEl=document.getElementById('wtGauge');
+  const fillEl =document.getElementById('wtGaugeFill');
+  const gaugeTxt=document.getElementById('wtGaugeText');
+  if(gaugeEl&&fillEl){
+    gaugeEl.style.display=SMART.weightGauge?'':'none';
+    if(SMART.weightGauge){
+      fillEl.style.width=pct+'%';
+      fillEl.className='wt-gauge-fill'+(pct>90?' crit':pct>70?' warn':'');
+      if(gaugeTxt)gaugeTxt.textContent=wt.toFixed(0)+' / '+MAX_WT+' T';
+    }
+  }
+
+  /* V12: Empty deck hint */
+  const hintEl=document.getElementById('emptyDeckHint');
+  if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
+
+  /* ── Deck Usage indicator ─────────────────────────────── */
+  const duCard = document.getElementById('gstDeckUsage');
+  if(duCard){
+    let occupiedPx = 0;
+    S.cargo.forEach(c => { occupiedPx += (c.w || 0) * (c.h || 0); });
+    const usedPct = Math.min(100, Math.round((occupiedPx / DECK_USABLE_AREA_PX) * 100));
+    const freePct = 100 - usedPct;
+
+    document.getElementById('sDeckPct').textContent = usedPct + '%';
+    document.getElementById('sDeckBar').style.width = usedPct + '%';
+    document.getElementById('sDeckFree').textContent = freePct + '% free';
+
+    /* Threshold class */
+    const cls = usedPct >= 95 ? 'deck-usage--critical'
+              : usedPct >= 85 ? 'deck-usage--alert'
+              : usedPct >= 70 ? 'deck-usage--warn'
+              :                 'deck-usage--calm';
+    duCard.className = 'gst gst-deck-usage ' + cls;
+
+    /* Tooltip m² breakdown */
+    const usableM2  = Math.round(DECK_USABLE_AREA_PX / PX2_TO_M2);
+    const occupiedM2 = Math.round(occupiedPx / PX2_TO_M2);
+    const freeM2    = usableM2 - occupiedM2;
+    const ttUsable   = document.getElementById('sDeckTTUsable');
+    const ttOccupied = document.getElementById('sDeckTTOccupied');
+    const ttFree     = document.getElementById('sDeckTTFree');
+    if(ttUsable)   ttUsable.textContent   = usableM2 + ' m²';
+    if(ttOccupied) ttOccupied.textContent = occupiedM2 + ' m²';
+    if(ttFree)     ttFree.textContent     = freeM2 + ' m²';
+  }
+
+  /* V9: Status bar update */
+  if(typeof updateStatusBar==='function') updateStatusBar();
 }
 function updateDGSummary(){
   const el = document.getElementById('dgOnBoardText');
@@ -2253,6 +3305,12 @@ function bindDGAutoCheck(){
   });
 }
 
+/* Phase 27 — previous-violation snapshot for resolved detection.
+   Tracks which cargo ids were participating in a violation on the last
+   check. When the current check finds any of them NOT in any violation
+   anymore, they get the "resolved" pulse + sound fires once. */
+let _phase27PrevViolationIds = new Set();
+
 function checkSeg(){
   /* ── 1. Collect all DG blocks ── */
   const dgs = S.cargo.filter(c => c.dgClasses && c.dgClasses.length > 0);
@@ -2288,6 +3346,20 @@ function checkSeg(){
   /* ── 3. Split into acknowledged vs new ── */
   const newViolations = violations.filter(v => !DG_ACK_PAIRS.has(v.key));
   const ackViolations = violations.filter(v =>  DG_ACK_PAIRS.has(v.key));
+
+  /* Phase 27 — detect resolved violations. Anything in the previous set
+     that no longer appears in the current violation set is "cleared".
+     Fire the resolved feedback once per check, then rotate the snapshot. */
+  const currentViolationIds = new Set();
+  violations.forEach(v => { currentViolationIds.add(String(v.a.id)); currentViolationIds.add(String(v.b.id)); });
+  const resolvedIds = [];
+  _phase27PrevViolationIds.forEach(id => { if(!currentViolationIds.has(id)) resolvedIds.push(id); });
+  if(resolvedIds.length > 0 && _phase27PrevViolationIds.size > 0){
+    playSound('resolved');
+    const cap = Math.min(resolvedIds.length, 6);
+    for(let i = 0; i < cap; i++) _pulseCargo(resolvedIds[i], 'cb-dg-resolved');
+  }
+  _phase27PrevViolationIds = currentViolationIds;
 
   /* Legacy DG warning bar removed */
 
@@ -2440,7 +3512,8 @@ if(trWrap){
   trWrap.classList.toggle('visible',c.status==='TR');
   buildTrDestSelect(c.trDest||'');
 }
-document.getElementById('ov').classList.add('open');setTimeout(()=>document.getElementById('mCCU').focus(),50);}
+const _ovEl=document.getElementById('ov');const _mdlEl=_ovEl.querySelector('.mdl');_ovEl.classList.add('open');animateModalIn(_ovEl,_mdlEl);setTimeout(()=>document.getElementById('mCCU').focus(),50);
+}
 function buildModalLocs(selId){const g=document.getElementById('mLocGrid');g.innerHTML='';const show=S.activeLocs.length?S.activeLocs.map(id=>locById(id)).filter(Boolean):LOC_ALL;show.forEach(loc=>{const el=document.createElement('div');el.className='mdl-loc'+(loc.id===selId?' sel':'');el.style.setProperty('--lc',getLocBase(loc.id));el.dataset.lid=loc.id;el.innerHTML=`<div class="mdl-loc-dot"></div><div class="mdl-loc-name">${loc.name}</div>`;el.onclick=()=>{g.querySelectorAll('.mdl-loc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');};g.appendChild(el);}); }
 
 /* Populate #mDesc <select> dynamically from CCU_PRESETS, grouped by category.
@@ -2654,9 +3727,20 @@ function _dgMultiRenderTags(){
 
 function _dgMultiOpenDropdown(){
   const dropdown = document.getElementById('dgMultiDropdown');
+  const addBtn   = document.getElementById('dgMultiAdd');
   const list     = document.getElementById('dgMultiList');
   const search   = document.getElementById('dgMultiSearch');
   if(!dropdown || !list) return;
+
+  /* PORTAL — escape the modal's backdrop-filter containing block.
+     `.mdl` uses backdrop-filter, which makes it the containing block for
+     every position:fixed descendant. That breaks viewport-relative
+     positioning and causes the dropdown to inflate the modal body. Move
+     the dropdown to <body> so position:fixed resolves against the
+     viewport. One-way move — the dropdown lives in <body> from now on. */
+  if(dropdown.parentElement !== document.body){
+    document.body.appendChild(dropdown);
+  }
 
   function build(query){
     list.innerHTML = '';
@@ -2682,6 +3766,33 @@ function _dgMultiOpenDropdown(){
 
   build('');
   dropdown.classList.add('open');
+
+  /* Anchor as a floating popover so the dropdown escapes the modal's
+     scroll container and footer. position:fixed + viewport-relative
+     coords computed from the add-button rect. Auto-flips upward when
+     there's not enough room below. */
+  if(addBtn){
+    const r = addBtn.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const maxH = 280;
+    const popW = Math.max(260, Math.round(r.width));
+    dropdown.style.position = 'fixed';
+    dropdown.style.left = Math.round(r.left) + 'px';
+    dropdown.style.width = popW + 'px';
+    dropdown.style.maxHeight = maxH + 'px';
+    dropdown.style.zIndex = '700';
+    if (vh - r.bottom < maxH + 16) {
+      /* Not enough room below — flip upward. Set top:auto explicitly
+         (not empty) so the legacy CSS base rule's `top:100%` cannot
+         re-assert and collapse the element between top+bottom. */
+      dropdown.style.top = 'auto';
+      dropdown.style.bottom = (vh - r.top + 6) + 'px';
+    } else {
+      dropdown.style.bottom = 'auto';
+      dropdown.style.top = (r.bottom + 6) + 'px';
+    }
+  }
+
   if(search){ search.value = ''; search.focus(); }
 }
 
@@ -2746,10 +3857,511 @@ function bindDGMultiPicker(){
     if(dropdown && !dropdown.contains(e.target) && e.target !== addBtn) dropdown.classList.remove('open');
   });
 
+  /* Close dropdown when the modal body scrolls — the popover is
+     position:fixed and anchored to the button's on-screen rect, so
+     scrolling would drift the anchor away from the button. */
+  const _mdlBody = document.querySelector('#ov .mdl-body');
+  if(_mdlBody){
+    _mdlBody.addEventListener('scroll', () => {
+      if(dropdown && dropdown.classList.contains('open')) dropdown.classList.remove('open');
+    });
+  }
+  /* Also close on window resize for the same reason */
+  window.addEventListener('resize', () => {
+    if(dropdown && dropdown.classList.contains('open')) dropdown.classList.remove('open');
+  });
+
   _dgMultiRenderTags();
 }
 
-function closeModal(){document.getElementById('ov').classList.remove('open');editId=null;}
+let _modalClosing = false;
+
+/* Force-close modal (used after Save/Remove/Cancel) */
+async function _forceCloseModal(){
+  const ov = document.getElementById('ov');
+  if(!ov.classList.contains('open') || _modalClosing) return;
+  _modalClosing = true;
+  const mdl = ov.querySelector('.mdl');
+  editId=null;
+  /* Ensure the portaled DG picker dropdown doesn't outlive the modal. */
+  const _dgDd = document.getElementById('dgMultiDropdown');
+  if(_dgDd) _dgDd.classList.remove('open');
+  /* Animated exit — spring out + backdrop fade */
+  await animateModalOut(ov, mdl);
+  ov.classList.remove('open');
+  _modalClosing = false;
+  if(document.body.classList.contains('mdl-over-insp')){
+    document.body.classList.remove('mdl-over-insp');
+  }
+  if(typeof inspRefreshIfOpen === 'function') inspRefreshIfOpen();
+}
+
+/* Close modal (dismiss paths: Escape, backdrop, swipe, Cancel) */
+async function closeModal(){
+  const ov = document.getElementById('ov');
+  if(!ov || !ov.classList.contains('open') || _modalClosing) return;
+  const mState = getModalState(ov);
+  if(mState === 'closing' || mState === 'closed') return;
+  await _forceCloseModal();
+}
+
+/* ════════════════════════════════════════════════════════════
+   INSPECTOR RAIL — Phase 2 keystone
+   Selection-first editing surface that replaces modal-first cargo
+   editing as the primary flow. The legacy #ov modal remains as a
+   fallback path for complex fields (DG / HL / Priority / TR dest)
+   via the "Edit details…" button and keyboard `E`.
+
+   State model:
+     inspSelId   — currently inspected cargo id (null when closed)
+     inspOpen()  — slides the rail in, populates fields, closes Library
+     inspClose() — slides out, clears selId, calls kbDeselect()
+     inspPopulate(cargo) — writes fields from S.cargo
+     inspField handlers — live-edit: mutate S.cargo + renderAll + save
+════════════════════════════════════════════════════════════ */
+let inspSelId = null;
+
+function inspBuildDescSelect(){
+  /* Mirrors buildModalDescSelect but targets #inspDesc. Uses the same
+     CCU_PRESETS + custom library so description choices stay consistent. */
+  const sel = document.getElementById('inspDesc');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— select type —</option>';
+  const cats = ['Container','Basket','Tank','Skip','Module'];
+  cats.forEach(cat => {
+    const items = CCU_PRESETS.filter(p => p.cat === cat);
+    if(!items.length) return;
+    const grp = document.createElement('optgroup');
+    grp.label = cat + 's';
+    items.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.label;
+      const dim = `${p.length_m.toFixed(2)}×${p.width_m.toFixed(2)} m`;
+      o.textContent = p.approx ? `${p.label} (${dim}~)` : `${p.label} (${dim})`;
+      grp.appendChild(o);
+    });
+    sel.appendChild(grp);
+  });
+  if(S.customLib.length){
+    const grp = document.createElement('optgroup');
+    grp.label = 'Custom';
+    S.customLib.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.name;
+      o.textContent = p.name;
+      grp.appendChild(o);
+    });
+    sel.appendChild(grp);
+  }
+  if(cur) sel.value = cur;
+}
+
+function inspBuildLocs(selId){
+  const g = document.getElementById('inspLocs');
+  if(!g) return;
+  g.innerHTML = '';
+  const show = S.activeLocs.length
+    ? S.activeLocs.map(id => locById(id)).filter(Boolean)
+    : LOC_ALL;
+  show.forEach(loc => {
+    const el = document.createElement('div');
+    el.className = 'insp-loc' + (loc.id === selId ? ' sel' : '');
+    el.style.setProperty('--lc', getLocBase(loc.id));
+    el.dataset.lid = loc.id;
+    el.innerHTML = `<span class="insp-loc-dot"></span><span class="insp-loc-name">${loc.name}</span>`;
+    el.onclick = () => {
+      if(!isOperator()) return;
+      const c = S.cargo.find(x => x.id === inspSelId);
+      if(!c) return;
+      c.platform = loc.id;
+      g.querySelectorAll('.insp-loc').forEach(x => x.classList.remove('sel'));
+      el.classList.add('sel');
+      renderAll();
+      kbSelect(inspSelId);
+      updateStats(); buildActiveLocStrip(); updateDGSummary();
+      save();
+    };
+    g.appendChild(el);
+  });
+}
+
+function inspSetStatusSeg(status){
+  const seg = document.getElementById('inspStatusSeg');
+  if(!seg) return;
+  seg.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('sel', b.dataset.s === status);
+  });
+  const rail = document.getElementById('inspRail');
+  if(rail) rail.dataset.status = status || '';
+}
+
+function inspPopulate(cargo){
+  if(!cargo) return;
+  const rail = document.getElementById('inspRail');
+  const kicker = document.getElementById('inspKicker');
+  const title  = document.getElementById('inspTitle');
+  const ccu    = document.getElementById('inspCCU');
+  const desc   = document.getElementById('inspDesc');
+  const wt     = document.getElementById('inspWT');
+  if(!rail) return;
+
+  kicker.textContent = cargo.status === 'L'   ? 'Load'
+                   : cargo.status === 'BL'  ? 'Backload'
+                   : cargo.status === 'ROB' ? 'ROB'
+                   : cargo.status === 'TR'  ? 'Transfer'
+                   : 'Cargo';
+  title.textContent  = (cargo.ccu || cargo.desc || '—');
+
+  inspBuildDescSelect();
+  if(ccu)  ccu.value  = cargo.ccu || '';
+  if(desc) desc.value = cargo.desc || '';
+  if(wt)   wt.value   = (cargo.wt != null ? cargo.wt : '');
+
+  inspBuildLocs(cargo.platform);
+  inspSetStatusSeg(cargo.status || 'L');
+
+  /* Summary rows for fields that still live in the legacy modal */
+  const dg  = document.getElementById('inspDgDetail');
+  const hl  = document.getElementById('inspHlDetail');
+  const pri = document.getElementById('inspPriDetail');
+  if(dg)  dg.textContent  = (cargo.dgClasses && cargo.dgClasses.length) ? cargo.dgClasses.join(', ') : '—';
+  if(hl)  hl.textContent  = cargo.heavyLift ? 'on' : 'off';
+  if(pri) pri.textContent = cargo.priority  ? 'on' : 'off';
+}
+
+function inspOpen(id){
+  const cargo = S.cargo.find(c => c.id === id);
+  if(!cargo) return;
+  const prevId = inspSelId;
+  inspSelId = id;
+  /* Library ↔ Inspector mutual exclusion — inspector wins when cargo is picked */
+  if(typeof CP_OPEN !== 'undefined' && CP_OPEN && typeof cpClose === 'function') cpClose();
+  const rail = document.getElementById('inspRail');
+  if(!rail) return;
+
+  /* Phase 4 — single vs aggregate view. When 2+ cargo are in the selection
+     set, render aggregate; otherwise render the usual single-cargo inspector. */
+  const isMulti = (typeof KB_SEL_SET !== 'undefined' && KB_SEL_SET.size > 1);
+  document.body.classList.toggle('insp-multi', isMulti);
+
+  /* Subtle selection-switch crossfade — when the rail is already open
+     for a different cargo, we dip the head text for ~120ms before
+     rewriting it. Feels "alive" without being a distraction. */
+  const headText = rail.querySelector('.insp-head-text');
+  const alreadyOpen = rail.classList.contains('open');
+  if(alreadyOpen && prevId != null && prevId !== id && headText){
+    headText.classList.add('swap');
+    setTimeout(() => {
+      if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
+      headText.classList.remove('swap');
+      /* After populate rewrites ccu.value, ensure cursor is at end */
+      if(!isMulti){
+        const ccuEl = document.getElementById('inspCCU');
+        if(ccuEl){ const len = ccuEl.value.length; ccuEl.setSelectionRange(len, len); }
+      }
+    }, 120);
+  } else {
+    if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
+  }
+
+  rail.classList.add('open');
+  rail.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('insp-open');
+
+  /* Place cursor at end of CCU / ID field after the rail slide-in transition
+     (260ms = --dur-medium). setSelectionRange fixes the race condition where
+     the browser positions the cursor at position 0 when focus arrives before
+     or during value assignment. Only fires on first open (not swap crossfade —
+     that path calls inspPopulate directly and the field stays focused). */
+  if(!alreadyOpen){
+    setTimeout(() => {
+      const ccuEl = document.getElementById('inspCCU');
+      if(ccuEl && document.activeElement !== ccuEl){
+        ccuEl.focus();
+        const len = ccuEl.value.length;
+        ccuEl.setSelectionRange(len, len);
+      }
+    }, 280);
+  }
+}
+
+/* Phase 4 — aggregate rendering when KB_SEL_SET.size > 1.
+   Summarises: count, total weight, distinct locations, status breakdown. */
+function inspPopulateMulti(){
+  const ids = Array.from(KB_SEL_SET);
+  const cargos = ids
+    .map(id => S.cargo.find(c => c.id === id))
+    .filter(Boolean);
+  if(cargos.length === 0) return;
+
+  const kicker = document.getElementById('inspKicker');
+  const title  = document.getElementById('inspTitle');
+  const rail   = document.getElementById('inspRail');
+
+  kicker.textContent = 'Multi-select';
+  title.textContent  = cargos.length + ' cargo selected';
+  if(rail) rail.dataset.status = '';       /* neutral rim in multi mode */
+
+  /* Aggregate stats */
+  const totalWt = cargos.reduce((a,c) => a + (parseFloat(c.wt) || 0), 0);
+  const countEl = document.getElementById('inspMultiCount');
+  const wtEl    = document.getElementById('inspMultiWt');
+  const locsEl  = document.getElementById('inspMultiLocs');
+  const bdEl    = document.getElementById('inspMultiBreakdown');
+  if(countEl) countEl.textContent = cargos.length;
+  if(wtEl)    wtEl.textContent    = totalWt.toFixed(1) + ' t';
+
+  /* Distinct locations */
+  const locIds = new Set(cargos.map(c => c.platform).filter(Boolean));
+  let locsText = '—';
+  if(locIds.size === 1){
+    const loc = locById(Array.from(locIds)[0]);
+    locsText = loc ? loc.name : '—';
+  } else if(locIds.size > 1){
+    locsText = locIds.size + ' platforms';
+  }
+  if(locsEl) locsEl.textContent = locsText;
+
+  /* Status breakdown → status-colored chips */
+  if(bdEl){
+    const counts = { L:0, BL:0, ROB:0, TR:0 };
+    cargos.forEach(c => { if(counts[c.status] !== undefined) counts[c.status]++; });
+    const labels = { L:'Load', BL:'Backload', ROB:'ROB', TR:'Transfer' };
+    bdEl.innerHTML = '';
+    Object.keys(counts).forEach(k => {
+      if(counts[k] > 0){
+        const chip = document.createElement('span');
+        chip.className = 'insp-multi-chip s-' + k;
+        chip.innerHTML = `<span>${labels[k]}</span><span>${counts[k]}</span>`;
+        bdEl.appendChild(chip);
+      }
+    });
+  }
+}
+
+function inspClose(){
+  inspSelId = null;
+  const rail = document.getElementById('inspRail');
+  if(rail){
+    rail.classList.remove('open');
+    rail.setAttribute('aria-hidden', 'true');
+  }
+  document.body.classList.remove('insp-open');
+  document.body.classList.remove('insp-multi');
+  if(typeof kbDeselect === 'function') kbDeselect();
+}
+
+/* External hook: called by other code when cargo data changes so the
+   inspector re-reads the current cargo if it's the selected one. */
+function inspRefreshIfOpen(){
+  if(inspSelId == null) return;
+  const c = S.cargo.find(x => x.id === inspSelId);
+  if(!c){ inspClose(); return; }
+  inspPopulate(c);
+}
+
+/* Tiny debounce helper for text inputs inside the inspector.
+   Calls `flush` via blur/Enter so the last edit always persists even if
+   the user closes the app mid-typing. */
+function _inspDebounce(fn, ms){
+  let t;
+  const run = (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => { t = 0; fn(...args); }, ms);
+  };
+  run.flush = () => { if(t){ clearTimeout(t); t = 0; fn(); } };
+  return run;
+}
+
+function bindInspector(){
+  const rail = document.getElementById('inspRail');
+  if(!rail) return;
+
+  /* Close button */
+  const closeBtn = document.getElementById('inspClose');
+  if(closeBtn) closeBtn.addEventListener('click', () => inspClose());
+
+  /* Esc while inspector is open */
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && inspSelId != null){
+      /* Don't swallow Escape if any modal is open — modals own that key */
+      const ovOpen  = document.getElementById('ov')?.classList.contains('open');
+      const stOpen  = document.getElementById('stOv')?.classList.contains('open');
+      const ascOpen = document.getElementById('ascoOv')?.classList.contains('open');
+      if(ovOpen || stOpen || ascOpen) return;
+      /* Don't hijack when typing in an input */
+      const t = e.target;
+      if(t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      inspClose();
+    }
+  });
+
+  /* ── Live field edits — debounced text inputs, immediate UI echo.
+     Pattern: every keystroke updates only the on-deck label (cheap),
+     a 250ms debounce commits the model mutation + save. Blur/Enter flush.
+     Status / Location / Actions stay immediate (discrete click events). */
+  const ccu = document.getElementById('inspCCU');
+  if(ccu){
+    const commitCcu = () => {
+      if(!isOperator() || inspSelId == null) return;
+      const c = S.cargo.find(x => x.id === inspSelId);
+      if(!c) return;
+      c.ccu = ccu.value;
+      /* Update on-deck label + stats WITHOUT full renderAll() — keeps typing smooth */
+      const cbEl = document.querySelector(`.cb[data-id="${c.id}"] .cb-id`);
+      if(cbEl && !cbEl.matches(':focus-within')) cbEl.textContent = c.ccu || '';
+      save();
+    };
+    const commitCcuDebounced = _inspDebounce(commitCcu, 250);
+    ccu.addEventListener('input', () => {
+      if(!isOperator() || inspSelId == null) return;
+      /* Title preview is instant so the rail reflects typing in real time */
+      document.getElementById('inspTitle').textContent = ccu.value || '—';
+      commitCcuDebounced();
+    });
+    ccu.addEventListener('blur',  () => commitCcuDebounced.flush());
+    ccu.addEventListener('keydown', e => { if(e.key === 'Enter') commitCcuDebounced.flush(); });
+  }
+
+  const desc = document.getElementById('inspDesc');
+  if(desc) desc.addEventListener('change', () => {
+    if(!isOperator() || inspSelId == null) return;
+    const c = S.cargo.find(x => x.id === inspSelId);
+    if(!c) return;
+    c.desc = desc.value;
+    /* If a preset matches, adopt its dimensions */
+    const preset = CCU_PRESETS.find(p => p.label === desc.value)
+              || S.customLib.find(p => p.name === desc.value);
+    if(preset){
+      if(preset.length_m){ c.length_m = preset.length_m; c.w = m2px_w(preset.length_m); }
+      if(preset.width_m) { c.width_m  = preset.width_m;  c.h = m2px_h(preset.width_m); }
+    }
+    /* Description may change dimensions — a full renderAll is necessary here */
+    renderAll(); kbSelect(inspSelId);
+    updateStats(); buildActiveLocStrip(); save();
+  });
+
+  const wt = document.getElementById('inspWT');
+  if(wt){
+    const commitWT = () => {
+      if(!isOperator() || inspSelId == null) return;
+      const c = S.cargo.find(x => x.id === inspSelId);
+      if(!c) return;
+      const v = parseFloat(wt.value);
+      c.wt = isNaN(v) ? 0 : v;
+      /* Weight change only affects stats — no need to re-render cargo blocks */
+      if(typeof updateStats === 'function') updateStats();
+      if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip();
+      save();
+    };
+    const commitWTDebounced = _inspDebounce(commitWT, 250);
+    wt.addEventListener('input', commitWTDebounced);
+    wt.addEventListener('blur',  () => commitWTDebounced.flush());
+    wt.addEventListener('keydown', e => { if(e.key === 'Enter') commitWTDebounced.flush(); });
+  }
+
+  /* Status segmented control */
+  const seg = document.getElementById('inspStatusSeg');
+  if(seg){
+    seg.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        if(!isOperator() || inspSelId == null) return;
+        const c = S.cargo.find(x => x.id === inspSelId);
+        if(!c) return;
+        c.status = b.dataset.s;
+        inspSetStatusSeg(c.status);
+        const kicker = document.getElementById('inspKicker');
+        if(kicker) kicker.textContent = c.status === 'L'   ? 'Load'
+                                     : c.status === 'BL'  ? 'Backload'
+                                     : c.status === 'ROB' ? 'ROB'
+                                     : c.status === 'TR'  ? 'Transfer'
+                                     : 'Cargo';
+        renderAll(); kbSelect(inspSelId);
+        updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+      });
+    });
+  }
+
+  /* Actions */
+  const rotBtn = document.getElementById('inspRot');
+  if(rotBtn) rotBtn.addEventListener('click', () => {
+    if(!isOperator() || inspSelId == null) return;
+    const c = S.cargo.find(x => x.id === inspSelId);
+    if(!c) return;
+    const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    const nw = c.h, nh = c.w;
+    c.w = nw; c.h = nh;
+    c.x = Math.max(0, Math.min(cx - nw / 2, TW  - nw));
+    c.y = Math.max(0, Math.min(cy - nh / 2, CVH - nh));
+    const tmp = c.length_m; c.length_m = c.width_m; c.width_m = tmp;
+    c.rot = ((c.rot || 0) + 1) % 4;
+    renderAll(); kbSelect(inspSelId); checkSeg(); save();
+  });
+
+  const dupBtn = document.getElementById('inspDup');
+  if(dupBtn) dupBtn.addEventListener('click', () => {
+    if(!isOperator() || inspSelId == null) return;
+    const c = S.cargo.find(x => x.id === inspSelId);
+    if(!c) return;
+    const newC = {
+      ...c,
+      id: Date.now() + Math.random(),
+      x: Math.min(c.x + c.w + 6, TW  - c.w),
+      y: Math.min(c.y + 0,       CVH - c.h),
+      ccu: c.ccu ? c.ccu + ' (copy)' : '',
+    };
+    S.cargo.push(newC);
+    renderAll();
+    kbSelect(newC.id);
+    inspOpen(newC.id);
+    updateStats(); buildActiveLocStrip(); save();
+  });
+
+  const delBtn = document.getElementById('inspDel');
+  if(delBtn) delBtn.addEventListener('click', () => {
+    if(!isOperator() || inspSelId == null) return;
+    /* Phase 4 — bulk remove when a multi-selection is active.
+       Single selection still removes just the one. */
+    const isMulti = (typeof KB_SEL_SET !== 'undefined' && KB_SEL_SET.size > 1);
+    if(isMulti){
+      const ids = Array.from(KB_SEL_SET);
+      animateCargoExit(ids);
+      S.cargo = S.cargo.filter(c => !KB_SEL_SET.has(c.id));
+      ids.forEach(id => { if(typeof dgEvictDeletedCargo === 'function') dgEvictDeletedCargo(id); });
+    } else {
+      const id = inspSelId;
+      animateCargoExit(id);
+      S.cargo = S.cargo.filter(c => c.id !== id);
+      if(typeof dgEvictDeletedCargo === 'function') dgEvictDeletedCargo(id);
+    }
+    inspClose();
+    renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  });
+
+  const editDetailsBtn = document.getElementById('inspEditDetails');
+  if(editDetailsBtn) editDetailsBtn.addEventListener('click', () => {
+    if(inspSelId == null) return;
+    /* Open legacy modal for DG / HL / Priority / Transfer destination.
+       While the modal is over the inspector, body gets `mdl-over-insp`
+       so the inspector body fades slightly — communicates "modal has
+       focus, rail is still tracking the same cargo". Modal save mutates
+       S.cargo; we refresh the inspector when the modal closes. */
+    document.body.classList.add('mdl-over-insp');
+    openModal(inspSelId);
+    const ov = document.getElementById('ov');
+    if(!ov) return;
+    const obs = new MutationObserver(() => {
+      if(!ov.classList.contains('open')){
+        obs.disconnect();
+        document.body.classList.remove('mdl-over-insp');
+        inspRefreshIfOpen();
+      }
+    });
+    obs.observe(ov, { attributes:true, attributeFilter:['class'] });
+  });
+}
 function bindModal(){
   document.getElementById('mCan').onclick=closeModal;
   /* Heavy Lift toggle */
@@ -2786,8 +4398,9 @@ function bindModal(){
   });
   document.getElementById('ov').onclick=e=>{if(e.target===document.getElementById('ov'))closeModal();};
   document.querySelectorAll('.mdl-st').forEach(b=>{b.onclick=()=>{modalSt=b.dataset.s;document.querySelectorAll('.mdl-st').forEach(x=>x.classList.toggle('sel',x===b));};});
-  document.getElementById('mRm').onclick=()=>{if(!isOperator())return;const _rmId=editId;S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();};
+  document.getElementById('mRm').onclick=()=>{if(!isModalActionable(document.getElementById('ov')))return;if(!isOperator())return;const _rmId=editId;animateCargoExit(_rmId);S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();};
   document.getElementById('mSav').onclick=()=>{
+    if(!isModalActionable(document.getElementById('ov'))) return;
     if(!isOperator()) return;          /* Viewer: block save */
     const c=S.cargo.find(x=>x.id===editId);if(!c)return;
     c.ccu=document.getElementById('mCCU').value;
@@ -2816,9 +4429,14 @@ function bindModal(){
     c.heavyLift=document.getElementById('mHL').classList.contains('on');
     c.priority=document.getElementById('mPriority')?.classList.contains('on')||false;
     c.trDest=(c.status==='TR')?(document.getElementById('mdlTrDest')?.value||''):'';
-    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();closeModal();cancelPending();
+    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();cancelPending();
   };
   document.getElementById('ov').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('mSav').click();});
+  /* Family-style dismiss: Escape key + swipe-down gesture */
+  const _ovRef = document.getElementById('ov');
+  const _mdlRef = _ovRef.querySelector('.mdl');
+  bindEscapeDismiss(_ovRef, closeModal);
+  bindSwipeDismiss(_mdlRef, closeModal);
 }
 
 /* ════════════════════════════════════
@@ -3197,7 +4815,7 @@ function importLegacy(raw) {
   return {
     _schema: PLAN_SCHEMA_CURRENT,
     _savedAt: new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v3.0.0'),
     _legacyScaleWarn: needsScaleWarn,
     name: raw.voyage || 'Imported Plan',
     plan: {
@@ -3275,6 +4893,14 @@ let _autosaveEnabled = true;   /* user-togglable autosave */
 const UNDO_MAX = 50;
 let _undoStack = [];
 let _redoStack = [];
+/* Baseline snapshot of the LAST COMMITTED state. Initialised at bootstrap
+   via seedHistoryBaseline() after the first render. On every _pushUndo():
+     1. The baseline (pre-mutation state) is pushed onto the undo stack
+     2. The baseline is updated to the current (post-mutation) state
+   This flips every existing save() site from "push post-state" to "push
+   pre-state" semantics with zero call-site edits, so a single Ctrl+Z
+   reliably pops the one pre-mutation snapshot the user expects. */
+let _lastCommitted = null;
 
 function _takeSnapshot(){
   return JSON.stringify({
@@ -3284,29 +4910,276 @@ function _takeSnapshot(){
   });
 }
 
-function _pushUndo(){
-  _undoStack.push(_takeSnapshot());
-  if(_undoStack.length > UNDO_MAX) _undoStack.shift();
+/* Must be called exactly once after the initial load finishes so the
+   first user action has a pre-state to push onto the undo stack. */
+function seedHistoryBaseline(){
+  _lastCommitted = _takeSnapshot();
+  _undoStack = [];
   _redoStack = [];
   _updateUndoButtons();
 }
 
+function _pushUndo(){
+  const current = _takeSnapshot();
+  /* No-op dedupe: autosave and idempotent re-saves fire save() repeatedly
+     without any state change. Skip the push so the stack holds only real
+     history steps. Also protects against late-bootstrap calls when the
+     baseline hasn't been seeded yet. */
+  if(_lastCommitted === null){ _lastCommitted = current; return; }
+  if(current === _lastCommitted) return;
+  _undoStack.push(_lastCommitted);
+  if(_undoStack.length > UNDO_MAX) _undoStack.shift();
+  _lastCommitted = current;
+  _redoStack = [];
+  _updateUndoButtons();
+}
+
+/* Phase 13 — describe what happened between two cargo id sets so the
+   undo/redo toast carries context. Minimal semantic diff: restored count
+   = ids that appeared, removed count = ids that disappeared. Position /
+   status / rotation changes surface as an unchanged-set fallback. */
+function _diffCargoIds(beforeIds, afterIds){
+  const before = new Set(beforeIds.map(String));
+  const after  = new Set(afterIds.map(String));
+  const appeared   = [...after].filter(id => !before.has(id));
+  const disappeared= [...before].filter(id => !after.has(id));
+  const survived   = [...after].filter(id =>  before.has(id));
+  return { appeared, disappeared, survived };
+}
+
 function undo(){
   if(!_undoStack.length) return;
+  /* Current (post-action) state becomes the redo target. */
   _redoStack.push(_takeSnapshot());
-  const snap = JSON.parse(_undoStack.pop());
+  /* Pop the pre-mutation state and restore it. */
+  const snapStr = _undoStack.pop();
+  const snap    = JSON.parse(snapStr);
+  const beforeIds = S.cargo.map(c => c.id);
   _restoreSnapshot(snap);
+  /* Rebase the baseline to the just-restored state so the next mutation
+     pushes the correct pre-state onto the stack. */
+  _lastCommitted = snapStr;
+  const diff = _diffCargoIds(beforeIds, S.cargo.map(c => c.id));
+  _animateRestoredCargo(diff.appeared);
   _updateUndoButtons();
-  showToast('Undo', 'ok');
+  showToast(_formatUndoMessage('Undo', diff), 'ok');
+  /* Phase 27 — restorative feedback. Sound fires always; pulse decorates
+     existing cargo (not pre-delete, not just-appeared) so the operator
+     sees which piece reverted without spamming every block. */
+  playSound('undo');
+  _pulseRestoredCargo(diff.survived);
 }
 
 function redo(){
   if(!_redoStack.length) return;
+  /* Current state goes back to undo as a restore point. */
   _undoStack.push(_takeSnapshot());
-  const snap = JSON.parse(_redoStack.pop());
+  if(_undoStack.length > UNDO_MAX) _undoStack.shift();
+  const snapStr = _redoStack.pop();
+  const snap    = JSON.parse(snapStr);
+  const beforeIds = S.cargo.map(c => c.id);
   _restoreSnapshot(snap);
+  _lastCommitted = snapStr;
+  const diff = _diffCargoIds(beforeIds, S.cargo.map(c => c.id));
+  _animateRestoredCargo(diff.appeared);
   _updateUndoButtons();
-  showToast('Redo', 'ok');
+  showToast(_formatUndoMessage('Redo', diff), 'ok');
+  playSound('redo');
+  _pulseRestoredCargo(diff.survived);
+}
+
+/* Phase 27 — quick cool-tone pulse on cargo that survived across an
+   undo/redo restore. Restrained: 260ms, no scale, no saturation bump,
+   just a soft inset ring that confirms "this piece changed state".
+   Max 8 blocks pulsed so dense plans don't get a wall of feedback. */
+function _pulseRestoredCargo(ids){
+  if(!ids || ids.length === 0) return;
+  const cap = Math.min(ids.length, 8);
+  for(let i = 0; i < cap; i++){
+    const el = document.querySelector(`.cb[data-id="${ids[i]}"]`);
+    if(!el) continue;
+    el.classList.remove('cb-undo-pulse');
+    void el.offsetWidth;
+    el.classList.add('cb-undo-pulse');
+    el.addEventListener('animationend',
+      () => el.classList.remove('cb-undo-pulse'),
+      { once: true });
+  }
+}
+
+/* Phase 27 — single-cargo pulse helper. Used by rotate, duplicate-trail,
+   dg-resolved. Reflow dance ensures the class re-applies even when the
+   pulse fires back-to-back on the same element. */
+function _pulseCargo(id, cls){
+  const el = document.querySelector(`.cb[data-id="${id}"]`);
+  if(!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+  el.addEventListener('animationend',
+    () => el.classList.remove(cls),
+    { once: true });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 28 — Live drag & resize readout pills + post-drop bay confirm.
+   Transient glass pills that match the ruler-label surface language.
+   All three pills respect SMART.dragReadout (operator can disable).
+══════════════════════════════════════════════════════════════════════ */
+function _updateDragReadout(clientX, clientY, ix, iy, cargo){
+  if(!SMART.dragReadout) return;
+  const pill = document.getElementById('dragReadout');
+  if(!pill) return;
+  /* Hide when a modal/palette/cheatsheet owns focus — same grammar as
+     the hover card so stacked surfaces don't pile up. */
+  if(document.getElementById('ov')?.classList.contains('open')
+     || document.getElementById('ascoOv')?.classList.contains('open')
+     || document.getElementById('kbCheatOv')?.classList.contains('open')
+     || document.getElementById('cmdpOv')?.classList.contains('open')){
+    if(!pill.hidden){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
+    return;
+  }
+  /* Bay number (1..12 user-facing, visual-render index i → 12 - i). */
+  const bayIdx = bayIndexFromX(ix + cargo.w / 2);
+  const bayNum = bayIdx >= 0 ? (12 - bayIdx) : '—';
+  /* Metres via the physical-model helpers — same source of truth as
+     ruler and status bar. Uses the cargo's top-left for position. */
+  const xm = deckXToMeters(ix).toFixed(2);
+  const ym = deckYToMeters(iy).toFixed(2);
+  const wm = (cargo.length_m || cargo.w / M).toFixed(2);
+  const hm = (cargo.width_m  || cargo.h / (CVH/15)).toFixed(2);
+  const bayEl  = document.getElementById('dragReadoutBay');
+  const posEl  = document.getElementById('dragReadoutPos');
+  const sizeEl = document.getElementById('dragReadoutSize');
+  if(bayEl)  bayEl.textContent  = 'Bay ' + bayNum;
+  if(posEl)  posEl.textContent  = 'X ' + xm + ' m  ·  Y ' + ym + ' m';
+  if(sizeEl) sizeEl.textContent = wm + ' × ' + hm + ' m';
+  /* Position: track 18 px above the pointer, clamp to viewport. */
+  pill.hidden = false;
+  pill.setAttribute('aria-hidden','false');
+  const pr = pill.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, clientX - pr.width / 2));
+  const top  = Math.max(8, clientY - pr.height - 18);
+  pill.style.left = left + 'px';
+  pill.style.top  = top  + 'px';
+}
+function _hideDragReadout(){
+  const pill = document.getElementById('dragReadout');
+  if(pill){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
+}
+
+function _updateResizeReadout(clientX, clientY, cargo){
+  if(!SMART.dragReadout) return;
+  const pill = document.getElementById('resizeReadout');
+  if(!pill) return;
+  const wm = (cargo.w / M).toFixed(2);
+  const hm = (cargo.h / (CVH/15)).toFixed(2);
+  const area = (parseFloat(wm) * parseFloat(hm)).toFixed(1);
+  const dimEl  = document.getElementById('resizeReadoutDim');
+  const areaEl = document.getElementById('resizeReadoutArea');
+  if(dimEl)  dimEl.textContent  = wm + ' × ' + hm + ' m';
+  if(areaEl) areaEl.textContent = area + ' m²';
+  pill.hidden = false;
+  pill.setAttribute('aria-hidden','false');
+  const pr = pill.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, clientX + 16));
+  const top  = Math.max(8, clientY + 16);
+  pill.style.left = left + 'px';
+  pill.style.top  = top  + 'px';
+}
+function _hideResizeReadout(){
+  const pill = document.getElementById('resizeReadout');
+  if(pill){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
+}
+
+/* Post-drop bay confirmation. A tiny tag fades above the dropped cargo
+   for ~700 ms showing which bay it landed in. Suppressed when reduced-
+   motion is on (the fade is the whole effect). */
+let _dropBayConfirmTimer = 0;
+function _showDropBayConfirm(cargo){
+  if(!SMART.dragReadout) return;
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const tag = document.getElementById('dropBayConfirm');
+  if(!tag) return;
+  const bayIdx = bayIndexFromX(cargo.x + cargo.w / 2);
+  const bayNum = bayIdx >= 0 ? (12 - bayIdx) : '—';
+  const txt = document.getElementById('dropBayConfirmText');
+  if(txt) txt.textContent = 'Placed in Bay ' + bayNum;
+  /* Position the tag above the cargo, fixed-coords. Convert deck-local
+     to viewport through the canvas rect + zoom. */
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return;
+  const cr = cv.getBoundingClientRect();
+  tag.hidden = false;
+  tag.classList.remove('is-fading');
+  tag.setAttribute('aria-hidden','false');
+  /* Read own size AFTER un-hiding. */
+  const tr = tag.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - tr.width - 8,
+                  cr.left + (cargo.x + cargo.w / 2) * zoomLevel - tr.width / 2));
+  const top  = Math.max(8, cr.top + cargo.y * zoomLevel - tr.height - 8);
+  tag.style.left = left + 'px';
+  tag.style.top  = top  + 'px';
+  clearTimeout(_dropBayConfirmTimer);
+  /* Two-stage: small dwell, then add .is-fading which CSS transitions
+     opacity to 0; the fade-end handler hides. */
+  _dropBayConfirmTimer = setTimeout(() => {
+    tag.classList.add('is-fading');
+    const onEnd = () => { tag.hidden = true; tag.classList.remove('is-fading'); tag.setAttribute('aria-hidden','true'); };
+    tag.addEventListener('transitionend', onEnd, { once: true });
+    setTimeout(onEnd, 500); /* safety fallback */
+  }, 700);
+}
+
+/* Phase 27 — duplicate trail. A pale ghost at the source position fades
+   and shrinks while the new cargo gets a gentle spawn pulse. The trail
+   is absolutely positioned inside the deck canvas so it tracks zoom. */
+function _emitDuplicateTrail(x, y, w, h, newId){
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return;
+  const trail = document.createElement('div');
+  trail.className = 'cb-duplicate-trail';
+  trail.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+  cv.appendChild(trail);
+  trail.addEventListener('animationend',
+    () => trail.remove(),
+    { once: true });
+  /* Pair with a gentle spawn pulse on the new cargo itself. */
+  _pulseCargo(newId, 'cb-duplicate-pulse');
+}
+
+/* Phase 13 — apply the shared .just-placed entrance animation to cargo
+   that newly appeared after a snapshot restore. Reuses the exact motion
+   already used by library/group-drop so the visual language stays
+   consistent across add paths. */
+function _animateRestoredCargo(ids){
+  if(!ids || ids.length === 0) return;
+  ids.forEach(id => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(!el) return;
+    /* Avoid double-adding if the element already has the class from
+       another recent placement animation. */
+    if(el.classList.contains('just-placed')) return;
+    el.classList.add('just-placed');
+    el.addEventListener('animationend',
+      () => el.classList.remove('just-placed'),
+      { once:true });
+  });
+}
+
+function _formatUndoMessage(label, diff){
+  const { appeared, disappeared } = diff;
+  if(appeared.length > 0 && disappeared.length === 0){
+    return `${label} · ${appeared.length} restored`;
+  }
+  if(disappeared.length > 0 && appeared.length === 0){
+    return `${label} · ${disappeared.length} removed`;
+  }
+  if(appeared.length === 0 && disappeared.length === 0){
+    return `${label} · changes reverted`;
+  }
+  /* Mixed case — rare but possible (e.g. undoing a complex bulk op). */
+  return `${label} · ${appeared.length} restored · ${disappeared.length} removed`;
 }
 
 function _restoreSnapshot(snap){
@@ -3369,7 +5242,7 @@ function _buildEnvelope() {
   return {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v3.0.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3691,7 +5564,7 @@ function savePlan(key) {
   const envelope = {
     _schema:     PLAN_SCHEMA_CURRENT,
     _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v2.3.0'),
+    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v3.0.0'),
     name:        document.getElementById('voyIn').value || 'Untitled Plan',
     plan: {
       cargo:      S.cargo,
@@ -3776,18 +5649,186 @@ function listPlans() {
 }
 
 /* ── Legacy shims — all 24 call sites of save() work unchanged ── */
-function save() { _pushUndo(); savePlan(); _dirty = true; _updateSaveIndicator(); _syncPushDebounced(); }
+function save() {
+  _pushUndo();
+  savePlan();
+  _dirty = true;
+  _updateSaveIndicator();
+  _syncPushDebounced();
+  /* Phase 3A — quiet heartbeat on the bottom rail's save dot.
+     One-shot 520ms ring pulse; no loop, no decoration. */
+  const dots = document.querySelectorAll('.save-dot');
+  dots.forEach(dot => {
+    dot.classList.remove('pulse');
+    /* Force reflow so re-adding .pulse restarts the animation */
+    void dot.offsetWidth;
+    dot.classList.add('pulse');
+    setTimeout(() => dot.classList.remove('pulse'), 560);
+  });
+}
 function load() { loadPlan(); }
 
 let zoomLevel=1.0;const ZOOM_STEP=0.1,ZOOM_MIN=0.3,ZOOM_MAX=2.0;
-function applyZoom(z){zoomLevel=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,z));const wrap=document.getElementById('deckZoomWrap');wrap.style.transform=`scale(${zoomLevel})`;wrap.style.transformOrigin='top left';const inner=wrap.querySelector('.deck-outer');if(inner){wrap.style.width=(inner.offsetWidth*zoomLevel)+'px';wrap.style.height=(inner.offsetHeight*zoomLevel)+'px';}document.getElementById('zoomLbl').textContent=Math.round(zoomLevel*100)+'%';}
-function fitToScreen(){const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(!inner)return;applyZoom(Math.min((area.clientWidth-24)/inner.offsetWidth,(area.clientHeight-16)/inner.offsetHeight,1.0));}
+function applyZoom(z){
+  zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  const wrap = document.getElementById('deckZoomWrap');
+  const inner = wrap.querySelector('.deck-outer');
+  /* Center-origin scaling so the deck grows/shrinks symmetrically —
+     aft and fore move equally instead of the stern appearing anchored.
+     The wrap's LAYOUT size is set to natural * zoom so the flex parent
+     centers the visually-scaled content correctly and scrolls when the
+     content overflows on zoom-in. */
+  wrap.style.transform = `scale(${zoomLevel})`;
+  wrap.style.transformOrigin = '50% 50%';
+  if(inner){
+    const naturalW = inner.offsetWidth;
+    const naturalH = inner.offsetHeight;
+    wrap.style.width  = (naturalW * zoomLevel) + 'px';
+    wrap.style.height = (naturalH * zoomLevel) + 'px';
+    /* Compensate for the center-origin pivot:
+         when wrap layout = N*S and origin = N*S/2, the scaled content
+         naturally spans origin*(1-S) to origin+N*(1-S/2)S, which drifts
+         off-box. Pre-translate by -N*(1-S)/2 to re-seat the top-left
+         at (0,0) so the content fills the layout rect exactly.        */
+    const tx = -naturalW * (1 - zoomLevel) / 2;
+    const ty = -naturalH * (1 - zoomLevel) / 2;
+    wrap.style.transform = `translate(${tx}px, ${ty}px) scale(${zoomLevel})`;
+  }
+  document.getElementById('zoomLbl').textContent = Math.round(zoomLevel * 100) + '%';
+  /* Ship silhouette visibility tiers — CSS reads body.zoom-* classes
+     (kept for any other consumers, but .vessel-bg opacity now ignores
+     them in favour of a smooth zoom-vs-FIT ramp — see below).        */
+  const pct = zoomLevel * 100;
+  const tier = pct >= 90 ? 'high' : pct >= 70 ? 'mid' : pct >= 40 ? 'low' : 'minimum';
+  document.body.classList.remove('zoom-high','zoom-mid','zoom-low','zoom-minimum');
+  document.body.classList.add('zoom-' + tier);
+  /* Vessel silhouette fade — at/above FIT the deck is the primary
+     working surface so the decorative ship drawing hides completely.
+     Below FIT it fades in progressively, reaching peak opacity at
+     ZOOM_MIN. Easing is quadratic ease-in on the normalized distance
+     below FIT so the reveal starts gently, then strengthens. */
+  updateVesselBgOpacity();
+  /* Phase 23 — keep the measurement label pinned to the line midpoint
+     when the deck zooms. The label is position:fixed in <body>, so its
+     client coordinates must be recomputed from the new cvRect. */
+  if(typeof _rulerRender === 'function') _rulerRender();
+}
+
+function computeFitScale(){
+  const area  = document.getElementById('deckArea');
+  const inner = document.querySelector('.deck-outer');
+  if(!area || !inner) return 1;
+  const padX = 16, padY = 8;
+  const sx = (area.clientWidth  - padX) / inner.offsetWidth;
+  const sy = (area.clientHeight - padY) / inner.offsetHeight;
+  return Math.min(sx, sy);
+}
+
+function updateVesselBgOpacity(){
+  const fit = computeFitScale();
+  const VESSEL_BG_MAX = 0.85;
+  let op;
+  if(zoomLevel >= fit - 0.002){
+    op = 0;                                             /* at or above FIT */
+  } else {
+    const span = Math.max(0.01, fit - ZOOM_MIN);
+    const t = Math.min(1, Math.max(0, (fit - zoomLevel) / span));
+    const eased = t * t;                                /* ease-in quad */
+    op = eased * VESSEL_BG_MAX;
+  }
+  document.documentElement.style.setProperty('--vessel-bg-opacity', op.toFixed(3));
+}
+function fitToScreen(){
+  const area  = document.getElementById('deckArea');
+  const inner = document.querySelector('.deck-outer');
+  if(!inner || !area) return;
+  /* CONTAIN — show the entire deck, Bay 12 aft to Bay 1 forward. Always
+     computed from the deck's natural dimensions (offsetWidth/Height are
+     the untransformed layout size) and the untransformed area size
+     (clientWidth/Height), so FIT is stateless — it doesn't depend on
+     the current zoom or pan. Reset scroll so the deck centers cleanly. */
+  area.scrollLeft = 0;
+  area.scrollTop  = 0;
+  const padX = 16, padY = 8;
+  const sx = (area.clientWidth  - padX) / inner.offsetWidth;
+  const sy = (area.clientHeight - padY) / inner.offsetHeight;
+  applyZoom(Math.min(sx, sy));
+}
 function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);
 /* Pinch-to-zoom on touch devices */
 let _pinchStartDist=0, _pinchStartZoom=1;
 document.getElementById('deckArea').addEventListener('touchstart',e=>{if(e.touches.length===2){e.preventDefault();const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;_pinchStartDist=Math.sqrt(dx*dx+dy*dy);_pinchStartZoom=zoomLevel;}},{passive:false});
 document.getElementById('deckArea').addEventListener('touchmove',e=>{if(e.touches.length===2&&_pinchStartDist>0){e.preventDefault();const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;const dist=Math.sqrt(dx*dx+dy*dy);applyZoom(_pinchStartZoom*(dist/_pinchStartDist));}},{passive:false});
 document.getElementById('deckArea').addEventListener('touchend',()=>{_pinchStartDist=0;});
+
+/* ── DG pill positioning ─────────────────────────────────────
+   Keeps `--dg-top` in sync with the actual top of .deck-area so the
+   fixed-position pill always floats at the very top of the deck
+   viewport, independent of viewport size changes. The pill never
+   moves with pan/zoom because it lives outside the transform layer. */
+(function syncDgPillTop(){
+  const area = document.getElementById('deckArea');
+  if(!area) return;
+  function sync(){
+    const topPx = Math.round(area.getBoundingClientRect().top + 6); /* 6 px float above deck edge */
+    document.documentElement.style.setProperty('--dg-top', topPx + 'px');
+    /* FIT scale depends on viewport size; keep the silhouette fade in
+       lockstep with any resize by recomputing whenever the deck-area
+       box changes. */
+    if(typeof updateVesselBgOpacity === 'function') updateVesselBgOpacity();
+  }
+  sync();
+  window.addEventListener('resize', sync);
+  if(typeof ResizeObserver !== 'undefined'){
+    new ResizeObserver(sync).observe(area);
+  }
+})();
+
+/* ── Drag-to-pan ─────────────────────────────────────────────
+   Activates with middle-mouse-button OR Alt+left-mouse-button.
+   Cargo blocks (.cb) keep their own left-drag behaviour: we early-out
+   when the mousedown originates inside a cargo block. The pan updates
+   .deck-area.scrollLeft / scrollTop so it works in both axes
+   regardless of the current zoom level (the wrap is sized to natural*zoom
+   so overflow is real and scrollable). */
+(function initDeckPan(){
+  const area = document.getElementById('deckArea');
+  if(!area) return;
+  let panning = false, startX = 0, startY = 0, baseLeft = 0, baseTop = 0;
+
+  area.addEventListener('mousedown', (e) => {
+    /* Allow normal left-click on cargo, controls, and inside .dcv. */
+    const isMiddle = e.button === 1;
+    const isAltLeft = e.button === 0 && e.altKey;
+    if(!isMiddle && !isAltLeft) return;
+    /* Don't hijack drag-start on actual cargo blocks (left-click only). */
+    if(isAltLeft && e.target.closest('.cb, .rh, .cb-del, .cb-rot, .cb-copy')) return;
+    panning = true;
+    startX = e.clientX; startY = e.clientY;
+    baseLeft = area.scrollLeft; baseTop = area.scrollTop;
+    area.classList.add('deck-panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if(!panning) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    /* Drag right → reveal content on the right → scroll right.
+       Inverted from naive (we move the camera, not the content). */
+    area.scrollLeft = baseLeft - dx;
+    area.scrollTop  = baseTop  - dy;
+    e.preventDefault();
+  });
+  function stopPan(){
+    if(!panning) return;
+    panning = false;
+    area.classList.remove('deck-panning');
+  }
+  window.addEventListener('mouseup',    stopPan);
+  window.addEventListener('mouseleave', stopPan);
+  /* Disable native browser middle-click autoscroll which would compete. */
+  area.addEventListener('auxclick', (e) => { if(e.button === 1) e.preventDefault(); });
+})();
 }
 
 /* ── Resolve an ASCO display name to a LOC_ALL location id ──────────────
@@ -4490,9 +6531,14 @@ function buildQueueList(){
     });
     el.querySelector('.asco-qitem-rm').addEventListener('click', e => {
       e.stopPropagation();
-      IMPORT_QUEUE.splice(qi, 1);
+      const removed = IMPORT_QUEUE.splice(qi, 1)[0];
       buildQueueList();
       updateQueueBadge();
+      showUndoToast(
+        t('removed_prefix') + (removed.displayName || removed.name || 'item'),
+        t('undo'),
+        () => { IMPORT_QUEUE.splice(qi, 0, removed); buildQueueList(); updateQueueBadge(); }
+      );
     });
 
     list.appendChild(el);
@@ -4627,7 +6673,6 @@ function processASCOFile(file){
 
       document.getElementById('ascoSubtitle').textContent = `Reading: ${file.name}`;
       renderAscoContent(sheets, stats);
-      setLastAction('Imported ' + file.name);
     } catch(err){
       if(ascoBody) ascoBody.innerHTML = '';
       showToast(t('toast_read_err', err.message), 'warn');
@@ -4703,24 +6748,90 @@ function placeAt(cx, cy){
 /* ── Utility: simple HTML escape ── */
 function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-/* ── Toast notification ── */
-function showToast(msg, type='ok'){
+/* ════════════════════════════════════════════════════════════
+   PHASE 14 — PREMIUM TOAST SYSTEM
+   Container-based stack reusing the existing .toast-msg glass
+   styling. Wires the orphaned .toast-msg CSS to showToast() so
+   every one of the 77 call sites gains premium polish without
+   touching callers. Keeps the (msg, type) API identical.
+   Dismisses oldest when stack exceeds the visible cap.
+════════════════════════════════════════════════════════════ */
+const _TOAST_CAP      = 4;
+const _TOAST_TIMEOUT  = 3200;
+const _TOAST_EXIT_MS  = 240;
+
+function _ensureToastStack(){
+  let stack = document.getElementById('toastStack');
+  if(!stack){
+    stack = document.createElement('div');
+    stack.id = 'toastStack';
+    stack.className = 'toast-stack';
+    stack.setAttribute('aria-live', 'polite');
+    stack.setAttribute('aria-atomic', 'false');
+    document.body.appendChild(stack);
+  }
+  return stack;
+}
+
+/* Icon glyphs per tone. Inline SVG so weight/color inherit via CSS
+   currentColor — keeps the stack visually coherent with the tone pill. */
+function _toastIcon(type){
+  if(type === 'warn'){
+    return `<svg class="toast-msg-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 2.6L14 13H2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M8 7v3M8 11.4v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+  }
+  if(type === 'info'){
+    return `<svg class="toast-msg-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M8 7v4M8 5v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+  }
+  /* default = ok */
+  return `<svg class="toast-msg-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
+    <path d="M5.4 8.2l1.8 1.8L10.8 6.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function showToast(msg, type = 'ok'){
+  const stack = _ensureToastStack();
+
+  /* Enforce stack cap by dismissing the oldest until appending a new
+     toast will leave us at exactly _TOAST_CAP visible entries. Loop
+     (not a single check) so the cap is robust even when the stack was
+     somehow pre-populated past the limit. */
+  let active = stack.querySelectorAll('.toast-msg:not(.is-leaving)');
+  while(active.length >= _TOAST_CAP){
+    _dismissToast(active[0]);
+    active = stack.querySelectorAll('.toast-msg:not(.is-leaving)');
+  }
+
   const t = document.createElement('div');
-  const bg = type==='warn' ? 'rgba(251,209,133,.18)' : 'rgba(58,125,82,.10)';
-  const bc = type==='warn' ? 'rgba(120,90,26,.40)' : 'rgba(58,125,82,.45)';
-  const tc = type==='warn' ? '#4a3400' : '#1a4a2e';
-  t.style.cssText = `position:fixed;bottom:70px;left:50%;transform:translateX(-50%);
-    background:${bg};border:1px solid ${bc};border-radius:10px;
-    padding:10px 22px;font-size:11px;color:${tc};z-index:9999;
-    box-shadow:0 6px 24px rgba(49,51,44,.12);max-width:400px;text-align:center;
-    font-family:'Inter',sans-serif;font-weight:600;pointer-events:none;
-    animation:toastIn .2s ease;backdrop-filter:blur(8px);`;
-  const style = document.createElement('style');
-  style.textContent = '@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}';
-  document.head.appendChild(style);
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3200);
+  t.className = 'toast-msg is-' + (type === 'warn' ? 'warn' : type === 'info' ? 'info' : 'ok');
+  t.setAttribute('role', type === 'warn' ? 'alert' : 'status');
+  t.innerHTML = _toastIcon(type) +
+    `<span class="toast-msg-text"></span>`;
+  /* Text via textContent to avoid HTML injection from callers. */
+  t.querySelector('.toast-msg-text').textContent = msg;
+
+  stack.appendChild(t);
+  /* Force reflow so the .is-visible transition fires on class add. */
+  void t.offsetWidth;
+  t.classList.add('is-visible');
+
+  const auto = setTimeout(() => _dismissToast(t), _TOAST_TIMEOUT);
+  t.dataset.toastTimer = String(auto);
+}
+
+function _dismissToast(el){
+  if(!el || !el.parentNode) return;
+  if(el.dataset.toastTimer){
+    clearTimeout(Number(el.dataset.toastTimer));
+    delete el.dataset.toastTimer;
+  }
+  if(el.classList.contains('is-leaving')) return;
+  el.classList.add('is-leaving');
+  el.classList.remove('is-visible');
+  setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, _TOAST_EXIT_MS + 40);
 }
 
 
@@ -4729,15 +6840,80 @@ function showToast(msg, type='ok'){
    Rebuilt to match current UI: warm ivory palette, Manrope/Inter
    typography, premium navy accent, modern card structure.
 ═══════════════════════════════════════════════════════════════ */
-function exportPDF(){
-  /* ══════════════════════════════════════════════════════════
-     PDF Export — Restored original mechanism from web version.
-     html2canvas captures the live deck as a pixel-perfect image.
-     buildPDF() draws the full report with jsPDF + deck image.
-     The canvas element is passed directly to doc.addImage()
-     (no toDataURL call — avoids Tauri WebView taint error).
-     File saved via doc.save() Blob download (same as Excel).
-  ══════════════════════════════════════════════════════════ */
+let _isReportRendering = false;
+
+/* ── DOM pollutant removal for html2canvas ─────────────────────────────
+   WKWebView (Tauri on macOS) taints a canvas at the document level when
+   ANY element in the document contains: external images, <canvas>, or
+   SVG filters — even if those elements are display:none or outside the
+   capture target. The only reliable fix is to physically detach them
+   from the DOM before html2canvas runs and restore them after.
+   
+   Stash format: [{el, parent, next}] for ordered re-insertion. */
+function _stripExportPollutants(){
+  const stash = [];
+  /* External/local images outside the deck canvas (e.g. vessel-bg map) */
+  document.querySelectorAll('img').forEach(el => {
+    if(!el.closest('#cvDECK')){
+      stash.push({el, parent: el.parentNode, next: el.nextSibling});
+      el.remove();
+    }
+  });
+  /* Weather precipitation canvas elements */
+  document.querySelectorAll('.wx-scene canvas, canvas.wx-scene').forEach(el => {
+    stash.push({el, parent: el.parentNode, next: el.nextSibling});
+    el.remove();
+  });
+  /* SVG elements containing filters (feTurbulence etc.) outside deck canvas.
+     NOTE: only SVGs that have a <filter> child — preserves header icon SVGs. */
+  document.querySelectorAll('svg').forEach(svg => {
+    if(svg.querySelector('filter') && !svg.closest('#cvDECK')){
+      stash.push({el: svg, parent: svg.parentNode, next: svg.nextSibling});
+      svg.remove();
+    }
+  });
+  /* CSS injection — neutralize body::before/::after pseudo-elements (feTurbulence
+     noise texture, weather gradient wash) and backdrop-filter/filter outside #cvDECK.
+     These are the primary WKWebView taint triggers and cannot be removed via DOM. */
+  const exportStyle = document.createElement('style');
+  exportStyle.id = '__export-css-strip';
+  exportStyle.textContent = `
+    body, html {
+      background: none !important;
+      backdrop-filter: none !important;
+    }
+    *::before, *::after {
+      background-image: none !important;
+      content: none !important;
+    }
+    *:not(#cvDECK):not(#cvDECK *) {
+      backdrop-filter: none !important;
+      filter: none !important;
+    }
+  `;
+  document.head.appendChild(exportStyle);
+  stash.push({type: 'style', el: exportStyle});
+  return stash;
+}
+
+function _restoreExportPollutants(stash){
+  stash.forEach(({type, el, parent, next}) => {
+    if(type === 'style'){
+      el.remove();
+    } else {
+      if(next && next.parentNode === parent) parent.insertBefore(el, next);
+      else parent.appendChild(el);
+    }
+  });
+}
+
+function exportPDF(){ return _renderReport('save'); }
+function printDeckPlan(){ return _renderReport('print'); }
+
+async function _renderReport(mode){
+  if(_isReportRendering){ return; }
+  _isReportRendering = true;
+
   showToast(t('toast_preparing'), 'ok');
 
   /* ── Gather live data from DOM ── */
@@ -4857,40 +7033,56 @@ function exportPDF(){
   };
 
   /* 5. Capture live deck with html2canvas.
-        allowTaint:true is OK now — we no longer use toDataURL.
-        The toBlob path in buildPDF bypasses the taint restriction. */
-  setTimeout(() => {
-    html2canvas(dcv, {
-      scale: 3, useCORS: true, allowTaint: true, backgroundColor: '#fbf9f4',
+        DOM pollutants (img, wx canvas, svg filters) are physically detached
+        before capture — display:none is insufficient in WKWebView, taint check
+        operates at document level regardless of visibility.
+        Double rAF ensures CSS repaint is committed before capture. */
+  const _exportStash = _stripExportPollutants();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  try {
+    const deckCanvas = await html2canvas(dcv, {
+      scale: 3, useCORS: true, backgroundColor: '#fbf9f4',
       logging: false, width: TW, height: CVH,
       windowWidth: TW, windowHeight: CVH,
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
-    }).then(deckCanvas => {
-      restore();
-      buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs })
-        .catch(err => {
-          console.error('[PDF] buildPDF error:', err);
-          showToast('PDF build error: ' + (err && err.message || err), 'warn');
-        });
-    }).catch(err => {
-      restore();
-      console.error('[PDF] html2canvas error:', err);
-      showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
     });
-  }, 120);
+    restore();
+    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
+      .catch(err => {
+        console.error('[PDF] buildPDF error:', err);
+        showToast('PDF build error: ' + (err && err.message || err), 'warn');
+      })
+      .finally(() => { _isReportRendering = false; });
+  } catch(err) {
+    restore();
+    _isReportRendering = false;
+    console.error('[PDF] html2canvas error:', err);
+    showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
+  } finally {
+    _restoreExportPollutants(_exportStash);
+  }
 }
 
-async function buildPDF(deckCanvas, data){
+async function buildPDF(deckCanvas, data, opts){
+  const _mode = (opts && opts.mode) || 'save';
   const { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs } = data;
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+
+  /* Register Inter TTF — embedded at build time via inter-fonts.js.
+     addFileToVFS + addFont is the standard jsPDF custom-font pattern. */
+  doc.addFileToVFS('Inter-Regular.ttf', interRegularB64);
+  doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
+  doc.addFileToVFS('Inter-Bold.ttf', interBoldB64);
+  doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
 
   const PW=297, PH=210, ML=10, MR=10, MT=8;
   const CW = PW - ML - MR;
 
   const C = {
     ink:[49,51,44], ink2:[94,96,88], ink3:[121,124,115], ink4:[177,179,169],
-    navy:[72,96,131], navy2:[60,84,119], ivory:[251,249,244], surf2:[245,244,237],
-    surf3:[239,238,230], surf4:[232,233,224], green:[58,125,82], amber:[120,90,26],
+    navy:[59,110,181], navy2:[47,90,161], ivory:[251,249,244], surf2:[245,244,237],
+    surf3:[239,238,230], surf4:[232,233,224], green:[30,143,74], amber:[160,125,46],
     brd:[205,205,198], white:[255,255,255],
   };
 
@@ -4905,87 +7097,164 @@ async function buildPDF(deckCanvas, data){
 
   let y = MT;
 
-  /* 1. HEADER — enlarged for print readability */
-  const HDR_H = 32;
-  roundRect(ML,y,CW,HDR_H,2,C.ivory,C.brd);
-  doc.setFillColor(...C.navy); doc.roundedRect(ML,y,3,HDR_H,1,1,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(...C.ink);
-  doc.text('SPICA TIDE', ML+8, y+12);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...C.navy);
-  doc.text('Deck Cargo Plan', ML+8, y+18);
-  doc.setFontSize(7); doc.setTextColor(...C.ink3);
-  doc.text('PSV \u00B7 North Sea \u00B7 NEO Energy Resources UK', ML+8, y+24);
-  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2); doc.line(ML+75,y+4,ML+75,y+HDR_H-4);
-  const cell = (label,value,cx,colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(),cx,y+12);
-    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(...colVal);
-    doc.text(value,cx,y+24);
-  };
-  cell('Voyage',voyageNum,ML+82,C.navy); cell('Date',dateStr,ML+122,C.ink);
-  doc.setDrawColor(...C.brd); doc.line(ML+160,y+4,ML+160,y+HDR_H-4);
-  [{lbl:'Total Lifts',val:String(lifts),col:C.ink,dx:0},{lbl:'Load',val:String(loadCount),col:C.green,dx:34},
-   {lbl:'Backload',val:String(blCount),col:C.navy,dx:68},{lbl:'ROB',val:String(robCount),col:C.amber,dx:100}
-  ].forEach(s=>cell(s.lbl,s.val,ML+165+s.dx,s.col));
-  y += HDR_H+3;
+  /* 1. HEADER — Marine Editorial style, 23mm */
+  const HDR_H = 23;
+  const BAND_H = 6;   /* navy masthead strip height */
 
-  /* 2. LOCATIONS — enlarged for print readability */
+  /* Card background — ivory with thin border */
+  roundRect(ML, y, CW, HDR_H, 2, C.ivory, C.brd);
+
+  /* Navy masthead band — full width, squared bottom corners */
+  doc.setFillColor(...C.navy);
+  doc.roundedRect(ML, y, CW, BAND_H, 2, 2, 'F');
+  doc.rect(ML, y + BAND_H - 2, CW, 2, 'F');
+
+  /* Vessel name — reversed white on navy */
+  doc.setFont('Inter','bold'); doc.setFontSize(10); doc.setTextColor(...C.white);
+  doc.text('SPICA TIDE', ML+5, y+4.2);
+
+  /* Subtitle — light on navy, all caps */
+  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
+  doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+39, y+4.2);
+
+  /* Content area starts below band — 3mm top pad before label */
+  const cy = y + BAND_H;
+
+  /* Counter cell — tight uppercase label + prominent value */
+  const cell = (label, value, cx, colVal) => {
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+4);
+    doc.setFont('Inter','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+13);
+  };
+
+  /* Counters — left zone */
+  [{lbl:'Total Lifts',val:String(lifts),      col:C.ink,   dx:0},
+   {lbl:'Load',       val:String(loadCount),   col:C.green, dx:52},
+   {lbl:'Backload',   val:String(blCount),     col:C.navy,  dx:100},
+   {lbl:'ROB',        val:String(robCount),    col:C.amber, dx:145},
+  ].forEach(s => cell(s.lbl, s.val, ML+5+s.dx, s.col));
+
+  /* Thin divider between counters and voyage metadata */
+  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2);
+  doc.line(ML+192, cy+2, ML+192, cy+HDR_H-BAND_H-2);
+
+  /* Voyage metadata — right zone */
+  const vCell = (label, value, cx, colVal) => {
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+5);
+    doc.setFont('Inter','bold'); doc.setFontSize(11); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+13);
+  };
+  vCell('Voyage', voyageNum, ML+197, C.navy);
+  vCell('Date',   dateStr,   ML+240, C.ink);
+
+  y += HDR_H+2;
+
+  /* 2. LOCATIONS — 17mm cards: ACCENT(3)+GAP(2)+NAME(5)+PILLS(5)+PAD(2) */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
   if(filledLocs.length > 0){
-    const LOC_H=22, GAP=3;
+    const LOC_H=17, GAP=2;
     const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
     filledLocs.forEach((loc,i) => {
       const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
-      roundRect(lx,y,locW,LOC_H,2,C.surf2,C.brd);
+      roundRect(lx,y,locW,LOC_H,2,C.white,C.brd);
+      /* Accent stripe 3mm — squared bottom corners via overdraw */
       doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
-      doc.setFillColor(...rgb); doc.circle(lx+5,y+10,2,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.ink);
-      const maxChars = Math.floor(locW/2.8);
+      doc.rect(lx, y+1, locW, 2, 'F');
+      /* Dot + name + weight on one line — 2mm below accent */
+      doc.setFillColor(...rgb); doc.circle(lx+5,y+8,1.5,'F');
+      doc.setFont('Inter','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
+      const maxChars = Math.floor(locW/2.6);
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'\u2026' : loc.name;
-      doc.text(nm, lx+10, y+11);
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink3);
-      doc.text(loc.wt+'T', lx+locW-3, y+11, {align:'right'});
-      let px = lx+4; const py = y+15.5;
-      [{lbl:'L',val:loc.L,col:C.green},{lbl:'BL',val:loc.BL,col:C.navy},{lbl:'ROB',val:loc.ROB,col:C.amber}]
+      doc.text(nm, lx+10, y+8.5);
+      doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
+      doc.text(loc.wt+'T', lx+locW-3, y+8.5, {align:'right'});
+      /* Pills — 2mm below name row, 2mm bottom pad before card edge */
+      let px = lx+4; const py = y+13;
+      const colL  = hex2rgb(opColor(loc.id, 'L'));
+      const colBL = hex2rgb(opColor(loc.id, 'BL'));
+      const colROB= hex2rgb(opColor(loc.id, 'ROB'));
+      [{lbl:'L',val:loc.L,col:colL},{lbl:'BL',val:loc.BL,col:colBL},{lbl:'ROB',val:loc.ROB,col:colROB}]
         .filter(p=>p.val>0).forEach(p => {
-          const pw = p.lbl==='ROB'?16:p.lbl==='BL'?14:12;
-          const pillBg = p.col.map(v=>Math.round(v*0.12+242));
-          roundRect(px,py-2.5,pw,6.5,2,pillBg,null);
-          doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...p.col);
-          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.5, {align:'center'}); px+=pw+2.5;
+          const pw = p.lbl==='ROB'?14:p.lbl==='BL'?12:10;
+          const pillBg = p.col.map(v=>Math.round(v*0.20+230));
+          roundRect(px,py-2,pw,5,1.5,pillBg,null);
+          doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.col);
+          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.2, {align:'center'}); px+=pw+2;
         });
     });
-    y += LOC_H+3;
+    y += LOC_H+2;
   }
 
-  /* 3. DG ON BOARD */
+  /* 3. DG ON BOARD — pill-based, matches Location card pills exactly
+        Structure: BAND(4) + GAP(2) + PILL-ROW(5) + PAD(3) = 14mm */
   if(dgEntries.length > 0){
-    const DG_H = 7.5;
-    roundRect(ML,y,CW,DG_H,1,[252,244,214],[C.amber[0],C.amber[1],C.amber[2]]);
-    doc.setFont('helvetica','bold'); doc.setFontSize(5); doc.setTextColor(...C.amber);
-    doc.text('DG ON BOARD', ML+2.5, y+5);
-    let bx = ML+26;
-    dgEntries.forEach(dg => {
-      const bgRgb=hex2rgb(dg.bg), textRgb=contrastText(bgRgb);
-      roundRect(bx,y+0.8,14,DG_H-1.6,1.5,bgRgb,bgRgb.map(v=>Math.max(0,v-30)));
-      doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...textRgb);
-      doc.text(dg.cls, bx+7, y+4.2, {align:'center'});
-      doc.setFontSize(4); doc.text('\u00D7'+dg.count, bx+7, y+6.2, {align:'center'}); bx+=16;
+    const DG_BAND  = 4;     /* chestnut accent band mm */
+    const DG_PAD_T = 2;     /* gap below band before pills */
+    const DG_PAD_B = 3;     /* bottom padding */
+    const PILL_H   = 5;     /* matches Location card pills exactly */
+    const PILL_GAP = 2;     /* between pills */
+    const chestnut = [168, 50, 50];  /* #a83232 */
+
+    /* Build pill labels and measure widths for wrapping */
+    const dgPills = dgEntries.map(dg => {
+      const bgRgb  = hex2rgb(dg.bg);
+      const txtRgb = hex2rgb(dg.bc);  /* border color = saturated text color */
+      const label  = `${dg.cls} ${dg.nm} \u00D7${dg.count}`;
+      /* Estimate pill width: 7pt ≈ 1.85mm/char + 4mm padding */
+      const pw = Math.round(label.length * 1.85) + 6;
+      const pillBg = bgRgb.map(v => Math.round(v * 0.20 + 230));
+      return { label, pw, pillBg, txtRgb };
     });
-    if(bx < ML+CW-20){
-      doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink3);
-      doc.text(dgEntries.map(d=>'Cl.'+d.cls+' '+d.nm).join('  \u00B7  ').slice(0,120), bx+2, y+5);
-    }
-    y += DG_H+2;
+
+    /* Layout: flow pills left-to-right, wrap rows if overflow */
+    const maxPillX = ML + CW - 5;
+    const rows = [];
+    let currentRow = [], rowX = ML + 5;
+    dgPills.forEach(p => {
+      if(currentRow.length > 0 && rowX + p.pw > maxPillX){
+        rows.push(currentRow); currentRow = []; rowX = ML + 5;
+      }
+      currentRow.push({...p, x: rowX});
+      rowX += p.pw + PILL_GAP;
+    });
+    if(currentRow.length) rows.push(currentRow);
+
+    const DG_H = DG_BAND + DG_PAD_T + rows.length * (PILL_H + PILL_GAP) - PILL_GAP + DG_PAD_B;
+
+    /* Card — white bg, thin border */
+    roundRect(ML, y, CW, DG_H, 2, C.white, C.brd);
+
+    /* Chestnut accent band — squared bottom corners */
+    doc.setFillColor(...chestnut);
+    doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
+    doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
+
+    /* Title — white bold in band */
+    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
+    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.8);
+
+    /* Pills — same render logic as Location pills */
+    rows.forEach((row, ri) => {
+      const py = y + DG_BAND + DG_PAD_T + ri * (PILL_H + PILL_GAP);
+      row.forEach(p => {
+        roundRect(p.x, py, p.pw, PILL_H, 1.5, p.pillBg, null);
+        doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.txtRgb);
+        doc.text(p.label, p.x + p.pw/2, py + 3.3, {align:'center'});
+      });
+    });
+
+    y += DG_H + 2;
   }
 
   /* 4. DECK PLAN LABEL */
-  doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
-  doc.text('DECK CARGO PLAN', ML, y+4.5);
-  doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
-  doc.text('\u2190 AFT / BAY 12', ML, y+8);
-  doc.text('BAY 1 / BOW \u2192', ML+CW, y+8, {align:'right'});
-  y += 10;
+  doc.setFont('Inter','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
+  doc.text('DECK CARGO PLAN', ML, y+3.5);
+  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
+  doc.text('\u2190 AFT / BAY 12', ML, y+7);
+  doc.text('BAY 1 / BOW \u2192', ML+CW, y+7, {align:'right'});
+  y += 8;
 
   /* 5. DECK IMAGE — the html2canvas capture */
   const FOOTER_H=8, BAY_LBL_H=6;
@@ -5019,7 +7288,7 @@ async function buildPDF(deckCanvas, data){
 
   /* 6. BAY LABELS */
   const bayNms = ['12','11','10','9','8','7','6','5','4','3','2','1'];
-  doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
+  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
   BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+4, {align:'center'}); });
 
   /* 7. VOYAGE NOTES */
@@ -5029,9 +7298,9 @@ async function buildPDF(deckCanvas, data){
     const NOTE_H = Math.min(24, 6+noteLines.length*4.2);
     if(y+NOTE_H+FOOTER_H < PH-2){
       roundRect(ML,y,CW,NOTE_H,1.5,C.surf2,C.brd);
-      doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
+      doc.setFont('Inter','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
       doc.text('VOYAGE NOTES', ML+3, y+4.5);
-      doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.ink2);
+      doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.ink2);
       doc.text(noteLines, ML+3, y+9); y += NOTE_H+2;
     }
   }
@@ -5039,14 +7308,22 @@ async function buildPDF(deckCanvas, data){
   /* 8. FOOTER */
   const fy = PH-FOOTER_H;
   sepLine(fy-1);
-  doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
+  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
   const now = new Date();
   const ts = now.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
   doc.text('Generated '+ts+'  \u00B7  SPICA TIDE  \u00B7  NEO Energy Resources UK', ML, fy+4);
   doc.setTextColor(...C.navy);
   doc.text('Voyage '+voyageNum+'  \u00B7  '+dateStr, ML+CW, fy+4, {align:'right'});
 
-  /* 9. SAVE — use pre-chosen path from menu dialog, or browser fallback */
+  /* 9. OUTPUT — print or save depending on mode */
+  if(_mode === 'print'){
+    const blobUrl = doc.output('bloburl');
+    showToast(t('toast_print_ok'), 'ok');
+    _printPdfViaIframe(blobUrl);
+    return;
+  }
+
+  /* Save mode — use pre-chosen path from menu dialog, or browser fallback */
   const pdfPath = window._pendingPdfPath;
   window._pendingPdfPath = null;
 
@@ -5057,6 +7334,7 @@ async function buildPDF(deckCanvas, data){
       const bytes = Array.from(new Uint8Array(pdfOutput));
       await invoke('write_file_bytes', { path: pdfPath, bytes });
       showToast(t('toast_pdf_ok') + ' \u2014 ' + pdfPath.split(/[/\\]/).pop(), 'ok');
+      _phase27ExportComplete();
     } catch(e) {
       showToast('PDF save failed: ' + (e && e.message || e), 'warn');
     }
@@ -5067,7 +7345,53 @@ async function buildPDF(deckCanvas, data){
     const yyyy = selDate.getFullYear();
     doc.save('SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf');
     showToast(t('toast_pdf_ok'), 'ok');
+    _phase27ExportComplete();
   }
+}
+
+/* ── Print PDF via hidden iframe ── */
+function _printPdfViaIframe(blobUrl){
+  const existing = document.getElementById('_printIframe');
+  if(existing) existing.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = '_printIframe';
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  iframe.src = blobUrl;
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(err){
+        console.error('[print] iframe.print failed:', err);
+        window.open(blobUrl, '_blank');
+      }
+    }, 100);
+  };
+
+  document.body.appendChild(iframe);
+
+  /* Cleanup after 60s — enough time for user to interact with print dialog */
+  setTimeout(() => {
+    if(iframe.parentNode) iframe.remove();
+    try { URL.revokeObjectURL(blobUrl); } catch(e){}
+  }, 60000);
+}
+
+/* Phase 27 — export terminus feedback. Sound + toast success decoration.
+   Lives on every export completion path (PDF Tauri, PDF browser, Excel
+   Tauri, Excel browser). Timed to follow showToast so the toast is in
+   the DOM when we upgrade its class. */
+function _phase27ExportComplete(){
+  playSound('export');
+  /* Upgrade the most recent toast to the success variant. Pull it from
+     #toastHost so we don't hit a stale element. */
+  const host = document.getElementById('toastHost') || document.body;
+  const toasts = host.querySelectorAll('.toast');
+  const last = toasts[toasts.length - 1];
+  if(last) last.classList.add('is-export-success');
 }
 
 
@@ -5159,6 +7483,10 @@ function bindSaveAs(){
       /* Ctrl+Y → Redo (Windows convention) */
       e.preventDefault();
       redo();
+    } else if(e.key === 'p' && !e.shiftKey){
+      /* Ctrl+P → Print deck plan report */
+      e.preventDefault();
+      printDeckPlan();
     }
   });
 
@@ -5256,6 +7584,8 @@ function cpUpdateStripBadge(){
 /* ── Open / Close ── */
 function cpOpen(){
   CP_OPEN = true;
+  /* Mutual exclusion with Inspector — only one right rail at a time. */
+  if(typeof inspSelId !== 'undefined' && inspSelId != null && typeof inspClose === 'function') inspClose();
   document.getElementById('cpOverlay').classList.add('open');
   document.body.classList.add('cp-panel-open');
   const _lo = document.getElementById('btnLibOpen'); if(_lo) _lo.classList.add('panel-active');
@@ -5436,6 +7766,10 @@ function cpRenderQueue(){
 
     const card = document.createElement('div');
     card.className = 'cp-qi' + (isPlaced?' cp-qi-placed':'');
+    /* Operation-colour accent: status (L/BL/ROB/TR) wins, else DG or HL */
+    if(item.status)                             card.dataset.status = item.status;
+    else if(item.dgClasses && item.dgClasses.length) card.dataset.status = 'DG';
+    else if(item.heavyLift)                     card.dataset.status = 'HL';
 
     /* icon */
     const dot = document.createElement('div');
@@ -5501,16 +7835,120 @@ function cpRenderQueue(){
         }
         return;
       }
-      document.querySelectorAll('.cp-qi').forEach(x=>x.classList.remove('cp-qi-sel'));
-      card.classList.add('cp-qi-sel');
-      /* Also sync with the old selectQueueItem path */
+      /* Toggle: click-again on the already-selected card deselects it
+         and returns the card to its default blue idle state. */
+      const wasSelected = card.classList.contains('cp-qi-sel');
+      document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
       document.querySelectorAll('.asco-qitem').forEach(x=>x.classList.remove('selected-q'));
-      if(typeof selectQueueItem==='function' && realIdx>=0) selectQueueItem(realIdx);
-      cpShowHint('<b>' + (item.name||item.ccu||'Cargo').replace(/</g,'&lt;') + '</b> → click deck to place');
+      if(wasSelected){
+        /* Deselected — cancel pending placement */
+        if(typeof cancelPending==='function') cancelPending();
+        cpShowHint('');
+      } else {
+        card.classList.add('cp-qi-sel');
+        if(typeof selectQueueItem==='function' && realIdx>=0) selectQueueItem(realIdx);
+        cpShowHint('<b>' + (item.name||item.ccu||'Cargo').replace(/</g,'&lt;') + '</b> → click deck to place');
+      }
     });
 
     body.insertBefore(card, empty);
   });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 4 — DRAG FROM CARGO LIBRARY (shared helper).
+   Attached to every library card (main · DG · custom) via mousedown.
+   Threshold: 5px of cursor movement promotes click → drag.  Ghost follows
+   the cursor; over the deck canvas it gets a "drop-ok" accent; anywhere
+   else it stays in a neutral, slightly dimmed state.  On release:
+     - over deck  → _placeAtCore(dropX, dropY) using the provided pending.
+     - elsewhere  → graceful cancel (ghost removed, no state change).
+   Viewer mode: early-return; click-to-place path handles the read-only
+   permission check downstream via placeAt().                              */
+function _libDragFromCard(e, pendingItem, displayName, pw, ph){
+  if(!isOperator()) return;
+  if(e.button !== 0) return;
+
+  const sx = e.clientX, sy = e.clientY;
+  let dragging = false;
+  let ghost = null;
+  let overDeck = false;
+
+  /* Default ghost dimensions when no physical size is known (DG markers,
+     custom entries missing length/width). Small, premium, non-distracting. */
+  const GW = pw ? Math.max(60, pw * zoomLevel) : 112;
+  const GH = ph ? Math.max(28, ph * zoomLevel) : 38;
+
+  const onMove = ev => {
+    if(!dragging){
+      const dx = Math.abs(ev.clientX - sx);
+      const dy = Math.abs(ev.clientY - sy);
+      if(dx > 5 || dy > 5){
+        dragging = true;
+        ghost = document.createElement('div');
+        ghost.className = 'ghost ghost-lib';
+        ghost.style.width  = GW + 'px';
+        ghost.style.height = GH + 'px';
+        const lbl = document.createElement('div');
+        lbl.className = 'ghost-lib-label';
+        lbl.textContent = displayName;
+        ghost.appendChild(lbl);
+        document.body.appendChild(ghost);
+      }
+    }
+    if(ghost){
+      ghost.style.left = (ev.clientX - GW / 2) + 'px';
+      ghost.style.top  = (ev.clientY - GH / 2) + 'px';
+
+      /* Over-deck detection — a subtle accent cue so the operator knows
+         the drop will land. No colour explosion, no bounce. */
+      const dcv = document.querySelector('.dcv');
+      if(dcv){
+        const cr = dcv.getBoundingClientRect();
+        const nowOver = (ev.clientX >= cr.left && ev.clientX <= cr.right
+                      && ev.clientY >= cr.top  && ev.clientY <= cr.bottom);
+        if(nowOver !== overDeck){
+          overDeck = nowOver;
+          ghost.classList.toggle('ghost-drop-ok', overDeck);
+        }
+      }
+    }
+  };
+
+  const onUp = ev => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if(ghost) ghost.remove();
+    if(!dragging) return;         /* click-only: let the card's click handler run */
+
+    const dcv = document.querySelector('.dcv');
+    if(!dcv) return;
+    const cr = dcv.getBoundingClientRect();
+    if(ev.clientX < cr.left || ev.clientX > cr.right
+    || ev.clientY < cr.top  || ev.clientY > cr.bottom) return;   /* off-deck cancel */
+
+    const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
+    const dropY = (ev.clientY - cr.top)  / zoomLevel - (ph || 1) / 2;
+    S.pending = pendingItem;
+    _placeAtCore(
+      Math.max(0, Math.min(dropX, TW  - (pw || 1))),
+      Math.max(0, Math.min(dropY, CVH - (ph || 1)))
+    );
+
+    /* Placement confirmation — tag the new cargo block for a 180ms
+       scale-in. CSS handles the rest; class self-removes via animationend. */
+    const placed = S.cargo[S.cargo.length - 1];
+    if(placed){
+      const el = document.querySelector(`.cb[data-id="${placed.id}"]`);
+      if(el){
+        el.classList.add('just-placed');
+        el.addEventListener('animationend', () => el.classList.remove('just-placed'), { once:true });
+      }
+    }
+  };
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 /* ── Render: Standard Library ── */
@@ -5685,31 +8123,45 @@ function cpRenderLib(){
     return;
   }
 
-  /* Normal library view — use CLIB (the real cargo data) */
+  /* Normal library view — merge standard CLIB + user custom cargo.
+     Both sources feed through cpMatch() (same search/filter pipeline)
+     and both contribute to the badge count. If neither source has
+     matches we show the empty state; otherwise each source renders in
+     its own section below. Previously `items.length===0` returned
+     early even when the user had custom cargo that matched, hiding
+     their entire Custom Library and their custom Favourites. */
   const src = (typeof CLIB !== 'undefined') ? CLIB : [];
-  let items = src.filter(item => cpMatch(item));
+  const items   = src.filter(item => cpMatch(item));
+  const customs = (S.customLib||[]).filter(item => cpMatch(item));
 
-  /* Unplaced filter — library items are always unplaced (they're templates) */
-  /* no additional filter needed for 'unplaced' */
-
-  if(badge) badge.textContent = items.length;
-  if(items.length===0){ body.innerHTML='<div class="cp-empty">No cargo matches your search.</div>'; return; }
-
-  /* Add custom library items */
-  const customs = (S.customLib||[]).filter(item=>cpMatch(item));
+  if(badge) badge.textContent = items.length + customs.length;
+  if(items.length===0 && customs.length===0){
+    body.innerHTML='<div class="cp-empty">No cargo matches your search.</div>';
+    return;
+  }
 
   /* Group standard items by category */
   const groups={};
   items.forEach(it=>{ const c=it.cat||'Other'; (groups[c]=groups[c]||[]).push(it); });
 
-  /* Favourites section first */
-  /* Favourites: LIB_PREFS.favs is a Set — use .has() */
+  /* Favourites section first.
+     Favourites: LIB_PREFS.favs is a Set keyed by libKey() = item.key || item.name.
+     Custom cargo items live in S.customLib (no `key`, so their libKey is `name`).
+     Previously this filter only scanned `items` (standard CLIB) so favourited
+     CUSTOM cargo never appeared in the Favourites section even though their
+     favourite state was saved correctly. Merge both sources so custom items
+     are first-class citizens in Favourites. */
   const hasFav = k => (LIB_PREFS.favs instanceof Set) ? LIB_PREFS.favs.has(k) : false;
-  const favItems = items.filter(it => hasFav(it.key||it.name));
+  const favItems = [...items, ...customs].filter(it => hasFav(it.key||it.name));
   if(favItems.length > 0 && !CP_Q){
-    const lbl=document.createElement('div'); lbl.className='cp-cat-lbl'; lbl.textContent='★ Favourites';
+    const lbl=document.createElement('div'); lbl.className='cp-cat-lbl'; lbl.dataset.fav='true'; lbl.textContent='★ Favourites';
     body.appendChild(lbl);
-    favItems.forEach(item => body.appendChild(cpMakeLibCard(item)));
+    favItems.forEach(item => {
+      /* Preserve the custom icon when a favourited item is a custom-cargo
+         template — the Favourites card should still look like a Custom row. */
+      const isCustom = (item.cat === 'Custom');
+      body.appendChild(cpMakeLibCard(item, isCustom));
+    });
   }
 
   /* Standard groups */
@@ -5806,58 +8258,25 @@ function cpMakeLibCard(item, isCustom=false){
   };
 
   card.addEventListener('mousedown', e => {
-    if(e.target.closest('.cp-lc-star')) return; /* don't intercept star click */
-    if(e.button !== 0) return;
-    const sx = e.clientX, sy = e.clientY;
-    let dragging = false, ghost = null;
-
-    const onMove = ev => {
-      if(!dragging && (Math.abs(ev.clientX-sx)>5 || Math.abs(ev.clientY-sy)>5)){
-        dragging = true;
-        ghost = document.createElement('div');
-        ghost.className = 'ghost';
-        ghost.style.cssText = `width:${pw*zoomLevel}px;height:${ph*zoomLevel}px;left:${ev.clientX-pw*zoomLevel/2}px;top:${ev.clientY-ph*zoomLevel/2}px;`;
-        ghost.innerHTML = '<div style="font-size:9px;color:var(--acc);text-align:center;padding:4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">' + displayName.replace(/</g,'&lt;') + '</div>';
-        document.body.appendChild(ghost);
-      }
-      if(ghost){
-        ghost.style.left = (ev.clientX - pw*zoomLevel/2) + 'px';
-        ghost.style.top  = (ev.clientY - ph*zoomLevel/2) + 'px';
-      }
-    };
-    const onUp = ev => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      if(ghost) ghost.remove();
-      if(dragging){
-        /* Check if dropped onto the deck canvas */
-        const dcv = document.querySelector('.dcv');
-        if(!dcv) return;
-        const cr = dcv.getBoundingClientRect();
-        const dropX = (ev.clientX - cr.left) / zoomLevel - pw/2;
-        const dropY = (ev.clientY - cr.top)  / zoomLevel - ph/2;
-        if(ev.clientX >= cr.left && ev.clientX <= cr.right && ev.clientY >= cr.top && ev.clientY <= cr.bottom){
-          /* Place cargo at drop position */
-          S.pending = pendingItem;
-          _placeAtCore(
-            Math.max(0, Math.min(dropX, TW - pw)),
-            Math.max(0, Math.min(dropY, CVH - ph))
-          );
-          setLastAction('Placed ' + displayName);
-        }
-      }
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    if(e.target.closest('.cp-lc-star')) return;   /* don't intercept star click */
+    _libDragFromCard(e, pendingItem, displayName, pw, ph);
   });
 
-  /* ── Click = activate for deck placement (existing behavior) ── */
+  /* ── Click = toggle select. Second click on the same card deselects
+     and returns it to the default blue idle state. ── */
   card.addEventListener('click', () => {
-    document.querySelectorAll('.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-lc-sel','cp-dg-sel'));
-    card.classList.add('cp-lc-sel');
-    S.pending = pendingItem;
+    const wasSelected = card.classList.contains('cp-lc-sel');
+    document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
     document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x => x.classList.remove('sel','selected-q'));
-    cpShowHint('<b>' + displayName.replace(/</g,'&lt;') + '</b> → click deck to place');
+    if(wasSelected){
+      S.pending = null;
+      if(typeof cancelPending==='function') cancelPending();
+      cpShowHint('');
+    } else {
+      card.classList.add('cp-lc-sel');
+      S.pending = pendingItem;
+      cpShowHint('<b>' + displayName.replace(/</g,'&lt;') + '</b> → click deck to place');
+    }
   });
 
   return card;
@@ -5887,12 +8306,25 @@ function cpRenderDg(){
                   <div class="cp-dg-nm">${dg.nm.replace(/</g,'&lt;')}</div>`;
     card.appendChild(bd);
     card.addEventListener('click',()=>{
-      document.querySelectorAll('.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-lc-sel','cp-dg-sel'));
-      card.classList.add('cp-dg-sel');
-      S.pending={type:'dg',item:dg};
+      const wasSelected = card.classList.contains('cp-dg-sel');
+      document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
       document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x=>x.classList.remove('sel','selected-q'));
-      if(typeof updateDGZones==='function') updateDGZones();
-      cpShowHint('<b>◆ DG '+dg.cls+' · '+dg.nm.replace(/</g,'&lt;')+'</b> → click deck to place');
+      if(wasSelected){
+        S.pending = null;
+        if(typeof cancelPending==='function') cancelPending();
+        if(typeof updateDGZones==='function') updateDGZones();
+        cpShowHint('');
+      } else {
+        card.classList.add('cp-dg-sel');
+        S.pending = {type:'dg',item:dg};
+        if(typeof updateDGZones==='function') updateDGZones();
+        cpShowHint('<b>◆ DG '+dg.cls+' · '+dg.nm.replace(/</g,'&lt;')+'</b> → click deck to place');
+      }
+    });
+    /* Phase 4 — drag-from-library for DG markers (no intrinsic dimensions;
+       helper uses its premium defaults for the ghost). */
+    card.addEventListener('mousedown', e => {
+      _libDragFromCard(e, { type:'dg', item:dg }, 'DG Class ' + dg.cls, null, null);
     });
     body.appendChild(card);
   });
@@ -5920,24 +8352,40 @@ function cpRenderCustom(){
     rm.textContent='×';
     rm.addEventListener('mousedown',e=>e.stopPropagation());
     rm.addEventListener('click',e=>{
-      e.stopPropagation(); S.customLib.splice(idx,1);
+      e.stopPropagation();
+      const removed = S.customLib.splice(idx,1)[0];
       if(typeof save==='function') save();
       cpRenderCustom();
+      showUndoToast(
+        t('removed_prefix') + (removed.name || 'custom cargo'),
+        t('undo'),
+        () => { S.customLib.splice(idx, 0, removed); if(typeof save==='function') save(); cpRenderCustom(); }
+      );
     });
     card.appendChild(rm);
+    /* Shared pendingItem payload — both click-to-place (fallback) and
+       drag-from-library use this identical descriptor. */
+    const _custPw = item.w || m2px_w(item.length_m || 3);
+    const _custPh = item.h || m2px_h(item.width_m  || 2.44);
+    const _custPending = { type:'cargo', item:{
+      cat: item.cat, name: item.name,
+      w: _custPw, h: _custPh,
+      wt: parseFloat(item.wt)||0,
+      length_m: item.length_m, width_m: item.width_m,
+    }};
+    const _custDisplayName = item.name || 'Custom';
+
     card.addEventListener('click',()=>{
       document.querySelectorAll('.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-lc-sel','cp-dg-sel'));
       card.classList.add('cp-lc-sel');
-      /* type:'cargo' so _placeAtCore picks up w/h dimensions correctly */
-      S.pending={type:'cargo', item:{
-        cat: item.cat, name: item.name,
-        w: item.w || m2px_w(item.length_m||3),
-        h: item.h || m2px_h(item.width_m||2.44),
-        wt: parseFloat(item.wt)||0,
-        length_m: item.length_m, width_m: item.width_m,
-      }};
+      S.pending = _custPending;
       document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x=>x.classList.remove('sel','selected-q'));
-      cpShowHint('<b>'+(item.name||'').replace(/</g,'&lt;')+'</b> → click deck to place');
+      cpShowHint('<b>'+_custDisplayName.replace(/</g,'&lt;')+'</b> → click deck to place');
+    });
+    /* Phase 4 — drag-from-library for custom entries. */
+    card.addEventListener('mousedown', e => {
+      if(e.target === rm) return;    /* never drag when starting on the × remove button */
+      _libDragFromCard(e, _custPending, _custDisplayName, _custPw, _custPh);
     });
     list.appendChild(card);
   });
@@ -5951,16 +8399,19 @@ function cpBindCustomForm(){
     if(!isOperator()){ showToast('Switch to Operator mode'); return; }
     const desc=document.getElementById('cpDesc').value.trim();
     if(!desc){ alert('Enter description'); return; }
-    const sz=document.getElementById('cpSize').value||'3.0x2.44';
-    const pp=sz.replace(/[^0-9.x]/gi,'').split('x');
-    const lm=parseFloat(pp[0])||3.0, wm=parseFloat(pp[1])||2.44;
-    const item={cat:'Custom',name:desc,sz,wt:parseFloat(document.getElementById('cpWT').value)||0,
+    /* Footprint-only template: length × width. Weight is 0 by default
+       and set per-placed-instance via the cargo edit modal (it varies
+       by loading state). CCU / ID isn't part of a manual template. */
+    const lm=parseFloat(document.getElementById('cpLen').value)||3.0;
+    const wm=parseFloat(document.getElementById('cpWid').value)||2.44;
+    const sz=lm.toFixed(2)+'x'+wm.toFixed(2);
+    const item={cat:'Custom',name:desc,sz,wt:0,
       length_m:lm,width_m:wm,w:m2px_w(lm),h:m2px_h(wm)};
     S.customLib.push(item);
     if(typeof buildCargoList==='function') buildCargoList();
     if(typeof buildCustList==='function') buildCustList();
     if(typeof buildModalDescSelect==='function') buildModalDescSelect();
-    ['cpDesc','cpCCU','cpSize','cpWT'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    ['cpDesc','cpLen','cpWid'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     if(typeof save==='function') save();
     cpRenderCustom();
   });
@@ -6057,28 +8508,99 @@ function cpBind(){
    State: KB_SEL = cargo id of currently keyboard-selected block
 ════════════════════════════════════════════════════════════ */
 
-let KB_SEL = null;   /* currently keyboard-selected cargo id */
+let KB_SEL = null;   /* currently keyboard-selected cargo id ("primary") */
+/* Phase 4 foundation — full multi-selection set.
+   KB_SEL remains the "primary" id (last-selected) for single-cargo paths
+   (keyboard nudge, rotate/duplicate, single edit). KB_SEL_SET mirrors the
+   visual `.cb.kb-sel` state for multi-select operations (bulk remove,
+   aggregate inspector). On single-select, set contains just KB_SEL. */
+let KB_SEL_SET = new Set();
 
 /* ── Pixels per step for each modifier ────────────────────── */
 const KB_STEP_FINE   = 1;     /* plain Arrow — 1px ultra-fine */
 const KB_STEP_MED    = 5;     /* Alt+Arrow   — 5px medium     */
 const KB_STEP_COARSE = M;     /* Shift+Arrow — 31px ≈ 1 metre */
 
-/* ── Select a cargo block for keyboard control ─────────────── */
-function kbSelect(id){
+/* ── Select a cargo block — now supports shift to build a set ─────────── */
+/*  kbSelect(id)           → primary single-select (clear others, set primary)
+ *  kbSelect(id, {shift})  → toggle id in the set without clearing others.
+ *                           Primary becomes id (if added) or the last remaining
+ *                           id in the set (if id was removed from the set).    */
+/* Phase 25 — debounce window for the `select` confirmation tick. Rapid
+   Tab-through or marquee updates would otherwise fire a tick per
+   transition, which becomes chatty. A 180 ms minimum interval keeps the
+   sound tactile without being buzzy. */
+let _lastSelectTickAt = 0;
+function _playSelectTick(id){
+  if(!id) return;
+  const now = performance.now();
+  if(now - _lastSelectTickAt < 180) return;
+  _lastSelectTickAt = now;
+  if(typeof playSound === 'function') playSound('select');
+}
+
+function kbSelect(id, opts){
+  opts = opts || {};
+  const prevPrimary = KB_SEL;
+  if(opts.shift){
+    if(KB_SEL_SET.has(id)){
+      /* Remove from selection */
+      KB_SEL_SET.delete(id);
+      const el = document.querySelector(`.cb[data-id="${id}"]`);
+      if(el) el.classList.remove('kb-sel');
+      /* Promote another set member to primary, or clear */
+      if(KB_SEL_SET.size === 0){
+        KB_SEL = null;
+        kbHideCoord();
+      } else {
+        KB_SEL = Array.from(KB_SEL_SET).pop();
+        kbShowCoord(KB_SEL);
+      }
+    } else {
+      /* Add to selection */
+      KB_SEL_SET.add(id);
+      KB_SEL = id;
+      const el = document.querySelector(`.cb[data-id="${id}"]`);
+      if(el) el.classList.add('kb-sel');
+      kbShowCoord(id);
+    }
+    /* Shift extensions don't play the tick — would be chatty during
+       multi-select building. Only the primary transitions tick. */
+    return;
+  }
+  /* Default — single-select: clear, then add the one */
   KB_SEL = id;
-  /* Visual: add kb-sel class, remove from all others */
+  KB_SEL_SET.clear();
+  KB_SEL_SET.add(id);
   document.querySelectorAll('.cb.kb-sel').forEach(el => el.classList.remove('kb-sel'));
   const el = document.querySelector(`.cb[data-id="${id}"]`);
   if(el) el.classList.add('kb-sel');
   kbShowCoord(id);
+  /* Phase 25 — soft confirmation tick when the primary actually changes.
+     Re-selecting the same cargo doesn't tick (avoids double-fire on
+     click-then-open-rail paths). */
+  if(id !== prevPrimary) _playSelectTick(id);
 }
 
-/* ── Deselect keyboard target ──────────────────────────────── */
+/* ── Deselect keyboard target — clears full Phase 4 set ──────────────── */
 function kbDeselect(){
   KB_SEL = null;
+  KB_SEL_SET.clear();
   document.querySelectorAll('.cb.kb-sel').forEach(el => el.classList.remove('kb-sel'));
   kbHideCoord();
+  /* Phase 2: deselection also closes the inspector rail.
+     Guard against reentrancy — inspClose() calls kbDeselect(), so we
+     only forward here if the rail is currently open with a selection. */
+  if(typeof inspSelId !== 'undefined' && inspSelId != null){
+    inspSelId = null;
+    const rail = document.getElementById('inspRail');
+    if(rail){
+      rail.classList.remove('open');
+      rail.setAttribute('aria-hidden','true');
+    }
+    document.body.classList.remove('insp-open');
+    document.body.classList.remove('insp-multi');
+  }
 }
 
 /* ── Show coordinate tip near selected block ───────────────── */
@@ -6087,9 +8609,11 @@ function kbShowCoord(id){
   const tip   = document.getElementById('kb-coord-tip');
   if(!cargo || !tip) return;
 
-  /* Real-world metres: x from AFT edge, y from PORT edge */
-  const xm = (cargo.x / M).toFixed(2);
-  const ym = (cargo.y / (CVH/15)).toFixed(2);
+  /* Real-world metres: x from AFT edge, y from PORT edge.
+     Uses the physical-model helpers so the coord tip agrees with the
+     ruler and the status-bar readout at the same pixel position. */
+  const xm = deckXToMeters(cargo.x).toFixed(2);
+  const ym = deckYToMeters(cargo.y).toFixed(2);
   tip.textContent = `x ${xm} m  ·  y ${ym} m`;
 
   /* Position tip above the block, clamped inside deck area */
@@ -6211,6 +8735,80 @@ function kbHandleKey(e){
     return;
   }
 
+  /* ── Phase 6 — Tab / Shift+Tab cycles selection through cargo on the
+     deck in reading order (bay order: left→right, top→bottom tiebreak).
+     Always active (even for viewers) since it is a pure selection move,
+     not a mutation. Wraps at ends. Opens inspector for the new selection
+     when one is already open (Phase 2 behaviour: panel follows selection). */
+  if(e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey){
+    if(S.cargo.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const ordered = S.cargo.slice().sort((a,b) =>
+      (a.x - b.x) || (a.y - b.y) || String(a.id).localeCompare(String(b.id))
+    );
+    const curIdx = KB_SEL ? ordered.findIndex(c => String(c.id) === String(KB_SEL)) : -1;
+    const dir = e.shiftKey ? -1 : +1;
+    const nextIdx = curIdx < 0
+      ? (dir > 0 ? 0 : ordered.length - 1)
+      : (curIdx + dir + ordered.length) % ordered.length;
+    const next = ordered[nextIdx];
+    if(!next) return;
+    kbSelect(next.id);
+    /* Only refresh the inspector if it was already open — never auto-open
+       the rail from Tab alone. Deck-first: scanning stays on the deck. */
+    if(document.body.classList.contains('insp-open') && typeof inspOpen === 'function'){
+      inspOpen(next.id);
+    }
+    /* Nudge the new cargo into view on zoomed-out scrollers. */
+    const el = document.querySelector(`.cb[data-id="${next.id}"]`);
+    if(el && typeof el.scrollIntoView === 'function'){
+      el.scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
+    }
+    return;
+  }
+
+  /* ── Phase 8 — Content-adaptive viewport keys.
+     F  : fit the selected cargo into the viewport (zoom-to-selection).
+     0  : fit the entire deck into the viewport (same as fitToScreen).
+     Both are pure viewport ops — no state mutation — so they run before
+     the kbShortcuts gate and work for operators and viewers alike. */
+  if(e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey){
+    e.preventDefault();
+    if(typeof fitToScreen === 'function') fitToScreen();
+    return;
+  }
+  if((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey){
+    e.preventDefault();
+    if(!KB_SEL){
+      if(typeof showToast === 'function') showToast('Select a cargo first','info');
+      return;
+    }
+    const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
+    if(!cargo) return;
+    const area  = document.getElementById('deckArea');
+    const inner = document.querySelector('.deck-outer');
+    if(!area || !inner) return;
+    /* Target: cargo fills ~45% of the viewport's smaller axis, clamped to
+       the global zoom bounds (applyZoom clamps internally too). */
+    const targetFrac = 0.45;
+    const naturalW = inner.offsetWidth  || TW;
+    const naturalH = inner.offsetHeight || CVH;
+    const zX = (area.clientWidth  * targetFrac) / cargo.w;
+    const zY = (area.clientHeight * targetFrac) / cargo.h;
+    const z  = Math.min(zX, zY);
+    applyZoom(z);
+    /* After zoom, the wrap resizes. Wait one frame for layout to commit
+       before scrolling the cargo into the viewport center. */
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.cb[data-id="${cargo.id}"]`);
+      if(el && typeof el.scrollIntoView === 'function'){
+        el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'});
+      }
+    });
+    return;
+  }
+
   /* ── Remaining shortcuts — only when kbShortcuts enabled ── */
   if(!SMART.kbShortcuts) return;
 
@@ -6241,6 +8839,96 @@ function kbHandleKey(e){
   /* Viewer mode: block all mutation shortcuts below this point */
   if(!isOperator()) return;
 
+  /* Phase 7 — P toggles priority on the selected cargo (or uniform-mirror
+     across a multi-selection). Finishes the Phase 6 "tag on the deck"
+     pattern so priority, like status, never requires the inspector rail.
+     Uniform-mirror rule: if any target is off → set all ON; if all on →
+     set all OFF. Priority is non-spatial, so no segregation re-check. */
+  if(key === 'p' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && KB_SEL){
+    e.preventDefault();
+    const targetIds = KB_SEL_SET.size > 0
+      ? Array.from(KB_SEL_SET)
+      : [KB_SEL];
+    const targets = targetIds
+      .map(id => S.cargo.find(c => String(c.id) === String(id)))
+      .filter(Boolean);
+    if(targets.length === 0) return;
+    const allOn = targets.every(c => !!c.priority);
+    const nextVal = !allOn;   /* any off → all ON; all on → all OFF */
+    targets.forEach(c => { c.priority = nextVal; });
+    renderAll();
+    /* Restore ring (renderAll wipes DOM classes) — use whole set so multi
+       selections stay visually active. */
+    if(KB_SEL_SET.size > 0){
+      KB_SEL_SET.forEach(id => {
+        const el = document.querySelector(`.cb[data-id="${id}"]`);
+        if(el) el.classList.add('kb-sel');
+      });
+    } else {
+      kbSelect(KB_SEL);
+    }
+    updateStats();
+    save();
+    /* Phase 25 — priority toggle pulse on every affected cargo. Adds a
+       brief glow so the change is visibly registered, especially when
+       the priority badge itself is small. */
+    targetIds.forEach(id => {
+      const el = document.querySelector(`.cb[data-id="${id}"]`);
+      if(!el) return;
+      el.classList.remove('cb-priority-pulse');
+      void el.offsetWidth;
+      el.classList.add('cb-priority-pulse');
+      el.addEventListener('animationend',
+        () => el.classList.remove('cb-priority-pulse'),
+        { once:true });
+    });
+    const n = targets.length;
+    const label = nextVal ? 'Priority ON' : 'Priority off';
+    if(typeof showToast === 'function'){
+      showToast(n > 1 ? `${label} — ${n} cargo` : label, 'ok');
+    }
+    return;
+  }
+
+  /* Phase 6 — S cycles status (L → BL → ROB → TR → L) for the selected
+     cargo, directly on the deck. The most common operator edit no longer
+     requires the inspector rail. Goes through the same save / renderAll /
+     updateStats / checkSeg chain as the inspector control so segregation
+     checks and DG summaries stay correct. */
+  if(key === 's' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && KB_SEL){
+    const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
+    if(!cargo) return;
+    e.preventDefault();
+    const cycle = ['L','BL','ROB','TR'];
+    const idx = cycle.indexOf(cargo.status);
+    cargo.status = cycle[(idx + 1 + cycle.length) % cycle.length];
+    renderAll();
+    kbSelect(KB_SEL);   /* re-apply ring after renderAll() wipes DOM */
+    updateStats();
+    buildActiveLocStrip();
+    if(typeof checkSeg === 'function') checkSeg();
+    if(typeof updateDGSummary === 'function') updateDGSummary();
+    save();
+    /* Phase 25 — status cycle pulse on the affected cargo. renderAll()
+       wiped + rebuilt the DOM above, so re-query after the rebuild and
+       add the pulse class to the fresh element. */
+    const statusEl = document.querySelector(`.cb[data-id="${KB_SEL}"]`);
+    if(statusEl){
+      statusEl.classList.remove('cb-status-pulse');
+      void statusEl.offsetWidth;
+      statusEl.classList.add('cb-status-pulse');
+      statusEl.addEventListener('animationend',
+        () => statusEl.classList.remove('cb-status-pulse'),
+        { once:true });
+    }
+    const label = cargo.status === 'L'   ? 'Load'
+                : cargo.status === 'BL'  ? 'Backload'
+                : cargo.status === 'ROB' ? 'ROB'
+                :                          'Transfer';
+    if(typeof showToast === 'function') showToast('Status → ' + label, 'ok');
+    return;
+  }
+
   /* E — edit */
   if(key === 'e' && KB_SEL){
     e.preventDefault();
@@ -6262,10 +8950,13 @@ function kbHandleKey(e){
     cargo.length_m = cargo.width_m;
     cargo.width_m  = tmp;
     cargo.rot = ((cargo.rot || 0) + 1) % 4;
+    const _rotId = KB_SEL;
     renderAll();
     kbSelect(KB_SEL);  /* re-apply ring after renderAll */
     checkSeg();
     save();
+    playSound('rotate');
+    _pulseCargo(_rotId, 'cb-rotate-pulse');
     return;
   }
 
@@ -6274,6 +8965,7 @@ function kbHandleKey(e){
     e.preventDefault();
     const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
     if(!cargo) return;
+    const _srcX = cargo.x, _srcY = cargo.y, _srcW = cargo.w, _srcH = cargo.h;
     const newCargo = {
       ...cargo,
       id: Date.now() + Math.random(),
@@ -6289,24 +8981,375 @@ function kbHandleKey(e){
     checkSeg();
     updateDGSummary();
     save();
+    playSound('duplicate');
+    _emitDuplicateTrail(_srcX, _srcY, _srcW, _srcH, newCargo.id);
     return;
   }
 
-  /* Delete / Backspace — delete selected block */
+  /* Delete / Backspace — delete selected block(s). Phase 9: after removal,
+     advance selection to the next cargo in reading order (same ordering
+     Tab uses in Phase 6) so scan-and-prune loops don't require the
+     operator to re-select between each delete. */
   if((e.key === 'Delete' || e.key === 'Backspace') && KB_SEL){
     e.preventDefault();
-    const id = KB_SEL;
+    /* Decide which ids are being removed (honor Phase 4 multi-selection). */
+    const removeIds = KB_SEL_SET.size > 0
+      ? new Set(Array.from(KB_SEL_SET).map(String))
+      : new Set([String(KB_SEL)]);
+
+    /* Compute the successor BEFORE mutating S.cargo. Reading order matches
+       Phase 6 Tab: x primary, y tiebreak, stable on id. Successor is the
+       first cargo in that order NOT being removed, scanning from the
+       position just after the last-removed item, wrapping to the head. */
+    const ordered = S.cargo.slice().sort((a,b) =>
+      (a.x - b.x) || (a.y - b.y) || String(a.id).localeCompare(String(b.id))
+    );
+    const removedIndices = ordered
+      .map((c,i) => removeIds.has(String(c.id)) ? i : -1)
+      .filter(i => i >= 0);
+    const lastRemovedIdx = removedIndices.length
+      ? removedIndices[removedIndices.length - 1]
+      : -1;
+    let succId = null;
+    if(ordered.length > removeIds.size && lastRemovedIdx >= 0){
+      const n = ordered.length;
+      for(let step = 1; step <= n; step++){
+        const probe = ordered[(lastRemovedIdx + step) % n];
+        if(probe && !removeIds.has(String(probe.id))){ succId = probe.id; break; }
+      }
+    }
+
+    /* Capture whether the rail was open — determines whether it follows. */
+    const railWasOpen = document.body.classList.contains('insp-open');
+
+    /* Phase 12 — spawn exit animations BEFORE the DOM is wiped. */
+    animateCargoExit([...removeIds]);
+
+    /* Now mutate. */
     kbDeselect();
-    dgEvictDeletedCargo(id);
-    S.cargo = S.cargo.filter(c => String(c.id) !== String(id));
+    removeIds.forEach(id => dgEvictDeletedCargo(id));
+    S.cargo = S.cargo.filter(c => !removeIds.has(String(c.id)));
     renderAll();
     updateStats();
     buildActiveLocStrip();
     checkSeg();
     updateDGSummary();
     save();
+
+    /* Phase 9 — restore selection on the successor. Rail follows ONLY if
+       it was already open (deck-first: never auto-open from a delete). */
+    if(succId != null){
+      kbSelect(succId);
+      if(railWasOpen && typeof inspOpen === 'function') inspOpen(succId);
+    }
     return;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PHASE 4 — COMMAND PALETTE (Cmd/Ctrl+K).
+   Grouped searchable command list. Every action dispatches to existing
+   product functionality; no new domain logic. Dynamic cargo search when
+   the query is non-empty. Guards hide actions inappropriate for the
+   current mode (e.g. destructive actions in Viewer).
+═══════════════════════════════════════════════════════════════════════ */
+let _cmdpActive = 0;
+
+function _cmdpActions(){
+  /* Static action registry. Rebuilt per render so guards evaluate live. */
+  const opFn = () => isOperator();
+  const list = [
+    /* Mode */
+    { group:'Mode',      label:'Switch mode',
+      run: () => { document.getElementById('modeBtn')?.click(); } },
+
+    /* View */
+    { group:'View',      label:'Open Library',           shortcut:'L',
+      run: () => { if(typeof cpOpen === 'function') cpOpen(); else document.getElementById('btnLibOpen')?.click(); } },
+    { group:'View',      label:'Open Smart Tools',
+      run: () => { document.getElementById('btnSmartTools')?.click(); } },
+    { group:'View',      label:'Reset zoom',             shortcut:'3',
+      run: () => { if(typeof applyZoom === 'function') applyZoom(1.0); } },
+    { group:'View',      label:'Fit to screen',
+      run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
+    /* Phase 29 — Focus Deck mode. Dims the surrounding chrome so the
+       deck alone is legible for final review. Never a permanent button:
+       only reachable here or by re-running the action. Esc exits. */
+    { group:'View',      label:'Enter Focus Deck',
+      guard: () => !_focusDeckActive,
+      run: () => { _focusDeckEnter(); } },
+    { group:'View',      label:'Exit Focus Deck',
+      guard: () => _focusDeckActive,
+      run: () => { _focusDeckExit(); } },
+
+    /* File */
+    { group:'File',      label:'New deck plan',
+      guard: opFn,
+      run: () => {
+        S.cargo = []; _currentFilePath = null;
+        if(typeof _updateWindowTitle === 'function') _updateWindowTitle(null);
+        renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save();
+        if(typeof showToast === 'function') showToast('New deck plan','ok');
+      } },
+    { group:'File',      label:'Save',                    shortcut:'Ctrl+S',
+      run: () => { if(typeof menuSave === 'function') menuSave(); } },
+    { group:'File',      label:'Save As…',                shortcut:'Ctrl+Shift+S',
+      run: () => { if(typeof menuSaveAs === 'function') menuSaveAs(); } },
+    { group:'File',      label:'Open project…',           shortcut:'Ctrl+O',
+      run: () => { if(typeof menuOpen === 'function') menuOpen(); } },
+    { group:'File',      label:'Clear deck plan…',
+      guard: opFn,
+      run: () => { document.getElementById('btnClrDeck')?.click(); } },
+
+    /* Export */
+    { group:'Export',    label:'Export PDF',
+      run: () => { if(typeof menuExportPDF === 'function') menuExportPDF(); } },
+    { group:'Export',    label:'Export Excel',
+      run: () => { if(typeof menuExportExcel === 'function') menuExportExcel(); } },
+
+    /* Selection */
+    { group:'Selection', label:'Select all cargo',
+      guard: () => S.cargo.length > 0,
+      run: () => {
+        KB_SEL_SET.clear();
+        document.querySelectorAll('.cb.kb-sel').forEach(el => el.classList.remove('kb-sel'));
+        S.cargo.forEach(c => {
+          KB_SEL_SET.add(c.id);
+          const el = document.querySelector(`.cb[data-id="${c.id}"]`);
+          if(el) el.classList.add('kb-sel');
+        });
+        if(KB_SEL_SET.size > 0){
+          KB_SEL = Array.from(KB_SEL_SET).pop();
+          if(typeof kbShowCoord === 'function') kbShowCoord(KB_SEL);
+          if(typeof inspOpen === 'function') inspOpen(KB_SEL);
+        }
+      } },
+    { group:'Selection', label:'Clear selection',         shortcut:'Esc',
+      guard: () => KB_SEL_SET.size > 0,
+      run: () => { kbDeselect(); } },
+    { group:'Selection', label:'Remove selected cargo',
+      guard: () => isOperator() && KB_SEL_SET.size > 0,
+      run: () => {
+        /* Phase 9 — compute successor in Tab reading order BEFORE mutation
+           so scan-and-prune loops stay fluid whether the delete came from
+           the keyboard (Del) or this palette action. Rail stays closed
+           unless it was already open (deck-first). */
+        const removeIds = new Set(Array.from(KB_SEL_SET).map(String));
+        const ordered = S.cargo.slice().sort((a,b) =>
+          (a.x - b.x) || (a.y - b.y) || String(a.id).localeCompare(String(b.id))
+        );
+        const removedIndices = ordered
+          .map((c,i) => removeIds.has(String(c.id)) ? i : -1)
+          .filter(i => i >= 0);
+        const lastRemovedIdx = removedIndices.length
+          ? removedIndices[removedIndices.length - 1]
+          : -1;
+        let succId = null;
+        if(ordered.length > removeIds.size && lastRemovedIdx >= 0){
+          const n = ordered.length;
+          for(let step = 1; step <= n; step++){
+            const probe = ordered[(lastRemovedIdx + step) % n];
+            if(probe && !removeIds.has(String(probe.id))){ succId = probe.id; break; }
+          }
+        }
+        const railWasOpen = document.body.classList.contains('insp-open');
+
+        const ids = Array.from(KB_SEL_SET);
+        /* Phase 12 — exit animation before DOM wipe. */
+        animateCargoExit(ids);
+        S.cargo = S.cargo.filter(c => !KB_SEL_SET.has(c.id));
+        ids.forEach(id => { if(typeof dgEvictDeletedCargo === 'function') dgEvictDeletedCargo(id); });
+        /* Close the rail first (which also kbDeselects); we'll restore the
+           next selection and rail follow-state explicitly below. */
+        if(typeof inspClose === 'function') inspClose();
+        renderAll(); updateStats(); buildActiveLocStrip();
+        if(typeof checkSeg === 'function') checkSeg();
+        if(typeof updateDGSummary === 'function') updateDGSummary();
+        save();
+
+        if(succId != null){
+          kbSelect(succId);
+          if(railWasOpen && typeof inspOpen === 'function') inspOpen(succId);
+        }
+      } },
+  ];
+  return list.filter(a => !a.guard || a.guard());
+}
+
+function _cmdpCargoResults(query){
+  if(!query) return [];
+  const q = query.toLowerCase();
+  return S.cargo
+    .filter(c =>
+      (c.ccu || '').toLowerCase().includes(q)
+      || (c.desc || '').toLowerCase().includes(q)
+    )
+    .slice(0, 5)
+    .map(c => {
+      const loc = (typeof locById === 'function' && c.platform) ? locById(c.platform) : null;
+      const wt  = (parseFloat(c.wt) || 0).toFixed(1) + ' t';
+      const bits = [c.status, loc && loc.name, wt].filter(Boolean);
+      return {
+        group:'Cargo',
+        label: c.ccu || c.desc || 'Unnamed',
+        sub:   bits.join(' · '),
+        run: () => {
+          if(typeof kbSelect === 'function') kbSelect(c.id);
+          if(typeof inspOpen  === 'function') inspOpen(c.id);
+        },
+      };
+    });
+}
+
+function renderCmdPalette(){
+  const input = document.getElementById('cmdpInput');
+  const list  = document.getElementById('cmdpList');
+  if(!input || !list) return;
+
+  const q = (input.value || '').trim();
+  const qLower = q.toLowerCase();
+
+  /* Filter static actions by query (label or group text match) */
+  const staticActions = _cmdpActions().filter(a => {
+    if(!qLower) return true;
+    return a.label.toLowerCase().includes(qLower)
+        || a.group.toLowerCase().includes(qLower);
+  });
+  const cargoResults = _cmdpCargoResults(q);
+
+  const all = [...staticActions, ...cargoResults];
+
+  list.innerHTML = '';
+  if(all.length === 0){
+    list.innerHTML = '<div class="cmdp-empty">No matches</div>';
+    _cmdpActive = 0;
+    return;
+  }
+
+  /* Group while preserving order */
+  const groups = [];
+  const groupMap = {};
+  all.forEach(a => {
+    if(!groupMap[a.group]){
+      groupMap[a.group] = { name: a.group, items: [] };
+      groups.push(groupMap[a.group]);
+    }
+    groupMap[a.group].items.push(a);
+  });
+
+  /* Flat row index for keyboard nav */
+  let rowIdx = 0;
+  groups.forEach(g => {
+    const hdr = document.createElement('div');
+    hdr.className = 'cmdp-group-header';
+    hdr.textContent = g.name;
+    list.appendChild(hdr);
+    g.items.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'cmdp-row';
+      row.setAttribute('role', 'option');
+      row.dataset.idx = rowIdx;
+      const lbl = document.createElement('span');
+      lbl.className = 'cmdp-row-label';
+      lbl.textContent = a.label;
+      row.appendChild(lbl);
+      if(a.sub){
+        const sub = document.createElement('span');
+        sub.className = 'cmdp-row-sub';
+        sub.textContent = a.sub;
+        row.appendChild(sub);
+      }
+      if(a.shortcut){
+        const sc = document.createElement('span');
+        sc.className = 'cmdp-row-shortcut';
+        sc.textContent = a.shortcut;
+        row.appendChild(sc);
+      }
+      row.addEventListener('click', () => {
+        closeCmdPalette();
+        try { a.run(); } catch(err){ console.error('Command failed:', err); }
+      });
+      row.addEventListener('mousemove', () => {
+        _cmdpSetActive(parseInt(row.dataset.idx, 10));
+      });
+      list.appendChild(row);
+      rowIdx++;
+    });
+  });
+
+  _cmdpActive = Math.min(_cmdpActive, rowIdx - 1);
+  if(_cmdpActive < 0) _cmdpActive = 0;
+  _cmdpSetActive(_cmdpActive);
+}
+
+function _cmdpSetActive(idx){
+  const rows = document.querySelectorAll('.cmdp-row');
+  if(rows.length === 0) return;
+  _cmdpActive = Math.max(0, Math.min(rows.length - 1, idx));
+  rows.forEach((r, i) => r.classList.toggle('active', i === _cmdpActive));
+  rows[_cmdpActive]?.scrollIntoView({ block: 'nearest' });
+}
+
+function _cmdpNav(dir){
+  const rows = document.querySelectorAll('.cmdp-row');
+  if(rows.length === 0) return;
+  _cmdpSetActive(_cmdpActive + dir);
+}
+
+function _cmdpExecute(){
+  const rows = document.querySelectorAll('.cmdp-row');
+  const row = rows[_cmdpActive];
+  if(row) row.click();
+}
+
+function openCmdPalette(){
+  const ov = document.getElementById('cmdpOv');
+  if(!ov) return;
+  _cmdpActive = 0;
+  const input = document.getElementById('cmdpInput');
+  if(input){ input.value = ''; }
+  ov.classList.add('open');
+  ov.setAttribute('aria-hidden', 'false');
+  renderCmdPalette();
+  setTimeout(() => { input?.focus(); }, 40);
+}
+
+function closeCmdPalette(){
+  const ov = document.getElementById('cmdpOv');
+  if(!ov) return;
+  ov.classList.remove('open');
+  ov.setAttribute('aria-hidden', 'true');
+}
+
+function bindCmdPalette(){
+  const ov       = document.getElementById('cmdpOv');
+  const backdrop = document.getElementById('cmdpBackdrop');
+  const input    = document.getElementById('cmdpInput');
+  if(!ov || !input) return;
+
+  input.addEventListener('input', () => {
+    _cmdpActive = 0;
+    renderCmdPalette();
+  });
+
+  input.addEventListener('keydown', e => {
+    if(e.key === 'ArrowDown'){ e.preventDefault(); _cmdpNav(1); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); _cmdpNav(-1); }
+    else if(e.key === 'Enter'){ e.preventDefault(); _cmdpExecute(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); closeCmdPalette(); }
+  });
+
+  if(backdrop) backdrop.addEventListener('click', () => closeCmdPalette());
+
+  /* Global opener — capture phase so it still reaches us even when an
+     input is focused. Toggle behaviour: second Cmd/Ctrl+K closes. */
+  document.addEventListener('keydown', e => {
+    if((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')){
+      e.preventDefault();
+      if(ov.classList.contains('open')) closeCmdPalette();
+      else openCmdPalette();
+    }
+  }, { capture: true });
 }
 
 /* ── Bind the keyboard handler ─────────────────────────────── */
@@ -6360,12 +9403,21 @@ function applyTheme(theme){
   } else {
     html.removeAttribute('data-theme');
   }
-  /* Update toggle button states */
+  /* Update legacy ribbon toggle state (now hidden but kept in DOM) */
   const lightBtn = document.getElementById('themeLight');
   const darkBtn  = document.getElementById('themeDark');
   if(lightBtn && darkBtn){
     lightBtn.classList.toggle('active', theme === 'light');
     darkBtn.classList.toggle('active',  theme === 'dark');
+  }
+  /* Update Smart Tools Display section (the new primary surface) */
+  const stLight = document.getElementById('stThemeLight');
+  const stDark  = document.getElementById('stThemeDark');
+  if(stLight && stDark){
+    stLight.classList.toggle('sel', theme === 'light');
+    stDark.classList.toggle('sel',  theme === 'dark');
+    stLight.setAttribute('aria-pressed', String(theme === 'light'));
+    stDark.setAttribute('aria-pressed',  String(theme === 'dark'));
   }
   /* Persist */
   try{ localStorage.setItem('spicaTide_theme', theme); }catch(e){}
@@ -6376,6 +9428,12 @@ function bindThemeToggle(){
   const darkBtn  = document.getElementById('themeDark');
   if(lightBtn) lightBtn.addEventListener('click', () => applyTheme('light'));
   if(darkBtn)  darkBtn.addEventListener('click',  () => applyTheme('dark'));
+
+  /* Smart Tools theme choices (primary surface after Phase 3 cleanup) */
+  const stLight = document.getElementById('stThemeLight');
+  const stDark  = document.getElementById('stThemeDark');
+  if(stLight) stLight.addEventListener('click', () => applyTheme('light'));
+  if(stDark)  stDark.addEventListener('click',  () => applyTheme('dark'));
 
   /* Restore saved preference */
   let saved = 'light';
@@ -6395,13 +9453,11 @@ function bindClearDeck(){
   const overlay = document.getElementById('clrDeckOv');
   const cancel  = document.getElementById('clrDeckCancel');
   const confirm = document.getElementById('clrDeckConfirm');
-  const countEl = document.getElementById('clrDeckCountNum');
 
   if(!btn || !overlay) return;
 
-  /* Open modal — update count before showing */
+  /* Open modal */
   btn.addEventListener('click', () => {
-    if(countEl) countEl.textContent = S.cargo.length;
     overlay.classList.add('open');
     /* Focus cancel by default — safer UX */
     setTimeout(() => cancel && cancel.focus(), 60);
@@ -6418,15 +9474,34 @@ function bindClearDeck(){
   /* Confirm — animate out, then clear */
   confirm.addEventListener('click', () => {
     closeModal();
-    /* Subtle fade-out of all cargo blocks before removing */
+    /* Subtle fade-out of all cargo blocks AND location cards before removing.
+       Both fade in parallel over the same 180ms window so the destructive
+       setTimeout (190ms) clears them simultaneously and the user perceives
+       a single coherent "everything dissolves" gesture rather than two
+       separate disappearances. */
     const blocks = document.querySelectorAll('.cb');
     blocks.forEach(b => {
       b.style.transition = 'opacity .18s ease, transform .18s ease';
       b.style.opacity = '0';
       b.style.transform = 'scale(.94)';
     });
+    const locCards = document.querySelectorAll('.loc-card');
+    locCards.forEach(c => {
+      c.style.transition = 'opacity .18s ease, transform .18s ease';
+      c.style.opacity = '0';
+      c.style.transform = 'scale(.94)';
+    });
     setTimeout(() => {
       S.cargo = [];
+      /* Clear voyage locations along with cargo. Per Pavel: Clear Deck is
+         a "rework cargo plan" reset — cargo + locations + selection state
+         go, but voyage metadata (voyage no, date, remarks) and user-owned
+         libraries (S.customLocs, S.customLib) stay. */
+      S.activeLocs = [];
+      S.selLoc = null;
+      LOC_FILTER = null;
+      Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]);
+      if(S.pending) S.pending = null;       /* cancel any mid-placement cargo */
       renderAll();
       updateStats();
       buildActiveLocStrip();
@@ -6441,6 +9516,157 @@ function bindClearDeck(){
   /* Also remap the legacy hidden btnClr to the new modal */
   const legacyBtn = document.getElementById('btnClr');
   if(legacyBtn) legacyBtn.onclick = () => btn.click();
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   NEW DECK PLAN — Hold-to-confirm modal
+   Replaces the instant actions.newDeck with a confirmation gate.
+   Uses Family-style modal animations + holdToConfirm module.
+═══════════════════════════════════════════════════════════ */
+let _newDeckHtcCleanup = null;
+
+function _execNewDeck(){
+  /* ── Block 1: snapshot current state before clearing ── */
+  const snap = {
+    cargo: JSON.parse(JSON.stringify(S.cargo)),
+    activeLocs: [...S.activeLocs],
+    selLoc: S.selLoc,
+    customLib: JSON.parse(JSON.stringify(S.customLib)),
+    customLocs: JSON.parse(JSON.stringify(S.customLocs)),
+    voyRemarks: S.voyRemarks,
+    dynColors: JSON.parse(JSON.stringify(DYN_COLORS)),
+    timestamp: Date.now()
+  };
+  try { localStorage.setItem('spicaTide_lastSnapshot_v1', JSON.stringify(snap)); } catch(e){}
+
+  S.cargo=[];
+  _currentFilePath=null;
+  _updateWindowTitle(null);
+  renderAll();
+  updateStats();
+  buildActiveLocStrip();
+  updateDGSummary();
+  save();
+  _showUndoToast();
+}
+
+/* ── Restore deck from snapshot ── */
+function _restoreFromSnapshot(){
+  let raw;
+  try { raw = localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
+  if(!raw) return false;
+  const snap = JSON.parse(raw);
+  S.cargo = snap.cargo || [];
+  S.activeLocs = snap.activeLocs || ['BLEO','TART'];
+  S.selLoc = snap.selLoc || S.activeLocs[0];
+  S.customLib = snap.customLib || [];
+  S.customLocs = snap.customLocs || [];
+  S.voyRemarks = snap.voyRemarks || '';
+  if(snap.dynColors){ Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, snap.dynColors); }
+  renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save();
+  return true;
+}
+
+/* ── Generic undo toast (Apple-style snackbar with action button) ── */
+function showUndoToast(msg, actionLabel, onUndo, duration = 6000){
+  const stack = _ensureToastStack();
+  let active = stack.querySelectorAll('.toast-msg:not(.is-leaving)');
+  while(active.length >= _TOAST_CAP){ _dismissToast(active[0]); active = stack.querySelectorAll('.toast-msg:not(.is-leaving)'); }
+
+  const el = document.createElement('div');
+  el.className = 'toast-msg is-info toast-undo';
+  el.setAttribute('role', 'status');
+  el.innerHTML = _toastIcon('info') +
+    `<span class="toast-msg-text">${_escHtml(msg)}</span>` +
+    `<button class="toast-undo-btn">${_escHtml(actionLabel)}</button>`;
+
+  el.querySelector('.toast-undo-btn').addEventListener('click', () => {
+    clearTimeout(Number(el.dataset.toastTimer));
+    onUndo();
+    _dismissToast(el);
+  });
+
+  stack.appendChild(el);
+  void el.offsetWidth;
+  el.classList.add('is-visible');
+  const auto = setTimeout(() => _dismissToast(el), duration);
+  el.dataset.toastTimer = String(auto);
+}
+
+/* ── Undo toast for New Deck Plan (wrapper) ── */
+function _showUndoToast(){
+  showUndoToast(t('restore_toast'), t('restore_undo'), () => _restoreFromSnapshot(), 8000);
+}
+
+function _escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function _updateRestoreMenuItem(){
+  const el = document.getElementById('menuRestoreDeck');
+  if(!el) return;
+  let hasSnap = false;
+  try { hasSnap = !!localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
+  el.style.display = hasSnap ? '' : 'none';
+}
+
+function bindNewDeckModal(){
+  const overlay = document.getElementById('newDeckOv');
+  const modal   = document.getElementById('newDeckModal');
+  const cancel  = document.getElementById('newDeckCancel');
+  const holdBtn = document.getElementById('newDeckHoldBtn');
+  if(!overlay || !modal || !holdBtn) return;
+
+  const closeModal = async () => {
+    await animateModalOut(overlay, modal);
+    overlay.classList.remove('open');
+    if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+  };
+
+  /* Cancel */
+  if(cancel) cancel.addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if(e.target === overlay) closeModal(); });
+  bindEscapeDismiss(overlay, closeModal);
+  bindSwipeDismiss(modal, closeModal);
+}
+
+function openNewDeckModal(){
+  const overlay = document.getElementById('newDeckOv');
+  const modal   = document.getElementById('newDeckModal');
+  const holdBtn = document.getElementById('newDeckHoldBtn');
+  if(!overlay || !modal || !holdBtn) return;
+
+  /* Clean up any previous hold binding */
+  if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+
+  /* Update labels from current language */
+  holdBtn.textContent = t('htc_new_deck_label');
+
+  overlay.classList.add('open');
+  animateModalIn(overlay, modal);
+
+  /* Bind hold-to-confirm */
+  _newDeckHtcCleanup = bindHoldToConfirm(holdBtn, () => {
+    /* 100% hold completed → execute + close */
+    const ov = document.getElementById('newDeckOv');
+    const md = document.getElementById('newDeckModal');
+    animateModalOut(ov, md).then(() => {
+      ov.classList.remove('open');
+    });
+    _execNewDeck();
+    if(_newDeckHtcCleanup){ _newDeckHtcCleanup(); _newDeckHtcCleanup = null; }
+  }, {
+    variant: 'linear',
+    duration: 800,
+    holdLabel: t('htc_hold_to', t('htc_new_deck_label').toLowerCase()),
+    completedLabel: t('htc_completed'),
+    fallbackLabel: t('htc_fallback_confirm'),
+    hintText: t('htc_hint'),
+    tooltipText: t('htc_tooltip_hold'),
+  });
+
+  /* Focus cancel — safer UX */
+  const cancel = document.getElementById('newDeckCancel');
+  if(cancel) setTimeout(() => cancel.focus(), 60);
 }
 
 
@@ -6543,10 +9769,10 @@ async function exportExcel(){
   S.cargo.forEach(c=>{
     const loc = locById(c.platform);
     const trLoc = c.trDest ? locById(c.trDest) : null;
-    /* Estimate bay from x position */
-    let bayNum = '—';
-    let bx=0;
-    for(let i=0;i<BW.length;i++){if(c.x>=bx&&c.x<bx+BW[i]){bayNum=String(12-i);break;}bx+=BW[i];}
+    /* Estimate bay from x position — uses the central bayIndexFromX()
+       helper so joint gaps are attributed to the bay on their left. */
+    const _bi = bayIndexFromX(c.x);
+    const bayNum = (_bi >= 0 && _bi < BAY_COUNT) ? String(12 - _bi) : '—';
     rows.push([
       c.ccu||'',
       c.desc||'',
@@ -6657,6 +9883,7 @@ async function _saveWorkbook(wb){
       const bytes = Array.from(new Uint8Array(xlsxData));
       await invoke('write_file_bytes', { path: xlsxPath, bytes });
       showToast(t('toast_xlsx_ok') + ' \u2014 ' + xlsxPath.split(/[/\\]/).pop(), 'ok');
+      if(typeof _phase27ExportComplete === 'function') _phase27ExportComplete();
     } catch(e){
       showToast('Excel save failed: ' + (e && e.message || e), 'warn');
     }
@@ -6667,6 +9894,7 @@ async function _saveWorkbook(wb){
     const yyyy = selDate.getFullYear();
     XLSX.writeFile(wb, 'SPICA TIDE Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx');
     showToast(t('toast_xlsx_ok'),'ok');
+    if(typeof _phase27ExportComplete === 'function') _phase27ExportComplete();
   }
 }
 
@@ -6946,6 +10174,13 @@ const SMART_DEFAULTS = {
   customScroll:  true,  /* Custom scrollbar styling */
   soundEnabled:  true,  /* Sound effects on/off */
   soundVolume:   70,    /* Master volume 0-100 */
+  /* Phase 28 — live readouts during drag + resize. Default ON; operators
+     who want a cleaner deck-during-drag can disable in Smart Tools. */
+  dragReadout:   true,
+  /* Phase 29 — Night Watch ambient deck glint (dark mode only). Default
+     OFF so the opt-in is deliberate; no one hits a moving element on
+     first open. Paused during drag/resize via body[data-dragging]. */
+  nightWatch:    false,
 };
 
 let SMART = { ...SMART_DEFAULTS };
@@ -7239,6 +10474,147 @@ function smartGridSnap(cargo){
 }
 
 /* ════════════════════════════════════════════════════════════
+   PHASE 10 — LIVE SNAP GUIDE PREVIEW
+   Makes the existing silent Smart Grid Snap visible during drag
+   as thin alignment guides — without changing snap math, thresholds,
+   or behaviour. Guides simply mirror the same threshold checks
+   used by smartGridSnap() and render lines at every alignment
+   target within range. Cleared on release / cancel / group drag.
+════════════════════════════════════════════════════════════ */
+
+/* Snap thresholds — mirror smartGridSnap() exactly. */
+const SNAP_PREVIEW_THRESH_X = Math.round(0.75 * M);
+const SNAP_PREVIEW_THRESH_Y = Math.round(0.75 * (CVH / 15));
+
+let _snapGuideFrame = 0;
+let _snapGuideEls = []; /* pooled divs, reused across frames */
+
+function _ensureSnapGuideContainer(){
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return null;
+  let wrap = cv.querySelector(':scope > .snap-guide-wrap');
+  if(!wrap){
+    wrap = document.createElement('div');
+    wrap.className = 'snap-guide-wrap';
+    /* Sits inside the deck canvas so guides scale with zoom naturally. */
+    cv.appendChild(wrap);
+  }
+  return wrap;
+}
+
+/* Compute every alignment target within threshold for the dragged cargo at
+   the given intended deck-local position. Does not mutate anything.
+   Tracks per-candidate delta so the renderer can emphasise the winning
+   target (same min-delta rule smartGridSnap uses internally) and dim the
+   rest to a secondary "also in range" tier. */
+function _computeSnapGuides(cargo, gx, gy){
+  if(!SMART.gridSnap) return { x:[], y:[], winX:null, winY:null };
+  const w = cargo.w, h = cargo.h;
+  const others = S.cargo.filter(c => c.id !== cargo.id);
+  /* Map pos -> minDelta so a single guide position takes its strongest
+     contribution (e.g. a neighbour edge that also happens to sit on a bay
+     line wins with the smaller of the two deltas). */
+  const xs = new Map(), ys = new Map();
+  const addX = (pos, d) => { if(!xs.has(pos) || xs.get(pos) > d) xs.set(pos, d); };
+  const addY = (pos, d) => { if(!ys.has(pos) || ys.get(pos) > d) ys.set(pos, d); };
+
+  /* Bay boundary lines */
+  BL_.forEach(bx => {
+    const dL = Math.abs(gx - bx);
+    const dR = Math.abs((gx + w) - bx);
+    if(dL <= SNAP_PREVIEW_THRESH_X) addX(bx, dL);
+    if(dR <= SNAP_PREVIEW_THRESH_X) addX(bx, dR);
+  });
+
+  /* Deck walls */
+  if(gx <= SNAP_PREVIEW_THRESH_X)             addX(0,   gx);
+  if((TW  - (gx + w)) <= SNAP_PREVIEW_THRESH_X) addX(TW,  TW  - (gx + w));
+  if(gy <= SNAP_PREVIEW_THRESH_Y)             addY(0,   gy);
+  if((CVH - (gy + h)) <= SNAP_PREVIEW_THRESH_Y) addY(CVH, CVH - (gy + h));
+
+  /* Neighbour edges + X/Y alignment */
+  others.forEach(o => {
+    const dRL = Math.abs((gx + w) - o.x);
+    const dLR = Math.abs(gx - (o.x + o.w));
+    const dLL = Math.abs(gx - o.x);
+    const dRR = Math.abs((gx + w) - (o.x + o.w));
+    if(dRL <= SNAP_PREVIEW_THRESH_X) addX(o.x, dRL);
+    if(dLR <= SNAP_PREVIEW_THRESH_X) addX(o.x + o.w, dLR);
+    if(dLL <= SNAP_PREVIEW_THRESH_X) addX(o.x, dLL);
+    if(dRR <= SNAP_PREVIEW_THRESH_X) addX(o.x + o.w, dRR);
+
+    const dTB = Math.abs((gy + h) - o.y);
+    const dBT = Math.abs(gy - (o.y + o.h));
+    const dTT = Math.abs(gy - o.y);
+    const dBB = Math.abs((gy + h) - (o.y + o.h));
+    if(dTB <= SNAP_PREVIEW_THRESH_Y) addY(o.y, dTB);
+    if(dBT <= SNAP_PREVIEW_THRESH_Y) addY(o.y + o.h, dBT);
+    if(dTT <= SNAP_PREVIEW_THRESH_Y) addY(o.y, dTT);
+    if(dBB <= SNAP_PREVIEW_THRESH_Y) addY(o.y + o.h, dBB);
+  });
+
+  /* Winner per axis = candidate with the smallest delta. Matches
+     smartGridSnap's internal tie-break by min-delta ordering. */
+  let winX = null, winY = null, best;
+  best = Infinity; xs.forEach((d, pos) => { if(d < best){ best = d; winX = pos; } });
+  best = Infinity; ys.forEach((d, pos) => { if(d < best){ best = d; winY = pos; } });
+
+  return { x: [...xs.keys()], y: [...ys.keys()], winX, winY };
+}
+
+/* Render the guide lines for the current pointer position. Pooled div nodes
+   reused across frames to avoid reflow churn. Called from the drag onMove
+   loop, wrapped in rAF for smoothness. */
+function renderSnapGuides(cargo, intendedX, intendedY){
+  const wrap = _ensureSnapGuideContainer();
+  if(!wrap) return;
+  const { x, y, winX, winY } = _computeSnapGuides(cargo, intendedX, intendedY);
+  const total = x.length + y.length;
+
+  /* Grow pool if needed */
+  while(_snapGuideEls.length < total){
+    const d = document.createElement('div');
+    d.className = 'snap-guide';
+    wrap.appendChild(d);
+    _snapGuideEls.push(d);
+  }
+
+  /* Position + show actives; hide the rest. Winner per axis gets the
+     `.is-winner` class (CSS bumps it to the full opacity tier); losers
+     render at the dim tier so the deck stays quiet in crowded cases. */
+  let i = 0;
+  x.forEach(xv => {
+    const el = _snapGuideEls[i++];
+    el.className = 'snap-guide snap-guide-x' + (xv === winX ? ' is-winner' : '');
+    el.style.cssText = `left:${xv}px;top:0;width:1px;height:${CVH}px;display:block;`;
+  });
+  y.forEach(yv => {
+    const el = _snapGuideEls[i++];
+    el.className = 'snap-guide snap-guide-y' + (yv === winY ? ' is-winner' : '');
+    el.style.cssText = `left:0;top:${yv}px;width:${TW}px;height:1px;display:block;`;
+  });
+  for(; i < _snapGuideEls.length; i++){
+    _snapGuideEls[i].style.display = 'none';
+  }
+}
+
+function clearSnapGuides(){
+  if(_snapGuideFrame){ cancelAnimationFrame(_snapGuideFrame); _snapGuideFrame = 0; }
+  _snapGuideEls.forEach(el => { el.style.display = 'none'; });
+}
+
+/* Schedule a rAF-throttled guide update during drag. Skips group drags
+   (smartGridSnap does too — keep visual contract consistent). */
+function scheduleSnapGuides(cargo, intendedX, intendedY, isGroupDrag){
+  if(isGroupDrag || !SMART.gridSnap){ clearSnapGuides(); return; }
+  if(_snapGuideFrame) return;
+  _snapGuideFrame = requestAnimationFrame(() => {
+    _snapGuideFrame = 0;
+    renderSnapGuides(cargo, intendedX, intendedY);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
    AUTO ALIGN DECK  v38.14
    
    One-shot batch alignment tool. Iterates all cargo blocks in
@@ -7256,69 +10632,75 @@ function smartGridSnap(cargo){
    After completion: shows a brief toast and closes the panel.
 ════════════════════════════════════════════════════════════ */
 
-function autoAlignDeck(){
-  if(!S.cargo.length) return;
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 30B — AUTO ALIGN: PLAN → PREVIEW → APPLY
 
-  const SNAP_THRESH_X  = Math.round(1.0 * M);          /* 1.0 m horizontal */
-  const SNAP_THRESH_Y  = Math.round(1.0 * (CVH / 15)); /* 1.0 m vertical   */
-  const HB_H           = Math.round(2.16 * YS);
-  const MAX_PASSES     = 6;
-  const clampX = (x, w)  => Math.max(0, Math.min(x, TW  - w));
-  const clampY = (y, h)  => Math.max(0, Math.min(y, CVH - h));
+   The old autoAlignDeck() silently mutated S.cargo. We now split it:
+     _autoAlignPlan()            → returns a plan (no mutation)
+     _autoAlignPredictDg(plan)   → flags moves that would create a new
+                                   DG segregation conflict; they become
+                                   skips with reason 'dg-conflict'
+     _autoAlignApply(plan)       → commits the plan atomically
+     autoAlignDeck()             → backward-compat shim: opens the preview
 
-  let totalMoved = 0;
+   Each move carries a `reason` so the summary categorises the work.
+   Reason tokens (ordered by priority when multiple fired on same axis):
+     bay-line · neighbour · deck-edge · midship · helideck
+   A move's reason pair is "X: bay-line · Y: neighbour" etc.
+══════════════════════════════════════════════════════════════════════ */
+function _autoAlignPlan(){
+  if(!S.cargo.length) return { moves: [], skipped: [], totalMoved: 0 };
+
+  const SNAP_THRESH_X = Math.round(1.0 * M);
+  const SNAP_THRESH_Y = Math.round(1.0 * (CVH / 15));
+  const HB_H          = Math.round(2.16 * YS);
+  const MAX_PASSES    = 6;
+  const clampX = (x, w) => Math.max(0, Math.min(x, TW  - w));
+  const clampY = (y, h) => Math.max(0, Math.min(y, CVH - h));
+
+  /* Work on a shallow clone; never touch S.cargo until Apply. */
+  const scratch = S.cargo.map(c => ({ ...c, _origX: c.x, _origY: c.y, _reasonX: null, _reasonY: null }));
+  const skipped = [];
 
   for(let pass = 0; pass < MAX_PASSES; pass++){
     let movedThisPass = 0;
-
-    /* Sort spatially: left→right primary, top→bottom secondary */
-    const sorted = [...S.cargo].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-
+    const sorted = [...scratch].sort((a,b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
     sorted.forEach(cargo => {
-      const others = S.cargo.filter(c => c.id !== cargo.id);
-
-      /* ── X axis candidates ── */
+      const others = scratch.filter(c => c.id !== cargo.id);
       const xC = [];
 
       BL_.forEach(bx => {
         const dL = Math.abs(cargo.x - bx);
-        if(dL <= SNAP_THRESH_X) xC.push({ snapX: bx, delta: dL });
+        if(dL <= SNAP_THRESH_X) xC.push({ snapX: bx, delta: dL, why: 'bay-line' });
         const dR = Math.abs((cargo.x + cargo.w) - bx);
-        if(dR <= SNAP_THRESH_X) xC.push({ snapX: bx - cargo.w, delta: dR });
+        if(dR <= SNAP_THRESH_X) xC.push({ snapX: bx - cargo.w, delta: dR, why: 'bay-line' });
       });
-
       if(cargo.x <= SNAP_THRESH_X)
-        xC.push({ snapX: 0, delta: cargo.x });
+        xC.push({ snapX: 0, delta: cargo.x, why: 'deck-edge' });
       if((TW - (cargo.x + cargo.w)) <= SNAP_THRESH_X)
-        xC.push({ snapX: TW - cargo.w, delta: TW - (cargo.x + cargo.w) });
-
+        xC.push({ snapX: TW - cargo.w, delta: TW - (cargo.x + cargo.w), why: 'deck-edge' });
       others.forEach(o => {
         const pairs = [
-          { snapX: o.x - cargo.w,       delta: Math.abs((cargo.x + cargo.w) - o.x) },  /* flush right→left */
-          { snapX: o.x + o.w,           delta: Math.abs(cargo.x - (o.x + o.w)) },       /* flush left→right */
-          { snapX: o.x,                 delta: Math.abs(cargo.x - o.x) },                /* left align */
-          { snapX: o.x + o.w - cargo.w, delta: Math.abs((cargo.x + cargo.w) - (o.x + o.w)) }, /* right align */
+          { snapX: o.x - cargo.w,       delta: Math.abs((cargo.x + cargo.w) - o.x) },
+          { snapX: o.x + o.w,           delta: Math.abs(cargo.x - (o.x + o.w)) },
+          { snapX: o.x,                 delta: Math.abs(cargo.x - o.x) },
+          { snapX: o.x + o.w - cargo.w, delta: Math.abs((cargo.x + cargo.w) - (o.x + o.w)) },
         ];
-        pairs.forEach(p => { if(p.delta <= SNAP_THRESH_X) xC.push(p); });
+        pairs.forEach(p => { if(p.delta <= SNAP_THRESH_X) xC.push({ ...p, why: 'neighbour' }); });
       });
 
-      /* ── Y axis candidates ── */
       const yC = [];
-
       if(cargo.y <= SNAP_THRESH_Y)
-        yC.push({ snapY: 0, delta: cargo.y });
+        yC.push({ snapY: 0, delta: cargo.y, why: 'deck-edge' });
       if((CVH - (cargo.y + cargo.h)) <= SNAP_THRESH_Y)
-        yC.push({ snapY: CVH - cargo.h, delta: CVH - (cargo.y + cargo.h) });
-
+        yC.push({ snapY: CVH - cargo.h, delta: CVH - (cargo.y + cargo.h), why: 'deck-edge' });
       const dTopHB = Math.abs((cargo.y + cargo.h) - HB_H);
-      if(dTopHB <= SNAP_THRESH_Y) yC.push({ snapY: HB_H - cargo.h, delta: dTopHB });
+      if(dTopHB <= SNAP_THRESH_Y) yC.push({ snapY: HB_H - cargo.h, delta: dTopHB, why: 'helideck' });
       const dBotHB = Math.abs(cargo.y - (CVH - HB_H));
-      if(dBotHB <= SNAP_THRESH_Y) yC.push({ snapY: CVH - HB_H, delta: dBotHB });
-
+      if(dBotHB <= SNAP_THRESH_Y) yC.push({ snapY: CVH - HB_H, delta: dBotHB, why: 'helideck' });
       const midY = CVH / 2;
-      yC.push({ snapY: midY,          delta: Math.abs(cargo.y - midY) });
-      yC.push({ snapY: midY - cargo.h, delta: Math.abs((cargo.y + cargo.h) - midY) });
-
+      yC.push({ snapY: midY,          delta: Math.abs(cargo.y - midY),        why: 'midship' });
+      yC.push({ snapY: midY - cargo.h, delta: Math.abs((cargo.y + cargo.h) - midY), why: 'midship' });
       others.forEach(o => {
         const pairs = [
           { snapY: o.y - cargo.h,       delta: Math.abs((cargo.y + cargo.h) - o.y) },
@@ -7326,49 +10708,285 @@ function autoAlignDeck(){
           { snapY: o.y,                 delta: Math.abs(cargo.y - o.y) },
           { snapY: o.y + o.h - cargo.h, delta: Math.abs((cargo.y + cargo.h) - (o.y + o.h)) },
         ];
-        pairs.forEach(p => { if(p.delta <= SNAP_THRESH_Y) yC.push(p); });
+        pairs.forEach(p => { if(p.delta <= SNAP_THRESH_Y) yC.push({ ...p, why: 'neighbour' }); });
       });
 
-      /* ── Pick best per axis (smallest delta) ── */
       const bestX = xC.filter(c => c.delta <= SNAP_THRESH_X).sort((a,b) => a.delta - b.delta)[0];
       const bestY = yC.filter(c => c.delta <= SNAP_THRESH_Y).sort((a,b) => a.delta - b.delta)[0];
-
       const newX = bestX ? clampX(bestX.snapX, cargo.w) : cargo.x;
       const newY = bestY ? clampY(bestY.snapY, cargo.h) : cargo.y;
-
       if(newX === cargo.x && newY === cargo.y) return;
-
-      /* Safety: skip if new position overlaps another block */
+      /* Geometric overlap safety. */
       const overlaps = others.some(o =>
         newX < o.x + o.w && newX + cargo.w > o.x &&
         newY < o.y + o.h && newY + cargo.h > o.y
       );
       if(overlaps) return;
-
       cargo.x = newX;
       cargo.y = newY;
+      if(bestX) cargo._reasonX = bestX.why;
+      if(bestY) cargo._reasonY = bestY.why;
       movedThisPass++;
-      totalMoved++;
     });
-
-    /* Converged — no more moves needed */
     if(movedThisPass === 0) break;
   }
 
-  /* Redraw and persist */
+  /* Build the final move list by diffing scratch vs S.cargo. */
+  const moves = [];
+  scratch.forEach(c => {
+    if(c.x !== c._origX || c.y !== c._origY){
+      moves.push({
+        id: c.id,
+        fromX: c._origX, fromY: c._origY,
+        toX:   c.x,      toY:   c.y,
+        w: c.w, h: c.h,
+        ccu: c.ccu || '',
+        reasonX: c._reasonX, reasonY: c._reasonY,
+      });
+    }
+  });
+
+  /* DG conflict prediction. If a move would create a NEW segregation
+     violation that didn't exist before, downgrade it to a skip. */
+  _autoAlignPredictDg(moves, skipped);
+
+  return { moves, skipped, totalMoved: moves.length };
+}
+
+/* Count DG violations across an arbitrary cargo-position array. Pure.
+   Mirrors the geometry math inside checkSeg but does not mutate DOM. */
+function _autoAlignCountViolations(positions){
+  const dgs = positions.filter(c => c.dgClasses && c.dgClasses.length > 0);
+  const keys = new Set();
+  for(let i = 0; i < dgs.length; i++){
+    for(let j = i+1; j < dgs.length; j++){
+      const a = dgs[i], b = dgs[j];
+      let level = 0;
+      for(const clsA of a.dgClasses){
+        for(const clsB of b.dgClasses){
+          const l = getSeg(clsA, clsB);
+          if(l > level) level = l;
+        }
+      }
+      if(level < 1) continue;
+      const required = segClearancePx(level);
+      const gapX = Math.max(0, Math.max(a.x,b.x) - Math.min(a.x+a.w, b.x+b.w));
+      const gapY = Math.max(0, Math.max(a.y,b.y) - Math.min(a.y+a.h, b.y+b.h));
+      const gap  = Math.min(gapX, gapY);
+      if(gap < required) keys.add(dgPairKey(a.id, b.id));
+    }
+  }
+  return keys;
+}
+
+function _autoAlignPredictDg(moves, skipped){
+  /* Original state's violation set. */
+  const before = _autoAlignCountViolations(S.cargo);
+  if(moves.length === 0) return;
+
+  /* Cache a version of each cargo with the proposed position. */
+  const byId = Object.fromEntries(S.cargo.map(c => [c.id, c]));
+  const proposed = S.cargo.map(c => {
+    const m = moves.find(mv => mv.id === c.id);
+    return m ? { ...c, x: m.toX, y: m.toY } : c;
+  });
+  const after = _autoAlignCountViolations(proposed);
+
+  /* Any pair new to `after` is a conflict introduced by alignment.
+     Find which move(s) caused it and demote them to skips. */
+  const newPairs = [];
+  after.forEach(k => { if(!before.has(k)) newPairs.push(k); });
+  if(newPairs.length === 0) return;
+
+  /* Revert every move whose cargo participates in a new violation. */
+  for(let i = moves.length - 1; i >= 0; i--){
+    const m = moves[i];
+    const participates = newPairs.some(pk => pk.includes(String(m.id)));
+    if(!participates) continue;
+    skipped.push({ id: m.id, ccu: m.ccu, reason: 'dg-conflict' });
+    moves.splice(i, 1);
+  }
+}
+
+function _autoAlignApply(plan){
+  if(!plan || !plan.moves || plan.moves.length === 0){
+    showToast('Auto Align: deck is already aligned \u2713', 'ok');
+    return;
+  }
+  const byId = Object.fromEntries(S.cargo.map(c => [c.id, c]));
+  plan.moves.forEach(m => {
+    const c = byId[m.id]; if(!c) return;
+    c.x = m.toX; c.y = m.toY;
+  });
   renderAll();
   updateStats();
   buildActiveLocStrip();
   checkSeg();
   save();
+  showToast('Auto Align: ' + plan.moves.length + ' adjustment' + (plan.moves.length !== 1 ? 's' : '') + ' applied \u2713', 'ok');
+}
 
-  /* Feedback */
-  const uniqueMoved = Math.min(totalMoved, S.cargo.length);
-  if(uniqueMoved > 0){
-    showToast(`Auto Align: ${uniqueMoved} adjustment${uniqueMoved!==1?'s':''} applied ✓`, 'ok');
+/* Backward-compat shim: opens the preview, never mutates directly. */
+function autoAlignDeck(){
+  if(!S.cargo.length) return;
+  _autoAlignShowPreview();
+}
+
+/* Current plan in flight — nulled on cancel/apply so Esc can't double-commit. */
+let _aapCurrentPlan = null;
+
+function _autoAlignShowPreview(){
+  const plan = _autoAlignPlan();
+  _aapCurrentPlan = plan;
+  const ov = document.getElementById('aapOv');
+  if(!ov) return;
+
+  /* Populate KPIs + breakdown. */
+  document.getElementById('aapMovedNum').textContent    = plan.moves.length;
+  document.getElementById('aapSkippedNum').textContent  = plan.skipped.length;
+  document.getElementById('aapConflictsNum').textContent = '0';
+
+  /* Breakdown by reason. A move has X and Y reasons; count each. */
+  const tally = { 'bay-line': 0, 'neighbour': 0, 'deck-edge': 0, 'midship': 0, 'helideck': 0 };
+  plan.moves.forEach(m => {
+    if(m.reasonX && tally[m.reasonX] !== undefined) tally[m.reasonX]++;
+    if(m.reasonY && tally[m.reasonY] !== undefined) tally[m.reasonY]++;
+  });
+  const breakdownLabels = {
+    'bay-line':  'Aligned to bay line',
+    'neighbour': 'Aligned to neighbour',
+    'deck-edge': 'Aligned to deck edge',
+    'midship':   'Aligned to midship',
+    'helideck':  'Aligned to helideck zone',
+  };
+  const brEl = document.getElementById('aapBreakdown');
+  brEl.innerHTML = '';
+  Object.keys(tally).forEach(k => {
+    if(tally[k] === 0) return;
+    const row = document.createElement('div');
+    row.className = 'aap-breakdown-row';
+    row.innerHTML = '<span class="aap-breakdown-row-lbl">' + breakdownLabels[k] +
+                    '</span><span class="aap-breakdown-row-num">' + tally[k] + '</span>';
+    brEl.appendChild(row);
+  });
+
+  /* Skipped list. */
+  const skEl = document.getElementById('aapSkipList');
+  if(plan.skipped.length > 0){
+    skEl.hidden = false;
+    const reasonLabels = { 'dg-conflict': 'would create DG segregation conflict' };
+    const title = '<div class="aap-skip-title">' + plan.skipped.length + ' skipped</div>';
+    const rows = plan.skipped.map(s => {
+      const ccu = s.ccu || '—';
+      const reason = reasonLabels[s.reason] || s.reason;
+      return '<div class="aap-skip-row">' + ccu + ' \u00B7 <span class="aap-skip-reason">' + reason + '</span></div>';
+    }).join('');
+    skEl.innerHTML = title + rows;
   } else {
-    showToast('Auto Align: deck is already aligned ✓', 'ok');
+    skEl.hidden = true;
+    skEl.innerHTML = '';
   }
+
+  /* Empty state toggle. */
+  const emptyEl = document.getElementById('aapEmpty');
+  const isEmpty = plan.moves.length === 0 && plan.skipped.length === 0;
+  emptyEl.hidden = !isEmpty;
+  document.getElementById('aapApply').disabled = plan.moves.length === 0;
+
+  /* Render the deck overlay — only when there are moves to show. */
+  _autoAlignRenderOverlay(plan);
+
+  ov.hidden = false;
+  ov.setAttribute('aria-hidden', 'false');
+}
+
+function _autoAlignHidePreview(){
+  const ov = document.getElementById('aapOv');
+  if(ov){ ov.hidden = true; ov.setAttribute('aria-hidden', 'true'); }
+  _autoAlignClearOverlay();
+  _aapCurrentPlan = null;
+  /* Reset the Smart Tools button chrome if it's still in flight. */
+  const btn = document.getElementById('stAutoAlignBtn');
+  if(btn){ btn.classList.remove('running'); btn.classList.remove('done'); }
+  const desc = document.getElementById('stAutoAlignDesc');
+  if(desc){
+    desc.textContent = 'Выравнивает все контейнеры на палубе — подтягивает близко стоящие к соседям и границам бэёв. Одноразовое действие.';
+  }
+}
+
+function _autoAlignClearOverlay(){
+  const cv = document.getElementById('cvDECK');
+  const ov = cv && cv.querySelector(':scope > .aap-overlay');
+  if(ov) ov.remove();
+}
+
+function _autoAlignRenderOverlay(plan){
+  _autoAlignClearOverlay();
+  const cv = document.getElementById('cvDECK');
+  if(!cv || !plan || plan.moves.length === 0) return;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'aap-overlay');
+  svg.setAttribute('viewBox', '0 0 ' + TW + ' ' + CVH);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  /* Build one group per move: dashed from rect + solid to rect + arrow. */
+  plan.moves.forEach(m => {
+    const from = document.createElementNS(svgNS, 'rect');
+    from.setAttribute('class','aap-from');
+    from.setAttribute('x', m.fromX); from.setAttribute('y', m.fromY);
+    from.setAttribute('width', m.w); from.setAttribute('height', m.h);
+    from.setAttribute('rx', 3);
+    svg.appendChild(from);
+
+    const to = document.createElementNS(svgNS, 'rect');
+    to.setAttribute('class','aap-to');
+    to.setAttribute('x', m.toX); to.setAttribute('y', m.toY);
+    to.setAttribute('width', m.w); to.setAttribute('height', m.h);
+    to.setAttribute('rx', 3);
+    svg.appendChild(to);
+
+    const fx = m.fromX + m.w / 2, fy = m.fromY + m.h / 2;
+    const tx = m.toX   + m.w / 2, ty = m.toY   + m.h / 2;
+    const dx = tx - fx, dy = ty - fy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist >= 6){
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('class','aap-arrow');
+      line.setAttribute('x1', fx); line.setAttribute('y1', fy);
+      line.setAttribute('x2', tx); line.setAttribute('y2', ty);
+      svg.appendChild(line);
+      /* Arrow head: small triangle at the destination. */
+      const ux = dx / dist, uy = dy / dist;
+      const bx1 = tx - ux * 7 - uy * 4;
+      const by1 = ty - uy * 7 + ux * 4;
+      const bx2 = tx - ux * 7 + uy * 4;
+      const by2 = ty - uy * 7 - ux * 4;
+      const head = document.createElementNS(svgNS, 'polygon');
+      head.setAttribute('class','aap-arrow-head');
+      head.setAttribute('points', tx + ',' + ty + ' ' + bx1 + ',' + by1 + ' ' + bx2 + ',' + by2);
+      svg.appendChild(head);
+    }
+  });
+  cv.appendChild(svg);
+}
+
+function _autoAlignBindPreviewModal(){
+  const ov = document.getElementById('aapOv');
+  if(!ov) return;
+  document.getElementById('aapClose')?.addEventListener('click', _autoAlignHidePreview);
+  document.getElementById('aapCancel')?.addEventListener('click', _autoAlignHidePreview);
+  document.getElementById('aapBackdrop')?.addEventListener('click', _autoAlignHidePreview);
+  document.getElementById('aapApply')?.addEventListener('click', () => {
+    const plan = _aapCurrentPlan;
+    _autoAlignHidePreview();
+    if(plan) _autoAlignApply(plan);
+  });
+  /* Esc handler — local, takes priority when the modal is open. */
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && !ov.hidden){
+      _autoAlignHidePreview();
+    }
+  });
 }
 
 /* ── Bind Smart Tools panel ── */
@@ -7399,6 +11017,8 @@ function bindSmartTools(){
   const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
   const emptyHintChk    = document.getElementById('stEmptyHintToggle');
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
+  const dragReadoutChk  = document.getElementById('stDragReadoutToggle');
+  const nightWatchChk   = document.getElementById('stNightWatchToggle');
 
   if(!btn || !ov) return;
 
@@ -7416,6 +11036,9 @@ function bindSmartTools(){
   if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
   if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
+  if(dragReadoutChk)  dragReadoutChk.checked  = SMART.dragReadout;
+  if(nightWatchChk)   nightWatchChk.checked   = SMART.nightWatch;
+  if(typeof _applyNightWatch === 'function') _applyNightWatch();
 
   /* Open / Close */
   const open  = () => ov.classList.add('open');
@@ -7465,6 +11088,26 @@ function bindSmartTools(){
       clearDGViolationHighlights();
       closeDGCheckModal();
     }
+  });
+
+  if(dragReadoutChk) dragReadoutChk.addEventListener('change', () => {
+    SMART.dragReadout = dragReadoutChk.checked;
+    saveSmartSettings();
+    updateSmartDot();
+    /* If disabled mid-drag, hide any visible pill immediately. */
+    if(!SMART.dragReadout){
+      const dp = document.getElementById('dragReadout');
+      const rp = document.getElementById('resizeReadout');
+      const db = document.getElementById('dropBayConfirm');
+      [dp, rp, db].forEach(el => { if(el){ el.hidden = true; el.setAttribute('aria-hidden', 'true'); } });
+    }
+  });
+
+  if(nightWatchChk) nightWatchChk.addEventListener('change', () => {
+    SMART.nightWatch = nightWatchChk.checked;
+    saveSmartSettings();
+    updateSmartDot();
+    _applyNightWatch();
   });
 
   if(hoverMotionChk) hoverMotionChk.addEventListener('change', () => {
@@ -7637,22 +11280,10 @@ function bindSmartTools(){
         showToast('No cargo on deck to align.', 'ok');
         return;
       }
-      /* Running state */
-      autoAlignBtn.classList.add('running');
-      if(autoAlignDesc) autoAlignDesc.textContent = 'Выравнивание…';
-
-      /* Run on next frame so the UI updates first */
-      requestAnimationFrame(() => {
-        autoAlignDeck();
-        /* Done state — brief green flash */
-        autoAlignBtn.classList.remove('running');
-        autoAlignBtn.classList.add('done');
-        if(autoAlignDesc) autoAlignDesc.textContent = 'Готово — палуба выровнена';
-        setTimeout(() => {
-          autoAlignBtn.classList.remove('done');
-          if(autoAlignDesc) autoAlignDesc.textContent = 'Выравнивает все контейнеры на палубе — подтягивает близко стоящие к соседям и границам бэёв. Одноразовое действие.';
-        }, 2200);
-      });
+      /* Phase 30B — no direct mutation. Close Smart Tools and open
+         the Auto Align preview modal. User commits via Apply. */
+      document.getElementById('stOv')?.classList.remove('open');
+      autoAlignDeck();
     });
   }
 
@@ -7666,6 +11297,241 @@ function bindSmartTools(){
       updateSmartDot();
     });
   }
+
+  /* Phase 30A — Smart Tools cleanup wiring. Each helper is independent
+     and safe to re-invoke; failure in one does not block the others. */
+  _stBindSectionCollapse();
+  _stBindSearch();
+  _stBindPresets();
+  _stUpdateAllSectionCounters();
+  /* Any checkbox inside the Smart Tools panel updates section counters. */
+  document.getElementById('stOv')?.addEventListener('change', e => {
+    if(e.target && e.target.matches('input[type="checkbox"]')){
+      _stUpdateAllSectionCounters();
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   PHASE 30A — SMART TOOLS CLEANUP
+   Four helpers; all additive. None mutate existing toggle IDs or
+   SMART shape. Persistence keys:
+     spicaTide_stSections — collapsed-state per section id
+══════════════════════════════════════════════════════════════ */
+const _ST_SECTIONS_KEY = 'spicaTide_stSections';
+
+function _stBindSectionCollapse(){
+  const sections = document.querySelectorAll('#stOv .st-section');
+  if(!sections.length) return;
+  /* Restore saved collapse state. */
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(_ST_SECTIONS_KEY) || '{}'); } catch(e){}
+  sections.forEach(sec => {
+    const id = sec.dataset.sectionId;
+    if(id && saved[id] === true) sec.classList.add('collapsed');
+    const hdr = sec.querySelector('.st-sec-hdr');
+    if(!hdr) return;
+    hdr.addEventListener('click', () => {
+      sec.classList.toggle('collapsed');
+      _stPersistSectionState();
+    });
+  });
+}
+function _stPersistSectionState(){
+  const out = {};
+  document.querySelectorAll('#stOv .st-section').forEach(sec => {
+    const id = sec.dataset.sectionId;
+    if(id) out[id] = sec.classList.contains('collapsed');
+  });
+  try { localStorage.setItem(_ST_SECTIONS_KEY, JSON.stringify(out)); } catch(e){}
+}
+
+function _stUpdateAllSectionCounters(){
+  document.querySelectorAll('#stOv .st-section').forEach(sec => {
+    const count = sec.querySelector(':scope > .st-sec-hdr > .st-sec-count');
+    if(!count) return;
+    const boxes = sec.querySelectorAll('.st-sec-body input[type="checkbox"]');
+    if(boxes.length === 0){ count.hidden = true; return; }
+    const on = Array.from(boxes).filter(b => b.checked).length;
+    count.hidden = false;
+    count.textContent = on + '/' + boxes.length;
+  });
+}
+
+function _stBindSearch(){
+  const input = document.getElementById('stSearchInput');
+  const clear = document.getElementById('stSearchClear');
+  const empty = document.getElementById('stEmptySearch');
+  if(!input) return;
+  const apply = () => {
+    const q = input.value.trim().toLowerCase();
+    clear.hidden = q.length === 0;
+    if(!q){
+      /* Restore baseline — nothing filtered. */
+      document.querySelectorAll('#stOv .st-hidden-by-filter')
+        .forEach(el => el.classList.remove('st-hidden-by-filter'));
+      if(empty) empty.hidden = true;
+      return;
+    }
+    let anyVisible = false;
+    document.querySelectorAll('#stOv .st-section').forEach(sec => {
+      let secHasMatch = false;
+      /* Match inside .st-row, .snd-item, .st-action-row, .snd-cat-hd. */
+      sec.querySelectorAll('.st-row, .snd-item, .st-action-row').forEach(row => {
+        const text = (row.textContent || '').toLowerCase();
+        const hit  = text.includes(q);
+        row.classList.toggle('st-hidden-by-filter', !hit);
+        if(hit) secHasMatch = true;
+      });
+      sec.classList.toggle('st-hidden-by-filter', !secHasMatch);
+      /* Auto-expand any section that has a match so results are readable. */
+      if(secHasMatch && sec.classList.contains('collapsed')){
+        sec.classList.remove('collapsed');
+      }
+      if(secHasMatch) anyVisible = true;
+    });
+    if(empty) empty.hidden = anyVisible;
+  };
+  input.addEventListener('input', apply);
+  if(clear){
+    clear.addEventListener('click', () => { input.value = ''; apply(); input.focus(); });
+  }
+}
+
+/* Preset definitions — each names a curated set of SMART flags and
+   sound-category on/off states. Only flags the preset CARES about are
+   set; all others keep the operator's current value. */
+const _ST_PRESETS = {
+  operational: {
+    description: 'Calm, safety-forward defaults',
+    smart: {
+      bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
+      hoverMotion:true, weightGauge:false, dragReadout:true,
+      kbShortcuts:true, nightWatch:false, soundEnabled:true,
+    },
+    soundCats: { basic:true, ambient:true, advanced:false },
+  },
+  premium: {
+    description: 'Full visual & audio language',
+    smart: {
+      bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
+      hoverMotion:true, weightGauge:true, dragReadout:true,
+      kbShortcuts:true, soundEnabled:true,
+      hoverGlow:true, nameShimmer:true, smoothColor:true, deckShadow:true,
+    },
+    soundCats: { basic:true, ambient:true, advanced:true },
+  },
+  minimal: {
+    description: 'Essentials only — quietest possible workspace',
+    smart: {
+      bounce:true, gridSnap:true, dgSeg:true,
+      dgFade:false, hoverMotion:false, weightGauge:false, dragReadout:false,
+      nightWatch:false, soundEnabled:false,
+      hoverGlow:false, nameShimmer:false, smoothColor:false, deckShadow:true,
+      cornerBadges:false, animCounter:false, bayDashes:false, dragGhost:false,
+      statusIcons:false, btnMicro:false,
+    },
+    soundCats: { basic:false, ambient:false, advanced:false },
+  },
+  nightwatch: {
+    description: 'Dark theme + ambient deck glint + calm feedback',
+    smart: {
+      bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
+      hoverMotion:true, dragReadout:true, nightWatch:true,
+      soundEnabled:true,
+      deckShadow:true, smoothColor:true, hoverGlow:false,
+    },
+    soundCats: { basic:true, ambient:true, advanced:false },
+    theme: 'dark',
+  },
+};
+
+function _stBindPresets(){
+  document.querySelectorAll('#stOv .st-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.preset;
+      if(id === 'reset') _stApplyReset();
+      else _stApplyPreset(id);
+    });
+  });
+}
+function _stApplyPreset(id){
+  const preset = _ST_PRESETS[id];
+  if(!preset) return;
+  /* Snapshot current state so the user can undo via toast. */
+  const snap = { smart: {...SMART}, theme: document.documentElement.getAttribute('data-theme'),
+                 soundCats: { basic:_sndCats.basic.on, ambient:_sndCats.ambient.on, advanced:_sndCats.advanced.on } };
+  /* Apply SMART flags the preset names. */
+  Object.keys(preset.smart || {}).forEach(k => { SMART[k] = preset.smart[k]; });
+  /* Apply sound categories. */
+  if(preset.soundCats){
+    ['basic','ambient','advanced'].forEach(c => {
+      if(preset.soundCats[c] !== undefined) _sndCats[c].on = preset.soundCats[c];
+    });
+    _sndSaveSettings();
+  }
+  /* Apply theme if declared. */
+  if(preset.theme){
+    document.documentElement.setAttribute('data-theme', preset.theme);
+    try { localStorage.setItem('spicaTide_theme', preset.theme); } catch(e){}
+  }
+  saveSmartSettings();
+  _stSyncAllCheckboxesFromSmart();
+  _stUpdateAllSectionCounters();
+  if(typeof updateSmartDot === 'function') updateSmartDot();
+  if(typeof applyDgFade === 'function') applyDgFade();
+  if(typeof _applyNightWatch === 'function') _applyNightWatch();
+  if(typeof showToast === 'function'){
+    const label = id.charAt(0).toUpperCase() + id.slice(1).replace('w',' W');
+    showToast('Preset: ' + label + ' \u00B7 click Undo to revert', 'ok');
+  }
+  /* Store snapshot for a revert action (8 s window). */
+  window._stPresetUndoSnap = snap;
+  clearTimeout(window._stPresetUndoTimer);
+  window._stPresetUndoTimer = setTimeout(() => { window._stPresetUndoSnap = null; }, 8000);
+}
+function _stApplyReset(){
+  const snap = { smart: {...SMART}, theme: document.documentElement.getAttribute('data-theme') };
+  Object.keys(SMART_DEFAULTS).forEach(k => { SMART[k] = SMART_DEFAULTS[k]; });
+  saveSmartSettings();
+  _stSyncAllCheckboxesFromSmart();
+  _stUpdateAllSectionCounters();
+  if(typeof updateSmartDot === 'function') updateSmartDot();
+  if(typeof applyDgFade === 'function') applyDgFade();
+  if(typeof _applyNightWatch === 'function') _applyNightWatch();
+  if(typeof showToast === 'function'){
+    showToast('Reset to Recommended', 'ok');
+  }
+  window._stPresetUndoSnap = snap;
+  clearTimeout(window._stPresetUndoTimer);
+  window._stPresetUndoTimer = setTimeout(() => { window._stPresetUndoSnap = null; }, 8000);
+}
+/* Map SMART keys → Smart Tools checkbox IDs for automatic re-sync. */
+const _ST_SMART_TO_CHK = {
+  bounce:'stBounceToggle', match:'stMatchToggle', dgFade:'stDgFadeToggle',
+  dgSeg:'stDgSegToggle', hoverMotion:'stHoverMotionToggle',
+  gridSnap:'stGridSnapToggle', kbShortcuts:'stKbShortcutsToggle',
+  locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
+  emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
+  soundEnabled:'stSoundToggle',
+  dragReadout:'stDragReadoutToggle', nightWatch:'stNightWatchToggle',
+  cornerBadges:'stCornerBadges', animCounter:'stAnimCounter',
+  bayDashes:'stBayDashes', hoverGlow:'stHoverGlow', portStbd:'stPortStbd',
+  secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
+  smoothColor:'stSmoothColor', statusIcons:'stStatusIcons',
+  nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
+  deckShadow:'stDeckShadow', customScroll:'stCustomScroll',
+};
+function _stSyncAllCheckboxesFromSmart(){
+  Object.keys(_ST_SMART_TO_CHK).forEach(key => {
+    const chk = document.getElementById(_ST_SMART_TO_CHK[key]);
+    if(chk && typeof SMART[key] === 'boolean') chk.checked = SMART[key];
+  });
+  /* Sync sound category toggles too. */
+  ['basic','ambient','advanced'].forEach(c => {
+    const t = document.getElementById('sndCatTgl-'+c);
+    if(t) t.checked = _sndCats[c].on;
+  });
 }
 
 
@@ -7691,8 +11557,7 @@ const LANG = {
   en: {
     /* Clear Deck modal */
     clr_sub:    'This cannot be undone',
-    clr_body:   'Are you sure you want to remove all cargo from the deck?',
-    clr_items:  'cargo items will be removed',
+    clr_body:   'Clears all cargo and locations from the deck.',
 
     /* Buttons */
     btn_cancel: 'Cancel',
@@ -7740,6 +11605,8 @@ const LANG = {
     toast_preparing:    'Preparing export…',
     toast_export_fail:  'Export failed — please try again',
     toast_pdf_ok:       'PDF exported \u2713',
+    toast_print_ok:     'Print dialog opened',
+    m_print:            'Print\u2026',
     toast_pdf_print_hint: 'Print dialog opened \u2014 choose Save as PDF',
     toast_pdf_err:      'Could not load PDF library — check connection',
     toast_xlsx_loading: 'Loading Excel library…',
@@ -7754,12 +11621,27 @@ const LANG = {
     mi_mismatch_title:  'Parameter mismatch',
     mi_extra_title:     'Extra cargo (not in ASCO)',
     mi_ok_title:        'Matches ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Hold to ${s}…`,
+    htc_completed:        'Done',
+    htc_fallback_confirm: 'Confirm',
+    htc_hint:             'Press and hold to confirm',
+    htc_tooltip_hold:     'Hold to confirm',
+    htc_new_deck_label:   'New Deck Plan',
+    htc_new_deck_warning: 'This will erase all cargo and locations',
+
+    /* Recovery / Undo */
+    restore_toast:    'Deck plan cleared.',
+    restore_undo:     'Undo',
+    restore_menu:     'Restore previous deck plan',
+    removed_prefix:   'Removed: ',
+    undo:             'Undo',
   },
 
   ru: {
     clr_sub:    'Это действие нельзя отменить',
-    clr_body:   'Вы уверены, что хотите убрать весь груз с палубы?',
-    clr_items:  'позиций будет удалено',
+    clr_body:   'Удаляет весь груз и локации с палубы.',
 
     btn_cancel: 'Отмена',
     rmk_save:   'Сохранить заметки',
@@ -7800,6 +11682,8 @@ const LANG = {
     toast_preparing:    'Подготовка экспорта…',
     toast_export_fail:  'Ошибка экспорта — попробуйте ещё раз',
     toast_pdf_ok:       'PDF \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d \u2713',
+    toast_print_ok:     '\u0414\u0438\u0430\u043b\u043e\u0433 \u043f\u0435\u0447\u0430\u0442\u0438 \u043e\u0442\u043a\u0440\u044b\u0442',
+    m_print:            '\u041f\u0435\u0447\u0430\u0442\u044c\u2026',
     toast_pdf_print_hint: '\u0414\u0438\u0430\u043b\u043e\u0433 \u043f\u0435\u0447\u0430\u0442\u0438 \u043e\u0442\u043a\u0440\u044b\u0442 \u2014 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043a\u0430\u043a PDF',
     toast_pdf_err:      'Не удалось загрузить библиотеку PDF — проверьте соединение',
     toast_xlsx_loading: 'Загрузка Excel-библиотеки…',
@@ -7812,12 +11696,27 @@ const LANG = {
     mi_mismatch_title:  'Расхождение параметров',
     mi_extra_title:     'Extra cargo (не в ASCO)',
     mi_ok_title:        'Совпадает с ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Удержите для ${s}…`,
+    htc_completed:        'Готово',
+    htc_fallback_confirm: 'Подтвердить',
+    htc_hint:             'Нажмите и удерживайте',
+    htc_tooltip_hold:     'Удержите для подтверждения',
+    htc_new_deck_label:   'Новый план',
+    htc_new_deck_warning: 'Это удалит весь груз и локации',
+
+    /* Recovery / Undo */
+    restore_toast:    'План очищен.',
+    restore_undo:     'Отменить',
+    restore_menu:     'Восстановить предыдущий план',
+    removed_prefix:   'Удалено: ',
+    undo:             'Отменить',
   },
 
   uk: {
     clr_sub:    'Цю дію не можна скасувати',
-    clr_body:   'Ви впевнені, що хочете прибрати весь вантаж з палуби?',
-    clr_items:  'позицій буде видалено',
+    clr_body:   'Видаляє весь вантаж і локації з палуби.',
 
     btn_cancel: 'Скасувати',
     rmk_save:   'Зберегти нотатки',
@@ -7858,6 +11757,8 @@ const LANG = {
     toast_preparing:    'Підготовка експорту…',
     toast_export_fail:  'Помилка експорту — спробуйте ще раз',
     toast_pdf_ok:       'PDF \u0435\u043a\u0441\u043f\u043e\u0440\u0442\u043e\u0432\u0430\u043d\u043e \u2713',
+    toast_print_ok:     '\u0414\u0456\u0430\u043b\u043e\u0433 \u0434\u0440\u0443\u043a\u0443 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e',
+    m_print:            '\u0414\u0440\u0443\u043a\u0443\u0432\u0430\u0442\u0438\u2026',
     toast_pdf_print_hint: '\u0414\u0456\u0430\u043b\u043e\u0433 \u0434\u0440\u0443\u043a\u0443 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e \u2014 \u043e\u0431\u0435\u0440\u0456\u0442\u044c \u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u044f\u043a PDF',
     toast_pdf_err:      'Не вдалося завантажити бібліотеку PDF — перевірте зʼєднання',
     toast_xlsx_loading: 'Завантаження Excel-бібліотеки…',
@@ -7870,6 +11771,22 @@ const LANG = {
     mi_mismatch_title:  'Розбіжність параметрів',
     mi_extra_title:     'Extra cargo (не в ASCO)',
     mi_ok_title:        'Збігається з ASCO',
+
+    /* Hold-to-confirm */
+    htc_hold_to:          (s) => `Утримайте для ${s}…`,
+    htc_completed:        'Готово',
+    htc_fallback_confirm: 'Підтвердити',
+    htc_hint:             'Натисніть і утримуйте',
+    htc_tooltip_hold:     'Утримайте для підтвердження',
+    htc_new_deck_label:   'Новий план',
+    htc_new_deck_warning: 'Це видалить весь вантаж і локації',
+
+    /* Recovery / Undo */
+    restore_toast:    'План очищено.',
+    restore_undo:     'Скасувати',
+    restore_menu:     'Відновити попередній план',
+    removed_prefix:   'Видалено: ',
+    undo:             'Скасувати',
   },
 };
 
@@ -7984,8 +11901,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v2.3.0';
-const APP_VERSION   = '2.3.0';
+const CURRENT_BUILD = 'v3.0.0';
+const APP_VERSION   = '3.0.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -8203,7 +12120,7 @@ function bindMenuBar(){
       else {
         closeAll(); item.classList.add('open'); openMenu = item;
         /* Populate recent files when File menu opens */
-        if(item.dataset.menu === 'file') _populateMenuRecent();
+        if(item.dataset.menu === 'file'){ _populateMenuRecent(); _updateRestoreMenuItem(); }
       }
     });
     /* Hover-switch when a menu is already open */
@@ -8223,17 +12140,23 @@ function bindMenuBar(){
 
   /* Action dispatch — uses module-level menu* functions */
   const actions = {
-    newDeck:       () => { S.cargo=[]; _currentFilePath=null; _updateWindowTitle(null); renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save(); showToast('New deck plan','ok'); },
+    newDeck:       () => openNewDeckModal(),
+    restoreDeck:   () => { if(_restoreFromSnapshot()) showToast(t('restore_menu'),'ok'); },
+    /* Clear Deck moved out of the main ribbon into the File menu.
+       Delegates to the existing #btnClrDeck handler which opens the
+       confirmation modal — destructive action path unchanged. */
+    clearDeck:     () => { const b = document.getElementById('btnClrDeck'); if(b) b.click(); },
     openProject:   () => menuOpen(),
     saveProject:   () => menuSave(),
     saveProjectAs: () => menuSaveAs(),
     exportPDF:     () => menuExportPDF(),
     exportExcel:   () => menuExportExcel(),
+    print:         () => printDeckPlan(),
     exportJSON:    () => menuSaveAs(),
     exit:          () => { try{ window.close(); }catch(e){} },
     undo:          () => undo(),
     redo:          () => redo(),
-    deleteSelected:() => { if(typeof KB_SEL!=='undefined' && KB_SEL){ const idx=S.cargo.findIndex(c=>c.id===KB_SEL); if(idx>=0){S.cargo.splice(idx,1);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();} } },
+    deleteSelected:() => { if(typeof KB_SEL!=='undefined' && KB_SEL){ const idx=S.cargo.findIndex(c=>c.id===KB_SEL); if(idx>=0){animateCargoExit(KB_SEL);S.cargo.splice(idx,1);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();} } },
     zoomIn:        () => applyZoom(zoomLevel+0.1),
     zoomOut:       () => applyZoom(zoomLevel-0.1),
     zoomReset:     () => applyZoom(1.0),
@@ -8281,24 +12204,389 @@ function hideCtxMenu(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   V9: STATUS BAR — cursor position, zoom, count, last action
+   STATUS BAR — single operational readout: total longitudinal cargo span
+   (most-fore edge − most-aft edge of all cargo, gaps included).
+   Position / Zoom / Cargo count / Action readouts retired; those
+   duplicated info already visible elsewhere in the UI.
 ══════════════════════════════════════════════════════════ */
-let _lastAction = 'Ready';
-function setLastAction(text){ _lastAction=text; const el=document.getElementById('dsbAction'); if(el) el.textContent=text; }
 function updateStatusBar(){
-  const el=document.getElementById('dsbCount'); if(el) el.textContent=S.cargo.length+' items';
-  const zEl=document.getElementById('dsbZoom'); if(zEl) zEl.textContent=Math.round(zoomLevel*100)+'%';
+  const el = document.getElementById('dsbLength');
+  if(!el) return;
+  const lm = _computeBlockLengthM();
+  el.textContent = (lm === null) ? '—' : (lm.toFixed(1) + ' m');
 }
-function bindStatusBar(){
-  const dcv=document.getElementById('cvDECK');
-  if(!dcv) return;
-  dcv.addEventListener('mousemove', e=>{
-    const r=dcv.getBoundingClientRect();
-    const xm=((e.clientX-r.left)/zoomLevel/M).toFixed(1);
-    const ym=((e.clientY-r.top)/zoomLevel/(CVH/15)).toFixed(1);
-    const el=document.getElementById('dsbPos');
-    if(el) el.textContent='X: '+xm+'m \u00B7 Y: '+ym+'m';
+
+/* Bounding-box style: returns max(right edge in metres) − min(left edge
+   in metres) across all cargo on the deck. Gaps between cargo blocks are
+   included in the total — this is the operational "block length" the
+   operator needs (e.g. two 2 m blocks separated by 5 m of empty deck →
+   9 m, not 4 m). Uses deckXToMeters() for physical-model accuracy
+   (matches the ruler tool); cargo.length_m is the source-of-truth for
+   individual block length per the geometry contract documented at
+   ~line 490. Returns null when the deck is empty so the caller can
+   render "—" instead of "0.0 m" — semantically: no block exists, not
+   a block of zero span. */
+function _computeBlockLengthM(){
+  if(!S.cargo.length) return null;
+  let aft = Infinity, fore = -Infinity;
+  for(const c of S.cargo){
+    const leftM  = deckXToMeters(c.x);
+    const rightM = leftM + (c.length_m || (c.w / M));
+    if(leftM  < aft)  aft  = leftM;
+    if(rightM > fore) fore = rightM;
+  }
+  return Math.max(0, fore - aft);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PHASE 23 — MEASURE RULER TOOL
+   Two-point ruler that reports real-world metres using the same
+   geometry source of truth as the deck (Phase 22). Coordinate math:
+   pointer → (clientX - cvRect.left)/zoomLevel
+   gives deck-local unscaled px, then /M (along-deck) and /YS
+   (across-deck) give metres independently — final distance is
+   sqrt(dx_m² + dy_m²). Never use raw pixel length for the metres
+   readout because horizontal and vertical scales differ.
+
+   State:
+     _RULER.active    — tool mode on/off
+     _RULER.pointA    — {x,y} first click, deck-local px
+     _RULER.pointB    — {x,y} second click OR null (live preview mode)
+     _RULER.hover     — {x,y} current pointer during live preview
+     _RULER.constrain — true while Shift is held (axis-constrain live line)
+════════════════════════════════════════════════════════════════════ */
+const _RULER = {
+  active: false,
+  pointA: null,
+  pointB: null,
+  hover:  null,
+  constrain: false,
+};
+
+function _rulerPtrToDeckPx(ev){
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return null;
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / zoomLevel;
+  const y = (ev.clientY - r.top)  / zoomLevel;
+  return {
+    x: Math.max(0, Math.min(TW,  x)),
+    y: Math.max(0, Math.min(CVH, y)),
+  };
+}
+
+function _rulerResolveB(){
+  /* The end point for rendering: pointB if set, else the live hover. */
+  let b = _RULER.pointB || _RULER.hover;
+  if(!b || !_RULER.pointA) return null;
+  if(_RULER.constrain && !_RULER.pointB){
+    /* Shift held during live preview → constrain the longer axis. */
+    const dx = Math.abs(b.x - _RULER.pointA.x);
+    const dy = Math.abs(b.y - _RULER.pointA.y);
+    if(dx >= dy) b = { x: b.x, y: _RULER.pointA.y };
+    else         b = { x: _RULER.pointA.x, y: b.y };
+  }
+  return b;
+}
+
+function _rulerEnsureOverlay(){
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return null;
+  let svg = cv.querySelector(':scope > .ruler-overlay');
+  if(!svg){
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'ruler-overlay');
+    svg.setAttribute('viewBox', `0 0 ${TW} ${CVH}`);
+    svg.setAttribute('width',  TW);
+    svg.setAttribute('height', CVH);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    cv.appendChild(svg);
+  }
+  return svg;
+}
+
+function _rulerRender(){
+  const svg = _rulerEnsureOverlay();
+  const label = document.getElementById('rulerLabel');
+  if(!svg || !label) return;
+
+  const a = _RULER.pointA;
+  const b = _rulerResolveB();
+
+  if(!a || !b){
+    /* No measurement to draw. */
+    svg.innerHTML = '';
+    label.hidden = true;
+    label.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  const isLive = !_RULER.pointB;  /* B not committed yet */
+
+  /* Line + endpoint circles inside the cvDECK-local SVG (scales with zoom) */
+  svg.innerHTML = `
+    <line class="ruler-line${isLive ? ' ruler-line-live' : ''}"
+          x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>
+    <circle class="ruler-pt" cx="${a.x}" cy="${a.y}" r="5"/>
+    ${_RULER.pointB ? `<circle class="ruler-pt" cx="${b.x}" cy="${b.y}" r="5"/>` : ''}
+  `;
+
+  /* Metres — convert X via the physical segment walk (deckXToMeters so
+     the reading reflects the true bay/joint model, not the rounded-
+     pixel canvas) and Y via the uniform deck-width ratio (deckYToMeters).
+     Then combine into a real Euclidean distance in metres. This avoids
+     cumulative pixel rounding drift on long spans: a full-deck read
+     returns 54.92 m instead of 55.06 m. */
+  const dxM = Math.abs(deckXToMeters(b.x) - deckXToMeters(a.x));
+  const dyM = Math.abs(deckYToMeters(b.y) - deckYToMeters(a.y));
+  const distM = Math.sqrt(dxM*dxM + dyM*dyM);
+
+  /* Format — emphasise the dominant axis when the other is < 0.05 m. */
+  const fmt = m => m.toFixed(m < 10 ? 2 : 1) + ' m';
+  const AX_THRESHOLD = 0.05;
+  let distText, deltaText;
+  if(dyM < AX_THRESHOLD){        /* effectively horizontal */
+    distText  = fmt(dxM);
+    deltaText = '';
+  } else if(dxM < AX_THRESHOLD){ /* effectively vertical */
+    distText  = fmt(dyM);
+    deltaText = '';
+  } else {                       /* diagonal — show both components */
+    distText  = fmt(distM);
+    deltaText = 'X ' + fmt(dxM) + '  Y ' + fmt(dyM);
+  }
+  document.getElementById('rulerLabelDist').textContent  = distText;
+  document.getElementById('rulerLabelDelta').textContent = deltaText;
+
+  /* Phase 29 — ship-bearing chip. Shown only when the measurement is
+     longer than 0.2 m (else it's jittery noise) and when the element
+     exists (fails-silent if host HTML was trimmed). Uses the signed
+     deck vector so port/stbd/fore/aft is correct. */
+  const bearingEl = document.getElementById('rulerLabelBearing');
+  if(bearingEl){
+    if(distM >= 0.2){
+      const br = _rulerBearingFor(a.x, a.y, b.x, b.y);
+      bearingEl.textContent = br.dir + '  \u00B7  ' + String(br.bearing).padStart(3,'0') + '\u00B0';
+      bearingEl.hidden = false;
+    } else {
+      bearingEl.hidden = true;
+    }
+  }
+
+  /* Label screen position — perpendicular offset from the line midpoint
+     so the label never sits on the line, the endpoints, or the exact
+     point being measured. If the preferred side would overflow the
+     viewport, flip to the opposite side; if both sides overflow, clamp
+     inside the viewport with a small margin.
+
+     All calculations happen in SCREEN (client) coords so the offset is
+     invariant under zoom (the label is position:fixed). */
+  const cv = document.getElementById('cvDECK');
+  const r  = cv.getBoundingClientRect();
+  const aCx = r.left + a.x * zoomLevel, aCy = r.top + a.y * zoomLevel;
+  const bCx = r.left + b.x * zoomLevel, bCy = r.top + b.y * zoomLevel;
+  const midCx = (aCx + bCx) / 2, midCy = (aCy + bCy) / 2;
+  const dxC = bCx - aCx, dyC = bCy - aCy;
+  const lineLen = Math.hypot(dxC, dyC);
+
+  /* Perpendicular unit vector, preferring "above" the line (negative Y
+     component in screen coords). For a degenerate (zero-length) live
+     measurement we just offset straight up. */
+  let perpX = 0, perpY = -1;
+  if(lineLen > 0.5){
+    perpX = -dyC / lineLen;
+    perpY =  dxC / lineLen;
+    if(perpY > 0){ perpX = -perpX; perpY = -perpY; }
+  }
+  /* Offset scales slightly with line length so short segments don't
+     get a label parked far away and long segments have breathing room.
+     Clamped to a friendly range. */
+  const OFFSET = Math.max(24, Math.min(34, lineLen * 0.12 + 24));
+
+  /* Reveal + measure so we can flip if overflowing. */
+  label.hidden = false;
+  label.setAttribute('aria-hidden', 'false');
+  /* Ensure a fresh layout cycle before reading offsetWidth/Height. */
+  label.style.left = '-9999px';
+  label.style.top  = '-9999px';
+  const lw = label.offsetWidth;
+  const lh = label.offsetHeight;
+
+  /* Candidate A: preferred side (above). */
+  const candA = { x: midCx + perpX * OFFSET, y: midCy + perpY * OFFSET };
+  /* Candidate B: flipped side (below). */
+  const candB = { x: midCx - perpX * OFFSET, y: midCy - perpY * OFFSET };
+
+  /* A candidate's rect is centred horizontally on its point and ends at
+     its point on the "line" side — we use top-left for final placement.
+     Evaluate overflow against the viewport with a 12 px margin; pick
+     the candidate with less total overflow; clamp at the end. */
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const PAD = 12;
+  const overflow = (cx, cy) => {
+    const left   = cx - lw / 2;
+    const right  = cx + lw / 2;
+    const top    = cy - lh / 2;
+    const bottom = cy + lh / 2;
+    return Math.max(0, PAD - left)
+         + Math.max(0, right  - (vw - PAD))
+         + Math.max(0, PAD - top)
+         + Math.max(0, bottom - (vh - PAD));
+  };
+  const chosen = overflow(candA.x, candA.y) <= overflow(candB.x, candB.y)
+               ? candA : candB;
+
+  /* Clamp inside the viewport with PAD margin, keeping it centred on
+     the chosen point where possible. */
+  let finalX = chosen.x - lw / 2;
+  let finalY = chosen.y - lh / 2;
+  finalX = Math.max(PAD, Math.min(vw - lw - PAD, finalX));
+  finalY = Math.max(PAD, Math.min(vh - lh - PAD, finalY));
+
+  label.style.left = finalX + 'px';
+  label.style.top  = finalY + 'px';
+}
+
+function _rulerClear(){
+  _RULER.pointA = null;
+  _RULER.pointB = null;
+  _RULER.hover  = null;
+  _RULER.constrain = false;
+  _rulerRender();
+}
+
+function rulerToggle(force){
+  const next = (typeof force === 'boolean') ? force : !_RULER.active;
+  if(next === _RULER.active) return;
+  _RULER.active = next;
+  document.body.classList.toggle('ruler-active', _RULER.active);
+  const btn = document.getElementById('btnRuler');
+  if(btn) btn.setAttribute('aria-pressed', _RULER.active ? 'true' : 'false');
+  if(!_RULER.active){
+    _rulerClear();
+  } else {
+    /* Entering measure mode: any existing measurement is cleared so
+       the operator starts fresh. */
+    _rulerClear();
+    if(typeof showToast === 'function'){
+      showToast('Measure · click two points on the deck', 'info');
+    }
+  }
+}
+
+function _rulerOnClickLayerClick(ev){
+  if(!_RULER.active) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const pt = _rulerPtrToDeckPx(ev);
+  if(!pt) return;
+  if(!_RULER.pointA){
+    _RULER.pointA = pt;
+    _RULER.pointB = null;
+    _RULER.hover  = pt;
+  } else if(!_RULER.pointB){
+    /* Apply shift-constrain to the committed B. */
+    let b = pt;
+    if(_RULER.constrain){
+      const dx = Math.abs(b.x - _RULER.pointA.x);
+      const dy = Math.abs(b.y - _RULER.pointA.y);
+      if(dx >= dy) b = { x: b.x, y: _RULER.pointA.y };
+      else         b = { x: _RULER.pointA.x, y: b.y };
+    }
+    _RULER.pointB = b;
+  } else {
+    /* Both points already set — next click starts a new measurement. */
+    _RULER.pointA = pt;
+    _RULER.pointB = null;
+    _RULER.hover  = pt;
+  }
+  _rulerRender();
+}
+
+function _rulerOnClickLayerMove(ev){
+  if(!_RULER.active || !_RULER.pointA || _RULER.pointB) return;
+  _RULER.hover = _rulerPtrToDeckPx(ev);
+  _rulerRender();
+}
+
+function bindRulerTool(){
+  const btn = document.getElementById('btnRuler');
+  const layer = document.getElementById('rulerClickLayer');
+  const labelClear = document.getElementById('rulerLabelClear');
+  if(!btn || !layer) return;
+
+  btn.addEventListener('click', () => rulerToggle());
+
+  layer.addEventListener('click',     _rulerOnClickLayerClick);
+  layer.addEventListener('mousemove', _rulerOnClickLayerMove);
+
+  /* Clear-(×) inside the floating label. */
+  if(labelClear){
+    labelClear.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      _rulerClear();
+    });
+  }
+
+  /* Shift constrain — track key state during live preview. */
+  window.addEventListener('keydown', e => {
+    if(!_RULER.active) return;
+    if(e.key === 'Shift' && !_RULER.constrain){
+      _RULER.constrain = true;
+      _rulerRender();
+    }
   });
+  window.addEventListener('keyup', e => {
+    if(e.key === 'Shift' && _RULER.constrain){
+      _RULER.constrain = false;
+      _rulerRender();
+    }
+  });
+
+  /* Escape: if ruler has an in-progress measurement, cancel that first;
+     otherwise exit the tool. Registered in capture so we can act before
+     any other Esc handler (which also cancel generic overlays). */
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    if(!_RULER.active) return;
+    if(_RULER.pointA && !_RULER.pointB){
+      /* mid-measurement → drop point A but keep tool active */
+      _rulerClear();
+      e.stopPropagation();
+      return;
+    }
+    if(_RULER.pointA && _RULER.pointB){
+      /* completed measurement visible → clear it but keep tool active */
+      _rulerClear();
+      e.stopPropagation();
+      return;
+    }
+    /* No measurement in progress → exit the tool entirely. */
+    rulerToggle(false);
+    e.stopPropagation();
+  }, { capture: true });
+
+  /* M key — toggle measure mode. Honours the same input-focus / overlay
+     guards used by other shortcuts. */
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'm' && e.key !== 'M') return;
+    if(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const tag = document.activeElement ? document.activeElement.tagName : '';
+    if(['INPUT','SELECT','TEXTAREA'].includes(tag)) return;
+    if(document.getElementById('ov')?.classList.contains('open')) return;
+    if(document.getElementById('ascoOv')?.classList.contains('open')) return;
+    if(document.getElementById('kbCheatOv')?.classList.contains('open')) return;
+    if(document.getElementById('cmdpOv')?.classList.contains('open')) return;
+    e.preventDefault();
+    rulerToggle();
+  });
+
+  /* Keep the label pinned to the current midpoint when the deck is
+     zoomed or the page scrolls — recompute on every relevant event. */
+  window.addEventListener('resize', _rulerRender);
+  window.addEventListener('scroll', _rulerRender, { passive: true });
+  const deckArea = document.getElementById('deckArea');
+  if(deckArea) deckArea.addEventListener('scroll', _rulerRender, { passive: true });
 }
 
 function bindContextMenu(){
@@ -8334,6 +12622,7 @@ function bindContextMenu(){
       S.cargo.push(nc);
       renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
     } else if(action === 'delete'){
+      animateCargoExit(cargo.id);
       S.cargo = S.cargo.filter(c => c.id !== cargo.id);
       dgEvictDeletedCargo(cargo.id);
       renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
@@ -8737,13 +13026,523 @@ function _scheduleUpdateCheck(){
 }
 
 /* ══════════════════════════════════════════════════════════
+   PHASE W1 — WEATHER WIDGET + MANUAL ATMOSPHERE SHELL
+
+   Single source of truth: _wxState. Atmosphere is applied via
+   data-wx="..." on <body> (CSS picks the gradient). Chip shows
+   under .brand-sub when enabled && condition !== 'off'. Persists
+   to localStorage 'spicaTide_weather'. No API, no geolocation.
+══════════════════════════════════════════════════════════ */
+const _WX_KEY = 'spicaTide_weather';
+const _WX_MOTIONS = { off:1, reduced:1, full:1 };
+const _WX_ENGINES = { cinematic:1, simple:1 };
+const _WX_INTENSITIES = { subtle:1, normal:1, strong:1 };
+/* Phase W5 §13 v7 — _wxState shape (manual mode retired):
+     - enabled: master VFX toggle. Atmosphere body[data-wx] only renders
+       when true. Polling lifecycle is INDEPENDENT of this flag — the
+       plate always populates from cached weather.
+     - location: Location object (or null until first-run resolves).
+     - intensity / motion / engine: VFX rendering knobs.
+   Removed: mode (auto/manual split) and condition (atmosphere now
+   always reflects real Open-Meteo data for the selected location). */
+const _wxState = { enabled: false, location: null, intensity: 'normal', motion: 'full', engine: 'cinematic' };
+
+/* Phase W6 — one-time migration from the legacy string-typed location
+   ('aberdeen'/'peterhead'/'stavanger'/'esbjerg'/'custom') to the new
+   Location object. Coordinates are the official port lat/lng, copied
+   from the Step 6 spec. 'custom' or any unknown string maps to null,
+   which triggers the first-run flow at boot (geolocation prompt). */
+const _LEGACY_LOCATION_MAP = {
+  aberdeen:  { name: 'Aberdeen',  region: 'Scotland',   country: 'United Kingdom', countryCode: 'GB', lat: 57.1497, lng: -2.0943 },
+  peterhead: { name: 'Peterhead', region: 'Scotland',   country: 'United Kingdom', countryCode: 'GB', lat: 57.5089, lng: -1.7836 },
+  stavanger: { name: 'Stavanger', region: 'Rogaland',   country: 'Norway',         countryCode: 'NO', lat: 58.9700, lng:  5.7331 },
+  esbjerg:   { name: 'Esbjerg',   region: 'Syddanmark', country: 'Denmark',        countryCode: 'DK', lat: 55.4760, lng:  8.4594 },
+};
+function _migrateLegacyLocation(d){
+  if(!d) return false;
+  if(typeof d.location !== 'string') return false;   // already migrated, or null
+  const m = _LEGACY_LOCATION_MAP[d.location];
+  if(m){
+    d.location = { ...m, source: 'manual', resolvedAt: Date.now() };
+  } else {
+    /* 'custom' or anything not in the map → null. The boot path will
+       run resolveInitialLocation if the user accepts geolocation, or
+       open the search overlay if they decline. */
+    d.location = null;
+  }
+  return true;
+}
+
+function _wxLoad(){
+  let d = null;
+  try{
+    d = JSON.parse(localStorage.getItem(_WX_KEY) || 'null');
+  } catch(e){
+    /* Corrupt storage — fall through to defaults. Boot must never
+       fail because of weather state. */
+    d = null;
+  }
+  if(!d){
+    /* First load or corrupt: defaults from _wxState declaration apply.
+       The null location triggers the first-run geolocation flow once
+       _wxBind has wired its handlers. */
+    return;
+  }
+  /* One-time legacy migration: location string → object. v7 silently
+     drops `mode` and `condition` fields from old storage — atmosphere
+     now always reflects real weather, so the next _wxSave writes a
+     clean envelope without those fields. */
+  let migrated = _migrateLegacyLocation(d);
+  if(typeof d.mode === 'string' || typeof d.condition === 'string') migrated = true;
+
+  if(typeof d.enabled === 'boolean') _wxState.enabled = d.enabled;
+  /* Location: shape-validated object, or null. _migrateLegacyLocation
+     already converted any legacy string. Anything still wrong-shaped
+     after migration is treated as null (first-run flow re-resolves). */
+  if(d.location === null){
+    _wxState.location = null;
+  } else if(d.location && typeof d.location === 'object'
+            && typeof d.location.name === 'string' && d.location.name
+            && typeof d.location.lat === 'number'
+            && typeof d.location.lng === 'number'){
+    _wxState.location = d.location;
+  } else {
+    _wxState.location = null;
+    migrated = true;
+  }
+  if(typeof d.intensity === 'string'
+     && _WX_INTENSITIES[d.intensity]) _wxState.intensity = d.intensity;
+  if(typeof d.motion === 'string'
+     && _WX_MOTIONS[d.motion]) _wxState.motion = d.motion;
+  if(typeof d.engine === 'string'
+     && _WX_ENGINES[d.engine]) _wxState.engine = d.engine;
+
+  /* Seed the location module so getLocation() reflects loaded state.
+     Uses hydrate() (silent — does NOT fire onLocationChange) because
+     subscribers haven't been attached yet at this point in boot. */
+  if(_wxState.location) _wxLocHydrate(_wxState.location);
+
+  /* Normalise storage so next load doesn't re-migrate. */
+  if(migrated) _wxSave();
+}
+function _wxSave(){
+  try{ localStorage.setItem(_WX_KEY, JSON.stringify(_wxState)); } catch(e){}
+}
+function _wxApply(){
+  /* Atmosphere VFX active flag — gates body[data-wx] only. The plate
+     populates regardless (real weather data is useful even without
+     the animated background). */
+  const active = _wxState.enabled;
+
+  /* Condition source (v7 — manual mode retired): cached weather drives
+     the rendered atmosphere key. If no cache yet (first boot before
+     first fetch), fall back to DEFAULT_CONDITION ('cloudy') as a
+     neutral baseline. */
+  const cached = _wxGetCached();
+  const baseCondition = cached ? cached.condition : DEFAULT_CONDITION;
+
+  /* _FALLBACK_MAP collapses the API's 11-key vocabulary into the
+     legacy 7-key one the renderer understands (e.g. partly-cloudy-day
+     → cloudy). The plate continues to reference the un-mapped key. */
+  const renderedCondition = active
+    ? (_WX_FALLBACK_MAP[baseCondition] || baseCondition)
+    : 'off';
+
+  if(active){
+    document.body.setAttribute('data-wx', renderedCondition);
+    document.body.setAttribute('data-wx-intensity', _wxState.intensity);
+    document.body.setAttribute('data-wx-motion', _wxState.motion);
+    document.body.setAttribute('data-wx-engine', _wxState.engine);
+  } else {
+    document.body.removeAttribute('data-wx');
+    document.body.removeAttribute('data-wx-intensity');
+    document.body.removeAttribute('data-wx-motion');
+    document.body.removeAttribute('data-wx-engine');
+  }
+  /* wxScene.set must run AFTER attribute stamping so CSS reflows in
+     the same tick. Idempotent when condition is unchanged. */
+  wxScene.set({
+    condition: renderedCondition,
+    intensity: _wxState.intensity,
+    motion:    _wxState.motion,
+    engine:    _wxState.engine,
+  });
+  /* ── Plate render (W5 §13 v7) ─────────────────────────────────
+     Plate is always visible — atmosphere toggle controls VFX only.
+     With manual mode retired, the readout is unconditionally:
+       city (top)  +  temp + icon (main row).
+     Empty values collapse via :empty CSS so a pre-fetch boot still
+     looks tidy (just the icon + an em-dash city). */
+  const plate  = document.getElementById('wxChipGroup');
+  const cityEl = document.getElementById('wxChipCity');
+  const tempEl = document.getElementById('wxChipTemp');
+  const iconEl = document.getElementById('wxChipIcon');
+
+  /* City — name only. Region/country live in the search overlay for
+     disambiguation; no need to repeat them in the chip header. */
+  const loc = _wxGetLocation();
+  if(cityEl) cityEl.textContent = loc ? loc.name : '—';
+
+  /* Icon — always rendered. iconForCondition falls back to 'cloudy'
+     for unmapped keys, so the plate never has a missing visual. */
+  if(iconEl){
+    const url = iconForCondition(baseCondition);
+    iconEl.innerHTML = '<img src="' + url + '" alt="" />';
+  }
+
+  /* Temperature — populated whenever cache has data. Empty before
+     the first fetch lands; CSS :empty hides the span. */
+  if(tempEl) tempEl.textContent = cached ? (cached.temperature + '°') : '';
+
+  /* Stale dot — cache older than an hour. CSS .is-stale rule
+     (opacity dim + amber dot) reacts to this class toggle. */
+  const stale = !!(cached && (Date.now() - cached.fetchedAt) > 3600 * 1000);
+  plate?.classList.toggle('is-stale', stale);
+
+}
+/* Phase W6 — format the location strip label. Mirrors how the chip
+   shows just the city name, but the strip has more room so we add
+   the region and country code where present. */
+function _wxFormatLocLabel(loc){
+  if(!loc) return '—';
+  const parts = [loc.name];
+  if(loc.region)  parts.push(loc.region);
+  if(loc.country) parts.push(loc.country);
+  return parts.join(', ');
+}
+
+/* Phase W6 — render Open-Meteo geocoding results into the search list.
+   Each <li> carries the raw CityResult on a closure so click handlers
+   can call _wxSetLocation without re-parsing dataset attributes. */
+function _wxRenderSearchResults(results){
+  const list  = document.getElementById('wxSearchResults');
+  const state = document.getElementById('wxSearchState');
+  if(!list) return;
+  list.innerHTML = '';
+  if(!results.length){
+    if(state){ state.textContent = 'No results found'; state.hidden = false; }
+    return;
+  }
+  if(state) state.hidden = true;
+  for(const r of results){
+    const li = document.createElement('li');
+    li.setAttribute('role', 'option');
+    const name = document.createElement('span');
+    name.className = 'wx-search-name';
+    name.textContent = r.name;
+    li.appendChild(name);
+    if(r.region){
+      const region = document.createElement('span');
+      region.className = 'wx-search-region';
+      region.textContent = ', ' + r.region;
+      li.appendChild(region);
+    }
+    if(r.countryCode){
+      const cc = document.createElement('span');
+      cc.className = 'wx-search-cc';
+      cc.textContent = r.countryCode;
+      li.appendChild(cc);
+    }
+    /* mousedown fires before blur, so preventDefault here keeps
+       focus on the input — otherwise the 200ms blur-close timer
+       would fire and the panel would close before click resolves. */
+    li.addEventListener('mousedown', (e) => e.preventDefault());
+    li.addEventListener('click', () => {
+      _wxSetLocation({
+        name:        r.name,
+        region:      r.region,
+        country:     r.country,
+        countryCode: r.countryCode,
+        lat:         r.lat,
+        lng:         r.lng,
+      });
+      _wxCloseSearch();
+    });
+    list.appendChild(li);
+  }
+}
+
+/* Phase W6 — the search overlay open/close lifecycle. Tracks the time
+   of the last keystroke so reopening with a >5min-old query clears
+   the input (per Step 2 clarification 5). */
+let _wxSearchLastQueryAt = 0;
+let _wxSearchDebounce    = null;
+
+function _wxOpenSearch(){
+  const panel = document.getElementById('wxSearch');
+  const input = document.getElementById('wxSearchInput');
+  const state = document.getElementById('wxSearchState');
+  if(!panel) return;
+  panel.hidden = false;
+  if(input){
+    if(Date.now() - _wxSearchLastQueryAt > 5 * 60 * 1000){
+      input.value = '';
+      const list = document.getElementById('wxSearchResults');
+      if(list) list.innerHTML = '';
+      if(state){ state.textContent = 'Type to search'; state.hidden = false; }
+    }
+    setTimeout(() => input.focus(), 0);
+  }
+}
+
+function _wxCloseSearch(){
+  const panel = document.getElementById('wxSearch');
+  if(!panel) return;
+  panel.hidden = true;
+  if(_wxSearchDebounce){
+    clearTimeout(_wxSearchDebounce);
+    _wxSearchDebounce = null;
+  }
+}
+
+function _wxBind(){
+  _wxLoad();
+  /* Sync form controls. v7 retired the wxCondition <select>; only
+     intensity / motion / engine / enable toggle remain. */
+  const intSel = document.getElementById('wxIntensity');
+  const motSel = document.getElementById('wxMotion');
+  const engSel = document.getElementById('wxEngine');
+  const enaChk = document.getElementById('wxEnableToggle');
+  if(intSel) intSel.value = _wxState.intensity;
+  if(motSel) motSel.value = _wxState.motion;
+  if(engSel) engSel.value = _wxState.engine;
+  if(enaChk) enaChk.checked = _wxState.enabled;
+
+  /* Sync the location strip label from current state. */
+  const locNameEl = document.getElementById('wxLocName');
+  if(locNameEl) locNameEl.textContent = _wxFormatLocLabel(_wxState.location);
+
+  /* ── Subscribers ──────────────────────────────────────────────
+     Order matters: subscribe BEFORE wiring handlers that might call
+     setLocation, so the very first user-driven location change is
+     mirrored into _wxState and persisted. */
+  onLocationChange((loc) => {
+    _wxState.location = loc;
+    _wxSave();
+    if(locNameEl) locNameEl.textContent = _wxFormatLocLabel(loc);
+    _wxApply();
+  });
+  onWeatherChange(() => {
+    /* Re-render — _wxApply reads getCachedWeather internally. */
+    _wxApply();
+  });
+
+  /* ── Form handlers: same shape as before, just for the controls
+        that survived the 6a restructure. ─────────────────────────── */
+  intSel?.addEventListener('change', () => {
+    _wxState.intensity = intSel.value;
+    _wxSave();
+    _wxApply();
+  });
+  motSel?.addEventListener('change', () => {
+    _wxState.motion = motSel.value;
+    _wxSave();
+    _wxApply();
+  });
+  engSel?.addEventListener('change', () => {
+    _wxState.engine = engSel.value;
+    _wxSave();
+    _wxApply();
+  });
+  enaChk?.addEventListener('change', () => {
+    _wxState.enabled = enaChk.checked;
+    _wxSave();
+    /* Phase W5 §13 v6 — atmosphere toggle is now PURE VFX. Polling
+       lifecycle is decoupled from `enabled` so the plate keeps
+       populating (city/temp/icon) regardless of whether body
+       atmosphere VFX is rendered. autoRefresh continues to run as
+       long as we are in auto mode. */
+    _wxApply();
+  });
+
+  /* ── Location strip handlers ─────────────────────────────────── */
+  document.getElementById('wxLocChange')?.addEventListener('click', _wxOpenSearch);
+/* ── Search input: debounced (300ms), min 2 chars ──────────── */
+  const searchInput   = document.getElementById('wxSearchInput');
+  const searchResults = document.getElementById('wxSearchResults');
+  const searchState   = document.getElementById('wxSearchState');
+  searchInput?.addEventListener('input', () => {
+    _wxSearchLastQueryAt = Date.now();
+    if(_wxSearchDebounce){ clearTimeout(_wxSearchDebounce); _wxSearchDebounce = null; }
+    const q = searchInput.value.trim();
+    if(q.length < 2){
+      if(searchResults) searchResults.innerHTML = '';
+      if(searchState){
+        searchState.textContent = q.length === 0 ? 'Type to search' : 'Keep typing…';
+        searchState.hidden = false;
+      }
+      return;
+    }
+    if(searchState){ searchState.textContent = 'Searching…'; searchState.hidden = false; }
+    _wxSearchDebounce = setTimeout(async () => {
+      const results = await searchCities(q);
+      _wxRenderSearchResults(results);
+    }, 300);
+  });
+
+  /* Blur-to-close with 200ms grace so a click on a result registers
+     before the panel hides. Also ignore blur when focus moves into
+     another element inside the search panel (e.g. result list). */
+  searchInput?.addEventListener('blur', () => {
+    setTimeout(() => {
+      const panel = document.getElementById('wxSearch');
+      if(panel && !panel.contains(document.activeElement)){
+        _wxCloseSearch();
+      }
+    }, 200);
+  });
+
+  /* ── Chip click → open Smart Tools, expand Weather section. ── */
+  document.getElementById('wxChip')?.addEventListener('click', () => {
+    document.getElementById('btnSmartTools')?.click();
+    setTimeout(() => {
+      const sec = document.querySelector('#stOv .st-section[data-section-id="weather"]');
+      if(!sec) return;
+      sec.classList.remove('collapsed');
+      if(typeof _stPersistSectionState === 'function') _stPersistSectionState();
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  });
+
+  /* Refresh button removed (Phase W5 §13 refinement) — polling
+     handles updates automatically. _wxRefreshNow is still called
+     internally by the manual-override toggle when returning to auto. */
+
+  /* Initial apply (respects persisted enabled=false → no data-wx set). */
+  _wxApply();
+
+  /* ── Boot sequence (v7 — manual mode retired) ─────────────────
+     1. Always start the polling loop. autoRefresh is now the sole
+        data path — no manual mode that pauses it. start() emits
+        cached data immediately (instant plate population) and
+        schedules first poll at delay 0 (background fetch). The
+        atmosphere toggle (`_wxState.enabled`) controls only body
+        VFX rendering; data lifecycle is independent.
+     2. If no location is set yet (first run, or 'custom' migrated
+        to null), trigger the geolocation prompt. On accept, the
+        reverse geocode resolves a city and setLocation fires the
+        subscriber chain (which clears autoRefresh's cache and
+        triggers an immediate fetch for the new city). On deny,
+        open the search overlay so the user can pick manually. */
+  _wxAutoStart();
+
+  if(!_wxState.location){
+    _wxResolveInitialLocation().then((loc) => {
+      if(loc) _wxSetLocation(loc);
+      else    _wxOpenSearch();
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PHASE 29 — SIGNATURE MARITIME INTERACTIONS
+   Four quiet, premium moments:
+     1) Daily identity reveal  — once-per-day wordmark breathe-in
+     2) Night Watch glint      — dark-mode opt-in deck specular sweep
+     3) Ruler ship-bearing     — vessel-relative direction on ruler
+     4) Focus Deck mode        — command-palette dim-chrome review
+   Each is independent, toggleable where appropriate, and respects
+   prefers-reduced-motion. No gimmicks; no cheap nautical clichés.
+══════════════════════════════════════════════════════════ */
+
+/* 1) Daily identity reveal ─────────────────────────────── */
+function _maybeTriggerDailyReveal(){
+  try{
+    const today = new Date().toISOString().slice(0, 10);   /* YYYY-MM-DD */
+    const last  = localStorage.getItem('spicaTide_lastIdReveal');
+    if(last === today) return;
+    localStorage.setItem('spicaTide_lastIdReveal', today);
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const brand = document.getElementById('brandName');
+    if(!brand) return;
+    brand.classList.remove('id-revealing');
+    void brand.offsetWidth;   /* reflow so class re-fires if we ever re-call */
+    brand.classList.add('id-revealing');
+    brand.addEventListener('animationend',
+      () => brand.classList.remove('id-revealing'),
+      { once: true });
+  } catch(e){ /* localStorage not available — silently skip */ }
+}
+
+/* 2) Night Watch ambient glint ─────────────────────────── */
+function _applyNightWatch(){
+  /* Class on <body>; CSS targets it only under [data-theme="dark"]. The
+     animation self-pauses via CSS when body[data-dragging="1"] is set
+     by the drag / resize paths (_nightWatchSetDragging helper). */
+  const on = !!SMART.nightWatch;
+  document.body.classList.toggle('night-watch-active', on);
+}
+function _nightWatchSetDragging(isDragging){
+  if(!SMART.nightWatch) return;
+  if(isDragging) document.body.setAttribute('data-dragging', '1');
+  else           document.body.removeAttribute('data-dragging');
+}
+
+/* 3) Ruler ship-bearing ────────────────────────────────── */
+/* Vessel-relative convention for this deck:
+     +X  → fore (bow, right on screen)
+     -X  → aft  (stern, left on screen)
+     +Y  → stbd (screen-down — STBD label at bottom:8px)
+     -Y  → port (screen-up   — PORT label at top:8px)
+   Bearing is measured clockwise from +X (fore), so 0° = fore, 90° = stbd,
+   180° = aft, 270° = port. Sector width 45°; 8 primary directions. */
+const _RULER_SECTORS = [
+  { min: -22.5, max:  22.5, label: 'fore' },
+  { min:  22.5, max:  67.5, label: 'fore-stbd' },
+  { min:  67.5, max: 112.5, label: 'stbd' },
+  { min: 112.5, max: 157.5, label: 'aft-stbd' },
+  { min: 157.5, max: 180.1, label: 'aft' },
+  { min:-180.1, max:-157.5, label: 'aft' },
+  { min:-157.5, max:-112.5, label: 'aft-port' },
+  { min:-112.5, max: -67.5, label: 'port' },
+  { min: -67.5, max: -22.5, label: 'fore-port' },
+];
+function _rulerBearingFor(ax, ay, bx, by){
+  const dxM = deckXToMeters(bx) - deckXToMeters(ax);
+  const dyM = deckYToMeters(by) - deckYToMeters(ay);
+  const deg = Math.atan2(dyM, dxM) * 180 / Math.PI;   /* -180..180 */
+  const dir = (_RULER_SECTORS.find(s => deg >= s.min && deg < s.max) || {}).label || '—';
+  /* Maritime convention: show 0..360 clockwise from fore. */
+  const bearing = Math.round((deg + 360) % 360);
+  return { dir, bearing, deg };
+}
+
+/* 4) Focus Deck mode ───────────────────────────────────── */
+let _focusDeckActive = false;
+function _focusDeckToggle(){
+  _focusDeckActive ? _focusDeckExit() : _focusDeckEnter();
+}
+function _focusDeckEnter(){
+  if(_focusDeckActive) return;
+  _focusDeckActive = true;
+  document.body.classList.add('focus-deck');
+  /* Brief hint pill — does NOT stay; fades on its own. Tells the
+     operator how to exit without being a UI promotion. */
+  if(typeof showToast === 'function'){
+    showToast('Focus Deck \u00B7 Esc to exit', 'ok');
+  }
+}
+function _focusDeckExit(){
+  if(!_focusDeckActive) return;
+  _focusDeckActive = false;
+  document.body.classList.remove('focus-deck');
+}
+
+/* ══════════════════════════════════════════════════════════
    SOUND ENGINE v3 — 3-level hierarchy: Master → Category → Individual
    Apple-inspired organic synthesis. 9 sounds. Ambient loop.
 ══════════════════════════════════════════════════════════ */
 let _sndCtx=null, _sndMaster=null, _sndAnalyser=null;
-const _sndCats={basic:{on:true,sounds:['drop','remove','warning','save']},ambient:{on:true,sounds:['ocean','dgDrop','overweight']},advanced:{on:true,sounds:['voice','radio']}};
-const _sndState={drop:true,remove:true,warning:true,save:true,ocean:true,dgDrop:true,overweight:true,voice:true,radio:true};
-const _sndCatMap={drop:'basic',remove:'basic',warning:'basic',save:'basic',ocean:'ambient',dgDrop:'ambient',overweight:'ambient',voice:'advanced',radio:'advanced'};
+/* Phase 25 — `select` and `snap` added to the `basic` category so the
+   sound engine now fires on single-cargo selection and on drag-drop
+   snap lock-ins, completing the tactile feedback set. Both default on
+   and respect the same per-sound + per-category toggles.
+   Phase 27 — `undo`, `redo`, `rotate`, `duplicate`, `export` added to
+   basic; `resolved` added to ambient. Coherent audio family across
+   every common mouse-first operation. */
+const _sndCats={basic:{on:true,sounds:['drop','remove','warning','save','select','snap','undo','redo','rotate','duplicate','export']},ambient:{on:true,sounds:['ocean','dgDrop','overweight','resolved']},advanced:{on:true,sounds:['voice','radio']}};
+const _sndState={drop:true,remove:true,warning:true,save:true,select:true,snap:true,undo:true,redo:true,rotate:true,duplicate:true,export:true,ocean:true,dgDrop:true,overweight:true,resolved:true,voice:true,radio:true};
+const _sndCatMap={drop:'basic',remove:'basic',warning:'basic',save:'basic',select:'basic',snap:'basic',undo:'basic',redo:'basic',rotate:'basic',duplicate:'basic',export:'basic',ocean:'ambient',dgDrop:'ambient',overweight:'ambient',resolved:'ambient',voice:'advanced',radio:'advanced'};
 let _ambNodes=null;
 
 function _sndInit(){
@@ -8755,11 +13554,40 @@ function softTone(freq,{start=0,attack=0.04,hold=0,decay=0.3,peak=0.2,type='sine
 function softNoise({start=0,attack=0.03,hold=0,decay=0.25,peak=0.08,filterFreq=800,filterQ=1,filterType='bandpass'}={}){const t=start+_sndCtx.currentTime;const dur=attack+hold+decay+0.1;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.1)*0.98;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type=filterType;filt.frequency.value=filterFreq;filt.Q.value=filterQ;const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+attack);if(hold>0)g.gain.setValueAtTime(peak,t+attack+hold);g.gain.setTargetAtTime(0.0001,t+attack+hold,decay/4);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);}
 function addTail(freq,delay,vol,tailDecay){softTone(freq,{start:delay,attack:0.01,decay:tailDecay,peak:vol});}
 
+/* Phase 27 — AUDIO FAMILY DYNAMICS (calibrated, do not drift):
+   - Significant moments (infrequent): peak 0.10-0.30.
+     drop (0.30), warning (0.15), save (0.14), overweight (0.18), export (0.10).
+     These DESERVE to cut through — they mark real transitions.
+   - Frequent interactions (per-click): peak 0.04-0.06.
+     select (0.045), snap (0.055), undo (0.050), redo (0.045),
+     rotate (0.050), duplicate (0.045), resolved (0.055).
+     Must never fatigue the ear during rapid layout building.
+   - Any new sound must declare which band it belongs to. */
 const soundFns={
   drop(){softTone(150,{attack:0.008,decay:0.35,peak:0.30});softTone(75,{attack:0.012,decay:0.45,peak:0.18});softTone(220,{attack:0.005,decay:0.15,peak:0.06,detune:-15});softNoise({attack:0.003,decay:0.08,peak:0.06,filterFreq:300,filterType:'lowpass'});addTail(75,0.12,0.04,0.5);addTail(150,0.08,0.03,0.4);},
   remove(){const t=_sndCtx.currentTime,dur=0.4;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.08)*0.99;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type='bandpass';filt.Q.value=0.8;filt.frequency.setValueAtTime(300,t);filt.frequency.exponentialRampToValueAtTime(2500,t+0.25);filt.frequency.setTargetAtTime(600,t+0.25,0.08);const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.12,t+0.06);g.gain.setTargetAtTime(0.0001,t+0.2,0.06);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);softTone(1800,{attack:0.05,decay:0.2,peak:0.02});softTone(2400,{attack:0.07,decay:0.18,peak:0.012,detune:8});},
   warning(){softTone(587,{start:0,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(587*2,{start:0,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(698,{start:0.18,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(698*2,{start:0.18,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(587,{start:0.36,attack:0.04,hold:0.06,decay:0.35,peak:0.12});softTone(294,{start:0,attack:0.06,decay:0.6,peak:0.06});},
   save(){[{f:523,s:0,p:0.14},{f:659,s:0.07,p:0.12},{f:784,s:0.14,p:0.10}].forEach(n=>{softTone(n.f,{start:n.s,attack:0.03,decay:0.45,peak:n.p});softTone(n.f*2,{start:n.s,attack:0.04,decay:0.3,peak:n.p*0.12,detune:3});addTail(n.f,n.s+0.15,n.p*0.08,0.6);});softTone(262,{start:0,attack:0.06,decay:0.6,peak:0.04});},
+  /* Phase 25 — calibrated confirmation ticks. `select` is a very soft,
+     short fifth-octave tap for selection transitions. `snap` is a
+     slightly firmer, lower tap representing a physical lock-in when
+     Smart Grid Snap commits a drop onto a real boundary. Both are
+     quieter than drop/save so rapid firing doesn't fatigue. */
+  select(){softTone(880,{attack:0.002,decay:0.08,peak:0.045});softTone(1320,{attack:0.003,decay:0.06,peak:0.020,detune:4});softNoise({attack:0.002,decay:0.03,peak:0.012,filterFreq:4200,filterType:'highpass'});},
+  snap(){softTone(520,{attack:0.002,decay:0.10,peak:0.055});softTone(260,{attack:0.004,decay:0.15,peak:0.028});softNoise({attack:0.002,decay:0.05,peak:0.020,filterFreq:1800,filterType:'bandpass',filterQ:1.2});addTail(520,0.04,0.018,0.18);},
+  /* Phase 27 — premium interaction family.
+     undo:     high→low sweep ~ "rewind". 780→520 via two staggered tones.
+     redo:     inverse, low→high. Same envelope, feels forward.
+     rotate:   soft mechanical tap (mid body, short tail + mild click).
+     duplicate: twin-tone ~ "one, and another". 660 + 880 offset 45ms.
+     export:   two-tone cadence + sub body ~ "done". Slightly fuller than save.
+     resolved: soft descending 640→480 with filter fade ~ tension release. */
+  undo(){softTone(780,{attack:0.004,decay:0.08,peak:0.040});softTone(520,{start:0.05,attack:0.004,decay:0.12,peak:0.050});softNoise({attack:0.003,decay:0.06,peak:0.010,filterFreq:500,filterType:'lowpass'});},
+  redo(){softTone(520,{attack:0.004,decay:0.08,peak:0.040});softTone(780,{start:0.05,attack:0.004,decay:0.12,peak:0.045});softNoise({attack:0.003,decay:0.06,peak:0.010,filterFreq:2200,filterType:'highpass'});},
+  rotate(){softTone(420,{attack:0.002,decay:0.06,peak:0.050});softTone(840,{attack:0.003,decay:0.04,peak:0.018,detune:3});softNoise({attack:0.002,decay:0.03,peak:0.014,filterFreq:2800,filterType:'bandpass',filterQ:1.4});},
+  duplicate(){softTone(660,{attack:0.003,decay:0.10,peak:0.045});softTone(880,{start:0.045,attack:0.003,decay:0.08,peak:0.035,detune:2});softNoise({attack:0.002,decay:0.04,peak:0.012,filterFreq:3200,filterType:'highpass'});},
+  export(){softTone(523,{attack:0.01,decay:0.25,peak:0.10});softTone(784,{start:0.12,attack:0.01,decay:0.35,peak:0.11});softTone(261,{attack:0.03,decay:0.50,peak:0.04});addTail(784,0.28,0.04,0.4);},
+  resolved(){softTone(640,{attack:0.006,decay:0.14,peak:0.055});softTone(480,{start:0.08,attack:0.008,decay:0.22,peak:0.045});softNoise({attack:0.004,decay:0.10,peak:0.012,filterFreq:1200,filterType:'lowpass'});addTail(480,0.12,0.018,0.28);},
   dgDrop(){soundFns.drop();softTone(93,{start:0.2,attack:0.15,decay:0.8,peak:0.06});softTone(139,{start:0.2,attack:0.18,decay:0.7,peak:0.04});for(let i=0;i<6;i++){const d=0.3+Math.random()*0.6;softTone(3000+Math.random()*1500,{start:d,attack:0.001,decay:0.02,peak:0.015+Math.random()*0.01});}},
   overweight(){softTone(70,{attack:0.25,hold:0.3,decay:1.0,peak:0.18});softTone(71.5,{attack:0.28,hold:0.28,decay:0.9,peak:0.12});softTone(140,{attack:0.3,hold:0.2,decay:0.8,peak:0.05});softNoise({attack:0.2,hold:0.25,decay:0.8,peak:0.04,filterFreq:200,filterQ:0.5,filterType:'lowpass'});addTail(70,0.8,0.03,1.2);},
   voice(){if(!('speechSynthesis' in window))return;softTone(880,{attack:0.05,decay:0.3,peak:0.06});softTone(1320,{attack:0.06,decay:0.25,peak:0.03});setTimeout(()=>{const u=new SpeechSynthesisUtterance('DG segregation violation, Bay 4');u.rate=0.92;u.pitch=0.85;u.volume=SMART.soundEnabled?Math.min(SMART.soundVolume/100*1.2,1):0;const voices=speechSynthesis.getVoices();const v=voices.find(v=>v.lang.startsWith('en')&&/female|samantha/i.test(v.name))||voices.find(v=>v.lang.startsWith('en'));if(v)u.voice=v;speechSynthesis.speak(u);},350);},
@@ -9235,7 +14063,7 @@ function init(){
   _scheduleUpdateCheck();
   bindContextMenu();
   bindSyncSettings();
-  bindStatusBar();
+
   bindThemeToggle();   /* apply saved theme immediately, before any render */
   initResponsiveHeader();  /* apply body.hdr-compact / body.hdr-tight */
   bindSmartTools();        /* load and apply smart tool settings */
@@ -9243,19 +14071,29 @@ function init(){
   bindDGAutoCheck();       /* DG Auto-Segregation Check modal controls */
   applyNewBadges();        /* version-aware NEW badge visibility */
   setupCanvas();load();
+  /* Voyage date is rolling today — today always wins over the persisted
+     value on init, regardless of what was in the autosave envelope. See
+     _rollDateToTodayIfNeeded() below for the recurring midnight check. */
+  selDate = new Date();
   /* Initialise dynamic colour assignments for restored active locations */
   initDynColors();
   buildActiveLocStrip();buildLocGrid();buildCargoList();buildDGList();
-  bindTabs();bindStatusBtns();bindModal();bindDGMultiPicker();bindCustomForm();bindLibPanel();
+  bindTabs();bindStatusBtns();bindModal();bindInspector();bindCmdPalette();bindDGMultiPicker();bindCustomForm();bindLibPanel();
   bindLocsPanel();bindLocDrawer();bindLocDeleteDlg();bindDatePicker();
+  setInterval(_rollDateToTodayIfNeeded, 5 * 60 * 1000);   /* rolling today — see fn doc */
   bindAscoUpload();
   bindSaveAs();
   bindClearDeck();
+  bindNewDeckModal();
   bindVoyageRemarks();
   bindModalExtensions();
   bindManifestMatch();
   cpBind();
   bindKeyboardNav();
+  bindRulerTool();        /* Phase 23 — Measure ruler */
+  _autoAlignBindPreviewModal();  /* Phase 30B — Auto Align preview */
+  wxScene.init();         /* Phase W5/W6 — A/B sky + canvas precip orchestrator */
+  _wxBind();              /* Phase W1 — Weather widget + atmosphere shell */
   bindAdmin();
   buildQueueList();
   cpUpdateBadge();
@@ -9266,6 +14104,9 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   document.getElementById('voyIn').oninput=save;
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
+      /* Phase 29 — Esc also exits Focus Deck. Takes priority over other
+         Esc behaviours since it's the most-recently-entered mode. */
+      if(_focusDeckActive){ _focusDeckExit(); return; }
       cancelPending();
       closeAscoModal();
       if(typeof kbDeselect==='function') kbDeselect();
@@ -9274,11 +14115,19 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
     }
   });
   renderAll();updateStats();updateDGSummary();initZoom();
+  /* Seed the undo baseline once the initial state is in memory so the
+     very first user action produces a clean pre-state history entry. */
+  seedHistoryBaseline();
 
   /* ── Session recovery toast ── */
   if(S.cargo.length > 0){
     setTimeout(() => showToast('Previous session restored', 'ok'), 400);
   }
+
+  /* Phase 29 — daily identity reveal. Once per calendar day, on first
+     load of the session, the SPICA · TIDE wordmark breathes in softly.
+     After that the class self-removes so later loads are silent. */
+  _maybeTriggerDailyReveal();
 
   /* ── What's New modal (after update) ── */
   setTimeout(() => _checkWhatsNew(), 800);
@@ -9307,10 +14156,28 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
     }, 500);
   }
 
-  /* ── Periodic autosave (every 15 seconds, respects toggle) ── */
+  /* ── Periodic autosave (every 15 seconds, respects toggle).
+     Persistence-only: autosave writes the current plan to localStorage
+     but MUST NOT push onto the undo stack (that would inflate history
+     with idle no-op entries and push genuine user actions out of the
+     50-step window). */
   setInterval(() => {
     if(!_autosaveEnabled) return;
-    save();
+    /* Time the savePlan call. If it exceeds 150ms (e.g. future async
+       cloud sync), enter the 'saving' state briefly before the success
+       transition. Sync localStorage saves are typically <5ms, so the
+       saving state is reserved for slow operations and skipped here. */
+    const _t0 = (performance && performance.now) ? performance.now() : Date.now();
+    savePlan();
+    const _elapsed = ((performance && performance.now) ? performance.now() : Date.now()) - _t0;
+    if(_elapsed > 150 && typeof _setSaveState === 'function'){
+      _setSaveState('saving');
+    }
+    /* _updateSaveIndicator routes through _setSaveState; redundant when
+       _flashAutosave is about to fire but harmless and keeps the
+       _dirty-driven indicator state consistent in case _flashAutosave
+       early-returns (autosave disabled mid-cycle, etc.). */
+    if(typeof _updateSaveIndicator === 'function') _updateSaveIndicator();
     _flashAutosave();
   }, 15000);
 
@@ -9363,42 +14230,109 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   }
 }
 
-function _flashAutosave(){
-  if(!_autosaveEnabled) return;
-  let el = document.getElementById('autosaveIndicator');
-  if(!el){
-    el = document.createElement('div');
-    el.id = 'autosaveIndicator';
-    el.className = 'autosave-indicator';
-    el.textContent = 'Autosaved \u2713';
-    document.body.appendChild(el);
+/* ── Save-state animation system — 4-state machine ──────────────────
+   States: saved | unsaved | saving | autosaved → revert
+   - saved: green dot, no animation
+   - unsaved: amber dot, breathing opacity loop
+   - saving: grey dot + spinner ring (only entered if savePlan elapsed
+     >150ms — current sync localStorage skips this state, future async
+     cloud sync would hit it)
+   - autosaved: green pop overshoot + checkmark draw, holds 2500ms, then
+     auto-reverts via _updateSaveIndicator() to whatever _dirty reflects
+     (Q1 β: visual-only revert; autosave does NOT clear _dirty since
+     local autosave ≠ user manual commit intent)
+
+   The CSS at app.css:~8690 owns all visual transitions. JS just toggles
+   the .save-dot--{state} class and cross-fades the label text between
+   two layered spans. Timer cleanup on every transition prevents stale
+   reverts when user mutates during 'autosaved' hold. */
+const _LABELS = {
+  saved:     'Saved',
+  unsaved:   'Unsaved',
+  saving:    'Saving…',
+  autosaved: 'Autosaved',
+};
+const _saveState = {
+  current:   'saved',
+  holdTimer: null,
+};
+
+function _setSaveState(next){
+  /* Clear any pending revert timer so a stale 'autosaved → saved' fire
+     can't override a fresher 'unsaved' set by a user mutation. */
+  if(_saveState.holdTimer){
+    clearTimeout(_saveState.holdTimer);
+    _saveState.holdTimer = null;
   }
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2000);
-  /* Briefly show "Autosaved" in header indicator */
-  _showSaveState('autosaved');
-  setTimeout(() => _updateSaveIndicator(), 2500);
-}
 
-/* ── Save state indicator ──────────────────────────────── */
-function _updateSaveIndicator(){
-  _showSaveState(_dirty ? 'unsaved' : 'saved');
-}
-
-function _showSaveState(state){
-  const dot  = document.getElementById('saveDotBottom') || document.querySelector('.save-dot');
+  _saveState.current = next;
+  const dot  = document.getElementById('saveDotBottom');
   const text = document.getElementById('saveStateText');
   if(!dot || !text) return;
-  dot.className = 'save-dot ' + state;
-  if(state === 'saved')      text.textContent = 'Saved';
-  else if(state === 'unsaved')  text.textContent = 'Unsaved';
-  else if(state === 'autosaved') text.textContent = 'Autosaved';
+
+  /* data-state attribute available for any future selector grammar.
+     class form .save-dot--{state} drives the CSS state machine. */
+  dot.dataset.state = next;
+  dot.className = 'save-dot save-dot--' + next;
+
+  _crossFadeLabel(text, _LABELS[next] || 'Saved');
+
+  /* Autosaved holds for 2500ms then auto-reverts. Revert target is
+     determined by current _dirty state (Q1 β): saved if user has
+     manually committed, unsaved if changes are still pending. */
+  if(next === 'autosaved'){
+    _saveState.holdTimer = setTimeout(() => {
+      _saveState.holdTimer = null;
+      _setSaveState(_dirty ? 'unsaved' : 'saved');
+    }, 2500);
+  }
+}
+
+function _crossFadeLabel(textEl, newText){
+  const cur = textEl.querySelector('.bp-save-text__layer--current');
+  const out = textEl.querySelector('.bp-save-text__layer--out');
+  if(!cur || !out){
+    /* Defensive fallback — if dual-span structure is missing
+       (e.g. legacy DOM during incremental upgrade), set textContent
+       directly. State machine still works, just no fade. */
+    textEl.textContent = newText;
+    return;
+  }
+  if(cur.textContent === newText) return;   /* no-op on same-state re-entry */
+
+  /* Move outgoing text into the absolutely-positioned --out layer
+     (which fades from opacity:1 → 0 on style change), put incoming
+     text into --current (which fades from opacity:0 → 1). rAF lets
+     layout commit before the transition fires so it animates
+     instead of jumping straight to the final values. */
+  out.textContent = cur.textContent;
+  out.style.opacity = '1';
+  cur.textContent = newText;
+  cur.style.opacity = '0';
+  requestAnimationFrame(() => {
+    out.style.opacity = '0';
+    cur.style.opacity = '1';
+  });
+}
+
+/* Wrappers — keep existing call-site grammar working. */
+function _updateSaveIndicator(){
+  _setSaveState(_dirty ? 'unsaved' : 'saved');
+}
+
+function _flashAutosave(){
+  if(!_autosaveEnabled) return;
+  /* Bottom-left toast retired in favour of the single bottom-panel
+     indicator. The 2500ms hold + auto-revert is owned by _setSaveState. */
+  _setSaveState('autosaved');
 }
 
 function _markSaved(){
   _dirty = false;
-  _updateSaveIndicator();
+  _setSaveState('saved');
   playSound('save');
+  /* Surface the timestamp in Smart Tools System section. */
+  if(typeof window.__spicaMarkSaveOK === 'function') window.__spicaMarkSaveOK();
 }
 
 /* ── Manual Save (Cmd+S) — overwrite or dialog ────────── */
@@ -9456,24 +14390,402 @@ async function saveProjectAs(){
 }
 
 /* ── Autosave toggle ──────────────────────────────────── */
+let _lastSaveAt = null;        /* epoch ms of last successful save */
+let _systemStatus = 'ok';      /* 'ok' | 'warn' | 'error' */
+
+function _refreshSmartToolsSystem(){
+  /* Sync the Smart Tools System section with current state. Safe no-op
+     if the elements don't exist (panel not yet rendered). */
+  const stBtn = document.getElementById('autosaveToggleST');
+  const stLbl = document.getElementById('autosaveToggleSTLbl');
+  if(stBtn){
+    stBtn.classList.toggle('on', _autosaveEnabled);
+    stBtn.setAttribute('aria-pressed', _autosaveEnabled ? 'true' : 'false');
+    stBtn.title = _autosaveEnabled ? 'Autosave is ON — click to disable' : 'Autosave is OFF — click to enable';
+  }
+  if(stLbl) stLbl.textContent = _autosaveEnabled ? 'ON' : 'OFF';
+
+  const lastEl = document.getElementById('stLastSave');
+  if(lastEl){
+    if(!_lastSaveAt){
+      lastEl.textContent = '—';
+    } else {
+      const d = new Date(_lastSaveAt);
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      const ss = String(d.getSeconds()).padStart(2,'0');
+      const today = new Date(); today.setHours(0,0,0,0);
+      const sameDay = d >= today;
+      lastEl.textContent = sameDay
+        ? `${hh}:${mm}:${ss}`
+        : `${d.toISOString().slice(0,10)} ${hh}:${mm}`;
+    }
+  }
+  const statusEl = document.getElementById('stSystemStatus');
+  if(statusEl){
+    statusEl.classList.remove('ok','warn','error');
+    statusEl.classList.add(_systemStatus);
+    statusEl.textContent = _systemStatus === 'ok' ? 'OK'
+                         : _systemStatus === 'warn' ? 'Retrying…' : 'Error';
+  }
+}
+
+/* Public — call after a successful save to update the System panel
+   and clear any error state. Safe to call from any save path.        */
+window.__spicaMarkSaveOK = function(){
+  _lastSaveAt = Date.now();
+  _systemStatus = 'ok';
+  _refreshSmartToolsSystem();
+};
+/* Public — set warn/error state (drives the Status row). */
+window.__spicaMarkSaveStatus = function(level){
+  _systemStatus = (level === 'warn' || level === 'error') ? level : 'ok';
+  _refreshSmartToolsSystem();
+};
+
 function bindAutosaveToggle(){
-  const btn = document.getElementById('autosaveToggleBottom') || document.getElementById('autosaveToggle');
-  if(!btn) return;
+  /* Original bottom toggle (DOM hidden by CSS, but JS still binds so
+     external triggers / tests / shortcuts continue to work). */
+  const bottomBtn = document.getElementById('autosaveToggleBottom') || document.getElementById('autosaveToggle');
+  /* New Smart Tools toggle — primary user-visible control. */
+  const stBtn = document.getElementById('autosaveToggleST');
+
   /* Restore from localStorage */
   const stored = localStorage.getItem('spicaTide_autosave');
   if(stored === 'off'){
     _autosaveEnabled = false;
-    btn.classList.remove('on');
-    btn.title = 'Autosave Off';
+    if(bottomBtn){ bottomBtn.classList.remove('on'); bottomBtn.title = 'Autosave Off'; }
   }
-  btn.addEventListener('click', () => {
+
+  function handleToggle(){
     _autosaveEnabled = !_autosaveEnabled;
-    btn.classList.toggle('on', _autosaveEnabled);
-    btn.title = _autosaveEnabled ? 'Autosave On' : 'Autosave Off';
+    if(bottomBtn){
+      bottomBtn.classList.toggle('on', _autosaveEnabled);
+      bottomBtn.title = _autosaveEnabled ? 'Autosave On' : 'Autosave Off';
+    }
     localStorage.setItem('spicaTide_autosave', _autosaveEnabled ? 'on' : 'off');
-    if(_autosaveEnabled) showToast('Autosave enabled', 'ok');
-    else showToast('Autosave disabled', 'ok');
-  });
+    _refreshSmartToolsSystem();
+    /* Removed success toast — the Smart Tools panel reflects the state
+       directly and the user explicitly asked for less notification noise. */
+  }
+
+  if(bottomBtn) bottomBtn.addEventListener('click', handleToggle);
+  if(stBtn)     stBtn.addEventListener('click', handleToggle);
+
+  /* Initial sync of the Smart Tools panel */
+  _refreshSmartToolsSystem();
 }
+
+/* ════════════════════════════════════════════════════════════
+   VESSEL BACKGROUND ALIGNMENT MODE
+   Interactive manual alignment for .vessel-bg. Toggle with
+   Ctrl/Cmd+Shift+V. Drag to move, wheel to zoom, arrows to
+   nudge (Shift=10px, Alt=0.25px). Lock saves to localStorage.
+════════════════════════════════════════════════════════════ */
+(function(){
+  const LS_KEY  = 'spicaTide_vesselAlign';
+  /* Defaults preserve the source PNG aspect ratio (1483×403) at the
+     tuned width of 172.5% of .deck-outer (1653 px wide) →
+       display_w = 2852 px, display_h = 2852 × 403/1483 = 775 px
+       h % of .deck-outer height (409) = 189.49 */
+  const DEFAULTS = { w: 172.50, h: 189.49, x: 298, y: 25 };
+  const W_MIN = 20, W_MAX = 500, H_MIN = 20, H_MAX = 500;
+
+  let mode = false;
+  let state = { ...DEFAULTS };
+  let preEditState = null;       /* snapshot for Cancel */
+
+  function loadSaved(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      if(!raw) return;
+      const v = JSON.parse(raw);
+      /* Migrate legacy {scale,x,y} → {w,h,x,y} preserving aspect */
+      if(typeof v.scale === 'number' && !('w' in v)){
+        state.w = v.scale;
+        const outer = document.querySelector('.deck-outer');
+        const ow = outer ? outer.getBoundingClientRect().width  : 1653;
+        const oh = outer ? outer.getBoundingClientRect().height : 409;
+        const displayW = (v.scale / 100) * ow;
+        const displayH = displayW * 403 / 1483;
+        state.h = (displayH / oh) * 100;
+      } else {
+        if(typeof v.w === 'number') state.w = v.w;
+        if(typeof v.h === 'number') state.h = v.h;
+      }
+      if(typeof v.x === 'number') state.x = v.x;
+      if(typeof v.y === 'number') state.y = v.y;
+    }catch(e){ /* ignore */ }
+  }
+  function apply(){
+    const img = document.querySelector('.vessel-bg');
+    if(!img) return;
+    img.style.setProperty('--vessel-w',       state.w.toFixed(3) + '%');
+    img.style.setProperty('--vessel-h',       state.h.toFixed(3) + '%');
+    img.style.setProperty('--vessel-shift-x', state.x.toFixed(2) + 'px');
+    img.style.setProperty('--vessel-shift-y', state.y.toFixed(2) + 'px');
+    if(mode) positionHandles();
+  }
+  function readouts(){
+    const w = document.getElementById('vapW');
+    const h = document.getElementById('vapH');
+    const x = document.getElementById('vapX');
+    const y = document.getElementById('vapY');
+    if(w) w.textContent = state.w.toFixed(2);
+    if(h) h.textContent = state.h.toFixed(2);
+    if(x) x.textContent = state.x.toFixed(1);
+    if(y) y.textContent = state.y.toFixed(1);
+  }
+  function toggle(on){
+    const wasMode = mode;
+    mode = (typeof on === 'boolean') ? on : !mode;
+    if(mode && !wasMode) preEditState = { ...state };
+    if(!mode) preEditState = null;
+    document.body.classList.toggle('vessel-align-mode', mode);
+    const panel = document.getElementById('vesselAlignPanel');
+    if(panel){ panel.hidden = !mode; panel.setAttribute('aria-hidden', mode ? 'false' : 'true'); }
+    const handles = document.getElementById('vesselAlignHandles');
+    if(handles){ handles.hidden = !mode; handles.setAttribute('aria-hidden', mode ? 'false' : 'true'); }
+    if(mode){ readouts(); positionHandles(); }
+  }
+  function lock(){
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    preEditState = null;
+    toggle(false);
+    console.log('[vessel-align] LOCKED:', state);
+    if(typeof showToast === 'function') showToast('Vessel alignment locked', 'ok');
+  }
+  function cancel(){
+    if(preEditState){
+      state = { ...preEditState };
+      apply();
+    }
+    toggle(false);
+  }
+  function reset(){
+    state = { ...DEFAULTS };
+    apply(); readouts();
+  }
+
+  /* ── Position the handle overlay to track .vessel-bg's screen rect ── */
+  function positionHandles(){
+    const handles = document.getElementById('vesselAlignHandles');
+    const img = document.querySelector('.vessel-bg');
+    if(!handles || !img) return;
+    const r = img.getBoundingClientRect();
+    handles.style.left   = r.left   + 'px';
+    handles.style.top    = r.top    + 'px';
+    handles.style.width  = r.width  + 'px';
+    handles.style.height = r.height + 'px';
+  }
+
+  /* Drag image body to translate */
+  function initDrag(){
+    const img = document.querySelector('.vessel-bg');
+    if(!img) return;
+    let dragging = false, sx = 0, sy = 0, bx = 0, by = 0, factor = 1;
+    img.addEventListener('mousedown', (e) => {
+      if(!mode) return;
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      bx = state.x;   by = state.y;
+      factor = (e.altKey || e.ctrlKey) ? 0.25 : 1;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if(!dragging) return;
+      state.x = bx + (e.clientX - sx) * factor;
+      state.y = by + (e.clientY - sy) * factor;
+      apply(); readouts();
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  /* ── Resize handles: non-uniform, anchored to opposite side/corner.
+       Side middles  = one-axis resize (W or H only).
+       Corners       = free resize (Shift = aspect-lock).                 */
+  function initHandles(){
+    const wrap = document.getElementById('vesselAlignHandles');
+    if(!wrap) return;
+    wrap.querySelectorAll('.vah-h').forEach(h => {
+      h.addEventListener('mousedown', (e) => {
+        if(!mode) return;
+        e.preventDefault(); e.stopPropagation();
+        const dir = h.dataset.vah;
+        const img = document.querySelector('.vessel-bg');
+        const outer = document.querySelector('.deck-outer');
+        if(!img || !outer) return;
+        const imgRect = img.getBoundingClientRect();
+        const outerRect = outer.getBoundingClientRect();
+        const origW = imgRect.width, origH = imgRect.height;
+
+        /* Anchor = opposite side/corner of the handle (fixed on screen) */
+        let anchorX, anchorY;
+        if(dir.includes('w'))      anchorX = imgRect.right;
+        else if(dir.includes('e')) anchorX = imgRect.left;
+        else                        anchorX = imgRect.left + imgRect.width / 2;
+        if(dir.includes('n'))      anchorY = imgRect.bottom;
+        else if(dir.includes('s')) anchorY = imgRect.top;
+        else                        anchorY = imgRect.top + imgRect.height / 2;
+
+        function onMove(ev){
+          let newW = origW, newH = origH;
+          /* Width changes only when handle has an east/west component */
+          if(dir.includes('e') || dir.includes('w')){
+            newW = Math.max(20, Math.abs(ev.clientX - anchorX));
+          }
+          /* Height changes only when handle has a north/south component */
+          if(dir.includes('n') || dir.includes('s')){
+            newH = Math.max(20, Math.abs(ev.clientY - anchorY));
+          }
+          /* Shift + corner = aspect-lock (driven by the larger ratio) */
+          const isCorner = (dir.length === 2);
+          if(ev.shiftKey && isCorner){
+            const wR = newW / origW, hR = newH / origH;
+            const s  = Math.max(wR, hR);
+            newW = origW * s;
+            newH = origH * s;
+          }
+          /* Image center so anchor stays fixed on screen */
+          let cx, cy;
+          if(dir.includes('w'))      cx = anchorX - newW / 2;
+          else if(dir.includes('e')) cx = anchorX + newW / 2;
+          else                        cx = anchorX;
+          if(dir.includes('n'))      cy = anchorY - newH / 2;
+          else if(dir.includes('s')) cy = anchorY + newH / 2;
+          else                        cy = anchorY;
+
+          const outerCx = outerRect.left + outerRect.width / 2;
+          const outerCy = outerRect.top  + outerRect.height / 2;
+
+          state.w = Math.max(W_MIN, Math.min(W_MAX, (newW / outerRect.width)  * 100));
+          state.h = Math.max(H_MIN, Math.min(H_MAX, (newH / outerRect.height) * 100));
+          state.x = cx - outerCx;
+          state.y = cy - outerCy;
+          apply(); readouts();
+        }
+        function onUp(){
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup',   onUp);
+        }
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup',   onUp);
+      });
+    });
+  }
+
+  /* Mouse wheel = scale BOTH dimensions by the same percent (aspect kept) */
+  function initWheel(){
+    const img = document.querySelector('.vessel-bg');
+    if(!img) return;
+    img.addEventListener('wheel', (e) => {
+      if(!mode) return;
+      e.preventDefault();
+      const pct = (e.altKey || e.ctrlKey) ? 0.2 : 1.0;
+      const factor = e.deltaY < 0 ? (1 + pct/100) : (1 - pct/100);
+      state.w = Math.max(W_MIN, Math.min(W_MAX, state.w * factor));
+      state.h = Math.max(H_MIN, Math.min(H_MAX, state.h * factor));
+      apply(); readouts();
+    }, { passive: false });
+  }
+
+  /* Keyboard:
+       Arrows         → translate 1 px  (Shift = 10 px)
+       Alt+Arrows     → resize W/H (Alt+←/→ = width, Alt+↑/↓ = height)
+                        default 0.1 %, Shift = 1 %
+       +/-            → scale both (Shift = larger)
+       Esc            → cancel                                            */
+  function onKey(e){
+    const isToggle = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'V' || e.key === 'v');
+    if(isToggle){ e.preventDefault(); toggle(); return; }
+    if(!mode) return;
+    const t = e.target;
+    if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    /* Alt+Arrow = resize (width or height) */
+    if(e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+                    e.key === 'ArrowUp'   || e.key === 'ArrowDown')){
+      const step = e.shiftKey ? 1.0 : 0.1;
+      if(e.key === 'ArrowLeft')  state.w = Math.max(W_MIN, state.w - step);
+      if(e.key === 'ArrowRight') state.w = Math.min(W_MAX, state.w + step);
+      if(e.key === 'ArrowUp')    state.h = Math.max(H_MIN, state.h - step);
+      if(e.key === 'ArrowDown')  state.h = Math.min(H_MAX, state.h + step);
+      e.preventDefault(); apply(); readouts();
+      return;
+    }
+
+    const nudge = e.shiftKey ? 10 : 1;
+    const zoomPct = e.shiftKey ? 2.0 : 0.5;
+    let handled = true;
+    switch(e.key){
+      case 'ArrowLeft':  state.x -= nudge; break;
+      case 'ArrowRight': state.x += nudge; break;
+      case 'ArrowUp':    state.y -= nudge; break;
+      case 'ArrowDown':  state.y += nudge; break;
+      case '+': case '=':
+        state.w = Math.min(W_MAX, state.w * (1 + zoomPct/100));
+        state.h = Math.min(H_MAX, state.h * (1 + zoomPct/100));
+        break;
+      case '-': case '_':
+        state.w = Math.max(W_MIN, state.w * (1 - zoomPct/100));
+        state.h = Math.max(H_MIN, state.h * (1 - zoomPct/100));
+        break;
+      case 'Escape': cancel(); break;
+      default: handled = false;
+    }
+    if(handled){ e.preventDefault(); apply(); readouts(); }
+  }
+
+  /* Panel button actions */
+  function initButtons(){
+    const panel = document.getElementById('vesselAlignPanel');
+    if(!panel) return;
+    panel.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-vap-action]');
+      if(!btn) return;
+      const act = btn.dataset.vapAction;
+      if(act === 'zoom-in'){
+        state.w = Math.min(W_MAX, state.w * 1.005);
+        state.h = Math.min(H_MAX, state.h * 1.005);
+        apply(); readouts();
+      }
+      if(act === 'zoom-out'){
+        state.w = Math.max(W_MIN, state.w * 0.995);
+        state.h = Math.max(H_MIN, state.h * 0.995);
+        apply(); readouts();
+      }
+      if(act === 'reset')    reset();
+      if(act === 'lock')     lock();
+      if(act === 'cancel' || act === 'close') cancel();
+    });
+  }
+
+  /* Keep handles aligned if the window resizes or the deck area scrolls */
+  function initResizeObserver(){
+    window.addEventListener('resize', () => { if(mode) positionHandles(); });
+    window.addEventListener('scroll', () => { if(mode) positionHandles(); }, true);
+  }
+
+  /* Init — runs after init() to ensure .vessel-bg exists in DOM */
+  function start(){
+    loadSaved();
+    apply();
+    initDrag();
+    initWheel();
+    initHandles();
+    initButtons();
+    initResizeObserver();
+    window.addEventListener('keydown', onKey, true);
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+
+  /* Expose for console debugging */
+  window.__vesselAlign = { toggle, reset, lock, cancel, get state(){ return { ...state }; } };
+})();
+
 
 init();

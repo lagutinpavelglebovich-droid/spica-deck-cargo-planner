@@ -19,13 +19,21 @@ Internal layout: `<style>` (3,300 lines) → inline HTML body (900 lines) → ma
 
 ## Core Architecture
 
-### Canvas Geometry (do not change)
+### Canvas Geometry (HISTORIC — v38.19 snapshot; superseded by Phase 22)
+
+> ⚠ The values below describe the pre-correction geometry shipped in
+> v38.19. The authoritative deck model is now in `CLAUDE.md` and in
+> `src/app.js` near `BAY_LENGTHS_M`. Post-Phase 22:
+> `BAY_LENGTHS_M` is the metric source of truth (12 measured bays +
+> 11 × 0.15 m steel joints), `TW = 1707 px`, total deck length = 54.92 m.
+> Do not re-adopt the values in this block — they are historic only.
+
 ```
 M   = 31 px/m          horizontal scale (aft → bow)
 YS  = CVH/15 ≈ 25.33   vertical px/m (port → stbd)
 CVH = 380 px            canvas height (15 m across deck)
-TW  = 1683 px           total canvas width (12 bays)
-BW  = [129,126,147,126,147,147,126,147,126,147,144,139]  bay widths px
+TW  = 1683 px           total canvas width (12 bays) — obsolete, now 1707
+BW  = [129,126,147,126,147,147,126,147,126,147,144,139]  bay widths px — obsolete
 ```
 
 ### State Object

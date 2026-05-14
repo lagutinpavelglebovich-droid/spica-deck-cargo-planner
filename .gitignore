@@ -5,3 +5,11 @@ src-tauri/target/
 node_modules/.vite/
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Backup files
+*.bak
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+# Inter TTF source files — embedded as base64 in inter-fonts.js
+src/fonts/
