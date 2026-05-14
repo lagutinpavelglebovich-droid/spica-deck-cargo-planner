@@ -42,9 +42,10 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           PKG_VER=$(node -p "require('./package.json').version")
           TAURI_VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          echo "Tag: $TAG | package.json: $PKG_VER | tauri.conf.json: $TAURI_VER"
-          if [ "$TAG" != "$PKG_VER" ] || [ "$TAG" != "$TAURI_VER" ]; then
-            echo "::error::Version mismatch! Tag=$TAG package.json=$PKG_VER tauri.conf.json=$TAURI_VER"
+          CARGO_VER=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Tag: $TAG | package.json: $PKG_VER | tauri.conf.json: $TAURI_VER | Cargo.toml: $CARGO_VER"
+          if [ "$TAG" != "$PKG_VER" ] || [ "$TAG" != "$TAURI_VER" ] || [ "$TAG" != "$CARGO_VER" ]; then
+            echo "::error::Version mismatch! Tag=$TAG package.json=$PKG_VER tauri.conf.json=$TAURI_VER Cargo.toml=$CARGO_VER"
             exit 1
           fi
           echo "Versions match: $TAG"
