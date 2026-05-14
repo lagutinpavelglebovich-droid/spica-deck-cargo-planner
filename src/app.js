@@ -6839,15 +6839,15 @@ function _dismissToast(el){
    Rebuilt to match current UI: warm ivory palette, Manrope/Inter
    typography, premium navy accent, modern card structure.
 ═══════════════════════════════════════════════════════════════ */
-function exportPDF(){
-  /* ══════════════════════════════════════════════════════════
-     PDF Export — Restored original mechanism from web version.
-     html2canvas captures the live deck as a pixel-perfect image.
-     buildPDF() draws the full report with jsPDF + deck image.
-     The canvas element is passed directly to doc.addImage()
-     (no toDataURL call — avoids Tauri WebView taint error).
-     File saved via doc.save() Blob download (same as Excel).
-  ══════════════════════════════════════════════════════════ */
+let _isReportRendering = false;
+
+function exportPDF(){ return _renderReport('save'); }
+function printDeckPlan(){ return _renderReport('print'); }
+
+function _renderReport(mode){
+  if(_isReportRendering){ return; }
+  _isReportRendering = true;
+
   showToast(t('toast_preparing'), 'ok');
 
   /* ── Gather live data from DOM ── */
@@ -6977,20 +6977,23 @@ function exportPDF(){
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
     }).then(deckCanvas => {
       restore();
-      buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs })
+      buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
         .catch(err => {
           console.error('[PDF] buildPDF error:', err);
           showToast('PDF build error: ' + (err && err.message || err), 'warn');
-        });
+        })
+        .finally(() => { _isReportRendering = false; });
     }).catch(err => {
       restore();
+      _isReportRendering = false;
       console.error('[PDF] html2canvas error:', err);
       showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
     });
   }, 120);
 }
 
-async function buildPDF(deckCanvas, data){
+async function buildPDF(deckCanvas, data, opts){
+  const _mode = (opts && opts.mode) || 'save';
   const { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs } = data;
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
 
@@ -7156,7 +7159,15 @@ async function buildPDF(deckCanvas, data){
   doc.setTextColor(...C.navy);
   doc.text('Voyage '+voyageNum+'  \u00B7  '+dateStr, ML+CW, fy+4, {align:'right'});
 
-  /* 9. SAVE — use pre-chosen path from menu dialog, or browser fallback */
+  /* 9. OUTPUT — print or save depending on mode */
+  if(_mode === 'print'){
+    const blobUrl = doc.output('bloburl');
+    showToast(t('toast_print_ok'), 'ok');
+    _printPdfViaIframe(blobUrl);
+    return;
+  }
+
+  /* Save mode — use pre-chosen path from menu dialog, or browser fallback */
   const pdfPath = window._pendingPdfPath;
   window._pendingPdfPath = null;
 
@@ -7180,6 +7191,37 @@ async function buildPDF(deckCanvas, data){
     showToast(t('toast_pdf_ok'), 'ok');
     _phase27ExportComplete();
   }
+}
+
+/* ── Print PDF via hidden iframe ── */
+function _printPdfViaIframe(blobUrl){
+  const existing = document.getElementById('_printIframe');
+  if(existing) existing.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = '_printIframe';
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  iframe.src = blobUrl;
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(err){
+        console.error('[print] iframe.print failed:', err);
+        window.open(blobUrl, '_blank');
+      }
+    }, 100);
+  };
+
+  document.body.appendChild(iframe);
+
+  /* Cleanup after 60s — enough time for user to interact with print dialog */
+  setTimeout(() => {
+    if(iframe.parentNode) iframe.remove();
+    try { URL.revokeObjectURL(blobUrl); } catch(e){}
+  }, 60000);
 }
 
 /* Phase 27 — export terminus feedback. Sound + toast success decoration.
@@ -7285,6 +7327,10 @@ function bindSaveAs(){
       /* Ctrl+Y → Redo (Windows convention) */
       e.preventDefault();
       redo();
+    } else if(e.key === 'p' && !e.shiftKey){
+      /* Ctrl+P → Print deck plan report */
+      e.preventDefault();
+      printDeckPlan();
     }
   });
 
@@ -11403,6 +11449,8 @@ const LANG = {
     toast_preparing:    'Preparing export…',
     toast_export_fail:  'Export failed — please try again',
     toast_pdf_ok:       'PDF exported \u2713',
+    toast_print_ok:     'Print dialog opened',
+    m_print:            'Print\u2026',
     toast_pdf_print_hint: 'Print dialog opened \u2014 choose Save as PDF',
     toast_pdf_err:      'Could not load PDF library — check connection',
     toast_xlsx_loading: 'Loading Excel library…',
@@ -11478,6 +11526,8 @@ const LANG = {
     toast_preparing:    'Подготовка экспорта…',
     toast_export_fail:  'Ошибка экспорта — попробуйте ещё раз',
     toast_pdf_ok:       'PDF \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d \u2713',
+    toast_print_ok:     '\u0414\u0438\u0430\u043b\u043e\u0433 \u043f\u0435\u0447\u0430\u0442\u0438 \u043e\u0442\u043a\u0440\u044b\u0442',
+    m_print:            '\u041f\u0435\u0447\u0430\u0442\u044c\u2026',
     toast_pdf_print_hint: '\u0414\u0438\u0430\u043b\u043e\u0433 \u043f\u0435\u0447\u0430\u0442\u0438 \u043e\u0442\u043a\u0440\u044b\u0442 \u2014 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043a\u0430\u043a PDF',
     toast_pdf_err:      'Не удалось загрузить библиотеку PDF — проверьте соединение',
     toast_xlsx_loading: 'Загрузка Excel-библиотеки…',
@@ -11551,6 +11601,8 @@ const LANG = {
     toast_preparing:    'Підготовка експорту…',
     toast_export_fail:  'Помилка експорту — спробуйте ще раз',
     toast_pdf_ok:       'PDF \u0435\u043a\u0441\u043f\u043e\u0440\u0442\u043e\u0432\u0430\u043d\u043e \u2713',
+    toast_print_ok:     '\u0414\u0456\u0430\u043b\u043e\u0433 \u0434\u0440\u0443\u043a\u0443 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e',
+    m_print:            '\u0414\u0440\u0443\u043a\u0443\u0432\u0430\u0442\u0438\u2026',
     toast_pdf_print_hint: '\u0414\u0456\u0430\u043b\u043e\u0433 \u0434\u0440\u0443\u043a\u0443 \u0432\u0456\u0434\u043a\u0440\u0438\u0442\u043e \u2014 \u043e\u0431\u0435\u0440\u0456\u0442\u044c \u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u044f\u043a PDF',
     toast_pdf_err:      'Не вдалося завантажити бібліотеку PDF — перевірте зʼєднання',
     toast_xlsx_loading: 'Завантаження Excel-бібліотеки…',
@@ -11943,6 +11995,7 @@ function bindMenuBar(){
     saveProjectAs: () => menuSaveAs(),
     exportPDF:     () => menuExportPDF(),
     exportExcel:   () => menuExportExcel(),
+    print:         () => printDeckPlan(),
     exportJSON:    () => menuSaveAs(),
     exit:          () => { try{ window.close(); }catch(e){} },
     undo:          () => undo(),
