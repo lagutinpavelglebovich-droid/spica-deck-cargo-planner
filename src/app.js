@@ -7089,8 +7089,8 @@ async function buildPDF(deckCanvas, data, opts){
 
   let y = MT;
 
-  /* 1. HEADER — Marine Editorial style, compact 22mm */
-  const HDR_H = 22;
+  /* 1. HEADER — Marine Editorial style, 23mm */
+  const HDR_H = 23;
   const BAND_H = 6;   /* navy masthead strip height */
 
   /* Card background — ivory with thin border */
@@ -7109,13 +7109,13 @@ async function buildPDF(deckCanvas, data, opts){
   doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
   doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+39, y+4.2);
 
-  /* Content area starts below band */
+  /* Content area starts below band — 3mm top pad before label */
   const cy = y + BAND_H;
 
   /* Counter cell — tight uppercase label + prominent value */
   const cell = (label, value, cx, colVal) => {
     doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(), cx, cy+5);
+    doc.text(label.toUpperCase(), cx, cy+4);
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
     doc.text(value, cx, cy+13);
   };
@@ -7143,10 +7143,10 @@ async function buildPDF(deckCanvas, data, opts){
 
   y += HDR_H+2;
 
-  /* 2. LOCATIONS — compact 15mm cards */
+  /* 2. LOCATIONS — 17mm cards: ACCENT(3)+GAP(2)+NAME(5)+PILLS(5)+PAD(2) */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
   if(filledLocs.length > 0){
-    const LOC_H=15, GAP=2;
+    const LOC_H=17, GAP=2;
     const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
     filledLocs.forEach((loc,i) => {
       const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
@@ -7154,7 +7154,7 @@ async function buildPDF(deckCanvas, data, opts){
       /* Accent stripe 3mm — squared bottom corners via overdraw */
       doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
       doc.rect(lx, y+1, locW, 2, 'F');
-      /* Dot + name + weight on one line */
+      /* Dot + name + weight on one line — 2mm below accent */
       doc.setFillColor(...rgb); doc.circle(lx+5,y+8,1.5,'F');
       doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
       const maxChars = Math.floor(locW/2.6);
@@ -7162,8 +7162,8 @@ async function buildPDF(deckCanvas, data, opts){
       doc.text(nm, lx+10, y+8.5);
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
       doc.text(loc.wt+'T', lx+locW-3, y+8.5, {align:'right'});
-      /* Pills */
-      let px = lx+4; const py = y+12.5;
+      /* Pills — 2mm below name row, 2mm bottom pad before card edge */
+      let px = lx+4; const py = y+13;
       const colL  = hex2rgb(opColor(loc.id, 'L'));
       const colBL = hex2rgb(opColor(loc.id, 'BL'));
       const colROB= hex2rgb(opColor(loc.id, 'ROB'));
@@ -7179,13 +7179,13 @@ async function buildPDF(deckCanvas, data, opts){
     y += LOC_H+2;
   }
 
-  /* 3. DG ON BOARD — compact premium card, chestnut accent */
+  /* 3. DG ON BOARD — compact premium card: BAND(4)+GAP(2)+CHIP(9)+DESCR(3)+PAD(2) ≈ 20mm */
   if(dgEntries.length > 0){
-    const DG_BAND      = 3;    /* chestnut accent band mm */
+    const DG_BAND      = 4;    /* chestnut accent band mm — readable title */
     const DG_CHIP_W    = 13;   /* chip width mm */
     const DG_CHIP_H    = 9;    /* chip height mm */
     const DG_GAP       = 2;    /* gap between chips mm */
-    const DG_ROW_H     = 12;   /* height per row (chip + padding) mm */
+    const DG_ROW_H     = 14;   /* height per row: chip(9) + descr(3) + pad(2) mm */
     const CHIPS_PER_ROW = 6;
     const chestnut = [168, 50, 50];   /* #a83232 — DG semantic red */
 
@@ -7200,9 +7200,9 @@ async function buildPDF(deckCanvas, data, opts){
     doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
     doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
 
-    /* Title */
+    /* Title — vertically centred in band */
     doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.white);
-    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.3);
+    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.8);
 
     /* Chips */
     dgEntries.forEach((dg, idx) => {
@@ -7220,9 +7220,14 @@ async function buildPDF(deckCanvas, data, opts){
       doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...textRgb);
       doc.text(dg.cls, cx + DG_CHIP_W/2, cy2 + 6, {align:'center'});
 
-      /* Count — right of chip */
+      /* Count — right of chip, vertically centred with chip */
       doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...C.ink2);
       doc.text('\u00D7' + dg.count, cx + DG_CHIP_W + 1.5, cy2 + 6);
+
+      /* Description — below chip, muted 5pt */
+      const shortNm = dg.nm.length > 16 ? dg.nm.slice(0, 15) + '\u2026' : dg.nm;
+      doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
+      doc.text(shortNm, cx + DG_CHIP_W/2, cy2 + DG_CHIP_H + 3, {align:'center'});
     });
 
     y += DG_H + 2;
