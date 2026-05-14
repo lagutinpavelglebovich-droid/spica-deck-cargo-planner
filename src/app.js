@@ -7089,36 +7089,35 @@ async function buildPDF(deckCanvas, data, opts){
 
   let y = MT;
 
-  /* 1. HEADER — Marine Editorial style */
-  const HDR_H = 32;
-  const BAND_H = 8;   /* navy masthead strip height */
+  /* 1. HEADER — Marine Editorial style, compact 22mm */
+  const HDR_H = 22;
+  const BAND_H = 6;   /* navy masthead strip height */
 
   /* Card background — ivory with thin border */
   roundRect(ML, y, CW, HDR_H, 2, C.ivory, C.brd);
 
-  /* Navy masthead band — full width, top of card */
+  /* Navy masthead band — full width, squared bottom corners */
   doc.setFillColor(...C.navy);
   doc.roundedRect(ML, y, CW, BAND_H, 2, 2, 'F');
-  /* Square off bottom corners of band by overdrawing lower 2mm strip */
   doc.rect(ML, y + BAND_H - 2, CW, 2, 'F');
 
   /* Vessel name — reversed white on navy */
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...C.white);
-  doc.text('SPICA TIDE', ML+5, y+5.5);
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.white);
+  doc.text('SPICA TIDE', ML+5, y+4.2);
 
   /* Subtitle — light on navy, all caps */
-  doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(185,210,240);
-  doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+41, y+5.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
+  doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+39, y+4.2);
 
   /* Content area starts below band */
   const cy = y + BAND_H;
 
   /* Counter cell — tight uppercase label + prominent value */
   const cell = (label, value, cx, colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(), cx, cy+7);
-    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...colVal);
-    doc.text(value, cx, cy+18);
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+5);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+13);
   };
 
   /* Counters — left zone */
@@ -7130,105 +7129,100 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* Thin divider between counters and voyage metadata */
   doc.setDrawColor(...C.brd); doc.setLineWidth(0.2);
-  doc.line(ML+192, cy+3, ML+192, cy+HDR_H-BAND_H-3);
+  doc.line(ML+192, cy+2, ML+192, cy+HDR_H-BAND_H-2);
 
-  /* Voyage metadata — right zone, slightly smaller value size */
+  /* Voyage metadata — right zone */
   const vCell = (label, value, cx, colVal) => {
-    doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(), cx, cy+7);
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
-    doc.text(value, cx, cy+18);
+    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
+    doc.text(label.toUpperCase(), cx, cy+5);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...colVal);
+    doc.text(value, cx, cy+13);
   };
   vCell('Voyage', voyageNum, ML+197, C.navy);
   vCell('Date',   dateStr,   ML+240, C.ink);
 
-  y += HDR_H+3;
+  y += HDR_H+2;
 
-  /* 2. LOCATIONS — enlarged for print readability */
+  /* 2. LOCATIONS — compact 15mm cards */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
   if(filledLocs.length > 0){
-    const LOC_H=22, GAP=3;
+    const LOC_H=15, GAP=2;
     const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
     filledLocs.forEach((loc,i) => {
       const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
       roundRect(lx,y,locW,LOC_H,2,C.white,C.brd);
-      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,4,1,1,'F');
-      /* Square off bottom corners of accent band */
-      doc.rect(lx, y+2, locW, 2, 'F');
-      doc.setFillColor(...rgb); doc.circle(lx+5,y+10,2,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...C.ink);
-      const maxChars = Math.floor(locW/2.8);
+      /* Accent stripe 3mm — squared bottom corners via overdraw */
+      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
+      doc.rect(lx, y+1, locW, 2, 'F');
+      /* Dot + name + weight on one line */
+      doc.setFillColor(...rgb); doc.circle(lx+5,y+8,1.5,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
+      const maxChars = Math.floor(locW/2.6);
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'\u2026' : loc.name;
-      doc.text(nm, lx+10, y+11);
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink3);
-      doc.text(loc.wt+'T', lx+locW-3, y+11, {align:'right'});
-      let px = lx+4; const py = y+15.5;
+      doc.text(nm, lx+10, y+8.5);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
+      doc.text(loc.wt+'T', lx+locW-3, y+8.5, {align:'right'});
+      /* Pills */
+      let px = lx+4; const py = y+12.5;
       const colL  = hex2rgb(opColor(loc.id, 'L'));
       const colBL = hex2rgb(opColor(loc.id, 'BL'));
       const colROB= hex2rgb(opColor(loc.id, 'ROB'));
       [{lbl:'L',val:loc.L,col:colL},{lbl:'BL',val:loc.BL,col:colBL},{lbl:'ROB',val:loc.ROB,col:colROB}]
         .filter(p=>p.val>0).forEach(p => {
-          const pw = p.lbl==='ROB'?16:p.lbl==='BL'?14:12;
+          const pw = p.lbl==='ROB'?14:p.lbl==='BL'?12:10;
           const pillBg = p.col.map(v=>Math.round(v*0.20+230));
-          roundRect(px,py-2.5,pw,6.5,2,pillBg,null);
-          doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...p.col);
-          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.5, {align:'center'}); px+=pw+2.5;
+          roundRect(px,py-2,pw,5,1.5,pillBg,null);
+          doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...p.col);
+          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.2, {align:'center'}); px+=pw+2;
         });
     });
-    y += LOC_H+3;
+    y += LOC_H+2;
   }
 
-  /* 3. DG ON BOARD — premium card, chestnut accent */
+  /* 3. DG ON BOARD — compact premium card, chestnut accent */
   if(dgEntries.length > 0){
-    const DG_BAND  = 4;        /* chestnut accent band height mm */
-    const DG_CHIP  = 16;       /* chip width mm */
-    const DG_GAP   = 3;        /* gap between chips mm */
-    const DG_ROW_H = 16;       /* height per chip row mm */
-    const CHIPS_PER_ROW = 4;
-    const chestnut  = [168, 50, 50];   /* #a83232 — DG semantic red */
-    const chestnut2 = [140, 36, 36];   /* border darken */
+    const DG_BAND      = 3;    /* chestnut accent band mm */
+    const DG_CHIP_W    = 13;   /* chip width mm */
+    const DG_CHIP_H    = 9;    /* chip height mm */
+    const DG_GAP       = 2;    /* gap between chips mm */
+    const DG_ROW_H     = 12;   /* height per row (chip + padding) mm */
+    const CHIPS_PER_ROW = 6;
+    const chestnut = [168, 50, 50];   /* #a83232 — DG semantic red */
 
     const rows = Math.ceil(dgEntries.length / CHIPS_PER_ROW);
-    const DG_H = DG_BAND + 6 + rows * DG_ROW_H + 3;   /* min ~25mm for 1 row */
+    const DG_H = DG_BAND + 2 + rows * DG_ROW_H + 2;
 
     /* Card — white bg, thin border */
     roundRect(ML, y, CW, DG_H, 2, C.white, C.brd);
 
-    /* Chestnut accent band — full width, squared bottom corners */
+    /* Chestnut accent band — squared bottom corners */
     doc.setFillColor(...chestnut);
     doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
-    doc.rect(ML, y + DG_BAND - 2, CW, 2, 'F');
+    doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
 
-    /* Title — uppercase, white on chestnut band */
-    doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
-    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.9);
+    /* Title */
+    doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.white);
+    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.3);
 
     /* Chips */
     dgEntries.forEach((dg, idx) => {
       const row = Math.floor(idx / CHIPS_PER_ROW);
       const col = idx % CHIPS_PER_ROW;
-      const cx = ML + 5 + col * (DG_CHIP + DG_GAP);
-      const cy2 = y + DG_BAND + 4 + row * DG_ROW_H;
+      const cx  = ML + 5 + col * (DG_CHIP_W + DG_GAP);
+      const cy2 = y + DG_BAND + 2 + row * DG_ROW_H;
 
       const bgRgb   = hex2rgb(dg.bg);
       const textRgb = contrastText(bgRgb);
       const bdRgb   = hex2rgb(dg.bc);
 
-      /* Chip background */
-      roundRect(cx, cy2, DG_CHIP, 11, 2, bgRgb, bdRgb);
+      /* Chip */
+      roundRect(cx, cy2, DG_CHIP_W, DG_CHIP_H, 2, bgRgb, bdRgb);
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(...textRgb);
+      doc.text(dg.cls, cx + DG_CHIP_W/2, cy2 + 6, {align:'center'});
 
-      /* Class number — large, centered */
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...textRgb);
-      doc.text(dg.cls, cx + DG_CHIP/2, cy2 + 7.2, {align:'center'});
-
-      /* Count — inline right of chip */
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...C.ink2);
-      doc.text('\u00D7' + dg.count, cx + DG_CHIP + 1.5, cy2 + 7.2);
-
-      /* Description — below chip, muted */
-      const shortNm = dg.nm.length > 18 ? dg.nm.slice(0, 17) + '\u2026' : dg.nm;
-      doc.setFont('helvetica','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
-      doc.text(shortNm, cx + DG_CHIP/2, cy2 + 13.5, {align:'center'});
+      /* Count — right of chip */
+      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(...C.ink2);
+      doc.text('\u00D7' + dg.count, cx + DG_CHIP_W + 1.5, cy2 + 6);
     });
 
     y += DG_H + 2;
@@ -7236,11 +7230,11 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* 4. DECK PLAN LABEL */
   doc.setFont('helvetica','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
-  doc.text('DECK CARGO PLAN', ML, y+4.5);
+  doc.text('DECK CARGO PLAN', ML, y+3.5);
   doc.setFont('helvetica','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
-  doc.text('\u2190 AFT / BAY 12', ML, y+8);
-  doc.text('BAY 1 / BOW \u2192', ML+CW, y+8, {align:'right'});
-  y += 10;
+  doc.text('\u2190 AFT / BAY 12', ML, y+7);
+  doc.text('BAY 1 / BOW \u2192', ML+CW, y+7, {align:'right'});
+  y += 8;
 
   /* 5. DECK IMAGE — the html2canvas capture */
   const FOOTER_H=8, BAY_LBL_H=6;
