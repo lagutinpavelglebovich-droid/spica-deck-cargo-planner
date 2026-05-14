@@ -19143,6 +19143,25 @@ body.insp-multi .insp-act-dup{ display:none; }
 }
 .deck-usage--critical .gst-du-num{ color:#dc2626; }
 
+/* Phase 2 — threshold crossing flash */
+@keyframes du-threshold-flash{
+  0%  { transform:scale(1); }
+  50% { transform:scale(1.05); }
+  100%{ transform:scale(1); }
+}
+.gst-du-num.du-flash{
+  animation:du-threshold-flash 200ms ease-out;
+}
+
+/* Phase 2 — critical pulse (95–100%) */
+@keyframes du-critical-pulse{
+  0%,100%{ opacity:.85; }
+  50%    { opacity:1; }
+}
+.deck-usage--critical .gst-du-num{
+  animation:du-critical-pulse 1.2s ease-in-out infinite;
+}
+
 /* Dark mode threshold overrides */
 [data-theme="dark"] .deck-usage--warn .gst-du-num{ color:#caa055; }
 [data-theme="dark"] .deck-usage--alert .gst-du-num{ color:#f5b74e; }
