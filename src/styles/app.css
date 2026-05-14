@@ -323,9 +323,9 @@ body.pdf-capture::before{ display:none !important; }
 }
 /* Level 3 — L / BL / ROB: colour-coded but recessive. Desaturated slightly
    so they stop competing with the brand mark. */
-.gst-val.load { color:#2a7a47;  font-size:20px;font-weight:700; }
-.gst-val.bl   { color:#35608f;  font-size:20px;font-weight:700; }
-.gst-val.rob  { color:#8a6a28;  font-size:20px;font-weight:700; }
+.gst-val.load { color:var(--s-L);   font-size:20px;font-weight:700; }
+.gst-val.bl   { color:var(--s-BL);  font-size:20px;font-weight:700; }
+.gst-val.rob  { color:var(--s-ROB); font-size:20px;font-weight:700; }
 .gst-val.tr   { color:var(--acc);  font-size:18px;font-weight:700; }
 [data-theme="dark"] .gst-val.load{ color:#6fd38c; }
 [data-theme="dark"] .gst-val.bl  { color:#8bb5e8; }
@@ -9833,9 +9833,9 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
   font-variant-numeric:tabular-nums !important;
   font-feature-settings:"tnum" 1 !important;
 }
-.gst-val.load{font-size:20px !important;font-weight:700 !important;color:#2a7a47 !important;}
-.gst-val.bl{font-size:20px !important;font-weight:700 !important;color:#35608f !important;}
-.gst-val.rob{font-size:20px !important;font-weight:700 !important;color:#8a6a28 !important;}
+.gst-val.load{font-size:20px !important;font-weight:700 !important;color:var(--s-L) !important;}
+.gst-val.bl{font-size:20px !important;font-weight:700 !important;color:var(--s-BL) !important;}
+.gst-val.rob{font-size:20px !important;font-weight:700 !important;color:var(--s-ROB) !important;}
 .gst-val.tr{font-size:18px !important;font-weight:700 !important;}
 [data-theme="dark"] .gst-val.load{color:#6fd38c !important;}
 [data-theme="dark"] .gst-val.bl{color:#8bb5e8 !important;}
@@ -10907,19 +10907,19 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
    single tight inner-glow + sober typographic color. */
 .rc-lifts .gst-val.load{
   background: transparent !important;
-  color: #2a7a47 !important;
+  color: var(--s-L) !important;
   text-shadow: 0 1px 0 rgba(255,255,255,.5);
   box-shadow: none !important;
 }
 .rc-lifts .gst-val.bl{
   background: transparent !important;
-  color: #35608f !important;
+  color: var(--s-BL) !important;
   text-shadow: 0 1px 0 rgba(255,255,255,.5);
   box-shadow: none !important;
 }
 .rc-lifts .gst-val.rob{
   background: transparent !important;
-  color: #8a6a28 !important;
+  color: var(--s-ROB) !important;
   text-shadow: 0 1px 0 rgba(255,255,255,.5);
   box-shadow: none !important;
 }
