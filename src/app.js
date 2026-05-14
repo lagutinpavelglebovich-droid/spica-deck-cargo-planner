@@ -6844,7 +6844,7 @@ let _isReportRendering = false;
 function exportPDF(){ return _renderReport('save'); }
 function printDeckPlan(){ return _renderReport('print'); }
 
-function _renderReport(mode){
+async function _renderReport(mode){
   if(_isReportRendering){ return; }
   _isReportRendering = true;
 
@@ -6967,29 +6967,32 @@ function _renderReport(mode){
   };
 
   /* 5. Capture live deck with html2canvas.
-        allowTaint:true is OK now — we no longer use toDataURL.
-        The toBlob path in buildPDF bypasses the taint restriction. */
-  setTimeout(() => {
-    html2canvas(dcv, {
-      scale: 3, useCORS: true, allowTaint: true, backgroundColor: '#fbf9f4',
+        Double rAF ensures CSS repaint is committed before capture —
+        critical for WKWebView where repaint latency is higher than Chromium.
+        allowTaint removed: WKWebView (WebKit) marks canvas tainted even via
+        toBlob(), unlike Chromium. useCORS:true is fine for same-origin assets. */
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  try {
+    const deckCanvas = await html2canvas(dcv, {
+      scale: 3, useCORS: true, backgroundColor: '#fbf9f4',
       logging: false, width: TW, height: CVH,
       windowWidth: TW, windowHeight: CVH,
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
-    }).then(deckCanvas => {
-      restore();
-      buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
-        .catch(err => {
-          console.error('[PDF] buildPDF error:', err);
-          showToast('PDF build error: ' + (err && err.message || err), 'warn');
-        })
-        .finally(() => { _isReportRendering = false; });
-    }).catch(err => {
-      restore();
-      _isReportRendering = false;
-      console.error('[PDF] html2canvas error:', err);
-      showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
     });
-  }, 120);
+    restore();
+    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
+      .catch(err => {
+        console.error('[PDF] buildPDF error:', err);
+        showToast('PDF build error: ' + (err && err.message || err), 'warn');
+      })
+      .finally(() => { _isReportRendering = false; });
+  } catch(err) {
+    restore();
+    _isReportRendering = false;
+    console.error('[PDF] html2canvas error:', err);
+    showToast('PDF capture failed: ' + (err && err.message || err), 'warn');
+  }
 }
 
 async function buildPDF(deckCanvas, data, opts){
