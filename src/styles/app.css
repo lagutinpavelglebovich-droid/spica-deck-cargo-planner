@@ -19221,7 +19221,9 @@ body.insp-multi .insp-act-dup{ display:none; }
   fill:var(--txt);
 }
 .du-gauge-free{
-  font-family:'JetBrains Mono',monospace;
+  /* Inter at 12px reads cleaner than JetBrains Mono at this caption size;
+     tabular-nums keeps the chip width stable as "100% free" → "73% free". */
+  font-family:'Inter',system-ui,sans-serif;
   font-variant-numeric:tabular-nums;
   fill:var(--txt4);
 }
