@@ -2507,7 +2507,7 @@ function renderBlock(cv,cargo){
     cargo.width_m=tmp;
     cargo.rot=((cargo.rot||0)+1)%4;
     const _rotId=cargo.id;
-    renderAll();save();
+    renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
     playSound('rotate');
     _pulseCargo(_rotId, 'cb-rotate-pulse');
   }));
@@ -3081,7 +3081,7 @@ function startResize(e,cargo,block,dir){
     /* Sync real-world metres from new canvas px dimensions */
     cargo.length_m = parseFloat((cargo.w / M).toFixed(3));
     cargo.width_m  = parseFloat((cargo.h / (CVH/15)).toFixed(3));
-    renderAll();save();
+    renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
     _hideResizeReadout();
     /* Phase 29 — resume Night Watch glint. */
     if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
@@ -9027,6 +9027,8 @@ function kbHandleKey(e){
     const _rotId = KB_SEL;
     renderAll();
     kbSelect(KB_SEL);  /* re-apply ring after renderAll */
+    updateStats();
+    buildActiveLocStrip();
     checkSeg();
     save();
     playSound('rotate');
