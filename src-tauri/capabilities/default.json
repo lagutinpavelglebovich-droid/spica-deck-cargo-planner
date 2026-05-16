@@ -21,7 +21,7 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**" }]
+      "allow": [{ "path": "**/spica-tide-print-*.pdf" }]
     }
   ]
 }
