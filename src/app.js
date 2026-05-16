@@ -3140,7 +3140,7 @@ function updateStats(){
   const hintEl=document.getElementById('emptyDeckHint');
   if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
 
-  /* ── Deck Usage indicator (full-circle gauge + Motion One animation) ── */
+  /* ── Deck Usage indicator (equal-mode full-circle gauge + Motion One) ── */
   const duCard = document.getElementById('gstDeckUsage');
   if(duCard){
     let occupiedPx = 0;
@@ -3156,12 +3156,39 @@ function updateStats(){
 
     /* Look up gauge nodes AFTER the class change so threshold colors are
        in effect the moment Motion One paints the first frame. */
-    const numEl  = document.getElementById('sDeckPct');
-    const freeEl = document.getElementById('sDeckFree');
-    const arcEl  = document.getElementById('sDeckArc');
-    const C      = 289.03; /* 2π·r for r=46 (full circumference) */
+    const numEl   = document.getElementById('sDeckPct');
+    const freeEl  = document.getElementById('sDeckFree');
+    const arcEl   = document.getElementById('sDeckArc');
+    const trackEl = document.getElementById('sDeckTrack');
 
-    if(numEl && freeEl && arcEl){
+    /* Equal-mode geometry (ported from 21st.dev gauge-1, offsetFactor=0.5).
+       Track + value share a circle of circumference C, separated by two
+       symmetric gaps totaling GAP%. At 0% used, track fills the ring; at
+       100%, value fills it. For 0 < p < 100 there are gaps at 12 and 6. */
+    const C            = 282.74;  /* 2π·r for r=45 */
+    const PX_PER_PCT   = C / 100;
+    const GAP          = 5;
+    const F            = 0.5;     /* offsetFactor for equal mode */
+    const DEG_PER_PCT  = 3.6;
+
+    const primaryDash = (p) => {
+      const sub = p > 100 - GAP * 2 * F ? (-p + 100) : (GAP * 2 * F);
+      return Math.max(p * PX_PER_PCT - sub * PX_PER_PCT, 0).toFixed(2) + ' ' + C.toFixed(2);
+    };
+    const secondaryDash = (p) => {
+      const sub = p < GAP * 2 * F ? p : (GAP * 2 * F);
+      return Math.max((100 - p) * PX_PER_PCT - sub * PX_PER_PCT, 0).toFixed(2) + ' ' + C.toFixed(2);
+    };
+    const primaryRotate = (p) => {
+      const add = p > 100 - GAP * 2 * F ? (0.5 * (-p + 100)) : (GAP * F);
+      return 'rotate(' + (-90 + add * DEG_PER_PCT) + 'deg)';
+    };
+    const secondaryRotate = (p) => {
+      const sub = p < GAP * 2 * F ? (0.5 * p) : (GAP * F);
+      return 'rotate(' + (360 - 90 - sub * DEG_PER_PCT) + 'deg) scaleY(-1)';
+    };
+
+    if(numEl && freeEl && arcEl && trackEl){
       const fromVal = _du.prevPct < 0 ? 0 : _du.displayedPct;
       const toVal   = usedPct;
 
@@ -3170,8 +3197,10 @@ function updateStats(){
       if(_du.anim && typeof _du.anim.stop === 'function') _du.anim.stop();
 
       const paint = (v) => {
-        const dash = ((v / 100) * C).toFixed(2);
-        arcEl.setAttribute('stroke-dasharray', dash + ' ' + C.toFixed(2));
+        arcEl.setAttribute('stroke-dasharray', primaryDash(v));
+        arcEl.style.transform = primaryRotate(v);
+        trackEl.setAttribute('stroke-dasharray', secondaryDash(v));
+        trackEl.style.transform = secondaryRotate(v);
         const intV = Math.round(v);
         numEl.textContent  = intV + '%';
         freeEl.textContent = (100 - intV) + '% free';

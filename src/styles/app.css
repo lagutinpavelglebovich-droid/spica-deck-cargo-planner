@@ -19179,10 +19179,12 @@ body.insp-multi .insp-act-dup{ display:none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   DECK USAGE — full-circle radial gauge (Motion One animated)
-   Replaces the horizontal bar. Geometry: r=46, strokeWidth=8, viewBox
-   100×100, value arc starts at 12 o'clock via rotate(-90 50 50) and
-   fills clockwise. Circumference C = 2π·46 ≈ 289.03.
+   DECK USAGE — equal-mode full-circle gauge (Motion One animated)
+   Track and value arcs share the circle with two symmetric gaps (5%
+   total) at 12 and 6 o'clock. Geometry: r=45, strokeWidth=10, viewBox
+   100×100, circumference C = 2π·45 ≈ 282.74. JS sets stroke-dasharray
+   AND style.transform on every animation tick — transform-origin must
+   resolve to the circle centre, so both arcs declare fill-box origin.
 ═══════════════════════════════════════════════════════════════════════ */
 .gst-deck-usage{ max-width:118px !important; }
 
@@ -19194,11 +19196,16 @@ body.insp-multi .insp-act-dup{ display:none; }
   margin:2px auto 0;
   overflow:visible;
 }
+.du-gauge-track,
+.du-gauge-fill{
+  transform-origin:50% 50%;
+  transform-box:fill-box;
+}
 .du-gauge-track{
-  opacity:.25;
+  opacity:.45;
 }
 [data-theme="dark"] .du-gauge-track{
-  opacity:.35;
+  opacity:.45;
 }
 .du-gauge-fill{
   stroke:#1e3a5f; /* calm default — overridden by threshold classes below */
