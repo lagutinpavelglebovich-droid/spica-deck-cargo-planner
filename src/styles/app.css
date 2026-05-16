@@ -19201,21 +19201,24 @@ body.insp-multi .insp-act-dup{ display:none; }
   transform-origin:50% 50%;
   transform-box:fill-box;
 }
+/* Lighter track — explicit rgba (alpha baked in, no opacity multiplier). */
 .du-gauge-track{
-  opacity:.45;
+  stroke:rgba(85,85,85,0.2);
 }
 [data-theme="dark"] .du-gauge-track{
-  opacity:.45;
+  stroke:rgba(200,200,200,0.15);
 }
 .du-gauge-fill{
-  stroke:#22c55e; /* calm default — overridden by threshold classes below */
+  stroke:url(#duGradCalm); /* calm gradient default — overridden by threshold classes below */
 }
 .du-gauge-num{
   /* Matches #sLifts display tier (Manrope 800) — same hierarchy level should share font.
-     tabular-nums prevents digit-width jitter during count-up animation. */
+     Big number stays at neutral text colour across ALL threshold states; the arc
+     alone carries the colour signal. tabular-nums prevents digit-width jitter. */
   font-family:'Manrope','Inter',sans-serif;
   font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1;
+  fill:var(--txt);
 }
 .du-gauge-free{
   font-family:'JetBrains Mono',monospace;
@@ -19223,29 +19226,16 @@ body.insp-multi .insp-act-dup{ display:none; }
   fill:var(--txt4);
 }
 
-/* Value-arc threshold colors — calm is green (success semantic);
-   warn/alert/critical reuse the existing bar palette (darker stops). */
-.deck-usage--calm     .du-gauge-fill{ stroke:#22c55e; }
-.deck-usage--warn     .du-gauge-fill{ stroke:#ab8423; }
-.deck-usage--alert    .du-gauge-fill{ stroke:#f59e0b; }
-.deck-usage--critical .du-gauge-fill{ stroke:#dc2626; }
-[data-theme="dark"] .deck-usage--calm     .du-gauge-fill{ stroke:#4ade80; }
-[data-theme="dark"] .deck-usage--warn     .du-gauge-fill{ stroke:#caa055; }
-[data-theme="dark"] .deck-usage--alert    .du-gauge-fill{ stroke:#f5b74e; }
-[data-theme="dark"] .deck-usage--critical .du-gauge-fill{ stroke:#e0746a; }
-
-/* Big-number threshold colors (fill, not color — it's an SVG <text>).
-   Calm number is shade-shifted from the arc (green-600 / green-300) to
-   match the warn/alert convention of slightly different shades for stroke
-   vs fill. */
-.deck-usage--calm     .du-gauge-num{ fill:#16a34a; }
-.deck-usage--warn     .du-gauge-num{ fill:#9c6e1a; }
-.deck-usage--alert    .du-gauge-num{ fill:#b47d0a; }
-.deck-usage--critical .du-gauge-num{ fill:#dc2626; }
-[data-theme="dark"] .deck-usage--calm     .du-gauge-num{ fill:#86efac; }
-[data-theme="dark"] .deck-usage--warn     .du-gauge-num{ fill:#caa055; }
-[data-theme="dark"] .deck-usage--alert    .du-gauge-num{ fill:#f5b74e; }
-[data-theme="dark"] .deck-usage--critical .du-gauge-num{ fill:#e0746a; }
+/* Value-arc threshold strokes — point to horizontal gradients defined in the
+   gauge SVG <defs>. Light/dark variants preserve the existing two-palette system. */
+.deck-usage--calm     .du-gauge-fill{ stroke:url(#duGradCalm); }
+.deck-usage--warn     .du-gauge-fill{ stroke:url(#duGradWarn); }
+.deck-usage--alert    .du-gauge-fill{ stroke:url(#duGradAlert); }
+.deck-usage--critical .du-gauge-fill{ stroke:url(#duGradCritical); }
+[data-theme="dark"] .deck-usage--calm     .du-gauge-fill{ stroke:url(#duGradCalmDark); }
+[data-theme="dark"] .deck-usage--warn     .du-gauge-fill{ stroke:url(#duGradWarnDark); }
+[data-theme="dark"] .deck-usage--alert    .du-gauge-fill{ stroke:url(#duGradAlertDark); }
+[data-theme="dark"] .deck-usage--critical .du-gauge-fill{ stroke:url(#duGradCriticalDark); }
 
 
 /* ═══════════════════════════════════════════════════════════════════════

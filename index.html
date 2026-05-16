@@ -460,6 +460,44 @@
       <div class="gst gst-deck-usage" id="gstDeckUsage" tabindex="0">
         <span class="gst-lbl">DECK USED</span>
         <svg class="du-gauge" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" fill="none" shape-rendering="geometricPrecision" aria-hidden="true">
+          <!-- Horizontal gradients (left=faded 0.3 → right=full 1.0) per threshold × theme.
+               Axis is horizontal in local coords; with the value arc's rotate(~-81deg) this
+               lands the saturated end near 12 o'clock where the arc starts, fading toward
+               the tail as the value grows past 50%. -->
+          <defs>
+            <linearGradient id="duGradCalm"         x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#22c55e" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#22c55e" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradWarn"         x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#ab8423" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#ab8423" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradAlert"        x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#f59e0b" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradCritical"     x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#dc2626" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#dc2626" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradCalmDark"     x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#4ade80" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#4ade80" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradWarnDark"     x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#caa055" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#caa055" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradAlertDark"    x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#f5b74e" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#f5b74e" stop-opacity="1"  />
+            </linearGradient>
+            <linearGradient id="duGradCriticalDark" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#e0746a" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#e0746a" stop-opacity="1"  />
+            </linearGradient>
+          </defs>
           <!-- Track arc: dynamic dasharray + mirrored rotation (equal mode, grows CCW from top). -->
           <!-- Initial state matches value=0%: track is the full ring; rotation gets normalised by JS on first updateStats(). -->
           <circle class="du-gauge-track" id="sDeckTrack" cx="50" cy="50" r="45"
