@@ -456,17 +456,32 @@
 
       <div class="gst-sep"></div>
 
-      <!-- Deck Usage — area occupancy indicator -->
+      <!-- Deck Usage — area occupancy indicator (full-circle gauge) -->
       <div class="gst gst-deck-usage" id="gstDeckUsage" tabindex="0">
         <span class="gst-lbl">DECK USED</span>
-        <div class="gst-du-num" id="sDeckPct">0%</div>
-        <div class="gst-du-bar-track">
-          <div class="gst-du-tick" style="left:25%"></div>
-          <div class="gst-du-tick" style="left:50%"></div>
-          <div class="gst-du-tick" style="left:75%"></div>
-          <div class="gst-du-bar-fill" id="sDeckBar"></div>
-        </div>
-        <span class="gst-du-free" id="sDeckFree">100% free</span>
+        <svg class="du-gauge" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" fill="none" shape-rendering="geometricPrecision" aria-hidden="true">
+          <!-- Track ring (full circle, dim) -->
+          <circle class="du-gauge-track" cx="50" cy="50" r="46"
+                  fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"
+                  transform="rotate(-90 50 50)" />
+          <!-- Value ring (clockwise fill from 12 o'clock) -->
+          <circle class="du-gauge-fill" id="sDeckArc" cx="50" cy="50" r="46"
+                  fill="none" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="0 289.03"
+                  transform="rotate(-90 50 50)" />
+          <!-- 4 cardinal ticks (12, 3, 6, 9 o'clock) — innerR=46, outerR=50 -->
+          <line x1="50" y1="4"  x2="50" y2="0"   stroke="currentColor" stroke-width="0.8" opacity="0.3" stroke-linecap="round" />
+          <line x1="96" y1="50" x2="100" y2="50" stroke="currentColor" stroke-width="0.8" opacity="0.3" stroke-linecap="round" />
+          <line x1="50" y1="96" x2="50" y2="100" stroke="currentColor" stroke-width="0.8" opacity="0.3" stroke-linecap="round" />
+          <line x1="4"  y1="50" x2="0"  y2="50"  stroke="currentColor" stroke-width="0.8" opacity="0.3" stroke-linecap="round" />
+          <!-- Center readout: big % above, small "X% free" below -->
+          <text class="du-gauge-num" id="sDeckPct" x="50" y="48"
+                text-anchor="middle" dominant-baseline="central"
+                font-size="22" font-weight="700" fill="currentColor">0%</text>
+          <text class="du-gauge-free" id="sDeckFree" x="50" y="62"
+                text-anchor="middle" dominant-baseline="central"
+                font-size="7" font-weight="500" fill="currentColor" opacity="0.55">100% free</text>
+        </svg>
       </div>
     </div>
   </div>

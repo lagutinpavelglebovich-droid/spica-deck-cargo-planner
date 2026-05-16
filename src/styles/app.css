@@ -19178,6 +19178,61 @@ body.insp-multi .insp-act-dup{ display:none; }
   line-height:1;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   DECK USAGE — full-circle radial gauge (Motion One animated)
+   Replaces the horizontal bar. Geometry: r=46, strokeWidth=8, viewBox
+   100×100, value arc starts at 12 o'clock via rotate(-90 50 50) and
+   fills clockwise. Circumference C = 2π·46 ≈ 289.03.
+═══════════════════════════════════════════════════════════════════════ */
+.gst-deck-usage{ max-width:118px !important; }
+
+.du-gauge{
+  width:100%;
+  max-width:84px;
+  aspect-ratio:1 / 1;
+  display:block;
+  margin:2px auto 0;
+  overflow:visible;
+}
+.du-gauge-track{
+  opacity:.25;
+}
+[data-theme="dark"] .du-gauge-track{
+  opacity:.35;
+}
+.du-gauge-fill{
+  stroke:#1e3a5f; /* calm default — overridden by threshold classes below */
+}
+.du-gauge-num{
+  font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+}
+.du-gauge-free{
+  font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums;
+  fill:var(--txt4);
+}
+
+/* Value-arc threshold colors — reuse existing bar palette (darker stops) */
+.deck-usage--calm     .du-gauge-fill{ stroke:#1e3a5f; }
+.deck-usage--warn     .du-gauge-fill{ stroke:#ab8423; }
+.deck-usage--alert    .du-gauge-fill{ stroke:#f59e0b; }
+.deck-usage--critical .du-gauge-fill{ stroke:#dc2626; }
+[data-theme="dark"] .deck-usage--calm     .du-gauge-fill{ stroke:#5b8fc4; }
+[data-theme="dark"] .deck-usage--warn     .du-gauge-fill{ stroke:#caa055; }
+[data-theme="dark"] .deck-usage--alert    .du-gauge-fill{ stroke:#f5b74e; }
+[data-theme="dark"] .deck-usage--critical .du-gauge-fill{ stroke:#e0746a; }
+
+/* Big-number threshold colors (fill, not color — it's an SVG <text>) */
+.deck-usage--calm     .du-gauge-num{ fill:var(--txt); }
+.deck-usage--warn     .du-gauge-num{ fill:#9c6e1a; }
+.deck-usage--alert    .du-gauge-num{ fill:#b47d0a; }
+.deck-usage--critical .du-gauge-num{ fill:#dc2626; }
+[data-theme="dark"] .deck-usage--warn     .du-gauge-num{ fill:#caa055; }
+[data-theme="dark"] .deck-usage--alert    .du-gauge-num{ fill:#f5b74e; }
+[data-theme="dark"] .deck-usage--critical .du-gauge-num{ fill:#e0746a; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 3A — PERSISTENT BOTTOM UTILITY RAIL
