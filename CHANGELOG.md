@@ -2,6 +2,31 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.1.0] - 2026-05-16
+
+### Added
+- **Deck Used gauge** — radial circular indicator replaces the horizontal
+  progress bar. Animated count-up, threshold colors that shift from green
+  through amber to red as deck fills, horizontal gradient arc fill, 4
+  cardinal tick marks at 12/3/6/9 o'clock. Free space shown as a smaller
+  secondary label inside the gauge.
+
+### Fixed
+- Stats now refresh immediately when cargo is resized via corner handle
+  or rotated (R key or inline + button). Previously the Deck Used %,
+  total area, weight totals, location strip, and DG segregation check
+  stayed stale until the operator made another move-mutation that hit
+  the full canonical update sequence.
+
+### Changed
+- **Print menu (Cmd+P)** — now exports the deck plan to a temp PDF and
+  auto-opens it in the system viewer for the native print dialog
+  (closes the v3.0.0 "known limitation" workaround). Uses
+  `tauri-plugin-opener` with scope locked to `**/spica-tide-print-*.pdf`
+  for security.
+- Removed ~108 lines of dead CSS from earlier UI iterations (legacy
+  `.gst-du-*` bar styling, replaced by the new gauge selectors).
+
 ## [3.0.1] - 2026-05-14 (hotfix)
 
 ### Fixed
