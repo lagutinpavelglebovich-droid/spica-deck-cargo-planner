@@ -13,3 +13,6 @@ CLAUDE.local.md
 .playwright-mcp/
 # Inter TTF source files — embedded as base64 in inter-fonts.js
 src/fonts/
+
+# Local Claude Code skill router (project-private, not part of the app)
+taste-skill/
