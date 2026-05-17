@@ -2555,6 +2555,12 @@ function renderBlock(cv,cargo){
        ≈ 2.6 m width triggers small, ≈ 1.5 m width triggers xs.     */
     if(cargo.w < 82) strip.classList.add('cb-dg-strip-small');
     if(cargo.w < 48) strip.classList.add('cb-dg-strip-xs');
+    /* Narrow cargo (< 82 px): switch layout from horizontal split (name in
+       middle 60%, badge in right 20% gutter) to vertical stack (strip on
+       top in flex flow, name below at full width). Without this, the 60%
+       width clamp leaves too little room for the name on small blocks and
+       the absolute-positioned strip visually covers the centred label. */
+    if(cargo.w < 82) b.classList.add('cb-dg-vert');
     _dgList.forEach(cls => {
       const dd = DG_DATA.find(d => d.cls === cls);
       if(!dd) return;
