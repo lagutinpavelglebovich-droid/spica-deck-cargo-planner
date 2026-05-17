@@ -2454,9 +2454,24 @@ function renderBlock(cv,cargo){
   const textCol=isDark(fill)?'#fff':'#0a0800';
   const minDim=Math.min(cargo.w,cargo.h);
   const maxDim=Math.max(cargo.w,cargo.h);
-  /* Font size: scales with the SHORTER dimension so text fits the narrower axis.
-     Floor at 8px (unreadable below), cap at 15px (large containers).           */
-  const textSz=Math.max(8,Math.min(14,Math.round(minDim*.26)))+'px';
+  /* Font size: combines two constraints and picks the stricter:
+       (a) block-based — scales with the SHORTER dimension so text fits
+           the narrower axis (the original heuristic).
+       (b) name-based — width of the label box divided by the average
+           glyph width (Inter 800 ≈ 0.6em), so longer names auto-shrink
+           to fit on one line instead of wrapping + getting clamped.
+     The label-box width depends on layout mode: in cb-dg-vert (narrow
+     blocks with DG, < 82 px) the name uses full block width; otherwise
+     the Phase 27 60% horizontal clamp applies. Mirrors the gate at
+     ~line 2548 (cargo.w >= 36) and the vert class at ~line 2560
+     (cargo.w < 82). Floor 7 px stays legible on retina. */
+  const labelText = String(cargo.ccu || '');
+  const nameLen   = Math.max(1, labelText.length);
+  const hasVertDG = (cargo.dgClasses||[]).length > 0 && cargo.w >= 36 && cargo.w < 82;
+  const labelWidth = hasVertDG ? (cargo.w - 10) : (cargo.w * 0.6 - 10);
+  const fontByName = Math.floor(labelWidth / (nameLen * 0.6));
+  const blockBased = Math.round(minDim * 0.26);
+  const textSz = Math.max(7, Math.min(14, blockBased, fontByName)) + 'px';
   const badgeSz=Math.max(9,Math.min(14,Math.floor(minDim/6)))+'px';
 
   /* Make the cargo block itself a flex column so the label is truly centred
