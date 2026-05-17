@@ -4957,10 +4957,7 @@ body.focus-deck .dcv{
   letter-spacing:.3px;
   padding:2px 5px;
   border-radius:999px;
-  background:#b33a3a;
-  color:#fff;
 }
-[data-theme="dark"] .chc-dg-tag{ background:#c84646; }
 .chc-pri{
   display:inline-block;
   font-family:'Manrope','Inter',sans-serif;

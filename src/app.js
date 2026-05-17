@@ -3007,6 +3007,8 @@ function cargoHoverCardShow(cargo, cbEl){
     dg.forEach(cls => {
       const tag = document.createElement('span');
       tag.className = 'chc-dg-tag';
+      const dd = DG_DATA.find(d => d.cls === cls) || { bg:'#888', tc:'#fff', bc:'#888' };
+      tag.style.cssText = `background:${dd.bg};color:${dd.tc};border:1px solid ${dd.bc};`;
       tag.textContent = 'DG ' + cls;
       dgList.appendChild(tag);
     });
