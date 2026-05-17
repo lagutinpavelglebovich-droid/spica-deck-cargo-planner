@@ -2535,16 +2535,17 @@ function renderBlock(cv,cargo){
      tighten font/padding for small and extra-small cargo widths. */
   /* Hybrid layout (Phase 27): name reserves the MIDDLE 60% of the block
      (centred, with symmetric 20% gutters on each side); DG badge sits in
-     the RIGHT 20% gutter, but only if that gutter is at least 12 px wide
-     (i.e. cargo.w * 0.2 >= 12 → cargo.w ≥ 60 px ≈ 1.95 m). Below that
-     threshold, the badge is hidden on canvas — DG data still surfaces in
-     the edit modal, hover tooltip, DG ON BOARD summary line, and PDF/
-     Excel exports. The CSS rule `.cb.cb-has-dg .cb-id` (in app.css near
-     ~line 5117) constrains the name to a symmetric 60%-wide centred box
-     so the badge and name never overlap and the visual reads balanced.
-     Threshold uses logical (zoom-independent) cargo.w, so behaviour is
-     consistent across zoom levels. */
-  const _dgFits = cargo.w * 0.2 >= 12;
+     the RIGHT 20% gutter. Gate at cargo.w >= 36 px (~1.16 m) so the
+     existing -xs tier becomes reachable for 6 ft Mini Container (57 px)
+     and 4 ft Basket (47 px) — without this, the gate at 60 px orphaned
+     the xs tier wired below. Below 36 px the badge is hidden on canvas —
+     DG data still surfaces in the edit modal, hover tooltip, DG ON BOARD
+     summary line, and PDF/Excel exports. The CSS rule `.cb.cb-has-dg
+     .cb-id` (in app.css near ~line 5117) constrains the name to a
+     symmetric 60%-wide centred box so the badge and name never overlap
+     and the visual reads balanced. Threshold uses logical (zoom-
+     independent) cargo.w, so behaviour is consistent across zoom levels. */
+  const _dgFits = cargo.w >= 36;
   if(_dgList.length > 0 && _dgFits){
     b.classList.add('cb-has-dg');
     const strip = document.createElement('div');
