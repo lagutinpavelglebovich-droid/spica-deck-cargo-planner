@@ -591,92 +591,80 @@
   <!-- Card 5: Tools & Actions — three distinct control groups -->
   <div class="rc rc-tools">
 
-    <!-- ─── GROUP A: Utility icons row + Language bar (two-row card) ─── -->
-    <div class="rct-group rct-utility">
-      <div class="rct-icons-row">
-    <button class="btn-asco-upload" id="btnAscoUpload" title="Upload ASCO Cargo List (Excel)">
-      <div class="btn-asco-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
-        <path d="M9 11V3M9 3L6.5 5.5M9 3L11.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M3 13v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg></div>
-      <div class="btn-asco-lbl">Upload Cargo List</div>
-    </button>
+    <!-- ─── Gradient-pill cluster: Upload / Library / Smart Tools / Theme / Language ─── -->
+    <div class="gp-cluster">
 
-    <!-- Library -->
-    <button class="btn-lib-open" id="btnLibOpen" title="Cargo &amp; DG Library">
-      <div class="btn-lib-open-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
-        <rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="10" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="2.5" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="10" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
-      </svg></div>
-      <div class="btn-lib-open-lbl">Library</div>
-      <div class="btn-lib-open-badge" id="libOpenBadge"></div>
-    </button>
-
-    <!-- Smart Tools button -->
-    <button class="btn-smart-tools" id="btnSmartTools" title="Smart Tools &amp; Settings">
-      <div class="btn-smart-tools-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block">
-        <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-      </svg></div>
-      <div class="btn-smart-tools-lbl">Smart Tools</div>
-      <div class="btn-smart-tools-dot"></div>
-    </button>
-      </div><!-- /rct-icons-row -->
-
-    <!-- Language picker — compact dropdown -->
-    <div class="lang-switch" id="langSwitch">
-      <button class="lang-picker-btn" id="langPickerBtn" aria-label="Select language">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M1 6h10M6 1c-1.5 2-2 3.5-2 5s.5 3 2 5M6 1c1.5 2 2 3.5 2 5s-.5 3-2 5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
-        </svg>
-        <span id="langPickerLabel">EN</span>
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M2 3l2 2 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+      <!-- 1. Upload -->
+      <button class="gp gp-upload" id="btnAscoUpload" aria-label="Upload cargo list">
+        <span class="gp-ico"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 11V3M9 3L6.5 5.5M9 3L11.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 13v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg></span>
+        <span class="gp-lbl">Upload</span>
       </button>
-      <div class="lang-dropdown" id="langDropdown">
-        <button class="lang-opt active" data-lang="en">
-          <span class="lang-opt-flag">🇬🇧</span>
-          <span class="lang-opt-name">English</span>
-          <span class="lang-opt-check">✓</span>
-        </button>
-        <button class="lang-opt" data-lang="ru">
-          <span class="lang-opt-flag">🇷🇺</span>
-          <span class="lang-opt-name">Русский</span>
-          <span class="lang-opt-check">✓</span>
-        </button>
-        <button class="lang-opt" data-lang="uk">
-          <span class="lang-opt-flag">🇺🇦</span>
-          <span class="lang-opt-name">Українська</span>
-          <span class="lang-opt-check">✓</span>
-        </button>
-      </div>
-    </div>
-    </div><!-- /rct-utility -->
 
-    <!-- ─── CARD 2: Theme toggle (top row) + Back/Forward/Clear (bottom row) ─── -->
-    <div class="rct-group rct-card2">
-      <div class="rct-toggle-row">
-    <!-- Theme toggle — compact icon pill -->
-    <div class="theme-toggle" id="themeToggle">
-      <div class="theme-pill" id="themeSeg">
-        <button class="theme-icon-btn active" id="themeLight" aria-label="Light mode" title="Light mode">
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/>
-            <path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M9.5 2.5l-.7.7M3.2 8.8l-.7.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-          </svg>
+      <!-- 2. Library -->
+      <button class="gp gp-library" id="btnLibOpen" aria-label="Cargo and DG library">
+        <span class="gp-ico"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="10" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="2.5" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          <rect x="10" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        </svg></span>
+        <span class="gp-lbl">Library</span>
+        <span class="gp-badge" id="libOpenBadge"></span>
+      </button>
+
+      <!-- 3. Smart Tools -->
+      <button class="gp gp-smart" id="btnSmartTools" aria-label="Smart tools">
+        <span class="gp-ico"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg></span>
+        <span class="gp-lbl">Smart Tools</span>
+      </button>
+
+      <!-- 4. Theme (single pill, reflects current mode) -->
+      <button class="gp gp-theme" id="themeToggle" aria-label="Toggle theme">
+        <span class="gp-ico" id="themeIco"><svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M9.5 2.5l-.7.7M3.2 8.8l-.7.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg></span>
+        <span class="gp-lbl" id="themeLbl">Light</span>
+      </button>
+
+      <!-- 5. Language (pill expands on hover, click opens dropdown) -->
+      <div class="lang-switch" id="langSwitch">
+        <button class="gp gp-lang" id="langPickerBtn" aria-label="Select language">
+          <span class="gp-ico"><svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M1 6h10M6 1c-1.5 2-2 3.5-2 5s.5 3 2 5M6 1c1.5 2 2 3.5 2 5s-.5 3-2 5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg></span>
+          <span class="gp-lbl">Language</span>
         </button>
-        <button class="theme-icon-btn" id="themeDark" aria-label="Dark mode" title="Dark mode">
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M10 7.5A4.5 4.5 0 0 1 4.5 2c0-.3.02-.6.07-.9A4.5 4.5 0 1 0 10.9 7.43 4.6 4.6 0 0 1 10 7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
+        <div class="lang-dropdown" id="langDropdown">
+          <button class="lang-opt active" data-lang="en">
+            <span class="lang-opt-flag">🇬🇧</span>
+            <span class="lang-opt-name">English</span>
+            <span class="lang-opt-check">✓</span>
+          </button>
+          <button class="lang-opt" data-lang="ru">
+            <span class="lang-opt-flag">🇷🇺</span>
+            <span class="lang-opt-name">Русский</span>
+            <span class="lang-opt-check">✓</span>
+          </button>
+          <button class="lang-opt" data-lang="uk">
+            <span class="lang-opt-flag">🇺🇦</span>
+            <span class="lang-opt-name">Українська</span>
+            <span class="lang-opt-check">✓</span>
+          </button>
+        </div>
       </div>
-    </div>
-      </div><!-- /rct-toggle-row -->
+
+    </div><!-- /gp-cluster -->
+
+    <!-- ─── CARD 2: Back/Forward/Clear (theme moved into gp-cluster above) ─── -->
+    <div class="rct-group rct-card2">
 
       <div class="rct-actions-row">
     <!-- Back / Forward (undo / redo) -->

@@ -9514,6 +9514,9 @@ function bindKeyboardNav(){
    Key: 'spicaTide_theme'  Values: 'light' | 'dark'
 ═══════════════════════════════════════════════════════════ */
 
+const THEME_SVG_SUN  = '<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M9.5 2.5l-.7.7M3.2 8.8l-.7.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const THEME_SVG_MOON = '<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 7.5A4.5 4.5 0 0 1 4.5 2c0-.3.02-.6.07-.9A4.5 4.5 0 1 0 10.9 7.43 4.6 4.6 0 0 1 10 7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function applyTheme(theme){
   const html = document.documentElement;
   if(theme === 'dark'){
@@ -9521,13 +9524,11 @@ function applyTheme(theme){
   } else {
     html.removeAttribute('data-theme');
   }
-  /* Update legacy ribbon toggle state (now hidden but kept in DOM) */
-  const lightBtn = document.getElementById('themeLight');
-  const darkBtn  = document.getElementById('themeDark');
-  if(lightBtn && darkBtn){
-    lightBtn.classList.toggle('active', theme === 'light');
-    darkBtn.classList.toggle('active',  theme === 'dark');
-  }
+  /* Update gradient-pill icon + label */
+  const ico = document.getElementById('themeIco');
+  const lbl = document.getElementById('themeLbl');
+  if(ico) ico.innerHTML = theme === 'dark' ? THEME_SVG_MOON : THEME_SVG_SUN;
+  if(lbl) lbl.textContent = theme === 'dark' ? 'Dark' : 'Light';
   /* Update Smart Tools Display section (the new primary surface) */
   const stLight = document.getElementById('stThemeLight');
   const stDark  = document.getElementById('stThemeDark');
@@ -9542,12 +9543,14 @@ function applyTheme(theme){
 }
 
 function bindThemeToggle(){
-  const lightBtn = document.getElementById('themeLight');
-  const darkBtn  = document.getElementById('themeDark');
-  if(lightBtn) lightBtn.addEventListener('click', () => applyTheme('light'));
-  if(darkBtn)  darkBtn.addEventListener('click',  () => applyTheme('dark'));
+  /* Single gradient-pill toggle in the header cluster */
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(current === 'light' ? 'dark' : 'light');
+  });
 
-  /* Smart Tools theme choices (primary surface after Phase 3 cleanup) */
+  /* Smart Tools theme choices (separate surface — kept) */
   const stLight = document.getElementById('stThemeLight');
   const stDark  = document.getElementById('stThemeDark');
   if(stLight) stLight.addEventListener('click', () => applyTheme('light'));

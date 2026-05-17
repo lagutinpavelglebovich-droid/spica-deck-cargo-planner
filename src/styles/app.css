@@ -1575,19 +1575,8 @@ body.is-viewer .bp-viewer-indicator{
 .zlbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);min-width:40px;text-align:center;}
 
 /* ═══════════════════════════════════════
-   ASCO UPLOAD BUTTON — editorial toolbar
+   ASCO UPLOAD BUTTON — replaced by .gp-upload (see "GRADIENT PILL" section at EOF)
 ═══════════════════════════════════════ */
-.btn-asco-upload{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:3px;padding:0 18px;border-left:1px solid var(--sep);
-  cursor:pointer;user-select:none;transition:background .15s;flex-shrink:0;
-  color:var(--acc);background:transparent;border-top:none;border-right:none;border-bottom:none;
-  font-family:'Inter',sans-serif;
-}
-.btn-asco-upload:hover{background:rgba(72,96,131,.07);}
-.btn-asco-upload:active{background:rgba(72,96,131,.13);}
-.btn-asco-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;}
-.btn-asco-lbl{font-size:8px;font-weight:700;letter-spacing:.5px;white-space:nowrap;color:var(--acc);text-transform:uppercase;}
 
 /* ═══════════════════════════════════════
    ASCO IMPORT MODAL — macOS utility panel
@@ -5913,52 +5902,7 @@ body.focus-deck .dcv{
    Close = layout identical to v31 stable.
 ═══════════════════════════════════════════════════════════ */
 
-/* ── Toolbar trigger button ─────────────────────────────────── */
-.btn-lib-open{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:3px;padding:0 18px;
-  border-left:1px solid var(--sep);
-  border-right:none;border-top:none;border-bottom:none;
-  cursor:pointer;user-select:none;
-  transition:background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease);
-  flex-shrink:0;
-  color:var(--txt2);background:transparent;font-family:'Inter',sans-serif;
-  position:relative;
-}
-/* Phase 20 — rounded-pill hover matches the ribbon button family
-   (undo/redo/autosave-toggle). Inner pseudo-element preserves the full
-   click target while the hover treatment reads as a crafted control. */
-.btn-lib-open::before{
-  content:'';
-  position:absolute;
-  inset:5px 6px 5px 6px;
-  border-radius:8px;
-  background:transparent;
-  transition:background var(--dur-micro) var(--ease);
-  pointer-events:none;
-  z-index:0;
-}
-.btn-lib-open > *{ position:relative; z-index:1; }
-.btn-lib-open:hover{ background:transparent; color:var(--txt); }
-.btn-lib-open:hover::before{ background:rgba(72,96,131,.10); }
-.btn-lib-open:active::before{ background:rgba(72,96,131,.18); }
-.btn-lib-open.panel-active{ background:transparent; color:var(--acc); }
-.btn-lib-open.panel-active::before{ background:rgba(72,96,131,.10); }
-[data-theme="dark"] .btn-lib-open:hover::before{ background:rgba(220,190,140,.10); }
-[data-theme="dark"] .btn-lib-open:active::before{ background:rgba(220,190,140,.16); }
-[data-theme="dark"] .btn-lib-open.panel-active::before{ background:rgba(220,190,140,.10); }
-.btn-lib-open-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;}
-.btn-lib-open-lbl{font-size:8px;font-weight:700;letter-spacing:.5px;
-  white-space:nowrap;text-transform:uppercase;font-family:'Inter',sans-serif;}
-.btn-lib-open-badge{
-  position:absolute;top:10px;right:10px;
-  min-width:15px;height:15px;border-radius:10px;
-  background:var(--acc);color:#fff;
-  font-size:7.5px;font-weight:700;text-align:center;line-height:15px;
-  padding:0 3px;display:none;
-  font-family:'JetBrains Mono',monospace;
-}
-.btn-lib-open-badge.has-items{display:block;}
+/* ── Toolbar trigger button — replaced by .gp-library (see GRADIENT PILL section at EOF) ── */
 
 /* ── Overlay backdrop ────────────────────────────────────────── */
 /* ── Cargo Panel Overlay ────────────────────────────────────────
@@ -7681,10 +7625,7 @@ body.hdr-compact .voy-card{ padding:0 12px; min-width:140px; }
 body.hdr-compact .voy-input{ width:100px; font-size:12px; }
 body.hdr-compact .voy-remarks-btn{ display:none; }
 
-body.hdr-compact .btn-asco-upload{ padding:0 13px; }
-body.hdr-compact .btn-lib-open{ padding:0 13px; }
 body.hdr-compact .btn-clr-deck{ padding:0 13px; }
-body.hdr-compact .theme-toggle{ padding:0 10px; }
 body.hdr-compact .btn-saveas{ padding:0 12px; }
 
 /* ══════════════════════════════════════════════════
@@ -7714,18 +7655,11 @@ body.hdr-tight .voy-input{ width:86px; font-size:11px; }
 body.hdr-tight .voy-date-btn{ font-size:10px; padding:2px 4px; }
 body.hdr-tight .voy-remarks-btn{ display:none; }
 
-body.hdr-tight .btn-asco-upload{ padding:0 9px; }
-body.hdr-tight .btn-asco-lbl{ display:none; }
-body.hdr-tight .btn-lib-open{ padding:0 9px; }
-body.hdr-tight .btn-lib-open-lbl{ display:none; }
 body.hdr-tight .btn-clr-deck{ padding:0 9px; }
 body.hdr-tight .btn-clr-deck-lbl{ display:none; }
 body.hdr-tight .btn-saveas{ padding:0 9px; }
 body.hdr-tight .btn-saveas-lbl{ display:none; }
 body.hdr-tight .btn-saveas-chevron{ display:none; }
-
-body.hdr-tight .theme-toggle{ padding:0 7px; }
-body.hdr-tight .theme-icon-btn{ width:22px; height:20px; }
 
 /* ══════════════════════════════════════════════════
    body.hdr-mini — innerWidth < 1200.
@@ -7752,19 +7686,11 @@ body.hdr-mini .voy-lbl{ display:none; }
 body.hdr-mini .voy-input{ width:72px; font-size:10px; }
 body.hdr-mini .voy-date-btn{ font-size:9px; }
 body.hdr-mini .voy-remarks-btn{ display:none; }
-body.hdr-mini .btn-asco-upload{ padding:0 7px; }
-body.hdr-mini .btn-asco-lbl{ display:none; }
-body.hdr-mini .btn-lib-open{ padding:0 7px; }
-body.hdr-mini .btn-lib-open-lbl{ display:none; }
 body.hdr-mini .btn-clr-deck{ padding:0 7px; }
 body.hdr-mini .btn-clr-deck-lbl{ display:none; }
-body.hdr-mini .btn-smart-tools{ padding:0 7px; }
-body.hdr-mini .btn-smart-tools-lbl{ display:none; }
 body.hdr-mini .btn-saveas{ padding:0 7px; }
 body.hdr-mini .btn-saveas-lbl{ display:none; }
 body.hdr-mini .btn-saveas-chevron{ display:none; }
-body.hdr-mini .theme-toggle{ padding:0 5px; }
-body.hdr-mini .theme-icon-btn{ width:20px; height:18px; }
 
 /* Old media-query tiers removed — class-based system handles all breakpoints */
 
@@ -7957,33 +7883,8 @@ body.hdr-mini .theme-icon-btn{ width:20px; height:18px; }
 }
 
 /* ═══════════════════════════════════════
-   SMART TOOLS BUTTON (toolbar gear icon)
+   SMART TOOLS BUTTON — replaced by .gp-smart (see GRADIENT PILL section at EOF)
 ═══════════════════════════════════════ */
-.btn-smart-tools{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:3px;padding:0 16px;border-left:1px solid var(--sep);
-  cursor:pointer;user-select:none;transition:background .15s,color .15s;flex-shrink:0;
-  color:var(--txt3);background:transparent;
-  border-top:none;border-right:none;border-bottom:none;
-  font-family:'Inter',sans-serif;position:relative;
-}
-.btn-smart-tools:hover{ background:rgba(72,96,131,.07); color:var(--acc); }
-.btn-smart-tools:active{ background:rgba(72,96,131,.13); }
-.btn-smart-tools.has-active{ color:var(--acc); }
-.btn-smart-tools-icon{ width:18px;height:18px;display:flex;align-items:center;justify-content:center; }
-.btn-smart-tools-lbl{ font-size:8px;font-weight:700;letter-spacing:.5px;white-space:nowrap;text-transform:uppercase; }
-/* Active dot — shown when any smart tool is ON */
-.btn-smart-tools-dot{
-  position:absolute;top:10px;right:10px;
-  width:5px;height:5px;border-radius:50%;
-  background:var(--acc);display:none;
-}
-.btn-smart-tools.has-active .btn-smart-tools-dot{ display:block; }
-
-/* Compact adjustment at responsive breakpoints */
-body.hdr-compact .btn-smart-tools{ padding:0 12px; }
-body.hdr-tight .btn-smart-tools{ padding:0 9px; }
-body.hdr-tight .btn-smart-tools-lbl{ display:none; }
 
 /* ═══════════════════════════════════════
    SMART TOOLS MODAL / SIDE PANEL
@@ -8437,99 +8338,10 @@ body.hdr-tight .btn-smart-tools-lbl{ display:none; }
 }
 
 /* ═══════════════════════════════════════
-   LANGUAGE SWITCHER
+   LANGUAGE + THEME — pill button styles replaced by .gp-lang / .gp-theme
+   (see GRADIENT PILL section at EOF). Only the language DROPDOWN survives
+   below — the picker BUTTON itself is now a gradient pill.
 ═══════════════════════════════════════ */
-.lang-switch{
-  display:flex;align-items:center;gap:2px;
-  padding:0 10px;border-left:1px solid var(--sep);
-  flex-shrink:0;
-}
-.lang-btn{
-  padding:4px 7px;border-radius:6px;
-  font-family:'Inter',sans-serif;font-size:9px;font-weight:700;
-  letter-spacing:.3px;cursor:pointer;border:none;
-  background:transparent;color:var(--txt4);
-  transition:all .13s;line-height:1;
-}
-.lang-btn:hover{color:var(--txt2);background:var(--surf3);}
-.lang-btn.active{
-  background:var(--acc);color:#fff;
-  box-shadow:0 1px 4px rgba(72,96,131,.25);
-}
-body.hdr-tight .lang-switch{ padding:0 6px; }
-/* ═══════════════════════════════════════
-   COMPACT THEME TOGGLE — icon pill switch
-═══════════════════════════════════════ */
-.theme-toggle{
-  display:flex;align-items:center;justify-content:center;
-  padding:0 12px;border-left:1px solid var(--sep);
-  flex-shrink:0;
-}
-.theme-pill{
-  display:flex;align-items:center;
-  background:var(--surf3);
-  border:1px solid var(--brd2);
-  border-radius:20px;
-  padding:2px;
-  gap:0;
-  box-shadow:inset 0 1px 2px rgba(49,51,44,.08);
-}
-[data-theme="dark"] .theme-pill{
-  border-color:rgba(255,255,255,.12);
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.25);
-}
-.theme-icon-btn{
-  width:26px;height:24px;
-  display:flex;align-items:center;justify-content:center;
-  border-radius:14px;
-  cursor:pointer;
-  border:none;background:transparent;
-  color:var(--txt4);
-  transition:background .17s,color .17s,box-shadow .17s;
-}
-.theme-icon-btn:hover{ color:var(--txt2); }
-.theme-icon-btn.active{
-  background:var(--surf);
-  color:var(--acc);
-  box-shadow:0 1px 4px rgba(49,51,44,.12),0 0 0 1px rgba(177,179,169,.20);
-}
-[data-theme="dark"] .theme-icon-btn.active{
-  background:var(--surf4);
-  color:var(--acc);
-  box-shadow:0 1px 4px rgba(0,0,0,.30),0 0 0 1px rgba(255,255,255,.08);
-}
-body.hdr-tight .theme-toggle{ padding:0 8px; }
-
-/* ═══════════════════════════════════════
-   COMPACT LANGUAGE PICKER
-═══════════════════════════════════════ */
-.lang-switch{
-  position:relative;
-  display:flex;align-items:center;
-  padding:0 10px;border-left:1px solid var(--sep);
-  flex-shrink:0;
-}
-.lang-picker-btn{
-  display:flex;align-items:center;gap:5px;
-  padding:5px 10px;
-  border-radius:8px;
-  border:1px solid var(--brd);
-  background:transparent;
-  color:var(--txt2);
-  font-family:'Inter',sans-serif;
-  font-size:10px;font-weight:700;letter-spacing:.5px;
-  cursor:pointer;
-  transition:all .14s;
-  white-space:nowrap;
-}
-.lang-picker-btn:hover{
-  background:var(--surf3);
-  border-color:var(--brd2);
-  color:var(--txt);
-}
-.lang-picker-btn svg{ flex-shrink:0; opacity:.6; transition:transform .18s; }
-.lang-picker-btn.open svg{ transform:rotate(180deg); }
-.lang-picker-chevron{ opacity:.5; font-size:8px; }
 
 .lang-dropdown{
   position:absolute;
@@ -8573,7 +8385,6 @@ body.hdr-tight .theme-toggle{ padding:0 8px; }
 .lang-opt-name{ flex:1; }
 .lang-opt-check{ font-size:10px; color:var(--acc); opacity:0; }
 .lang-opt.active .lang-opt-check{ opacity:1; }
-body.hdr-tight .lang-switch{ padding:0 6px; }
 
 /* ═══════════════════════════════════════
    VERSION BADGE
@@ -19496,3 +19307,192 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
 [data-theme="dark"] .dg-multi-dropdown .dg-multi-list::-webkit-scrollbar-thumb{
   background:rgba(255,255,255,.14);
 }
+
+/* ============================================
+   GRADIENT PILL — top-right cluster controls
+   ============================================ */
+
+.gp {
+  position: relative;
+  height: 52px;
+  width: 52px;
+  border-radius: 26px;
+  background: white;
+  box-shadow:
+    0 8px 22px rgba(30,60,90,0.10),
+    0 2px 4px rgba(30,60,90,0.04);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    width 900ms cubic-bezier(0.32, 1.55, 0.42, 1),
+    box-shadow 700ms ease;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  outline: none;
+  vertical-align: middle;
+}
+
+.gp:hover {
+  width: 165px;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.18),
+    0 4px 10px rgba(0,0,0,0.08);
+}
+
+.gp .gp-ico {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  transition:
+    transform 700ms cubic-bezier(0.32, 1.55, 0.42, 1),
+    opacity 400ms ease;
+  opacity: 1;
+  z-index: 3;
+  font-size: 21px;
+  color: #5b6b7c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.gp .gp-ico svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+}
+
+.gp:hover .gp-ico {
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+}
+
+.gp .gp-lbl {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+  transition:
+    transform 900ms cubic-bezier(0.32, 1.55, 0.42, 1) 100ms,
+    opacity 500ms ease 250ms,
+    color 600ms ease;
+  color: white;
+  z-index: 3;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: -apple-system, system-ui, "SF Pro Text", "Helvetica Neue", sans-serif;
+  pointer-events: none;
+}
+
+.gp:hover .gp-lbl {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.gp::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 26px;
+  opacity: 0;
+  transition: opacity 700ms ease;
+  z-index: 1;
+}
+
+.gp:hover::before {
+  opacity: 1;
+}
+
+.gp::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  height: 100%;
+  border-radius: 26px;
+  filter: blur(18px);
+  opacity: 0;
+  transition: opacity 900ms ease;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.gp:hover::after {
+  opacity: 0.45;
+}
+
+.gp-upload::before,  .gp-upload:hover::after  { background: linear-gradient(45deg, #5e4b8b, #8b6fb5); }
+.gp-library::before, .gp-library:hover::after { background: linear-gradient(45deg, #2a4d6e, #5680a8); }
+.gp-smart::before,   .gp-smart:hover::after   { background: linear-gradient(45deg, #7a6a52, #b8a584); }
+.gp-theme::before,   .gp-theme:hover::after   { background: linear-gradient(45deg, #a8581f, #d49050); }
+.gp-lang::before,    .gp-lang:hover::after    { background: linear-gradient(45deg, #2c5f4f, #5a9580); }
+
+.gp-cluster {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.gp-cluster .lang-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  flex-shrink: 0;
+}
+
+.gp .gp-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.gp .gp-badge:empty {
+  display: none;
+}
+
+[data-theme="dark"] .gp {
+  background: rgba(40, 50, 65, 0.85);
+  box-shadow:
+    0 8px 22px rgba(0,0,0,0.30),
+    0 2px 4px rgba(0,0,0,0.20);
+}
+[data-theme="dark"] .gp .gp-ico {
+  color: #c0c8d4;
+}
+
+body.hdr-compact .gp { height: 46px; width: 46px; border-radius: 23px; }
+body.hdr-compact .gp:hover { width: 150px; }
+body.hdr-compact .gp .gp-ico { font-size: 19px; }
+body.hdr-compact .gp .gp-ico svg { width: 19px; height: 19px; }
+body.hdr-compact .gp .gp-lbl { font-size: 11.5px; letter-spacing: 1.5px; }
+
+body.hdr-tight .gp { height: 40px; width: 40px; border-radius: 20px; }
+body.hdr-tight .gp:hover { width: 130px; }
+body.hdr-tight .gp .gp-ico { font-size: 17px; }
+body.hdr-tight .gp .gp-ico svg { width: 17px; height: 17px; }
+body.hdr-tight .gp .gp-lbl { font-size: 10.5px; letter-spacing: 1.2px; }
+body.hdr-tight .gp-cluster { gap: 10px; }
