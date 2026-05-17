@@ -5125,6 +5125,7 @@ body.focus-deck .dcv{
 }
 .cb-dg-strip > .cb-dg-badge{
   position:absolute;
+  top:auto; right:auto; bottom:auto; left:auto;   /* reset legacy fallback coords so :nth-child sets only the two it needs — without this, base .cb-dg-badge's top+right combine with nth-child's left/bottom to stretch the badge to fill the gap */
   max-width:46%;             /* keep TL + TR from touching at extreme widths */
 }
 .cb-dg-strip > .cb-dg-badge:nth-child(1){ top:3px; right:3px; }
