@@ -5098,28 +5098,11 @@ body.focus-deck .dcv{
   text-shadow:0 1px 2px rgba(0,0,0,.12);
 }
 .cb-id:empty::before{content:'···';opacity:.2;font-size:8px;}
-/* Hybrid layout (Phase 27): when the cargo block has a visible DG badge
-   (class .cb-has-dg added by renderBlock when geometry permits), reserve
-   the middle 60% of the block for the name with symmetric 20% gutters on
-   each side so the name reads as visually centred and the DG badge in the
-   right 20% gutter never overlaps the name. The .cb parent uses
-   display:flex with justify-content:center; symmetric `margin: 0 auto`
-   on .cb-id keeps the 60%-width box centred within the parent. Text
-   inside .cb-id stays centred within that 60% via the existing
-   text-align:center rule above. Without .cb-has-dg, .cb-id falls back to
-   its natural full-width centred placement. The global
-   * { box-sizing: border-box } means the existing 5px horizontal padding
-   is INSIDE the 60% — no overshoot. */
-.cb.cb-has-dg .cb-id{
-  width: 60%;
-  margin: 0 auto;
-}
-/* DG badge — top-right
+/* DG badge — corner placement.
    NOTE: a .cb-dg-badge rendered as a direct child of .cb (legacy fallback)
-   still uses absolute top-right placement. When wrapped inside a
-   .cb-dg-strip (the new path, see below), the strip owns layout and the
-   badge becomes a static flex child — the `.cb-dg-strip .cb-dg-badge`
-   rule a few lines down neutralises these absolute coords in that case. */
+   uses absolute top-right placement. When wrapped inside a .cb-dg-strip
+   (the new path, see below), the strip is an inset:0 positioning frame
+   and each badge child is corner-anchored via :nth-child rules. */
 .cb-dg-badge{
   position:absolute;top:3px;right:3px;border-radius:5px;padding:2px 6px;
   font-family:'Inter',system-ui,sans-serif;font-size:9.5px;font-weight:800;
@@ -5129,31 +5112,24 @@ body.focus-deck .dcv{
   user-select:none;            /* part of the .cb drag affordance — never a text-select target */
 }
 
-/* ── DG badge strip — safe-area flex container inside each cargo card.
-   Pinned with left:3px + right:3px so flex flow is constrained to the
-   cargo bounds and can never spill outside. Badges justify to the right
-   and wrap to a second row when the card is narrow, so 3 DG classes on
-   a small CCU stack cleanly (e.g., 2 top row + 1 below) instead of
-   overflowing horizontally like the old absolute-offset approach. */
+/* ── DG badge strip — corner-positioning frame over the cargo card.
+   The strip itself covers the whole block (inset:0) but is purely a
+   scoping layer; children are corner-anchored via :nth-child below so
+   1, 2, or 3 DG badges land in TR, TR+TL, or TR+TL+BR respectively,
+   leaving the geometric centre of the block clear for the name. */
 .cb-dg-strip{
   position:absolute;
-  top:3px; right:3px; left:3px;
-  display:flex;
-  flex-wrap:wrap;
-  flex-direction:row;
-  justify-content:flex-end;
-  align-content:flex-start;
-  gap:2px;
-  z-index:5;
+  inset:0;
   pointer-events:none;       /* visual only; never blocks drag */
+  z-index:5;
 }
-.cb-dg-strip .cb-dg-badge{
-  position:static;            /* strip owns layout */
-  top:auto; right:auto; left:auto; bottom:auto;
-  flex:0 0 auto;
-  pointer-events:none;
-  max-width:100%;             /* never wider than the strip itself */
+.cb-dg-strip > .cb-dg-badge{
+  position:absolute;
+  max-width:46%;             /* keep TL + TR from touching at extreme widths */
 }
+.cb-dg-strip > .cb-dg-badge:nth-child(1){ top:3px; right:3px; }
+.cb-dg-strip > .cb-dg-badge:nth-child(2){ top:3px; left:3px;  }
+.cb-dg-strip > .cb-dg-badge:nth-child(3){ bottom:3px; right:3px; }
 /* Small cargo: shrink font/padding so 3 badges still fit. */
 .cb-dg-strip-small .cb-dg-badge{
   font-size:8px !important;

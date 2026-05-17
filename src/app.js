@@ -2454,9 +2454,21 @@ function renderBlock(cv,cargo){
   const textCol=isDark(fill)?'#fff':'#0a0800';
   const minDim=Math.min(cargo.w,cargo.h);
   const maxDim=Math.max(cargo.w,cargo.h);
-  /* Font size: scales with the SHORTER dimension so text fits the narrower axis.
-     Floor at 8px (unreadable below), cap at 15px (large containers).           */
-  const textSz=Math.max(8,Math.min(14,Math.round(minDim*.26)))+'px';
+  /* Font size: combines two constraints and picks the stricter:
+       (a) block-based — scales with the SHORTER dimension so text fits
+           the narrower axis (the original heuristic).
+       (b) name-based — width of the label box divided by the average
+           glyph width (Inter 800 ≈ 0.6em), so longer names auto-shrink
+           to fit on one line instead of wrapping into the corner DG
+           badges. The label uses full block width (no 60% clamp now
+           that the badge strip is corner-positioned, not edge-strip).
+     Floor 7 px stays legible on retina. */
+  const labelText = String(cargo.ccu || '');
+  const nameLen   = Math.max(1, labelText.length);
+  const labelWidth = cargo.w - 10;                                    /* ~5 px padding each side */
+  const fontByName = Math.floor(labelWidth / (nameLen * 0.6));
+  const blockBased = Math.round(minDim * 0.26);
+  const textSz = Math.max(7, Math.min(14, blockBased, fontByName)) + 'px';
   const badgeSz=Math.max(9,Math.min(14,Math.floor(minDim/6)))+'px';
 
   /* Make the cargo block itself a flex column so the label is truly centred
