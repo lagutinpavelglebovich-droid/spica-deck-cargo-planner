@@ -12835,6 +12835,12 @@ function closeModeModal(){
 }
 
 function bindModeButton(){
+  /* TODO: role-switch UI temporarily removed in commit removing .rc-ops card.
+     Re-introduced as 6th gradient pill in the next commit. Role state itself
+     (_currentMode, setMode, isOperator, OPERATOR_PW, openModeModal modal) is
+     untouched — only the trigger button is gone. applyModeUI() still fires
+     so viewer-mode read-only enforcement (body.is-viewer, btnClrDeck gate,
+     cb-viewer class, renderAll) continues to protect the app. */
   const btn = document.getElementById('modeBtn');
   if(btn) btn.addEventListener('click', openModeModal);
   /* Apply initial mode state to UI */
