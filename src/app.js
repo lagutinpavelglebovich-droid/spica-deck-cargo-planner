@@ -1349,7 +1349,7 @@ function sortedLibItems(items){
   return ranked.map(r=>r.it);
 }
 
-const S={activeLocs:['BLEO','TART'],selLoc:'BLEO',selStatus:'L',pending:null,cargo:[],customLib:[],customLocs:[],voyRemarks:''};
+const S={activeLocs:['BLEO','TART'],selLoc:'BLEO',pending:null,cargo:[],customLib:[],customLocs:[],voyRemarks:''};
 
 /* ════════════════════════════════════
    CARGO LIBRARY
@@ -2418,7 +2418,7 @@ function _placeAtCore(cx,cy){
     ccu:'',desc:it.name||it.nm||'',
     wt:isC?it.wt:0,
     platform:S.selLoc||(S.activeLocs[0]||'BLEO'),
-    status:S.selStatus,
+    status:'L',
     dgClasses:p.type==='dg'?[it.cls]:[],
     priority:false,
     trDest:''};
@@ -4852,7 +4852,7 @@ function bindLibPanel(){
       setTimeout(() => { panel.style.transition = ''; }, 320);
     }
   };
-}function bindStatusBtns(){document.querySelectorAll('.sb').forEach(b=>{b.onclick=()=>{S.selStatus=b.dataset.s;document.querySelectorAll('.sb').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');};});}
+}
 function bindCustomForm(){
   /* btnAdd now lives in the cp panel as cpBtnAdd */
   const oldAdd = document.getElementById('btnAdd');
@@ -6802,7 +6802,7 @@ function placeAt(cx, cy){
       desc:      item.name     || '',
       wt:        item.wt       || 0,
       platform:  platformId,
-      status:    S.selStatus,
+      status:    'L',
       dgClasses: item.dgClasses || [],
       heavyLift: !!item.heavyLift,
       priority: false,
@@ -14216,7 +14216,7 @@ function init(){
   /* Initialise dynamic colour assignments for restored active locations */
   initDynColors();
   buildActiveLocStrip();buildLocGrid();buildCargoList();buildDGList();
-  bindTabs();bindStatusBtns();bindModal();bindInspector();bindCmdPalette();bindDGMultiPicker();bindCustomForm();bindLibPanel();
+  bindTabs();bindModal();bindInspector();bindCmdPalette();bindDGMultiPicker();bindCustomForm();bindLibPanel();
   bindLocsPanel();bindLocDrawer();bindLocDeleteDlg();bindDatePicker();
   setInterval(_rollDateToTodayIfNeeded, 5 * 60 * 1000);   /* rolling today — see fn doc */
   bindAscoUpload();
