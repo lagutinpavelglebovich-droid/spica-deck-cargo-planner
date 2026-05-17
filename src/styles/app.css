@@ -5173,23 +5173,6 @@ body.focus-deck .dcv{
   border-width:1px !important;
   box-shadow:0 1px 2px rgba(0,0,0,.12) !important;
 }
-/* Vertical-stack tier (cargo.w < 82, .cb-dg-vert added in renderBlock):
-   strip joins the flex column as the first child (instead of overlaying
-   the card via position:absolute), and the .cb-id name releases its 60%
-   width clamp to use the full block width below the strip. Wide blocks
-   without .cb-dg-vert keep the Phase 27 horizontal split. */
-.cb.cb-dg-vert .cb-dg-strip,
-.cb.cb-dg-vert .cb-dg-strip-small,
-.cb.cb-dg-vert .cb-dg-strip-xs{
-  position:static;
-  align-self:stretch;
-  flex:0 0 auto;
-  order:-1;                  /* strip is appended after .cb-id in renderBlock; force it above */
-}
-.cb.cb-dg-vert.cb-has-dg .cb-id{
-  width:auto;
-  margin:0;
-}
 /* Heavy Lift badge */
 .cb-hl-badge{
   position:absolute;bottom:3px;left:3px;border-radius:5px;padding:2px 6px;
