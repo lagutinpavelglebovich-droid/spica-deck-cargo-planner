@@ -19533,11 +19533,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 
 .brand-block.mode-operator .brand-accent {
-  background-image: linear-gradient(to top, #c44510 0%, #ff7a3a 50%, #c44510 100%);
+  background-image: linear-gradient(to top, #1a0800 0%, #fff0e0 50%, #1a0800 100%);
 }
 
 .brand-block.mode-viewer .brand-accent {
-  background-image: linear-gradient(to top, #185fa5 0%, #5da5f0 50%, #185fa5 100%);
+  background-image: linear-gradient(to top, #02112a 0%, #e8f4ff 50%, #02112a 100%);
 }
 
 @keyframes brand-accent-flow {
