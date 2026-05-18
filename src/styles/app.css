@@ -302,7 +302,7 @@ body.pdf-capture::before{ display:none !important; }
   font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:10px;
   letter-spacing:.4px;color:var(--acc);line-height:1.2;margin-top:6px;
 }
-.brand-sub{font-size:9.5px;letter-spacing:.2px;color:var(--txt4);font-weight:500;margin-top:3px;}
+/* .brand-sub rule removed — element dropped from header in brand-block refactor. */
 
 /* Stats — clear hierarchy: Total big, L/BL/ROB vivid but smaller */
 .gstats{display:flex;align-items:center;padding:0 4px;gap:0;flex-shrink:1;min-width:0;overflow:hidden;}
@@ -7608,7 +7608,6 @@ html{
    Fired by JS. Tighter spacing, subtitle hidden.
 ══════════════════════════════════════════════════ */
 body.hdr-compact .brand{ padding:0 16px; }
-body.hdr-compact .brand-sub{ display:none; }
 body.hdr-compact .brand-name{ font-size:18px; letter-spacing:4px; }
 body.hdr-compact .brand-dcp{ font-size:8.5px; }
 
@@ -7635,7 +7634,6 @@ body.hdr-compact .btn-saveas{ padding:0 12px; }
 ══════════════════════════════════════════════════ */
 body.hdr-tight .brand{ padding:0 11px; }
 body.hdr-tight .brand-name{ font-size:15px; letter-spacing:3px; }
-body.hdr-tight .brand-sub{ display:none; }
 
 body.hdr-tight .gst{ padding:4px 7px; }
 body.hdr-tight .gst-val{ font-size:16px; }
@@ -9588,10 +9586,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
   margin-top:2px !important;
   color:var(--txt3) !important;
 }
-.brand-sub{
-  font-size:6.5px !important;
-  margin-top:1px !important;
-}
 
 /* ── STATS: Compact inline chip badges ────────────────────────── */
 .gstats{
@@ -10490,27 +10484,12 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
   padding:0 26px 0 22px !important;
   min-width:unset !important;
 }
-.rc-brand .brand::before{
-  content:'';
-  position:absolute;
-  left:4px; top:6px; bottom:6px;
-  width:3px;
-  border-radius:2px;
-  background:linear-gradient(180deg,
-    var(--brand-spica) 0%,
-    var(--brand-tide) 100%);
-  box-shadow:0 0 8px rgba(20,48,90,.12);
-}
+/* Legacy blue/spica vertical stripe on .rc-brand .brand::before — REMOVED.
+   The new .brand-accent (role-coloured 6px animated bar inside .brand-block)
+   is the sole accent indicator since the brand-block status-light refactor. */
 [data-theme="dark"] .rc-brand .brand{
   border-right-color:rgba(255,255,255,.10) !important;
 }
-[data-theme="dark"] .rc-brand .brand::before{
-  background:linear-gradient(180deg,
-    var(--brand-tide) 0%,
-    var(--brand-spica) 100%);
-  box-shadow:0 0 10px rgba(196,220,239,.18);
-}
-.rc-brand .brand-sub{ display:none !important; }
 .rc-brand .brand-dcp{
   font-size:11px !important;letter-spacing:.1px !important;
   margin-top:9px !important;
@@ -19508,18 +19487,27 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   display: flex;
   gap: 12px;
   align-items: stretch;
+  align-self: stretch;            /* stretch to full height of .rc-brand card */
   background: transparent;
   border: 0;
-  padding: 0;
+  padding: 4px 8px;               /* breathing room for hover tint */
+  border-radius: var(--border-radius-md, 8px);
   cursor: pointer;
   font: inherit;
   text-align: left;
   user-select: none;
   -webkit-user-select: none;
+  transition: background 0.15s ease;
 }
 
-.brand-block:hover .brand-text {
-  opacity: 0.85;
+/* Soft role-tinted hover background — replaces previous opacity dim.
+   6% opacity per role so the tint hints at action without competing with
+   the accent bar or label colour. */
+.brand-block.mode-operator:hover {
+  background: rgba(196, 69, 16, 0.06);
+}
+.brand-block.mode-viewer:hover {
+  background: rgba(24, 95, 165, 0.06);
 }
 
 .brand-block:focus-visible {
@@ -19532,12 +19520,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   display: flex;
   flex-direction: column;
   justify-content: center;
-  transition: opacity 0.15s ease;
 }
 
 .brand-accent {
-  width: 4px;
-  border-radius: 2px;
+  width: 6px;
+  border-radius: 3px;
   flex-shrink: 0;
   align-self: stretch;
   background-size: 100% 200%;
@@ -19558,10 +19545,10 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 
 .brand-role {
-  font-size: 10px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.5px;
-  margin-top: 2px;
+  letter-spacing: 0.75px;
+  margin-top: 20px;
   display: block;
 }
 
@@ -19573,10 +19560,27 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   color: #185fa5;
 }
 
+/* Hover-reveal ↔ swap-hint icon next to OPERATOR / VIEWER MODE label.
+   Inherits colour from .brand-role; applyModeUI preserves this span when
+   updating the label text node. */
+.brand-role-hint {
+  opacity: 0;
+  margin-left: 6px;
+  transition: opacity 0.15s ease;
+  font-weight: 400;
+}
+.brand-block:hover .brand-role-hint {
+  opacity: 0.5;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-accent {
     animation: none;
     background-size: 100% 100%;
     background-position: 0 0;
+  }
+  .brand-block,
+  .brand-role-hint {
+    transition: none;
   }
 }

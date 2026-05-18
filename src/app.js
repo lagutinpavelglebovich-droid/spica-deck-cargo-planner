@@ -120,8 +120,13 @@ function applyModeUI(){
       : 'Viewer mode active. Click or press Enter to switch to operator.');
   }
   /* Role text row in brand block. Accent bar (.brand-accent) carries the
-     coloured state cue; this label spells it out. */
-  if(labelEl) labelEl.textContent = op ? 'OPERATOR MODE' : 'VIEWER MODE';
+     coloured state cue; this label spells it out. Preserve the trailing
+     .brand-role-hint span (hover-only ⇄ glyph) — textContent= would wipe it. */
+  if(labelEl){
+    const hint = labelEl.querySelector('.brand-role-hint');
+    labelEl.textContent = op ? 'OPERATOR MODE' : 'VIEWER MODE';
+    if(hint) labelEl.appendChild(hint);
+  }
   /* NEW badge on mode button — purely additive, no-op if expired */
   if(btn){
     const oldBadge = btn.querySelector('.feature-badge');
