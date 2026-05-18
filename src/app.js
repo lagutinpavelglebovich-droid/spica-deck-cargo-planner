@@ -358,7 +358,7 @@ function bindAdmin(){
         // Real element under cursor — reliable check across gaps/overhang
         const under = document.elementFromPoint(lastX, lastY);
         const overUpperCard = !!(under && under.closest &&
-          under.closest('.rc-lifts, .rc-ops, .rc-voyage, .rc-tools'));
+          under.closest('.rc-lifts, .rc-ops, .header-info-strip, .rc-tools'));
         // Glow position in slab's own coordinate space (slab origin = ribbon - 12px)
         ribbon.style.setProperty('--glow-x', (lastX - rect.left + PAD) + 'px');
         ribbon.style.setProperty('--glow-y', (lastY - rect.top  + PAD) + 'px');

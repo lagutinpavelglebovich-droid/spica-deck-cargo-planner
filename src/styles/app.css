@@ -12324,8 +12324,6 @@ body.is-viewer .shell-ribbon::after{
 }
 [data-theme="dark"] .rc-lifts,
 [data-theme="dark"] .rc-ops,
-[data-theme="dark"] .rct-group.rct-utility,
-[data-theme="dark"] .rct-group.rct-card2,
 [data-theme="dark"] .loc-card,
 [data-theme="dark"] .loc-card:hover,
 [data-theme="dark"] .loc-card.sel{
@@ -12395,9 +12393,7 @@ body.is-viewer .shell-ribbon::after{
     inset 0 1px 0 rgba(255,255,255,.38) !important;
 }
 [data-theme="dark"] .rc-lifts,
-[data-theme="dark"] .rc-ops,
-[data-theme="dark"] .rct-group.rct-utility,
-[data-theme="dark"] .rct-group.rct-card2{
+[data-theme="dark"] .rc-ops{
   background:
     linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.00) 60%, rgba(0,0,0,.06) 100%),
     rgba(16,24,40,.50) !important;
@@ -19216,6 +19212,16 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   padding: 0 20px;
   align-self: stretch;
   user-select: none;
+  /* Bug 2 fix: override .shell-ribbon's pointer-events:none so #voyIn /
+     #dateBtn can receive clicks. Sibling .rc cards do this via the .rc
+     base rule at line ~10419; the strip needs its own opt-in. */
+  pointer-events: auto;
+  /* Bug 1 fix: absorb cluster-expansion pressure (.gp:hover widens from
+     52px to 165px) so .rc-brand doesn't shrink below the SPICA TIDE
+     wordmark width. flex-shrink:999 makes the strip yield first. */
+  flex: 1 1 auto;
+  flex-shrink: 999;
+  min-width: 0;
 }
 
 .info-block {
@@ -19292,7 +19298,22 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   gap: 8px;
 }
 
-.info-icon { font-size: 16px; line-height: 1; }
+.info-icon {
+  /* Bug 3 fix: SVG inside <img> needs explicit sizing — Meteocons "fill"
+     family declares only viewBox (no intrinsic width/height), so an
+     unsized <img> collapses to 0×0 in WebView2. SMIL <animate> inside
+     the SVG is intrinsic to the asset and resumes once the img is sized. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+.info-icon img {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
 
 .info-divider {
   width: 1px;
@@ -19315,6 +19336,22 @@ body[data-wx]:not([data-wx="off"]) .header-info-strip {
 }
 [data-theme="dark"] .info-value-input:focus {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* Bug 4 defensive: enforce flat (no panel) treatment on .rc-brand and
+   .rc-brand .brand in dark theme. The CSS source has no obvious
+   panel-creating rule on these elements, but Pavel reports a dark
+   panel — this belt-and-suspenders override prevents any cascade
+   surprise from a rule the audit missed. Matches light theme's
+   already-flat look. */
+[data-theme="dark"] .rc-brand,
+[data-theme="dark"] .rc-brand .brand {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
