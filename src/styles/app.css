@@ -18375,7 +18375,7 @@ body.insp-multi .insp-act-dup{ display:none; }
 }
 .rc-lifts .gst-lift-num{
   font-family:'Manrope','Inter',sans-serif;
-  font-size:30px;
+  font-size:22px;
   font-weight:700;
   letter-spacing:0;
   margin-left:0;
@@ -18396,7 +18396,7 @@ body.insp-multi .insp-act-dup{ display:none; }
   display:flex;
   align-items:baseline;
   gap:4px;
-  margin-top:2px;
+  margin-top:1px;
   font-family:'Inter',system-ui,sans-serif;
   font-size:11px;                        /* bumped from 9.5px — at 56px hero, 9.5px crushed to micro-print (5.9× ratio); 11px keeps the operational subtitle legible at hero scale */
   line-height:1;
@@ -18461,7 +18461,7 @@ body.insp-multi .insp-act-dup{ display:none; }
 
 .du-gauge{
   width:100%;
-  max-width:56px;
+  max-width:84px;
   aspect-ratio:1 / 1;
   display:block;
   margin:2px auto 0;
@@ -19246,15 +19246,15 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 
 .info-value,
 .info-value-input {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--txt);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-/* Peterhead temperature — unified with voyage hero value at 30px baseline. */
+/* Peterhead temperature — unified with voyage hero value at 22px baseline. */
 .info-peterhead .info-value {
-  font-size: 30px;
+  font-size: 22px;
   line-height: 1.1;
 }
 
@@ -19349,8 +19349,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   line-height: 1;
 }
 .info-icon img {
-  width: 34px;
-  height: 34px;
+  width: 56px;
+  height: 56px;
   display: block;
 }
 
