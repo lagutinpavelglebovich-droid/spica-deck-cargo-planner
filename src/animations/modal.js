@@ -111,7 +111,10 @@ export function bindSwipeDismiss(modal, onDismiss) {
     startX = e.clientX;
     lastY = e.clientY;
     lastTime = Date.now();
-    modal.setPointerCapture(e.pointerId);
+    /* Do NOT setPointerCapture here — it would consume pointerup and
+       block click synthesis for child interactive elements (status
+       buttons, toggles, DG chip removers etc.). Capture is deferred
+       to pointermove once we know the gesture is a real vertical swipe. */
   });
 
   modal.addEventListener('pointermove', (e) => {
@@ -124,6 +127,9 @@ export function bindSwipeDismiss(modal, onDismiss) {
       decided = true;
       isVertical = Math.abs(deltaY) >= Math.abs(deltaX);
       if (!isVertical) { tracking = false; return; }
+      /* Now that we've committed to a vertical swipe, capture the pointer
+         so the gesture completes even if the user drags outside the modal. */
+      try { modal.setPointerCapture(e.pointerId); } catch (_) {}
     }
 
     if (!decided || !isVertical) return;
