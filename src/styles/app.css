@@ -19264,13 +19264,17 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   max-width: 140px;
   cursor: text;
   font-family: inherit;
-  transition: background 0.15s ease;
-  border-radius: 3px;
+  /* Pro-tool clean: hover/focus emphasis is colour + thin underline,
+     no rectangular highlight. Underline painted via inset box-shadow
+     so the input's box model stays put when focus toggles. */
+  transition: color 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 0;
 }
-.info-value-input:hover { background: rgba(0, 0, 0, 0.04); }
+.info-value-input:hover { color: var(--acc); }
 .info-value-input:focus {
   outline: none;
-  background: rgba(0, 0, 0, 0.06);
+  color: var(--acc);
+  box-shadow: inset 0 -1px 0 var(--acc);
 }
 .info-value-input::placeholder {
   color: var(--txt4);
@@ -19288,14 +19292,18 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
-  border-radius: 3px;
+  /* Same colour + underline pattern as .info-value-input. Keyboard
+     focus surfaces a 1px underline via :focus-visible (accessibility
+     requirement); pointer focus is silent (no underline on click). */
+  transition: color 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 0;
   line-height: 1.2;
 }
-.info-date-btn:hover { background: rgba(0, 0, 0, 0.04); }
+.info-date-btn:hover { color: var(--acc); }
 .info-date-btn:focus-visible {
-  outline: 2px solid var(--brd);
-  outline-offset: 1px;
+  outline: none;
+  color: var(--acc);
+  box-shadow: inset 0 -1px 0 var(--acc);
 }
 
 .info-value-row {
@@ -19306,7 +19314,12 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 
 /* Peterhead block: stack label / temp / icon as three vertical lines,
    matching the Voyage block's 3-line rhythm. Voyage's .info-value-row
-   keeps the global inline-flex layout (input on its own line). */
+   keeps the global inline-flex layout (input on its own line). The
+   parent .info-block centers its three column children (label /
+   value-row / icon) so the wider icon doesn't pull text to the left. */
+.info-block.info-peterhead {
+  align-items: center;
+}
 .info-peterhead .info-value-row {
   display: flex;
   flex-direction: column;
@@ -19345,13 +19358,16 @@ body[data-wx]:not([data-wx="off"]) .header-info-strip {
   display: none;
 }
 
-/* Dark theme — slightly brighter hover surface against dark background. */
+/* Dark theme — accent is light blue against dark, no background fill.
+   Mirrors the light-theme colour-only + underline pattern. */
 [data-theme="dark"] .info-value-input:hover,
 [data-theme="dark"] .info-date-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  color: #5da5f0;
 }
-[data-theme="dark"] .info-value-input:focus {
-  background: rgba(255, 255, 255, 0.08);
+[data-theme="dark"] .info-value-input:focus,
+[data-theme="dark"] .info-date-btn:focus-visible {
+  color: #5da5f0;
+  box-shadow: inset 0 -1px 0 #5da5f0;
 }
 
 /* Bug 4 defensive: enforce flat (no panel) treatment on .rc-brand and
