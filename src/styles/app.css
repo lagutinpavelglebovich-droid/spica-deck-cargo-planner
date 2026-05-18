@@ -19322,6 +19322,7 @@ body.hdr-tight .gp-cluster { gap: 10px; }
    value-row / icon) so the wider icon doesn't pull text to the left. */
 .info-block.info-peterhead {
   align-items: center;
+  gap: 2px;
 }
 /* Group block contents in the middle of the column height (label/value/icon
    as one visual unit instead of spreading top-to-bottom). Voyage block
@@ -19349,9 +19350,15 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   line-height: 1;
 }
 .info-icon img {
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
   display: block;
+  /* Visual-center correction for Meteocons fill family. Path bounds for
+     plain cloudy.svg are geometrically centered, but partly-cloudy-* and
+     other variants distribute mass slightly left (sun at cx=39 in 128
+     viewBox). 2px right shift balances the family without over-correcting
+     the centered ones. */
+  transform: translateX(2px);
 }
 
 .info-divider {
