@@ -530,45 +530,33 @@
     </div>
   </div>
 
-  <!-- Card 4: Voyage Info -->
-  <div class="rc rc-voyage">
-    <div class="voy-card">
-      <div class="voy-row">
-        <input class="voy-input" type="text" id="voyIn" placeholder="Voyage No." size="11">
+  <!-- Header info strip — replaces .rc-voyage + .rc-wx cards (pro-tool inline pattern).
+       IDs preserved for JS continuity:
+         #voyIn       — voyage number input (autobind oninput=save at app.js:14267)
+         #dateBtn     — date display button (setDateDisplay, calendar popup)
+         #wxChipCity  — Peterhead label (now display-only, was a button)
+         #wxChipTemp  — temperature span (set by _wxApply)
+         #wxChipIcon  — weather emoji span (set by _wxApply)
+       Removed: #voyRemarksBtn (button), #wxChip (button wrapper), #wxChipGroup
+       (wrapping plate). Their handlers in bindVoyageRemarks / _wxBind become
+       orphan no-ops — intentional, see commit message Strategy A. -->
+  <div class="header-info-strip">
+    <div class="info-block info-voyage">
+      <span class="info-label">VOYAGE</span>
+      <div class="info-value-row">
+        <input id="voyIn" class="info-value-input" type="text" placeholder="—" autocomplete="off" spellcheck="false" aria-label="Voyage number">
       </div>
-      <div class="voy-row">
-        <button class="voy-date-btn" id="dateBtn"></button>
-      </div>
-      <button class="voy-remarks-btn" id="voyRemarksBtn" title="Voyage Notes / Remarks">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 4h6M3 6.5h4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
-        Voyage Notes
-      </button>
+      <button id="dateBtn" class="info-date-btn" type="button" aria-label="Edit voyage date"></button>
     </div>
-  </div>
 
-  <!-- Card 4.5: Weather plate (Phase W5 §13)
-       Promoted from inline chip-in-brand to a dedicated header card.
-       Always visible — atmosphere toggle controls VFX rendering only,
-       not plate visibility. Layout adapts by mode:
-         auto  → city + temp + icon + wind + refresh
-         manual → city + condition name + icon (refresh hidden)
-       IDs preserved for JS continuity (wxChipGroup, wxChipCity,
-       wxChipTemp, wxChipIcon). Removed: wxChipRefresh, wxChipWind,
-       wxChipCondition (manual mode retired in v7 — atmosphere now
-       always reflects real weather data). -->
-  <div class="rc rc-wx">
-    <div class="wx-plate" id="wxChipGroup">
-      <button type="button" class="wx-plate-body" id="wxChip" title="Weather — click to edit" aria-label="Weather — click to edit">
-        <div class="wx-plate-top">
-          <span class="wx-plate-city" id="wxChipCity">—</span>
-        </div>
-        <div class="wx-plate-main">
-          <div class="wx-plate-readout">
-            <span class="wx-plate-temp" id="wxChipTemp"></span>
-          </div>
-          <span class="wx-plate-icon" id="wxChipIcon" aria-hidden="true"></span>
-        </div>
-      </button>
+    <span class="info-divider" aria-hidden="true"></span>
+
+    <div class="info-block info-peterhead">
+      <span class="info-label" id="wxChipCity">—</span>
+      <div class="info-value-row">
+        <span class="info-value" id="wxChipTemp"></span>
+        <span class="info-icon" id="wxChipIcon" aria-hidden="true"></span>
+      </div>
     </div>
   </div>
 

@@ -708,47 +708,7 @@ body.is-viewer .bp-viewer-indicator{
 }
 .rh-close-row{text-align:center;margin-top:16px;}
 
-/* Voyage + Date card — Level 4: clear, functional, not competing */
-.voy-card{
-  display:flex;flex-direction:column;justify-content:center;
-  padding:0 20px;gap:0;flex-shrink:0;
-  border-left:1px solid var(--sep);
-  border-right:1px solid var(--sep);
-  margin:0;
-  background:transparent;
-  min-width:160px;
-}
-.voy-row{
-  display:flex;align-items:center;gap:0;
-  padding:4px 0;
-}
-.voy-row:first-child{
-  border-bottom:1px solid var(--sep);
-}
-.voy-lbl{
-  font-size:7px;letter-spacing:1.8px;color:var(--txt4);
-  text-transform:uppercase;font-weight:700;
-  min-width:46px;font-family:'Inter',sans-serif;
-  flex-shrink:0;
-}
-.voy-input{
-  background:transparent;border:none;
-  color:var(--txt);font-family:'JetBrains Mono',monospace;
-  font-size:13px;font-weight:700;padding:2px 6px;
-  border-radius:var(--r-xs);width:120px;
-  transition:background .15s;cursor:text;
-  letter-spacing:.3px;
-}
-.voy-input::placeholder{color:var(--txt4);opacity:.45;font-weight:400;letter-spacing:.2px;}
-.voy-input:focus{outline:none;background:rgba(72,96,131,.07);}
-.voy-date-btn{
-  font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;
-  color:var(--txt2);cursor:pointer;padding:2px 6px;
-  border-radius:var(--r-xs);border:none;
-  transition:all .15s;background:transparent;
-  letter-spacing:.2px;
-}
-.voy-date-btn:hover{background:rgba(177,179,169,.20);color:var(--txt);}
+/* .voy-card/.voy-row/.voy-input/.voy-date-btn rules removed — voyage card replaced by .header-info-strip */
 
 /* ═══════════════════════════════════════
    LOCATION ROW — editorial collapsible
@@ -2348,8 +2308,6 @@ body[data-wx]:not([data-wx="off"])::before{
    white vs ~55% on neighbouring cards. */
 body[data-wx]:not([data-wx="off"]) .rc-lifts,
 body[data-wx]:not([data-wx="off"]) .rc-ops,
-body[data-wx]:not([data-wx="off"]) .rc-voyage,
-body[data-wx]:not([data-wx="off"]) .rc-wx,
 body[data-wx]:not([data-wx="off"]) .rct-group,
 body[data-wx]:not([data-wx="off"]) .loc-card{
   background:
@@ -2377,8 +2335,6 @@ body[data-wx]:not([data-wx="off"]) .menubar{
 
 [data-theme="dark"] body[data-wx]:not([data-wx="off"]) .rc-lifts,
 [data-theme="dark"] body[data-wx]:not([data-wx="off"]) .rc-ops,
-[data-theme="dark"] body[data-wx]:not([data-wx="off"]) .rc-voyage,
-[data-theme="dark"] body[data-wx]:not([data-wx="off"]) .rc-wx,
 [data-theme="dark"] body[data-wx]:not([data-wx="off"]) .rct-group,
 [data-theme="dark"] body[data-wx]:not([data-wx="off"]) .loc-card{
   background:
@@ -3847,183 +3803,7 @@ body[data-wx="clear-night"]          .wx-chip-icon{ color:#1e2a42; } /* mirrors 
    so the layout is stable; it shows a generic cloud when no data.
    ───────────────────────────────────────────────────────────────────── */
 
-/* Phase W5 §13 v3 — locked footprint so .rc-voyage retains its
-   original flex distribution. With flex: 0 1 auto the plate could
-   stretch up to 240px on wide ribbons, eating space that .rc-voyage
-   needed to centre its date display. Hard-pinning the basis keeps
-   the rest of the row predictable. */
-.rc-wx{
-  flex: 0 0 150px !important;
-  min-width: 150px !important;
-  max-width: 150px !important;
-  min-height: 80px !important;       /* taller than the 56px default to
-                                        accommodate the 36px temperature */
-  align-items: stretch;              /* let .wx-plate fill the card height */
-}
-
-.wx-plate{
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding: 8px 12px;
-  gap: 4px;
-}
-
-.wx-plate-body{
-  /* The plate body is a button so the whole card is clickable
-     (opens Smart Tools › Weather). Strip default button chrome. */
-  appearance: none;
-  background: transparent;
-  border: 0;
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.wx-plate-body:focus-visible{
-  outline: 2px solid rgba(59,110,181,.45);
-  outline-offset: 2px;
-  border-radius: var(--r-card);
-}
-
-.wx-plate-top{
-  display: flex;
-  align-items: center;
-  min-height: 14px;
-}
-.wx-plate-city{
-  flex: 1 1 auto;
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: .15px;
-  /* Phase W5 §13 v5 — explicit color + full opacity so text reads
-     cleanly against the brighter frosted .rc background that
-     body[data-wx]:not([data-wx="off"]) paints behind the card.
-     Use --txt2 for the secondary tone instead of dimming --txt. */
-  color: var(--txt2);
-  opacity: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wx-plate-main{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;   /* readout left, icon right */
-  gap: 6px;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-/* Readout — single inline-baseline row holding temp · wind (auto)
-   or condition (manual). The :empty CSS hides whichever isn't in
-   use; baseline alignment lets the small wind sit on the same
-   typographic baseline as the large temperature. */
-.wx-plate-readout{
-  display: flex;
-  align-items: baseline;
-  flex: 0 1 auto;
-  min-width: 0;
-  line-height: 1;
-}
-.wx-plate-temp{
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 36px;
-  font-weight: 500;
-  letter-spacing: -.5px;
-  color: var(--txt);
-  opacity: 1;                /* defensive — full contrast on bright atmosphere bg */
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-.wx-plate-temp:empty{ display: none; }
-/* .wx-plate-condition removed in v7 — manual mode retired, condition
-   labels no longer rendered in the plate. */
-
-/* Wind removed (Phase W5 §13 v3 — visually unbalances the plate).
-   Cache still stores windSpeed via autoRefresh; future Smart Tools
-   surfacing can re-introduce it. The plate is now city + temp + icon
-   in auto mode, city + condition + icon in manual mode. */
-
-.wx-plate-icon{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  flex: 0 0 64px;
-  margin-right: -4px;        /* slight right offset per spec */
-}
-.wx-plate-icon img{
-  width: 64px;
-  height: 64px;
-  display: block;
-  /* Lift the Meteocons fill-style icon off light surfaces. The .55 white
-     Secondary card material kills the icon's native blue contrast in light
-     mode; the tight 0.5px shadow acts as a dark micro-outline, the 1px
-     offset shadow adds subtle float. Both are nearly invisible in dark
-     mode where contrast is already good — net cost zero. */
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.25))
-          drop-shadow(0 0 0.5px rgba(0,0,0,.35));
-}
-
-/* Mode modifiers removed in v7 — auto/manual split retired. The plate
-   now always renders city + temp + icon from cached weather. */
-
-/* Phase W5 §13 v5 — .is-inactive dimming removed. Atmosphere toggle
-   now controls only body[data-wx] VFX; the plate looks identical
-   regardless of _wxState.enabled. */
-
-/* Stale — auto-mode cache is over an hour old. Slight dim plus
-   a small amber dot near the city name. */
-.wx-plate.is-stale{
-  opacity: .7;
-}
-.wx-plate.is-stale .wx-plate-city::before{
-  content: "";
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: rgba(190, 145, 60, .85);
-  vertical-align: middle;
-}
-
-/* ── Dark theme ──────────────────────────────────────────────── */
-[data-theme="dark"] .wx-plate-city{
-  /* v5 — match light-mode treatment: secondary text colour, full opacity. */
-  color: #c0c9d6;
-  opacity: 1;
-}
-[data-theme="dark"] .wx-plate-temp{
-  color: #e4eaf3;
-}
-[data-theme="dark"] .wx-plate.is-stale .wx-plate-city::before{
-  background: rgba(220, 180, 100, .85);
-}
-
-/* ── Responsive — narrow viewport ──────────────────────────────
-   At very narrow widths, .rc-wx may shrink past comfortable. The
-   font scale steps down so wind/condition still reads cleanly. */
-@media (max-width: 1100px){
-  .rc-wx{
-    flex: 0 0 130px !important;
-    min-width: 130px !important;
-    max-width: 130px !important;
-  }
-  .wx-plate-temp{ font-size: 32px; }
-  .wx-plate-icon,
-  .wx-plate-icon img{ width: 56px; height: 56px; flex-basis: 56px; }
-}
+/* .rc-wx + .wx-plate* rules removed — weather card replaced by inline .info-block .info-peterhead in .header-info-strip */
 
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -7025,7 +6805,7 @@ html{
 /* Theme transition — only on structural UI elements, never on canvas/SVG/input */
 .hdr,.locs-row,.deck-area,.deck-outer,.dcv,.cp,.cp-head,.cp-body,
 .cp-filters,.cp-sec,.cp-sec-hdr,.cp-sec-body,.cp-search-wrap,
-.loc-card,.gst,.gst-sep,.hst,.voy-card,.hdr-right,
+.loc-card,.gst,.gst-sep,.hst,.hdr-right,
 .mdl,.admin-modal,.asco-panel,.saveas-dropdown,
 .dg-bar,.dgw,.zoom-bar,.zbtn,.brand,
 .theme-pill,.theme-icon-btn,.lang-picker-btn,.ver-badge-inner {
@@ -7391,28 +7171,7 @@ html{
 }
 
 
-/* ═══════════════════════════════════════
-   VOYAGE REMARKS BUTTON
-═══════════════════════════════════════ */
-.voy-remarks-btn{
-  display:flex;align-items:center;gap:5px;
-  padding:3px 10px;border-radius:20px;
-  font-family:'Inter',sans-serif;font-size:8.5px;font-weight:600;
-  letter-spacing:.3px;cursor:pointer;
-  border:1px solid var(--brd);
-  background:transparent;color:var(--txt3);
-  transition:all .15s;white-space:nowrap;
-  margin-top:2px;
-}
-.voy-remarks-btn:hover{background:rgba(72,96,131,.07);border-color:var(--acc);color:var(--acc);}
-.voy-remarks-btn.has-notes{
-  border-color:var(--acc);color:var(--acc);
-  background:rgba(72,96,131,.07);
-}
-.voy-remarks-btn.has-notes::before{
-  content:'';width:5px;height:5px;border-radius:50%;
-  background:var(--acc);flex-shrink:0;
-}
+/* .voy-remarks-btn rules removed — remarks button dropped from new strip (handler kept as dead code per Strategy A) */
 
 /* ═══════════════════════════════════════
    REMARKS MODAL
@@ -7620,9 +7379,6 @@ body.hdr-compact .gst-val.rob{ font-size:22px; }
 body.hdr-compact .gst-sep{ margin:0; }
 
 body.hdr-compact .hst{ padding:7px 10px; }
-body.hdr-compact .voy-card{ padding:0 12px; min-width:140px; }
-body.hdr-compact .voy-input{ width:100px; font-size:12px; }
-body.hdr-compact .voy-remarks-btn{ display:none; }
 
 body.hdr-compact .btn-clr-deck{ padding:0 13px; }
 body.hdr-compact .btn-saveas{ padding:0 12px; }
@@ -7647,11 +7403,6 @@ body.hdr-tight .hst{ padding:5px 9px; gap:3px; }
 body.hdr-tight .hst-lbl{ display:none; }
 body.hdr-tight .sb{ padding:3px 8px; font-size:8.5px; }
 
-body.hdr-tight .voy-card{ padding:0 8px; }
-body.hdr-tight .voy-lbl{ display:none; }
-body.hdr-tight .voy-input{ width:86px; font-size:11px; }
-body.hdr-tight .voy-date-btn{ font-size:10px; padding:2px 4px; }
-body.hdr-tight .voy-remarks-btn{ display:none; }
 
 body.hdr-tight .btn-clr-deck{ padding:0 9px; }
 body.hdr-tight .btn-clr-deck-lbl{ display:none; }
@@ -7679,11 +7430,6 @@ body.hdr-mini .gst-wt{ display:none; }
 body.hdr-mini .hst{ padding:4px 6px; }
 body.hdr-mini .hst-lbl{ display:none; }
 body.hdr-mini .sb{ padding:3px 6px; font-size:8px; }
-body.hdr-mini .voy-card{ padding:0 6px; min-width:110px; }
-body.hdr-mini .voy-lbl{ display:none; }
-body.hdr-mini .voy-input{ width:72px; font-size:10px; }
-body.hdr-mini .voy-date-btn{ font-size:9px; }
-body.hdr-mini .voy-remarks-btn{ display:none; }
 body.hdr-mini .btn-clr-deck{ padding:0 7px; }
 body.hdr-mini .btn-clr-deck-lbl{ display:none; }
 body.hdr-mini .btn-saveas{ padding:0 7px; }
@@ -9401,10 +9147,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
 [data-theme="dark"] .sb.sel{ color:#fff; }
 
 /* Voyage card dark mode */
-[data-theme="dark"] .voy-card{ border-color:var(--brd); }
-[data-theme="dark"] .voy-input{ background:var(--surf3); border-color:var(--brd); color:var(--txt); }
-[data-theme="dark"] .voy-date-btn{ color:var(--txt2); }
-[data-theme="dark"] .voy-remarks-btn{ color:var(--txt3); border-color:var(--brd); }
 
 /* Library panel cards dark mode */
 [data-theme="dark"] .cp-card{ background:var(--surf3); border-color:var(--brd); }
@@ -9698,12 +9440,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
   align-self:center;
 }
 .mode-btn-icon{ font-size:11px !important; }
-
-/* ── VOYAGE CARD: Tighter, integrated ─────────────────────────── */
-.voy-card{
-  padding:6px 14px !important;
-  gap:2px;
-}
 
 /* ── TOOLBAR BUTTONS: Unified modern surface style ────────────── */
 .btn-asco-upload,
@@ -10437,11 +10173,6 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
   min-width: 0 !important;
   max-width: 340px !important;
 }
-.rc-voyage{
-  flex: 1 1 auto !important;     /* grows with the rest of the row — same size system */
-  min-width: 0 !important;
-  max-width: 280px !important;
-}
 .rc-tools{
   flex: 1 1 auto !important;
   min-width: 0 !important;
@@ -10548,41 +10279,6 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
 
 /* Voyage — matches the other top tiles' size system: padding, radius,
    height (stretches to row's tallest), and visual weight. */
-.rc-voyage{
-  padding: 6px 14px !important;        /* restore breathing */
-  flex-direction: column !important;
-  align-items: stretch !important;
-  justify-content: flex-start !important;
-  gap: 4px !important;
-}
-/* Voyage pseudo-header removed — the date itself is the hero, no need
-   for a redundant "Voyage Info" label. */
-.rc-voyage::before{ display:none !important; content:none !important; }
-.rc-voyage .voy-card{
-  border:none !important;
-  padding: 6px 14px !important;
-  min-width: 0;
-  background: rgba(30,48,72,.04) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(30,60,90,.08),
-    inset 0 -1px 0 rgba(255,255,255,.40) !important;
-  border-radius: var(--r-card) !important;
-  flex: 1 1 auto !important;           /* fills the stretched card height */
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;  /* content centered inside the well */
-}
-[data-theme="dark"] .rc-voyage .voy-card{
-  background: rgba(0,0,0,.18) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(0,0,0,.26),
-    inset 0 -1px 0 rgba(255,255,255,.04) !important;
-}
-/* Remove the divider between voyage and date rows — cleaner unified well */
-.rc-voyage .voy-row:first-child{
-  border-bottom: none !important;
-}
-
 /* Tools card — horizontal button row */
 .rc-tools{ padding:0 4px;gap:0; }
 .rc-tools .btn-asco-upload,
@@ -11105,76 +10801,6 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
   box-shadow:
     0 1px 3px rgba(0,0,0,.28),
     inset 0 1px 0 rgba(255,255,255,.08) !important;
-}
-
-/* ── Voyage fields — transparent inside the well, labels removed from DOM.
-   Values now occupy the full row width. DATE dominant, Voyage No. secondary.
-   v5 — `justify-content: center` so the date/input sit in the middle of
-   the row. The previous `flex-start` left-pinned the content, which read
-   as off-centre after .rc-wx joined the header row. */
-.rc-voyage .voy-row{
-  padding: 3px 0 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-}
-/* Any stray .voy-lbl that could resurface (e.g. i18n re-render) is hidden defensively */
-.rc-voyage .voy-lbl{ display: none !important; }
-.voy-input{
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 4px !important;
-  padding: 2px 4px !important;
-  font-size: 11px !important;            /* recessive meta row */
-  flex: 0 0 auto !important;
-  width: auto !important;
-  min-width: 0 !important;
-  font-weight: 500 !important;
-  letter-spacing: .1px !important;
-  color: var(--txt3) !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
-  font-variant-numeric: tabular-nums !important;
-  transition: background .18s ease, box-shadow .18s ease !important;
-}
-.voy-input::placeholder{ color:var(--txt4) !important; opacity:.55 !important; font-weight:400 !important; text-transform:none !important; }
-.voy-input:focus{
-  background: rgba(59,130,246,.08) !important;
-  box-shadow: 0 0 0 2px rgba(59,130,246,.14) !important;
-}
-.voy-date-btn{
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 4px !important;
-  padding: 3px 4px !important;
-  /* Date is the hero — confident middle-register display size */
-  font-size: clamp(18px, 1.6vw, 22px) !important;
-  flex: 0 0 auto !important;
-  width: auto !important;
-  min-width: 0 !important;
-  font-weight: 700 !important;
-  letter-spacing: .2px !important;
-  text-align: left !important;
-  color: var(--brand-tide) !important;
-  font-family: 'Manrope', 'Inter', system-ui, sans-serif !important;
-  font-variant-numeric: tabular-nums !important;
-  transition: all .18s ease !important;
-}
-/* Force the date color with high specificity — guaranteed match to TIDE */
-html .rc-voyage .voy-date-btn,
-html[data-theme="dark"] .rc-voyage .voy-date-btn{
-  color: var(--brand-tide) !important;
-  -webkit-text-fill-color: var(--brand-tide) !important;
-}
-.voy-date-btn:hover{
-  background: rgba(59,130,246,.08) !important;
-}
-[data-theme="dark"] .voy-input:focus{
-  background: rgba(96,165,250,.14) !important;
-  box-shadow: 0 0 0 2px rgba(96,165,250,.22) !important;
-}
-[data-theme="dark"] .voy-date-btn:hover{
-  background: rgba(96,165,250,.10) !important;
 }
 
 /* ── Right cluster — three distinct grouped surfaces inside rc-tools ──── */
@@ -12674,8 +12300,6 @@ body.is-viewer .shell-ribbon::after{
    smaller native radius but share the same glass material otherwise. */
 .rc-lifts,
 .rc-ops,
-.rc-voyage,
-.rc-wx,
 .rct-group.rct-utility,
 .rct-group.rct-card2,
 .loc-card{
@@ -12688,8 +12312,6 @@ body.is-viewer .shell-ribbon::after{
    stacked 3-layer inset rim — premium direction intact, less noise. */
 .rc-lifts,
 .rc-ops,
-.rc-voyage,
-.rc-wx,
 .rct-group.rct-utility,
 .rct-group.rct-card2,
 .loc-card,
@@ -12702,8 +12324,6 @@ body.is-viewer .shell-ribbon::after{
 }
 [data-theme="dark"] .rc-lifts,
 [data-theme="dark"] .rc-ops,
-[data-theme="dark"] .rc-voyage,
-[data-theme="dark"] .rc-wx,
 [data-theme="dark"] .rct-group.rct-utility,
 [data-theme="dark"] .rct-group.rct-card2,
 [data-theme="dark"] .loc-card,
@@ -12761,8 +12381,6 @@ body.is-viewer .shell-ribbon::after{
    read as one coherent glass system — readability never depends on tier. */
 .rc-lifts,
 .rc-ops,
-.rc-voyage,
-.rc-wx,
 .rct-group.rct-utility,
 .rct-group.rct-card2{
   background:
@@ -12778,8 +12396,6 @@ body.is-viewer .shell-ribbon::after{
 }
 [data-theme="dark"] .rc-lifts,
 [data-theme="dark"] .rc-ops,
-[data-theme="dark"] .rc-voyage,
-[data-theme="dark"] .rc-wx,
 [data-theme="dark"] .rct-group.rct-utility,
 [data-theme="dark"] .rct-group.rct-card2{
   background:
@@ -19583,4 +19199,125 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   .brand-role-hint {
     transition: none;
   }
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   HEADER INFO STRIP — Voyage + Peterhead inline (pro-tool pattern)
+   Replaces .rc-voyage and .rc-wx cards (deleted in this commit).
+   Lives as direct child of .shell-ribbon between the stats card
+   and the .rc-tools cluster. IDs #voyIn, #dateBtn, #wxChipCity,
+   #wxChipTemp, #wxChipIcon preserved for JS continuity.
+═════════════════════════════════════════════════════════════ */
+.header-info-strip {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  align-self: stretch;
+  user-select: none;
+}
+
+.info-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.info-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--txt3);
+  line-height: 1;
+}
+
+.info-value,
+.info-value-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.info-value-input {
+  background: transparent;
+  border: 0;
+  padding: 2px 0;
+  width: 100%;
+  max-width: 140px;
+  cursor: text;
+  font-family: inherit;
+  transition: background 0.15s ease;
+  border-radius: 3px;
+}
+.info-value-input:hover { background: rgba(0, 0, 0, 0.04); }
+.info-value-input:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.06);
+}
+.info-value-input::placeholder {
+  color: var(--txt4);
+  font-weight: 400;
+}
+
+.info-date-btn {
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  margin-left: -4px;
+  font-size: 11px;
+  color: var(--txt2);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+  border-radius: 3px;
+  line-height: 1.2;
+}
+.info-date-btn:hover { background: rgba(0, 0, 0, 0.04); }
+.info-date-btn:focus-visible {
+  outline: 2px solid var(--brd);
+  outline-offset: 1px;
+}
+
+.info-value-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-icon { font-size: 16px; line-height: 1; }
+
+.info-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--sep);
+  margin: 8px 0;
+}
+
+/* Weather VFX hides the strip — design lock per Pavel. Old cards
+   instead got an atmosphere background veil; the strip is omitted
+   entirely so on-deck weather VFX is unobstructed. */
+body[data-wx]:not([data-wx="off"]) .header-info-strip {
+  display: none;
+}
+
+/* Dark theme — slightly brighter hover surface against dark background. */
+[data-theme="dark"] .info-value-input:hover,
+[data-theme="dark"] .info-date-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+[data-theme="dark"] .info-value-input:focus {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-value-input,
+  .info-date-btn { transition: none; }
 }
