@@ -10161,6 +10161,7 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
    proportionally across any screen size. */
 .rc-brand{
   flex: 0 1 auto !important;
+  flex-shrink: 0 !important;        /* lock at natural width — cluster pill hover (.gp:hover 52→165px) must not pressure SPICA TIDE wordmark into wrap */
   min-width: 0 !important;
 }
 .rc-lifts{
@@ -19233,7 +19234,7 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 
 .info-label {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -19243,11 +19244,16 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 
 .info-value,
 .info-value-input {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--txt);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+}
+/* Peterhead temperature reads as the hero of its block — slightly larger
+   than the voyage number input to match the larger weather icon below. */
+.info-peterhead .info-value {
+  font-size: 22px;
 }
 
 .info-value-input {
@@ -19276,7 +19282,7 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   border: 0;
   padding: 2px 4px;
   margin-left: -4px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--txt2);
   font-family: inherit;
   font-variant-numeric: tabular-nums;
@@ -19298,6 +19304,16 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   gap: 8px;
 }
 
+/* Peterhead block: stack label / temp / icon as three vertical lines,
+   matching the Voyage block's 3-line rhythm. Voyage's .info-value-row
+   keeps the global inline-flex layout (input on its own line). */
+.info-peterhead .info-value-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
 .info-icon {
   /* Bug 3 fix: SVG inside <img> needs explicit sizing — Meteocons "fill"
      family declares only viewBox (no intrinsic width/height), so an
@@ -19310,8 +19326,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   line-height: 1;
 }
 .info-icon img {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   display: block;
 }
 
