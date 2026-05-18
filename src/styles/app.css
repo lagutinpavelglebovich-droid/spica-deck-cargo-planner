@@ -19529,15 +19529,15 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   align-self: stretch;
   background-size: 100% 200%;
   background-position: 0% 100%;
-  animation: brand-accent-flow 3s linear infinite;
+  animation: brand-accent-flow 4s linear infinite;
 }
 
 .brand-block.mode-operator .brand-accent {
-  background-image: linear-gradient(to top, #1a0800 0%, #fff0e0 50%, #1a0800 100%);
+  background-image: linear-gradient(to top, #a83a0c 0%, #ffc090 50%, #a83a0c 100%);
 }
 
 .brand-block.mode-viewer .brand-accent {
-  background-image: linear-gradient(to top, #02112a 0%, #e8f4ff 50%, #02112a 100%);
+  background-image: linear-gradient(to top, #154a85 0%, #b8d8f5 50%, #154a85 100%);
 }
 
 @keyframes brand-accent-flow {
