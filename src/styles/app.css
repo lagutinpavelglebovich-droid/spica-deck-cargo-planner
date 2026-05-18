@@ -19250,10 +19250,10 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-/* Peterhead temperature reads as the hero of its block — slightly larger
-   than the voyage number input to match the larger weather icon below. */
+/* Peterhead temperature reads as the hero of its block — sized so that
+   icon : temp = 2 : 1 (industry standard for iOS Weather, Carrot etc.). */
 .info-peterhead .info-value {
-  font-size: 22px;
+  font-size: 28px;
 }
 
 .info-value-input {
@@ -19320,6 +19320,13 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 .info-block.info-peterhead {
   align-items: center;
 }
+/* Group block contents in the middle of the column height (label/value/icon
+   as one visual unit instead of spreading top-to-bottom). Voyage block
+   gets the same treatment for symmetry across the two columns. */
+.info-block.info-voyage,
+.info-block.info-peterhead {
+  justify-content: center;
+}
 .info-peterhead .info-value-row {
   display: flex;
   flex-direction: column;
@@ -19339,8 +19346,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   line-height: 1;
 }
 .info-icon img {
-  width: 88px;
-  height: 88px;
+  width: 56px;
+  height: 56px;
   display: block;
 }
 
