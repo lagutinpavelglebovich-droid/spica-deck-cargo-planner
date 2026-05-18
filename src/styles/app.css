@@ -10224,7 +10224,8 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
 }
 .rc-brand .brand-dcp{
   font-size:11px !important;letter-spacing:.1px !important;
-  margin-top:9px !important;
+  margin-top:2px !important;
+  line-height:1.2 !important;
   font-weight:500 !important;
   color:var(--brand-tide) !important;
   opacity:.88;
@@ -13797,7 +13798,7 @@ body.vessel-align-mode .dcv{ pointer-events: none !important; }
   margin: calc(var(--shell-m) + 4px) calc(var(--shell-m) + 12px) 0 !important;
 }
 .shell-ribbon::before{ inset: -8px !important; }            /* slab matches new margin */
-.shell-ribbon .rc{ padding-top:8px !important; padding-bottom:8px !important; }
+.shell-ribbon .rc{ padding-top:6px !important; padding-bottom:6px !important; }
 /* .rc-tools has no card chrome of its own — the two inner glass cards
    (.rct-utility / .rct-card2) ARE the visible surfaces. Zero the top
    deck-first padding so those inner cards stretch to the full ribbon
@@ -18357,10 +18358,11 @@ body.insp-multi .insp-act-dup{ display:none; }
   background:transparent;
 }
 .rc-lifts .gst-lift-hero .gst-lbl{
-  margin-bottom:2px !important;          /* breathing room between label and 56px hero number — at hero scale, 0px crowded the label against the digit */
+  margin-bottom:2px !important;
   font-size:10px !important;
-  letter-spacing:.1px !important;
-  text-transform:none !important;
+  letter-spacing:0.08em !important;
+  text-transform:uppercase !important;
+  line-height:1.2 !important;
   font-weight:600 !important;
   color:var(--txt3) !important;
   white-space:nowrap;
@@ -18368,19 +18370,19 @@ body.insp-multi .insp-act-dup{ display:none; }
 .rc-lifts .gst-lift-row{
   display:flex;
   align-items:baseline;
-  line-height:.95;
-  margin:1px 0 -1px;                    /* negative bottom margin pulls meta closer — number no longer floats */
+  line-height:1.1;
+  margin:0;
 }
 .rc-lifts .gst-lift-num{
   font-family:'Manrope','Inter',sans-serif;
-  font-size:56px;                        /* 2.8× ratio over 20px secondary KPIs — clear hero hierarchy */
-  font-weight:800;                       /* Manrope max weight */
-  letter-spacing:-1.5px;                 /* tight enough for display confidence; backed off from -2 to keep tabular "88"/"00" pairs from collapsing */
-  margin-left:-2px;                      /* optical alignment — compensates Manrope 800's ~2px left side bearing at 56px so the number's painted ink sits on the same axis as the 10px label and 11px subtitle (whose tiny glyphs have no perceptible bearing) */
+  font-size:30px;
+  font-weight:700;
+  letter-spacing:0;
+  margin-left:0;
   color:var(--txt);
   font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1;
-  line-height:.95;
+  line-height:1.1;
   text-shadow:0 1px 0 rgba(255,255,255,.45);
 }
 [data-theme="dark"] .rc-lifts .gst-lift-num{
@@ -18394,7 +18396,7 @@ body.insp-multi .insp-act-dup{ display:none; }
   display:flex;
   align-items:baseline;
   gap:4px;
-  margin-top:4px;                        /* pushed from 2px — gives subtitle air below the 56px hero; 2px crowded against the bottom of the giant digit */
+  margin-top:2px;
   font-family:'Inter',system-ui,sans-serif;
   font-size:11px;                        /* bumped from 9.5px — at 56px hero, 9.5px crushed to micro-print (5.9× ratio); 11px keeps the operational subtitle legible at hero scale */
   line-height:1;
@@ -18459,7 +18461,7 @@ body.insp-multi .insp-act-dup{ display:none; }
 
 .du-gauge{
   width:100%;
-  max-width:84px;
+  max-width:56px;
   aspect-ratio:1 / 1;
   display:block;
   margin:2px auto 0;
@@ -19161,7 +19163,7 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.75px;
-  margin-top: 20px;
+  margin-top: 7px;
   display: block;
 }
 
@@ -19236,24 +19238,24 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 .info-label {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--txt3);
-  line-height: 1;
+  line-height: 1.2;
 }
 
 .info-value,
 .info-value-input {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
   color: var(--txt);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-/* Peterhead temperature reads as the hero of its block — sized so that
-   icon : temp = 2 : 1 (industry standard for iOS Weather, Carrot etc.). */
+/* Peterhead temperature — unified with voyage hero value at 30px baseline. */
 .info-peterhead .info-value {
-  font-size: 28px;
+  font-size: 30px;
+  line-height: 1.1;
 }
 
 .info-value-input {
@@ -19286,7 +19288,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   border: 0;
   padding: 2px 4px;
   margin-left: -4px;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--txt2);
   font-family: inherit;
   font-variant-numeric: tabular-nums;
@@ -19346,8 +19349,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   line-height: 1;
 }
 .info-icon img {
-  width: 56px;
-  height: 56px;
+  width: 34px;
+  height: 34px;
   display: block;
 }
 
