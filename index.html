@@ -571,8 +571,17 @@
   <!-- Card 5: Tools & Actions — three distinct control groups -->
   <div class="rc rc-tools">
 
-    <!-- ─── Gradient-pill cluster: Upload / Library / Smart Tools / Theme / Language ─── -->
+    <!-- ─── Gradient-pill cluster: Mode / Upload / Library / Smart Tools / Theme / Language ─── -->
     <div class="gp-cluster">
+
+      <!-- 0. Mode (Operator/Viewer) — role-encoded gradient. applyModeUI() rewrites
+           the class (gp-operator/gp-viewer), #modeIco textContent, and #modeLbl
+           textContent on init and after every setMode(). Click → openModeModal(). -->
+      <button class="gp gp-mode gp-viewer" id="modeBtn" aria-label="Toggle operator mode">
+        <span class="gp-ico" id="modeIco">&#x1F512;</span>
+        <span class="gp-lbl" id="modeLbl">VIEWER</span>
+        <span class="gp-badge" id="modeDot"></span>
+      </button>
 
       <!-- 1. Upload -->
       <button class="gp gp-upload" id="btnAscoUpload" aria-label="Upload cargo list">

@@ -107,15 +107,15 @@ const SPICA_CONFIG = {
 function applyModeUI(){
   const op = isOperator();
   const btn = document.getElementById('modeBtn');
-  const iconEl = document.getElementById('modeBtnIcon');
-  const labelEl = document.getElementById('modeBtnLabel');
+  const iconEl = document.getElementById('modeIco');
+  const labelEl = document.getElementById('modeLbl');
   const banner = document.getElementById('viewerBanner');
   /* Body class drives subtle viewer indicator in the bottom status bar
      (see .bp-viewer-indicator CSS). Replaces the old fixed banner. */
   document.body.classList.toggle('is-viewer', !op);
   if(btn){
-    btn.classList.toggle('mode-operator', op);
-    btn.classList.toggle('mode-viewer', !op);
+    btn.classList.toggle('gp-operator', op);
+    btn.classList.toggle('gp-viewer', !op);
   }
   /* Operator = gear (⚙), Viewer = lock (🔒). Icon signals state. */
   if(iconEl) iconEl.textContent = op ? '\u2699' : '\uD83D\uDD12';
