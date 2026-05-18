@@ -19497,27 +19497,86 @@ body.hdr-tight .gp .gp-ico svg { width: 17px; height: 17px; }
 body.hdr-tight .gp .gp-lbl { font-size: 10.5px; letter-spacing: 1.2px; }
 body.hdr-tight .gp-cluster { gap: 10px; }
 
-/* ── Operator / Viewer mode pill ─────────────────────────────
-   Role encoded by gradient + persistent corner dot.
-   applyModeUI() toggles .gp-operator / .gp-viewer on #modeBtn. */
-.gp-mode.gp-operator::before,
-.gp-mode.gp-operator:hover::after { background: linear-gradient(45deg, #8b4a2a, #c47650); }
-.gp-mode.gp-viewer::before,
-.gp-mode.gp-viewer:hover::after   { background: linear-gradient(45deg, #3a4555, #6b7888); }
+/* ════════════════════════════════════════════════════════════
+   BRAND BLOCK — role indicator with animated accent bar
+   Replaces the legacy #modeBtn gradient pill (status-light pattern).
+   applyModeUI() toggles .mode-operator / .mode-viewer on #modeBtn
+   (now the outer .brand-block wrapper, not a pill in .gp-cluster).
+═════════════════════════════════════════════════════════════ */
 
-/* Persistent role dot — reuses .gp-badge slot but overrides sizing
-   (6×6 circle, no text content) and the :empty hide rule. */
-.gp-mode .gp-badge {
-  min-width: 0;
-  width: 6px;
-  height: 6px;
+.brand-block {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  background: transparent;
+  border: 0;
   padding: 0;
-  top: 8px;
-  right: 8px;
-  border-radius: 50%;
-  font-size: 0;
-  display: block;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.gp-mode.gp-operator .gp-badge { background: #c47650; }
-.gp-mode.gp-viewer   .gp-badge { background: #6b7888; }
+
+.brand-block:hover .brand-text {
+  opacity: 0.85;
+}
+
+.brand-block:focus-visible {
+  outline: 2px solid var(--brd, #888780);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+}
+
+.brand-accent {
+  width: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background-size: 100% 200%;
+  background-position: 0% 100%;
+  animation: brand-accent-flow 3s linear infinite;
+}
+
+.brand-block.mode-operator .brand-accent {
+  background-image: linear-gradient(to top, #c44510 0%, #ff7a3a 50%, #c44510 100%);
+}
+
+.brand-block.mode-viewer .brand-accent {
+  background-image: linear-gradient(to top, #185fa5 0%, #5da5f0 50%, #185fa5 100%);
+}
+
+@keyframes brand-accent-flow {
+  to { background-position: 0% -100%; }
+}
+
+.brand-role {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+  display: block;
+}
+
+.brand-block.mode-operator .brand-role {
+  color: #c44510;
+}
+
+.brand-block.mode-viewer .brand-role {
+  color: #185fa5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-accent {
+    animation: none;
+    background-size: 100% 100%;
+    background-position: 0 0;
+  }
+}

@@ -107,19 +107,21 @@ const SPICA_CONFIG = {
 function applyModeUI(){
   const op = isOperator();
   const btn = document.getElementById('modeBtn');
-  const iconEl = document.getElementById('modeIco');
   const labelEl = document.getElementById('modeLbl');
   const banner = document.getElementById('viewerBanner');
   /* Body class drives subtle viewer indicator in the bottom status bar
      (see .bp-viewer-indicator CSS). Replaces the old fixed banner. */
   document.body.classList.toggle('is-viewer', !op);
   if(btn){
-    btn.classList.toggle('gp-operator', op);
-    btn.classList.toggle('gp-viewer', !op);
+    btn.classList.toggle('mode-operator', op);
+    btn.classList.toggle('mode-viewer', !op);
+    btn.setAttribute('aria-label', op
+      ? 'Operator mode active. Click or press Enter to switch to viewer.'
+      : 'Viewer mode active. Click or press Enter to switch to operator.');
   }
-  /* Operator = gear (⚙), Viewer = lock (🔒). Icon signals state. */
-  if(iconEl) iconEl.textContent = op ? '\u2699' : '\uD83D\uDD12';
-  if(labelEl) labelEl.textContent = op ? 'OPERATOR' : 'VIEWER';
+  /* Role text row in brand block. Accent bar (.brand-accent) carries the
+     coloured state cue; this label spells it out. */
+  if(labelEl) labelEl.textContent = op ? 'OPERATOR MODE' : 'VIEWER MODE';
   /* NEW badge on mode button — purely additive, no-op if expired */
   if(btn){
     const oldBadge = btn.querySelector('.feature-badge');
@@ -12835,14 +12837,25 @@ function closeModeModal(){
 }
 
 function bindModeButton(){
-  /* TODO: role-switch UI temporarily removed in commit removing .rc-ops card.
-     Re-introduced as 6th gradient pill in the next commit. Role state itself
-     (_currentMode, setMode, isOperator, OPERATOR_PW, openModeModal modal) is
-     untouched — only the trigger button is gone. applyModeUI() still fires
-     so viewer-mode read-only enforcement (body.is-viewer, btnClrDeck gate,
-     cb-viewer class, renderAll) continues to protect the app. */
+  /* #modeBtn is now the .brand-block wrapper (div role="button"), not a real
+     <button>. We need an explicit keydown handler for Enter/Space activation,
+     and the click handler must ignore bubbles from the nested brand-edit-btn
+     pencil (which already calls stopPropagation, but we defend in depth).
+     Role-state plumbing (_currentMode, setMode, isOperator, OPERATOR_PW,
+     openModeModal) is untouched — only the trigger surface moved. */
   const btn = document.getElementById('modeBtn');
-  if(btn) btn.addEventListener('click', openModeModal);
+  if(btn){
+    btn.addEventListener('click', e => {
+      if(e.target.closest('.brand-edit-btn')) return;
+      openModeModal();
+    });
+    btn.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){
+        e.preventDefault();
+        openModeModal();
+      }
+    });
+  }
   /* Apply initial mode state to UI */
   applyModeUI();
 }
