@@ -19006,30 +19006,13 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
   opacity: 1;
 }
 
-.gp::after {
-  content: '';
-  position: absolute;
-  top: 12px;
-  left: 0;
-  right: 0;
-  height: 100%;
-  border-radius: 26px;
-  filter: blur(18px);
-  opacity: 0;
-  transition: opacity 900ms ease;
-  z-index: 0;
-  pointer-events: none;
-}
 
-.gp:hover::after {
-  opacity: 0.45;
-}
 
-.gp-upload::before,  .gp-upload:hover::after  { background: linear-gradient(45deg, #5e4b8b, #8b6fb5); }
-.gp-library::before, .gp-library:hover::after { background: linear-gradient(45deg, #2a4d6e, #5680a8); }
-.gp-smart::before,   .gp-smart:hover::after   { background: linear-gradient(45deg, #7a6a52, #b8a584); }
-.gp-theme::before,   .gp-theme:hover::after   { background: linear-gradient(45deg, #a8581f, #d49050); }
-.gp-lang::before,    .gp-lang:hover::after    { background: linear-gradient(45deg, #2c5f4f, #5a9580); }
+.gp-upload::before  { background: linear-gradient(45deg, #5e4b8b, #8b6fb5); }
+.gp-library::before { background: linear-gradient(45deg, #2a4d6e, #5680a8); }
+.gp-smart::before   { background: linear-gradient(45deg, #7a6a52, #b8a584); }
+.gp-theme::before   { background: linear-gradient(45deg, #a8581f, #d49050); }
+.gp-lang::before    { background: linear-gradient(45deg, #2c5f4f, #5a9580); }
 
 .gp-cluster {
   display: flex;
