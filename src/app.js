@@ -2004,15 +2004,18 @@ function buildLocGrid(){
   /* Helper: build one location card with toggle + delete */
   function makeLocOpt(loc, isCustom){
     const inUse=S.activeLocs.includes(loc.id);
-    const displayColor=getLocBase(loc.id);
     const el=document.createElement('div');
     el.className='loc-opt'+(inUse?' in-use':'');
-    el.style.setProperty('--lc',displayColor);
+
+    const locType=(loc.type||'platform');
+    const iconSvg=locType==='fpso'
+      ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 10 L2.5 12.5 L13.5 12.5 L14.5 10 Z"/><rect x="5" y="7" width="2" height="3"/><rect x="8" y="6" width="2" height="4"/><line x1="11" y1="10" x2="11" y2="7"/><line x1="10.5" y1="7.5" x2="11.5" y2="7.5"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="11" height="2.5"/><line x1="4" y1="8.5" x2="4" y2="14"/><line x1="12" y1="8.5" x2="12" y2="14"/><line x1="8" y1="8.5" x2="8" y2="14"/><polyline points="6,6 6,3 10,3 10,6"/><line x1="8" y1="3" x2="8" y2="1.5"/></svg>';
 
     const customTag=isCustom?`<div class="loc-opt-custom-tag">custom</div>`:'';
     const chk=`<div class="loc-opt-chk">✓</div>`;
     el.innerHTML=`
-      <div class="loc-opt-dot"></div>
+      <div class="loc-opt-icon">${iconSvg}</div>
       <div class="loc-opt-name">${loc.name}</div>
       ${isCustom?customTag:chk}
       ${!isCustom?'':chk}

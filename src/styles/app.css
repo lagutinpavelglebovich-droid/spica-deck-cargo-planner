@@ -1360,11 +1360,12 @@ body.is-viewer .bp-viewer-indicator{
 .loc-drawer-close:hover{background:rgba(159,64,61,.10);border-color:rgba(159,64,61,.25);color:#9f403d;}
 .loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:5px;}
 .loc-opt{display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:var(--r-sm);border:1px solid var(--brd);cursor:pointer;transition:all .15s;background:rgba(255,255,255,.55);user-select:none;position:relative;box-shadow:var(--sh-xs);}
-.loc-opt:hover{border-color:var(--lc);background:rgba(255,255,255,.90);box-shadow:var(--sh);}
-.loc-opt.in-use{border-color:var(--lc);background:rgba(255,255,255,.88);box-shadow:0 0 0 2px color-mix(in srgb,var(--lc) 18%,transparent);}
-.loc-opt-dot{width:9px;height:9px;border-radius:50%;background:var(--lc);flex-shrink:0;}
+.loc-opt:hover{border-color:var(--acc);background:rgba(255,255,255,.90);box-shadow:var(--sh);}
+.loc-opt.in-use{border-color:var(--acc);background:rgba(255,255,255,.88);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 18%,transparent);}
+.loc-opt-icon{width:14px;height:14px;flex-shrink:0;color:var(--txt2);display:inline-flex;align-items:center;justify-content:center;opacity:.85;}
+.loc-opt-icon svg{display:block;}
 .loc-opt-name{font-size:11px;font-weight:600;color:var(--txt);font-family:'Inter',sans-serif;}
-.loc-opt-chk{margin-left:auto;font-size:13px;color:var(--lc);display:none;}
+.loc-opt-chk{margin-left:auto;font-size:13px;color:var(--acc);display:none;}
 .loc-opt.in-use .loc-opt-chk{display:block;}
 
 /* Delete icon — appears on hover over loc-opt card */
