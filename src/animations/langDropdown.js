@@ -81,9 +81,18 @@ export function animateLangDropdownIn(dropdown) {
   });
 
   lastAnim.finished.then(() => {
-    if (getLangState(dropdown) === 'opening') {
-      _states.set(dropdown, 'open');
-    }
+    if (getLangState(dropdown) !== 'opening') return;
+    /* Hand the rest-state back to CSS so .lang-opt.active's transform:scale(1.03)
+       (and any future static hover/active styling) can apply. Without this,
+       Motion One's committed inline transform/opacity/filter pin the pill at
+       its animated endpoint and override the active-pill emphasis cue. */
+    dropdown.style.opacity = '';
+    options.forEach(opt => {
+      opt.style.opacity = '';
+      opt.style.transform = '';
+      opt.style.filter = '';
+    });
+    _states.set(dropdown, 'open');
   }).catch(() => {});
 }
 

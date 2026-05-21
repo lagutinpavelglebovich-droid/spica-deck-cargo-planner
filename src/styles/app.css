@@ -8088,57 +8088,67 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
    below — the picker BUTTON itself is now a gradient pill.
 ═══════════════════════════════════════ */
 
+/* Floating-pills paradigm: dropdown wrapper carries position + spacing only.
+   Each .lang-opt is an independent glass pill — no outer card chrome.
+   Entry/exit animations driven by Motion One in src/animations/langDropdown.js. */
 .lang-dropdown{
   position:absolute;
   top:calc(100% + 8px);
   right:0;
-  background:rgba(255,255,255,.92);
-  backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%);
-  border:0.5px solid rgba(0,0,0,.08);
-  border-radius:14px;
-  box-shadow:
-    0 12px 32px rgba(30,60,90,0.12),
-    0 2px 6px rgba(30,60,90,0.06);
-  padding:6px;
-  min-width:160px;
   z-index:500;
   display:none;
   flex-direction:column;
-  gap:2px;
-  /* Entry/exit animations driven by Motion One in src/animations/langDropdown.js
-     (spring physics + per-option stagger + blur-in). */
+  gap:8px;
+  min-width:160px;
 }
 .lang-dropdown.open{ display:flex; }
 .lang-opt{
-  display:flex;align-items:center;
-  padding:10px 14px;border-radius:10px;
+  display:flex;align-items:center;justify-content:flex-start;
+  padding:11px 18px;
+  border-radius:12px;
   cursor:pointer;
   font-family:'Inter',sans-serif;
   font-size:13px;font-weight:500;
-  color:var(--txt2);
-  transition:background-color .15s ease, color .15s ease;
-  border:none;background:transparent;
+  color:rgba(255,255,255,.92);
+  background:rgba(17,17,17,.60);
+  backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%);
+  border:0.5px solid rgba(255,255,255,.08);
+  box-shadow:0 4px 20px rgba(0,0,0,0.18);
+  transition:background-color .15s ease, transform .2s cubic-bezier(.34,1.4,.64,1), border-color .15s ease;
   text-align:left;
   letter-spacing:0.01em;
 }
-.lang-opt:hover{ background:rgba(72,96,131,.07); color:var(--txt); }
+.lang-opt:hover{
+  background:rgba(17,17,17,.78);
+  border-color:rgba(255,255,255,.14);
+  color:rgba(255,255,255,1);
+}
 .lang-opt.active{
-  color:var(--acc);font-weight:600;
-  background:rgba(72,96,131,.12);
+  background:rgba(17,17,17,.85);
+  border-color:rgba(255,255,255,.18);
+  color:#fff;
+  font-weight:600;
+  transform:scale(1.03);
+  box-shadow:0 6px 24px rgba(0,0,0,0.25);
 }
 .lang-opt-name{ flex:1; }
 
-/* Dark theme — deep navy glass card, white-tinted rim, cool-blue accents.
-   Mirrors light theme's paper-glass aesthetic in the project's dark palette. */
-[data-theme="dark"] .lang-dropdown{
-  background:rgba(20,30,45,.88);
-  border-color:rgba(255,255,255,.10);
-  box-shadow:
-    0 12px 32px rgba(0,0,0,0.40),
-    0 2px 6px rgba(0,0,0,0.24);
+/* Dark theme — pills sit on dark navy header, need deeper black + stronger
+   shadow to maintain the "floating" feel against the already-dark surface. */
+[data-theme="dark"] .lang-opt{
+  background:rgba(17,17,17,.70);
+  border:0.5px solid rgba(255,255,255,.12);
+  box-shadow:0 4px 20px rgba(0,0,0,0.35);
 }
-[data-theme="dark"] .lang-opt:hover{ background:rgba(255,255,255,.06); color:var(--txt); }
-[data-theme="dark"] .lang-opt.active{ background:rgba(96,165,250,.14); }
+[data-theme="dark"] .lang-opt:hover{
+  background:rgba(30,30,35,.82);
+  border-color:rgba(255,255,255,.18);
+}
+[data-theme="dark"] .lang-opt.active{
+  background:rgba(30,30,35,.90);
+  border-color:rgba(255,255,255,.22);
+  box-shadow:0 6px 24px rgba(0,0,0,0.45);
+}
 
 /* ═══════════════════════════════════════
    VERSION BADGE
