@@ -1332,74 +1332,31 @@ body.is-viewer .bp-viewer-indicator{
 /* Cargo block dim/focus — classes injected via #locFilterStyle <style> tag
    .cb transition extended for smooth opacity/filter */
 .cb{ transition:box-shadow .18s, transform .12s, opacity .20s, filter .20s; }
-.loc-drawer{
-  position:fixed;left:0;right:0;
-  /* When closed, the drawer must be fully invisible. Background, borders,
-     shadow and backdrop-filter are ONLY applied in the .open state — otherwise
-     the 1px top + 1px bottom borders + backdrop-filter rendered a 2px-tall
-     full-viewport-wide translucent stripe at y≈210, exactly at the junction
-     between the header slab and the Locations panel, visible edge-to-edge. */
-  background:transparent;
-  backdrop-filter:none;-webkit-backdrop-filter:none;
-  border:0;
-  box-shadow:none;
-  z-index:500;max-height:0;overflow:hidden;
-  transition:max-height .24s cubic-bezier(.4,0,.2,1);
-}
-.loc-drawer.open{
-  background:var(--glass);
-  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
-  border-bottom:1px solid var(--brd);
-  box-shadow:var(--sh-lg);
-}
-.loc-drawer.open{max-height:320px;overflow-y:auto;}
-.loc-drawer-inner{padding:18px 24px 24px;}
-.loc-drawer-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
-.loc-drawer-title{font-size:11px;letter-spacing:.1px;color:var(--txt3);font-weight:600;font-family:'Inter',sans-serif;}
-.loc-drawer-close{width:24px;height:24px;border-radius:50%;background:var(--surf2);border:1px solid var(--brd);cursor:pointer;font-size:13px;line-height:24px;text-align:center;color:var(--txt3);transition:all .12s;}
-.loc-drawer-close:hover{background:rgba(159,64,61,.10);border-color:rgba(159,64,61,.25);color:#9f403d;}
-.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:5px;}
-.loc-opt{display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:var(--r-sm);border:1px solid var(--brd);cursor:pointer;transition:all .15s;background:rgba(255,255,255,.55);user-select:none;position:relative;box-shadow:var(--sh-xs);}
-.loc-opt:hover{border-color:var(--acc);background:rgba(255,255,255,.90);box-shadow:var(--sh);}
-.loc-opt.in-use{border-color:var(--acc);background:rgba(255,255,255,.88);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 18%,transparent);}
-.loc-opt-icon{width:14px;height:14px;flex-shrink:0;color:var(--txt2);display:inline-flex;align-items:center;justify-content:center;opacity:.85;}
+/* Location picker — floating dark pills paradigm (mirrors .lang-opt at 7efdbbf). */
+.loc-drawer{position:fixed;left:0;right:0;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none;z-index:500;display:none;}
+.loc-drawer.open{ display:block; }
+.loc-drawer-inner{ padding:14px 24px 20px; }
+.loc-drawer-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;margin-bottom:12px;border-radius:12px;background:rgba(40,42,48,.48);backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%);border:0.5px solid rgba(255,255,255,.08);box-shadow:0 4px 20px rgba(0,0,0,0.18);}
+.loc-drawer-title{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.78);font-weight:600;}
+.loc-drawer-close{width:22px;height:22px;border-radius:50%;background:transparent;border:none;color:rgba(255,255,255,.7);font-size:14px;line-height:22px;text-align:center;cursor:pointer;transition:background-color .15s ease,color .15s ease;}
+.loc-drawer-close:hover{ background:rgba(255,255,255,.10);color:#fff; }
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;}
+.loc-opt{display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;color:rgba(255,255,255,.92);background:rgba(40,42,48,.48);backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%);border:0.5px solid rgba(255,255,255,.08);box-shadow:0 4px 20px rgba(0,0,0,0.18);transition:background-color .15s ease,transform .2s cubic-bezier(.34,1.4,.64,1),border-color .15s ease;user-select:none;position:relative;}
+.loc-opt:hover{background:rgba(40,42,48,.62);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,1);}
+.loc-opt.in-use{background:rgba(40,42,48,.68);border-color:rgba(255,255,255,.18);color:#fff;font-weight:600;transform:scale(1.03);box-shadow:0 6px 24px rgba(0,0,0,0.25);}
+.loc-opt-icon{width:14px;height:14px;flex-shrink:0;color:rgba(255,255,255,.85);display:inline-flex;align-items:center;justify-content:center;}
 .loc-opt-icon svg{display:block;}
-.loc-opt-name{font-size:11px;font-weight:600;color:var(--txt);font-family:'Inter',sans-serif;}
-.loc-opt-chk{margin-left:auto;font-size:13px;color:var(--acc);display:none;}
+.loc-opt-name{font-size:11px;font-weight:600;font-family:'Inter',sans-serif;}
+.loc-opt-chk{margin-left:auto;font-size:13px;color:rgba(255,255,255,.95);display:none;}
 .loc-opt.in-use .loc-opt-chk{display:block;}
-
-/* Delete icon — appears on hover over loc-opt card */
-.loc-opt-del{
-  position:absolute;top:4px;right:5px;
-  width:18px;height:18px;border-radius:50%;
-  background:transparent;border:none;
-  color:var(--txt4);font-size:11px;line-height:18px;text-align:center;
-  cursor:pointer;transition:all .13s;
-  display:none;padding:0;
-}
+.loc-opt-del{position:absolute;top:4px;right:5px;width:18px;height:18px;border-radius:50%;background:transparent;border:none;color:rgba(255,255,255,.55);font-size:11px;line-height:18px;text-align:center;cursor:pointer;transition:background-color .13s ease,color .13s ease;display:none;padding:0;}
 .loc-opt:hover .loc-opt-del{display:block;}
-.loc-opt-del:hover{background:rgba(220,38,38,.12);color:#dc2626;}
-
-/* Custom location tag */
-.loc-opt-custom-tag{
-  font-size:7px;letter-spacing:.8px;text-transform:uppercase;
-  color:var(--txt4);font-weight:700;margin-left:auto;
-  background:var(--surf3);padding:1px 5px;border-radius:8px;
-  border:1px solid var(--brd);
-}
-
-/* Add location button */
-.loc-opt-add{
-  border-style:dashed;color:var(--acc);
-  opacity:.75;
-  --lc: var(--acc);
-}
-.loc-opt-add:hover{opacity:1;background:rgba(72,96,131,.06);border-color:var(--acc);}
-.loc-opt-add-icon{
-  font-size:16px;line-height:1;color:var(--acc);flex-shrink:0;
-  width:10px;height:10px;display:flex;align-items:center;justify-content:center;
-}
-.loc-opt-add .loc-opt-name{color:var(--acc);font-weight:600;}
+.loc-opt-del:hover{background:rgba(220,38,38,.22);color:#fca5a5;}
+.loc-opt-custom-tag{font-size:7px;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.75);font-weight:700;margin-left:auto;background:rgba(255,255,255,.12);padding:1px 5px;border-radius:8px;border:1px solid rgba(255,255,255,.18);}
+.loc-opt-add{border-style:dashed;border-color:rgba(255,255,255,.30);color:rgba(255,255,255,.85);opacity:.8;}
+.loc-opt-add:hover{opacity:1;background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.45);}
+.loc-opt-add-icon{font-size:16px;line-height:1;color:rgba(255,255,255,.85);flex-shrink:0;width:10px;height:10px;display:flex;align-items:center;justify-content:center;}
+.loc-opt-add .loc-opt-name{color:rgba(255,255,255,.85);font-weight:600;}
 
 /* ═══════════════════════════════════════
    LOCATION DELETE DIALOG — Apple system modal style
@@ -5511,32 +5468,12 @@ body.focus-deck .dcv{
 /* ASCO item hover */
 .asco-item:hover{background:rgba(177,179,169,.08);}
 
-/* Loc opt delete button */
-.loc-opt-del{
-  position:absolute;top:4px;right:5px;
-  width:18px;height:18px;border-radius:50%;
-  background:transparent;border:none;
-  color:var(--txt4);font-size:11px;line-height:18px;text-align:center;
-  cursor:pointer;transition:all .13s;
-  display:none;padding:0;
-}
-.loc-opt:hover .loc-opt-del{display:block;}
-.loc-opt-del:hover{background:rgba(159,64,61,.12);color:#9f403d;}
-
-/* Custom location tag */
-.loc-opt-custom-tag{
-  font-size:7px;letter-spacing:1px;text-transform:uppercase;
-  color:var(--txt4);font-weight:700;margin-left:auto;
-  background:var(--surf3);padding:1px 5px;border-radius:8px;
-  border:1px solid var(--brd);font-family:'Inter',sans-serif;
-}
-
-/* Loc drawer add button */
-.loc-opt-add-icon{
-  font-size:16px;line-height:1;color:var(--acc);flex-shrink:0;
-  width:10px;height:10px;display:flex;align-items:center;justify-content:center;
-}
-.loc-opt-add .loc-opt-name{color:var(--acc);font-weight:600;}
+/* Late-block re-declarations — kept aligned with primary block's dark-glass palette. */
+.loc-opt-del{color:rgba(255,255,255,.55);}
+.loc-opt-del:hover{background:rgba(220,38,38,.22);color:#fca5a5;}
+.loc-opt-custom-tag{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.75);font-weight:700;margin-left:auto;background:rgba(255,255,255,.12);padding:1px 5px;border-radius:8px;border:1px solid rgba(255,255,255,.18);font-family:'Inter',sans-serif;}
+.loc-opt-add-icon{font-size:16px;line-height:1;color:rgba(255,255,255,.85);flex-shrink:0;width:10px;height:10px;display:flex;align-items:center;justify-content:center;}
+.loc-opt-add .loc-opt-name{color:rgba(255,255,255,.85);font-weight:600;}
 
 /* ASCO import badge */
 .import-queue-badge{
@@ -11490,32 +11427,11 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
 }
 .admin-mode-bar{ border-radius:var(--r-float-sm) !important;backdrop-filter:blur(8px); }
 
-/* Glass styling must only apply when drawer is OPEN — otherwise the fixed,
-   full-width element renders a thin translucent stripe across the viewport
-   (the visible horizontal seam between the header and Locations panel). */
-.loc-drawer.open{
-  background:var(--glass) !important;
-  backdrop-filter:blur(24px) saturate(1.4) !important;-webkit-backdrop-filter:blur(24px) saturate(1.4) !important;
-  border:1px solid var(--glass-brd) !important;
-  border-radius:var(--r-float-sm) !important;
-  box-shadow:var(--sh-float-panel), var(--glass-inset) !important;
-}
-/* Closed state — fully invisible. Overrides any stray !important rule. */
-.loc-drawer:not(.open){
-  background:transparent !important;
-  backdrop-filter:none !important;-webkit-backdrop-filter:none !important;
-  border:0 !important;
-  box-shadow:none !important;
-}
-.loc-opt{
-  background:rgba(255,255,255,.08) !important;
-  border:1px solid var(--glass-brd-dim) !important;border-radius:7px !important;
-  transition:all .18s ease !important;
-}
-.loc-opt:hover{
-  background:rgba(255,255,255,.18) !important;border-color:var(--glass-brd) !important;
-  box-shadow:var(--sh-float) !important;transform:translateY(-1px);
-}
+/* Floating-pills paradigm: drawer container stays transparent — pills carry the visual weight. */
+.loc-drawer.open{background:transparent !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border:0 !important;box-shadow:none !important;}
+.loc-drawer:not(.open){background:transparent !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border:0 !important;box-shadow:none !important;}
+.loc-opt{background:rgba(40,42,48,.48) !important;border:0.5px solid rgba(255,255,255,.08) !important;border-radius:12px !important;box-shadow:0 4px 20px rgba(0,0,0,0.18) !important;}
+.loc-opt:hover{background:rgba(40,42,48,.62) !important;border-color:rgba(255,255,255,.14) !important;box-shadow:0 4px 20px rgba(0,0,0,0.22) !important;}
 .dg-bar{
   background:var(--glass-sub) !important;backdrop-filter:blur(8px) !important;
   border:1px solid var(--glass-brd-dim) !important;border-radius:var(--r-float-sm) !important;
@@ -12248,9 +12164,12 @@ body.is-viewer .shell-ribbon::after{
 [data-theme="dark"] .locs-toggle-bar:hover{ background:rgba(96,165,250,.05) !important; }
 /* legacy dark loc-card overrides removed — glass-card rule is self-contained. */
 [data-theme="dark"] .dg-onboard-line{ background:var(--glass-sub) !important;border-color:var(--glass-brd-dim) !important; }
-[data-theme="dark"] .loc-drawer.open{ background:var(--glass) !important;border-color:var(--glass-brd) !important; }
-[data-theme="dark"] .loc-opt{ background:rgba(255,255,255,.05) !important;border-color:var(--glass-brd-dim) !important; }
-[data-theme="dark"] .loc-opt:hover{ background:rgba(255,255,255,.10) !important;border-color:var(--glass-brd) !important; }
+/* Dark theme — pills shift to deeper charcoal (mirrors .lang-opt dark palette at 7efdbbf). */
+[data-theme="dark"] .loc-drawer.open{background:transparent !important;border:0 !important;box-shadow:none !important;}
+[data-theme="dark"] .loc-drawer-hdr{background:rgba(35,38,44,.62) !important;border:0.5px solid rgba(255,255,255,.12) !important;box-shadow:0 4px 20px rgba(0,0,0,0.35) !important;}
+[data-theme="dark"] .loc-opt{background:rgba(35,38,44,.62) !important;border:0.5px solid rgba(255,255,255,.12) !important;box-shadow:0 4px 20px rgba(0,0,0,0.35) !important;}
+[data-theme="dark"] .loc-opt:hover{background:rgba(45,48,55,.72) !important;border-color:rgba(255,255,255,.18) !important;}
+[data-theme="dark"] .loc-opt.in-use{background:rgba(50,53,60,.78) !important;border-color:rgba(255,255,255,.22) !important;box-shadow:0 6px 24px rgba(0,0,0,0.45) !important;}
 [data-theme="dark"] .dg-bar{ background:var(--glass-sub) !important;border-color:var(--glass-brd-dim) !important; }
 
 /* Dark deck */
