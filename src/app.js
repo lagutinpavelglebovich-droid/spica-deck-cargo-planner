@@ -2389,13 +2389,15 @@ function bindLocDrawer(){
     if(st==='closed'||st==='closing'){
       buildLocGrid();
       drawer.classList.add('open');
+      btn.classList.add('is-open');
       animateLocPickerIn(drawer);
     }else{
+      btn.classList.remove('is-open');
       animateLocPickerOut(drawer);
     }
   });
-  document.getElementById('locDrawerClose').addEventListener('click',()=>animateLocPickerOut(drawer));
-  document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!btn.contains(e.target))animateLocPickerOut(drawer);});
+  document.getElementById('locDrawerClose').addEventListener('click',()=>{btn.classList.remove('is-open');animateLocPickerOut(drawer);});
+  document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!btn.contains(e.target)){btn.classList.remove('is-open');animateLocPickerOut(drawer);}});
   window.addEventListener('resize',()=>{if(drawer.classList.contains('open'))positionDrawer();});
 }
 
