@@ -8090,20 +8090,22 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 
 .lang-dropdown{
   position:absolute;
-  top:calc(100% + 6px);
+  top:calc(100% + 8px);
   right:0;
-  background:var(--glass);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  border:1px solid var(--brd2);
-  border-radius:10px;
-  box-shadow:var(--sh-md);
-  padding:4px;
-  min-width:130px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%);
+  border:0.5px solid rgba(0,0,0,.08);
+  border-radius:14px;
+  box-shadow:
+    0 12px 32px rgba(30,60,90,0.12),
+    0 2px 6px rgba(30,60,90,0.06);
+  padding:6px;
+  min-width:160px;
   z-index:500;
   display:none;
   flex-direction:column;
-  gap:1px;
-  animation:langDdIn .14s cubic-bezier(.34,1.4,.64,1);
+  gap:2px;
+  animation:langDdIn .18s cubic-bezier(.34,1.4,.64,1);
 }
 .lang-dropdown.open{ display:flex; }
 @keyframes langDdIn{
@@ -8111,25 +8113,23 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   to  {opacity:1;transform:translateY(0)    scale(1);   }
 }
 .lang-opt{
-  display:flex;align-items:center;gap:9px;
-  padding:7px 10px;border-radius:7px;
+  display:flex;align-items:center;
+  padding:10px 14px;border-radius:10px;
   cursor:pointer;
   font-family:'Inter',sans-serif;
-  font-size:11px;font-weight:500;
+  font-size:13px;font-weight:500;
   color:var(--txt2);
-  transition:all .11s;
+  transition:background-color .15s ease, color .15s ease;
   border:none;background:transparent;
   text-align:left;
+  letter-spacing:0.01em;
 }
-.lang-opt:hover{ background:rgba(72,96,131,.08); color:var(--txt); }
+.lang-opt:hover{ background:rgba(72,96,131,.07); color:var(--txt); }
 .lang-opt.active{
   color:var(--acc);font-weight:600;
-  background:rgba(72,96,131,.08);
+  background:rgba(72,96,131,.12);
 }
-.lang-opt-flag{ font-size:13px; line-height:1; }
 .lang-opt-name{ flex:1; }
-.lang-opt-check{ font-size:10px; color:var(--acc); opacity:0; }
-.lang-opt.active .lang-opt-check{ opacity:1; }
 
 /* ═══════════════════════════════════════
    VERSION BADGE
