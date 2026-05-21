@@ -803,7 +803,7 @@ body.is-viewer .bp-viewer-indicator{
   display:flex;align-items:center;justify-content:center;
   font-family:'Inter',sans-serif;
   margin-top:-2px;                            /* optical centering of "+" glyph */
-  transition:transform 280ms cubic-bezier(.34,1.6,.5,1) 70ms;
+  transition:transform 560ms cubic-bezier(.34,1.6,.5,1) 70ms;
 }
 .btn-locs.is-open .btn-locs-icon{ transform:rotate(45deg); }
 [data-theme="dark"] .btn-locs{
