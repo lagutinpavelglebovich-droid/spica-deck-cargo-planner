@@ -2,6 +2,38 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.2.0] - 2026-05-21
+
+### Added
+- Unified motion language across all `+` triggers: spring blur-in cascade with stagger
+- Language dropdown: floating dark glass pills paradigm with spring physics animation (60ms stagger between options, 300/20 stiffness/damping)
+- Location picker: row-based wave animation when drawer opens (80ms between rows, dynamic row detection via getBoundingClientRect)
+- Location picker: floating dark glass pills paradigm, replacing rows-in-container with independent pills (10px gap)
+- Location picker: 45° clockwise rotation of `+` button icon when drawer opens (560ms spring-approximation with overshoot)
+- Location picker: deck plan shifts down via dynamic measurement when drawer opens, returns decisively on close (460ms open, 350ms close)
+- Location picker: accent border + filled accent circle check for selected state — multi-signal readability
+- Active Locations: type-based SVG icons (platform/FPSO) replacing color picker dots
+- Dark theme overrides for all new dropdown/picker components
+
+### Fixed
+- gp-cluster: removed `::after` pseudo-element that caused square ghost blur backdrop
+- Language dropdown pill tone: warm charcoal `rgba(40,42,48,...)` instead of pure black for proper graphite read on paper-tone backgrounds
+- Inline transform residue from Motion One animations cleared after entry settles, allowing CSS rest states to apply
+- v3.1.0 version gap: src/app.js CURRENT_BUILD and APP_VERSION constants were not updated in previous release, now synced
+
+### Changed
+- Location picker container becomes transparent positional wrapper (no background, no padding)
+- Location picker drawer no longer overlays deck plan — deck plan shifts down naturally
+- Drawer max-height transition removed in favour of wave animation reveal
+- Selected state in location picker uses --acc color (navy in light, lighter blue in dark) instead of subtle white border increase
+- Filter blur in Motion One animations scoped to children only (avoids backdrop-filter conflict on parent containers)
+
+### Known limitations
+- Wave animation row detection measures cardsPerRow once on open — does not re-trigger on window resize while drawer is open (user can close/reopen to refresh)
+- Animations use Motion One Web Animations API to bypass author !important CSS cascade conflicts; transition cleanup explicit
+
+---
+
 ## [3.1.0] - 2026-05-16
 
 ### Added
