@@ -30,6 +30,18 @@ const DRAWER_OPEN_OFFSET_MS = 120;    /* wait for drawer max-height to clear spa
 const EXIT_DUR_S = 0.15;
 const CONTAINER_FADE_IN_S = 0.18;
 
+/* Deck-shift coordination: the deck plan translates down by the drawer's
+   measured height so the drawer doesn't overlap cargo. Motion One (WAAPI)
+   is used instead of CSS transition because .deck-area has a stylesheet
+   `transition:padding ... !important` rule that an inline normal transition
+   cannot override — but Web Animations sits above author !important in the
+   CSS cascade, so this just works. */
+const DECK_SHIFT_BUFFER_PX = 16;
+const DECK_SHIFT_IN_DUR_S  = 0.46;
+const DECK_SHIFT_OUT_DUR_S = 0.35;
+const DECK_SHIFT_IN_EASE   = 'cubic-bezier(.34,1.5,.5,1)';
+const DECK_SHIFT_OUT_EASE  = 'cubic-bezier(.5,0,.25,1)';
+
 const _states = new WeakMap();
 const _inFlight = new WeakMap();      /* drawer → array of running anims */
 
@@ -101,6 +113,20 @@ export function animateLocPickerIn(drawer) {
   requestAnimationFrame(() => {
     if (getLocPickerState(drawer) !== 'opening') return;
 
+    /* Shift the deck plan down by the drawer's measured height + buffer so
+       the floating drawer doesn't visually overlap cargo. Runs in parallel
+       with the card wave — both kick off in the same RAF tick. */
+    const deckArea = document.getElementById('deckArea');
+    if (deckArea) {
+      const shiftY = drawer.getBoundingClientRect().height + DECK_SHIFT_BUFFER_PX;
+      const deckAnim = animate(
+        deckArea,
+        { transform: ['translateY(0px)', `translateY(${shiftY}px)`] },
+        { duration: DECK_SHIFT_IN_DUR_S, easing: DECK_SHIFT_IN_EASE }
+      );
+      _trackAnim(drawer, deckAnim);
+    }
+
     const rowIndices = _computeRowIndex(cards);
     let lastAnim = containerAnim;
 
@@ -144,6 +170,18 @@ export function animateLocPickerOut(drawer) {
 
   const cards = drawer.querySelectorAll('.loc-opt');
 
+  /* Return the deck plan to its resting position — runs in parallel with
+     the card fade. Faster + ease-out for a decisive snap-back. */
+  const deckArea = document.getElementById('deckArea');
+  if (deckArea) {
+    const deckAnim = animate(
+      deckArea,
+      { transform: 'translateY(0px)' },
+      { duration: DECK_SHIFT_OUT_DUR_S, easing: DECK_SHIFT_OUT_EASE }
+    );
+    _trackAnim(drawer, deckAnim);
+  }
+
   /* Coordinated card fade-out — no row stagger on close. */
   cards.forEach(card => {
     const anim = animate(
@@ -177,6 +215,11 @@ export function animateLocPickerOut(drawer) {
       card.style.transform = '';
       card.style.filter = '';
     });
+    /* Clear deck-shift inline transform — by now the shift-out animation
+       has settled at translateY(0), so removing the inline style produces
+       no visual jump (computed style falls back to stylesheet, which has
+       no transform). Prevents stale inline values from leaking forward. */
+    if (deckArea) deckArea.style.transform = '';
     _states.set(drawer, 'closed');
     _inFlight.set(drawer, []);
   }).catch(() => {});
