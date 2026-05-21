@@ -8105,13 +8105,10 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   display:none;
   flex-direction:column;
   gap:2px;
-  animation:langDdIn .18s cubic-bezier(.34,1.4,.64,1);
+  /* Entry/exit animations driven by Motion One in src/animations/langDropdown.js
+     (spring physics + per-option stagger + blur-in). */
 }
 .lang-dropdown.open{ display:flex; }
-@keyframes langDdIn{
-  from{opacity:0;transform:translateY(-4px) scale(.97);}
-  to  {opacity:1;transform:translateY(0)    scale(1);   }
-}
 .lang-opt{
   display:flex;align-items:center;
   padding:10px 14px;border-radius:10px;
@@ -8130,6 +8127,18 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   background:rgba(72,96,131,.12);
 }
 .lang-opt-name{ flex:1; }
+
+/* Dark theme — deep navy glass card, white-tinted rim, cool-blue accents.
+   Mirrors light theme's paper-glass aesthetic in the project's dark palette. */
+[data-theme="dark"] .lang-dropdown{
+  background:rgba(20,30,45,.88);
+  border-color:rgba(255,255,255,.10);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.40),
+    0 2px 6px rgba(0,0,0,0.24);
+}
+[data-theme="dark"] .lang-opt:hover{ background:rgba(255,255,255,.06); color:var(--txt); }
+[data-theme="dark"] .lang-opt.active{ background:rgba(96,165,250,.14); }
 
 /* ═══════════════════════════════════════
    VERSION BADGE

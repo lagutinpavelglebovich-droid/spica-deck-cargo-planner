@@ -15,6 +15,7 @@ import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, i
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 import { interRegularB64, interBoldB64 } from './inter-fonts.js';
 import { flipLayout } from './animations/locations.js';
+import { animateLangDropdownIn, animateLangDropdownOut, getLangState } from './animations/langDropdown.js';
 import { animate as motionAnimate } from 'motion';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
@@ -11971,13 +11972,19 @@ function bindLangSwitch(){
   if(pickerBtn && dropdown){
     pickerBtn.addEventListener('click', e => {
       e.stopPropagation();
-      const isOpen = dropdown.classList.contains('open');
-      dropdown.classList.toggle('open', !isOpen);
-      pickerBtn.classList.toggle('open', !isOpen);
+      /* Use state machine, not classList — class persists across closing phase. */
+      const st = getLangState(dropdown);
+      if (st === 'closed' || st === 'closing') {
+        animateLangDropdownIn(dropdown);
+        pickerBtn.classList.add('open');
+      } else {
+        animateLangDropdownOut(dropdown);
+        pickerBtn.classList.remove('open');
+      }
     });
 
     document.addEventListener('click', () => {
-      dropdown.classList.remove('open');
+      animateLangDropdownOut(dropdown);
       pickerBtn.classList.remove('open');
     });
 
@@ -11988,7 +11995,7 @@ function bindLangSwitch(){
   document.querySelectorAll('.lang-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       applyLang(btn.dataset.lang);
-      if(dropdown) dropdown.classList.remove('open');
+      if(dropdown) animateLangDropdownOut(dropdown);
       if(pickerBtn) pickerBtn.classList.remove('open');
     });
   });
