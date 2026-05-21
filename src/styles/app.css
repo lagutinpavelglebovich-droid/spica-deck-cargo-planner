@@ -19408,6 +19408,19 @@ body[data-wx]:not([data-wx="off"]) .header-info-strip {
   -webkit-backdrop-filter: none !important;
 }
 
+/* Bug 5 — same cascade trap as Bug 4 (.rc-brand):
+   [data-theme="dark"] .rc specificity (0,2,0) beats .rc-tools (0,1,0)
+   even with !important, painting a ghost dark panel behind .gp-cluster.
+   Matching specificity + later position wins. */
+[data-theme="dark"] .rc-tools {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .info-value-input,
   .info-date-btn { transition: none; }
