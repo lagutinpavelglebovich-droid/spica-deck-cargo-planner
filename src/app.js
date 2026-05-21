@@ -687,26 +687,26 @@ function palDist(p1, p2){
    tried in order until the best-contrast one is found at runtime.     */
 const LOC_ALL=[
   /* Bleo Holm — ALWAYS grey, operational rule, no dynamic assignment */
-  {id:'BLEO',      name:'Bleo Holm',      c:'#9aa0a8', fixed:true},
+  {id:'BLEO',      name:'Bleo Holm',      c:'#9aa0a8', fixed:true, type:'fpso'},
   /* Claymore group — violet/purple/indigo family */
-  {id:'CLAY_CAP',  name:'Claymore CAP',   c:'#7c3aed', grp:'clay'},
-  {id:'CLAY_CPP',  name:'Claymore CPP',   c:'#6326b5', grp:'clay'},
-  {id:'CLAY_WOP',  name:'Claymore WOPS',  c:'#9333ea', grp:'clay'},
-  {id:'CLAY_DRL',  name:'Claymore Drill', c:'#4338ca', grp:'clay'},
+  {id:'CLAY_CAP',  name:'Claymore CAP',   c:'#7c3aed', grp:'clay', type:'platform'},
+  {id:'CLAY_CPP',  name:'Claymore CPP',   c:'#6326b5', grp:'clay', type:'platform'},
+  {id:'CLAY_WOP',  name:'Claymore WOPS',  c:'#9333ea', grp:'clay', type:'platform'},
+  {id:'CLAY_DRL',  name:'Claymore Drill', c:'#4338ca', grp:'clay', type:'platform'},
   /* Piper group — amber/brown/orange family (distinguishable trio) */
-  {id:'PIPER',     name:'Piper',          c:'#c27b00', grp:'piper'},
-  {id:'PIPER_DR',  name:'Piper Drilling', c:'#92400e', grp:'piper'},
-  {id:'PIPER_WOP', name:'Piper WOPS',     c:'#d35400', grp:'piper'},
+  {id:'PIPER',     name:'Piper',          c:'#c27b00', grp:'piper', type:'platform'},
+  {id:'PIPER_DR',  name:'Piper Drilling', c:'#92400e', grp:'piper', type:'platform'},
+  {id:'PIPER_WOP', name:'Piper WOPS',     c:'#d35400', grp:'piper', type:'platform'},
   /* Individuals — each gets a well-separated hue */
-  {id:'SALT',      name:'Saltire',        c:'#c0392b'},  // strong red
-  {id:'TART',      name:'Tartan',         c:'#1d4ed8'},  // strong blue
-  {id:'BEAT',      name:'Beatrice',       c:'#be185d'},  // deep pink
-  {id:'CLYDE',     name:'Clyde',          c:'#0e7490'},  // teal
-  {id:'FULMAR',    name:'Fulmar',         c:'#1a6db5'},  // ocean blue
-  {id:'AUK',       name:'Auk',            c:'#1e8449'},  // forest green
-  {id:'MONTR',     name:'Montrose',       c:'#6b7a00'},  // olive
-  {id:'ARBR',      name:'Arbroath',       c:'#148f6e'},  // teal-green
-  {id:'GP3',       name:'GP3',            c:'#e67e22'},  // warm orange
+  {id:'SALT',      name:'Saltire',        c:'#c0392b', type:'platform'},  // strong red
+  {id:'TART',      name:'Tartan',         c:'#1d4ed8', type:'platform'},  // strong blue
+  {id:'BEAT',      name:'Beatrice',       c:'#be185d', type:'platform'},  // deep pink
+  {id:'CLYDE',     name:'Clyde',          c:'#0e7490', type:'platform'},  // teal
+  {id:'FULMAR',    name:'Fulmar',         c:'#1a6db5', type:'platform'},  // ocean blue
+  {id:'AUK',       name:'Auk',            c:'#1e8449', type:'platform'},  // forest green
+  {id:'MONTR',     name:'Montrose',       c:'#6b7a00', type:'platform'},  // olive
+  {id:'ARBR',      name:'Arbroath',       c:'#148f6e', type:'platform'},  // teal-green
+  {id:'GP3',       name:'GP3',            c:'#e67e22', type:'fpso'},  // warm orange
 ];
 
 /* ── Dynamic colour assignment ───────────────────────────────
@@ -2169,37 +2169,20 @@ function buildActiveLocStrip(){
       const head=document.createElement('div');
       head.className='loc-card-head';
 
-      const dot=document.createElement('div');
-      dot.className='loc-card-dot';
-      dot.title='Click to change colour';
-      dot.style.cursor='pointer';
-
-      /* Hidden native color input */
-      const colorInp=document.createElement('input');
-      colorInp.type='color';
-      colorInp.value=effectiveBase;
-      colorInp.style.cssText='position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
-      dot.appendChild(colorInp);
-
-      dot.addEventListener('click', e=>{
-        e.stopPropagation();
-        colorInp.click();
-      });
-      colorInp.addEventListener('input', e=>{
-        e.stopPropagation();
-        const newCol=colorInp.value;
-        /* Update DYN_COLORS with user's chosen colour */
-        DYN_COLORS[id]={ base:newCol, palEntry:{h:newCol,hue:0,fam:'custom'} };
-        /* Persist and rebuild */
-        renderAll(); updateStats(); buildActiveLocStrip(); save();
-      });
-      colorInp.addEventListener('click', e=>e.stopPropagation());
+      const icon = document.createElement('div');
+      icon.className = 'loc-card-icon';
+      const locType = (loc.type || 'platform');
+      if (locType === 'fpso') {
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 10 L2.5 12.5 L13.5 12.5 L14.5 10 Z"/><rect x="5" y="7" width="2" height="3"/><rect x="8" y="6" width="2" height="4"/><line x1="11" y1="10" x2="11" y2="7"/><line x1="10.5" y1="7.5" x2="11.5" y2="7.5"/></svg>';
+      } else {
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="11" height="2.5"/><line x1="4" y1="8.5" x2="4" y2="14"/><line x1="12" y1="8.5" x2="12" y2="14"/><line x1="8" y1="8.5" x2="8" y2="14"/><polyline points="6,6 6,3 10,3 10,6"/><line x1="8" y1="3" x2="8" y2="1.5"/></svg>';
+      }
 
       const nameLbl=document.createElement('div');
       nameLbl.className='loc-card-name';
       nameLbl.textContent=loc.name;
 
-      head.appendChild(dot);
+      head.appendChild(icon);
       head.appendChild(nameLbl);
 
       /* Status pill strip — only present statuses */

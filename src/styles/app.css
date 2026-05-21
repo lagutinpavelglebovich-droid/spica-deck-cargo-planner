@@ -942,13 +942,13 @@ body.is-viewer .bp-viewer-indicator{
 
 /* Name row — the location name is the anchor, dot is a quiet status sign */
 .loc-card-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
-.loc-card-dot{
-  width:6px;height:6px;border-radius:50%;
-  background:var(--lc);flex-shrink:0;
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--lc) 18%,transparent);
-  opacity:.9;
-  transition:background-color .25s ease, border-color .25s ease, box-shadow .25s ease;
+.loc-card-icon {
+  width: 14px; height: 14px; flex-shrink: 0;
+  color: var(--txt2);
+  display: inline-flex; align-items: center; justify-content: center;
+  opacity: .85;
 }
+.loc-card-icon svg { display: block; }
 .loc-card-name{
   font-size:13px;font-weight:700;color:var(--txt);
   white-space:nowrap;letter-spacing:-.1px;
