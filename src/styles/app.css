@@ -19254,13 +19254,6 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   margin: 8px 0;
 }
 
-/* Weather VFX hides the strip — design lock per Pavel. Old cards
-   instead got an atmosphere background veil; the strip is omitted
-   entirely so on-deck weather VFX is unobstructed. */
-body[data-wx]:not([data-wx="off"]) .header-info-strip {
-  display: none;
-}
-
 /* Dark theme — accent is light blue against dark, no background fill.
    Mirrors the light-theme colour-only + underline pattern. */
 [data-theme="dark"] .info-value-input:hover,
