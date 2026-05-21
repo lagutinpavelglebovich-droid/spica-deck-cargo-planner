@@ -19360,6 +19360,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
      visually centered, and the transform was over-correcting when paired
      with the "9°" text axis above. Geometric center wins at this scale. */
 }
+:root:not([data-theme="dark"]) .info-icon img {
+  filter: drop-shadow(0 1px 3px rgba(56, 138, 221, 0.18))
+          contrast(1.1)
+          saturate(1.1);
+}
 
 .info-divider {
   width: 1px;
