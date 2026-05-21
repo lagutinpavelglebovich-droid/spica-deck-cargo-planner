@@ -16,3 +16,6 @@ src/fonts/
 
 # Local Claude Code skill router (project-private, not part of the app)
 taste-skill/
+
+# Tauri auto-generated schemas (regenerated on each build)
+src-tauri/gen/
