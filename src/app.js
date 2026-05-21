@@ -16,6 +16,7 @@ import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 import { interRegularB64, interBoldB64 } from './inter-fonts.js';
 import { flipLayout } from './animations/locations.js';
 import { animateLangDropdownIn, animateLangDropdownOut, getLangState } from './animations/langDropdown.js';
+import { animateLocPickerIn, animateLocPickerOut, getLocPickerState } from './animations/locPicker.js';
 import { animate as motionAnimate } from 'motion';
 /* Phase W5/W6 — weather orchestrator + presets. ESM imports are
    hoisted; placed here alongside the other top-level imports for
@@ -2384,11 +2385,17 @@ function bindLocDrawer(){
   const btn=document.getElementById('btnAddLoc');
   btn.addEventListener('click',e=>{
     e.stopPropagation();positionDrawer();
-    drawer.classList.toggle('open',!drawer.classList.contains('open'));
-    if(drawer.classList.contains('open'))buildLocGrid();
+    const st=getLocPickerState(drawer);
+    if(st==='closed'||st==='closing'){
+      buildLocGrid();
+      drawer.classList.add('open');
+      animateLocPickerIn(drawer);
+    }else{
+      animateLocPickerOut(drawer);
+    }
   });
-  document.getElementById('locDrawerClose').addEventListener('click',()=>drawer.classList.remove('open'));
-  document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!btn.contains(e.target))drawer.classList.remove('open');});
+  document.getElementById('locDrawerClose').addEventListener('click',()=>animateLocPickerOut(drawer));
+  document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!btn.contains(e.target))animateLocPickerOut(drawer);});
   window.addEventListener('resize',()=>{if(drawer.classList.contains('open'))positionDrawer();});
 }
 
