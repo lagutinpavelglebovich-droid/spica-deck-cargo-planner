@@ -332,46 +332,6 @@ function bindAdmin(){
   /* Apply brand labels from config / localStorage */
   applyBrandLabels();
 
-  /* Lower base panel glow — circular blue light follows cursor across the
-     FULL slab surface (ribbon rect + 12px overhang on every side). Hides
-     over upper cards (Lifts / Ops / Voyage / Tools). Because `.shell-ribbon`
-     has `pointer-events:none`, we listen on window and test bounds ourselves
-     so the overhang and inter-card gaps still track. */
-  (function initSlabGlow(){
-    const ribbon = document.querySelector('.shell-ribbon');
-    if(!ribbon) return;
-    const PAD = 12; // slab overhang beyond ribbon, per ::before/::after inset:-12px
-    let pending = false;
-    let lastX = 0, lastY = 0;
-    window.addEventListener('mousemove', (e) => {
-      lastX = e.clientX; lastY = e.clientY;
-      if(pending) return;
-      pending = true;
-      requestAnimationFrame(() => {
-        pending = false;
-        const rect = ribbon.getBoundingClientRect();
-        const inSlab =
-          lastX >= rect.left - PAD && lastX <= rect.right + PAD &&
-          lastY >= rect.top  - PAD && lastY <= rect.bottom + PAD;
-        if(!inSlab){
-          ribbon.classList.remove('glow-active');
-          return;
-        }
-        // Real element under cursor — reliable check across gaps/overhang
-        const under = document.elementFromPoint(lastX, lastY);
-        const overUpperCard = !!(under && under.closest &&
-          under.closest('.rc-lifts, .rc-ops, .header-info-strip, .rc-tools'));
-        // Glow position in slab's own coordinate space (slab origin = ribbon - 12px)
-        ribbon.style.setProperty('--glow-x', (lastX - rect.left + PAD) + 'px');
-        ribbon.style.setProperty('--glow-y', (lastY - rect.top  + PAD) + 'px');
-        ribbon.classList.toggle('glow-active', !overUpperCard);
-      });
-    }, { passive: true });
-    window.addEventListener('blur', () => {
-      ribbon.classList.remove('glow-active');
-    });
-  })();
-
   /* (syncBrandCol removed — the left-side is now a compact icon + zoom
      control hub; it no longer needs to occupy the brand column width.) */
 }

@@ -13005,49 +13005,6 @@ html[data-theme="dark"] .shell-ribbon .rc-brand .brand-dcp{
   z-index: 2;                              /* above any decoration */
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   LOWER BASE PANEL GLOW — blue circular light follows cursor on the slab.
-   Lives on .shell-ribbon::after (sits above slab ::before, below cards).
-   Hides when cursor moves onto an upper card via `.glow-off` class on ribbon.
-══════════════════════════════════════════════════════════════════════ */
-.shell-ribbon::after{
-  content: '';
-  position: absolute;
-  inset: -12px;                            /* matches slab bounds exactly */
-  z-index: -1;                             /* same layer as slab — DOM-order places it above slab */
-  pointer-events: none;
-  border-radius: calc(var(--r-float) + 4px);
-  background: radial-gradient(
-    circle 100px at var(--glow-x, 50%) var(--glow-y, 50%),
-    rgba(59,130,246,.55) 0%,
-    rgba(59,130,246,.28) 32%,
-    rgba(59,130,246,.10) 62%,
-    rgba(59,130,246,.03) 82%,
-    transparent 95%
-  );
-  opacity: 0;
-  transition: opacity .35s cubic-bezier(.32,.72,0,1);
-  will-change: opacity, background;
-  overflow: hidden;                        /* clip to rounded panel bounds */
-}
-.shell-ribbon.glow-active::after{
-  opacity: 1 !important;
-}
-/* Dark-mode — brighter cooler blue on navy */
-[data-theme="dark"] .shell-ribbon::after{
-  background: radial-gradient(
-    circle 100px at var(--glow-x, 50%) var(--glow-y, 50%),
-    rgba(96,165,250,.48) 0%,
-    rgba(96,165,250,.24) 32%,
-    rgba(96,165,250,.10) 62%,
-    rgba(96,165,250,.03) 82%,
-    transparent 95%
-  );
-}
-@media (prefers-reduced-motion: reduce){
-  .shell-ribbon::after{ transition: none; }
-}
-body.pdf-capture .shell-ribbon::after{ display: none !important; }
 
 /* ══════════════════════════════════════════════════════════════════════
    CARGO LIBRARY — Stitch-inspired premium glass redesign (RIGHT panel).
