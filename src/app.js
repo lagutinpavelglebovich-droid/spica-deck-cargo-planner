@@ -8160,8 +8160,15 @@ function cpRenderLib(){
   });
 }
 
-/* ── Helper: build a library card ── */
-function cpMakeLibCard(item, isCustom=false){
+/* ── Helper: build a library card ──
+   options:
+     removable  — when true, render a × button that removes the item
+                  from S.customLib (used by the Custom Cargo section).
+     onRemove   — optional override for the × handler. Receives
+                  (item, cardElement). If omitted, the default removal
+                  splices S.customLib, saves, re-renders, and fires an
+                  undo toast. */
+function cpMakeLibCard(item, isCustom=false, options={}){
   /* ── Key = item.key (CLIB) or item.name (custom) ── */
   const itemKey = item.key || item.name;
 
@@ -8235,6 +8242,43 @@ function cpMakeLibCard(item, isCustom=false){
   });
   card.appendChild(star);
 
+  /* ── Optional × Remove button — Custom Cargo section only ── */
+  let rmBtn = null;
+  if(options.removable === true){
+    rmBtn = document.createElement('span');
+    rmBtn.style.cssText = 'font-size:14px;color:var(--txt4);cursor:pointer;flex-shrink:0;padding:0 2px;';
+    rmBtn.textContent = '×';
+    rmBtn.addEventListener('mousedown', e => e.stopPropagation());
+    rmBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if(typeof options.onRemove === 'function'){
+        options.onRemove(item, card);
+        return;
+      }
+      /* Default removal: splice S.customLib by reference (the visible
+         index may not match the array index when filters are active),
+         persist, re-render every section, and offer an undo toast that
+         restores the item at the original position. */
+      const idx = S.customLib.indexOf(item);
+      if(idx < 0) return;
+      const removed = S.customLib.splice(idx, 1)[0];
+      if(typeof save === 'function') save();
+      cpRender();
+      if(typeof showUndoToast === 'function'){
+        showUndoToast(
+          (typeof t === 'function' ? t('removed_prefix') : 'Removed ') + (removed.name || 'custom cargo'),
+          (typeof t === 'function' ? t('undo') : 'Undo'),
+          () => {
+            S.customLib.splice(idx, 0, removed);
+            if(typeof save === 'function') save();
+            cpRender();
+          }
+        );
+      }
+    });
+    card.appendChild(rmBtn);
+  }
+
   /* ── F1: Drag from library card onto deck canvas ── */
   const pendingItem = {
     type: 'cargo',
@@ -8243,6 +8287,7 @@ function cpMakeLibCard(item, isCustom=false){
 
   card.addEventListener('mousedown', e => {
     if(e.target.closest('.cp-lc-star')) return;   /* don't intercept star click */
+    if(rmBtn && e.target === rmBtn) return;       /* don't drag when starting on × */
     _libDragFromCard(e, pendingItem, displayName, pw, ph);
   });
 
@@ -8266,65 +8311,21 @@ function cpMakeLibCard(item, isCustom=false){
   return card;
 }
 
-/* ── Render: Custom Section ── */
+/* ── Render: Custom Section ──
+   Uses the unified cpMakeLibCard builder so drag, click, glow, star,
+   alias, and the new toggle-deselect behave identically to Library and
+   Frequent cards. The `removable:true` option turns on the × button. */
 function cpRenderCustom(){
-  const list=document.getElementById('cpCustomList'); if(!list) return;
-  list.innerHTML='';
-  if(!S.customLib||S.customLib.length===0) return;
-  S.customLib.forEach((item,idx)=>{
-    if(CP_Q){
-      if(![item.name||'',item.sz||''].join(' ').toLowerCase().includes(CP_Q)) return;
-    }
-    const card=document.createElement('div'); card.className='cp-lc';
-    card.innerHTML=`
-      <div class="cp-lc-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.8 2.8l1.4 1.4M9.8 9.8l1.4 1.4M11.2 2.8l-1.4 1.4M4.2 9.8l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>
-      <div class="cp-lc-body">
-        <div class="cp-lc-cat">Custom</div>
-        <div class="cp-lc-name">${(item.name||'').replace(/</g,'&lt;')}</div>
-        <div class="cp-lc-dim">${(item.sz||'').replace(/</g,'&lt;')} · ${item.wt||'?'}T</div>
-      </div>`;
-    const rm=document.createElement('span');
-    rm.style.cssText='font-size:14px;color:var(--txt4);cursor:pointer;flex-shrink:0;padding:0 2px;';
-    rm.textContent='×';
-    rm.addEventListener('mousedown',e=>e.stopPropagation());
-    rm.addEventListener('click',e=>{
-      e.stopPropagation();
-      const removed = S.customLib.splice(idx,1)[0];
-      if(typeof save==='function') save();
-      cpRenderCustom();
-      showUndoToast(
-        t('removed_prefix') + (removed.name || 'custom cargo'),
-        t('undo'),
-        () => { S.customLib.splice(idx, 0, removed); if(typeof save==='function') save(); cpRenderCustom(); }
-      );
-    });
-    card.appendChild(rm);
-    /* Shared pendingItem payload — both click-to-place (fallback) and
-       drag-from-library use this identical descriptor. */
-    const _custPw = item.w || m2px_w(item.length_m || 3);
-    const _custPh = item.h || m2px_h(item.width_m  || 2.44);
-    const _custPending = { type:'cargo', item:{
-      cat: item.cat, name: item.name,
-      w: _custPw, h: _custPh,
-      wt: parseFloat(item.wt)||0,
-      length_m: item.length_m, width_m: item.width_m,
-    }};
-    const _custDisplayName = item.name || 'Custom';
+  const list = document.getElementById('cpCustomList'); if(!list) return;
+  list.innerHTML = '';
+  if(!S.customLib || S.customLib.length === 0) return;
 
-    card.addEventListener('click',()=>{
-      document.querySelectorAll('.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-lc-sel','cp-dg-sel'));
-      card.classList.add('cp-lc-sel');
-      S.pending = _custPending;
-      document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x=>x.classList.remove('sel','selected-q'));
-      cpShowHint('<b>'+_custDisplayName.replace(/</g,'&lt;')+'</b> → click deck to place');
-    });
-    /* Phase 4 — drag-from-library for custom entries. */
-    card.addEventListener('mousedown', e => {
-      if(e.target === rm) return;    /* never drag when starting on the × remove button */
-      _libDragFromCard(e, _custPending, _custDisplayName, _custPw, _custPh);
-    });
-    list.appendChild(card);
-  });
+  const items = S.customLib.filter(it => cpMatch(it) && cpPassFilter(it, 'custom'));
+  if(items.length === 0){
+    list.innerHTML = '<div class="cp-empty">No custom cargo matches your search.</div>';
+    return;
+  }
+  items.forEach(item => list.appendChild(cpMakeLibCard(item, true, { removable:true })));
 }
 
 /* ── Custom cargo add from panel form ── */
