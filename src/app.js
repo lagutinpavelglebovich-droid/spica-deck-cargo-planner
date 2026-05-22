@@ -8134,19 +8134,16 @@ function cpRenderLib(){
     return;
   }
 
-  /* Normal library view — merge standard CLIB + user custom cargo.
-     Both sources feed through cpMatch() (same search/filter pipeline)
-     and both contribute to the badge count. If neither source has
-     matches we show the empty state; otherwise each source renders in
-     its own section below. Previously `items.length===0` returned
-     early even when the user had custom cargo that matched, hiding
-     their entire Custom Library and their custom Favourites. */
+  /* Normal library view — CLIB presets only. Custom cargo is rendered
+     exclusively by cpRenderCustom() into #cpCustomList, and favourited
+     items (including favourited customs) are surfaced by cpRenderFreq().
+     This section is the single source of truth for the standard preset
+     catalogue. */
   const src = (typeof CLIB !== 'undefined') ? CLIB : [];
-  const items   = src.filter(item => cpMatch(item));
-  const customs = (S.customLib||[]).filter(item => cpMatch(item));
+  const items = src.filter(item => cpMatch(item));
 
-  if(badge) badge.textContent = items.length + customs.length;
-  if(items.length===0 && customs.length===0){
+  if(badge) badge.textContent = items.length;
+  if(items.length===0){
     body.innerHTML='<div class="cp-empty">No cargo matches your search.</div>';
     return;
   }
@@ -8161,13 +8158,6 @@ function cpRenderLib(){
     body.appendChild(lbl);
     grp.forEach(item => body.appendChild(cpMakeLibCard(item)));
   });
-
-  /* Custom cargo */
-  if(customs.length > 0){
-    const lbl=document.createElement('div'); lbl.className='cp-cat-lbl'; lbl.textContent='⚙ Custom';
-    body.appendChild(lbl);
-    customs.forEach(item => body.appendChild(cpMakeLibCard(item, true)));
-  }
 }
 
 /* ── Helper: build a library card ── */
