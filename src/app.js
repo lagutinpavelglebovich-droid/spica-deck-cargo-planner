@@ -48,7 +48,6 @@ import {
    Two-tier access: Operator (full edit) and Viewer (read-only).
    Persists across restarts via localStorage.
 ════════════════════════════════════════════════════════════ */
-const OPERATOR_PW = 'spica';
 let _currentMode = localStorage.getItem('spicaTideOperatorMode') || 'viewer';
 function isOperator(){ return _currentMode === 'operator'; }
 function setMode(mode){
@@ -12750,49 +12749,15 @@ function openModeModal(){
   const modal = document.getElementById('modeModal');
   if(!ov || !modal) return;
 
-  if(isOperator()){
-    /* Currently Operator → offer downgrade */
-    modal.innerHTML = `
-      <h3>Switch to Viewer?</h3>
-      <p>Viewer mode is read-only. You can still view the deck, export, and receive sync updates.</p>
-      <div class="mode-modal-btns">
-        <button class="mode-modal-btn primary" id="modeSwitchViewer">Switch to Viewer</button>
-        <button class="mode-modal-btn secondary" id="modeCancelBtn">Cancel</button>
-      </div>`;
-    document.getElementById('modeSwitchViewer').onclick = () => { setMode('viewer'); closeModeModal(); };
-  } else {
-    /* Currently Viewer → password prompt */
-    modal.innerHTML = `
-      <h3>Enter Operator Mode</h3>
-      <p>Operator mode allows full cargo editing, placement, and sync push.</p>
-      <div class="mode-pw-wrap">
-        <input type="password" class="mode-pw-input" id="modePwInput" placeholder="Password" autocomplete="off">
-        <div class="mode-pw-error" id="modePwError"></div>
-      </div>
-      <div class="mode-modal-btns">
-        <button class="mode-modal-btn primary" id="modeLoginBtn">Enter Operator Mode</button>
-        <button class="mode-modal-btn secondary" id="modeCancelBtn">Cancel</button>
-      </div>`;
-    const inp = document.getElementById('modePwInput');
-    const err = document.getElementById('modePwError');
-    document.getElementById('modeLoginBtn').onclick = () => {
-      if(inp.value === OPERATOR_PW){
-        setMode('operator');
-        closeModeModal();
-        showToast('Operator mode activated');
-      } else {
-        inp.value = '';
-        inp.classList.add('shake');
-        err.textContent = 'Wrong password';
-        setTimeout(() => inp.classList.remove('shake'), 450);
-        inp.focus();
-      }
-    };
-    /* Enter key submits */
-    inp.addEventListener('keydown', e => { if(e.key === 'Enter') document.getElementById('modeLoginBtn').click(); });
-    setTimeout(() => inp.focus(), 100);
-  }
-
+  /* Viewer → Operator: confirm dialog (no password) */
+  modal.innerHTML = `
+    <h3>Enable Operator Mode</h3>
+    <p>You'll be able to edit, save, and modify cargo placements.</p>
+    <div class="mode-modal-btns">
+      <button class="mode-modal-btn secondary" id="modeCancelBtn">Cancel</button>
+      <button class="mode-modal-btn primary" id="modeConfirmBtn">Enable Operator</button>
+    </div>`;
+  document.getElementById('modeConfirmBtn').onclick = () => { setMode('operator'); closeModeModal(); };
   document.getElementById('modeCancelBtn').onclick = closeModeModal;
   ov.addEventListener('click', e => { if(e.target === ov) closeModeModal(); });
   ov.classList.add('open');
@@ -12808,18 +12773,18 @@ function bindModeButton(){
      <button>. We need an explicit keydown handler for Enter/Space activation,
      and the click handler must ignore bubbles from the nested brand-edit-btn
      pencil (which already calls stopPropagation, but we defend in depth).
-     Role-state plumbing (_currentMode, setMode, isOperator, OPERATOR_PW,
-     openModeModal) is untouched — only the trigger surface moved. */
+     Role-state plumbing (_currentMode, setMode, isOperator, openModeModal)
+     is untouched — only the trigger surface moved. */
   const btn = document.getElementById('modeBtn');
   if(btn){
     btn.addEventListener('click', e => {
       if(e.target.closest('.brand-edit-btn')) return;
-      openModeModal();
+      if(isOperator()){ setMode('viewer'); } else { openModeModal(); }
     });
     btn.addEventListener('keydown', e => {
       if(e.key === 'Enter' || e.key === ' '){
         e.preventDefault();
-        openModeModal();
+        if(isOperator()){ setMode('viewer'); } else { openModeModal(); }
       }
     });
   }
