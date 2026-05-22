@@ -413,39 +413,61 @@ body.pdf-capture::before{ display:none !important; }
 
 /* ── Mode modal ────────────────────────────────────────────── */
 .mode-overlay{
-  position:fixed;inset:0;z-index:9999;
-  background:rgba(0,0,0,.45);backdrop-filter:blur(4px);
+  position:fixed;inset:0;
   display:none;align-items:center;justify-content:center;
+  background:rgba(10,8,5,.38);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  z-index:10000;
 }
 .mode-overlay.open{display:flex;}
 .mode-modal{
-  background:var(--surf);border-radius:var(--r);
-  box-shadow:var(--sh);border:1px solid var(--brd);
-  padding:32px 36px;max-width:360px;width:90%;text-align:center;
-  animation:modeIn .2s ease;
+  width:min(360px,92vw);
+  padding:24px 24px 18px;
+  overflow:hidden;
+  animation:modeIn .22s cubic-bezier(.34,1.3,.64,1);
+  /* background, border, border-radius, box-shadow come from the
+     grouped glass override at line ~11973 — not duplicated here */
 }
-@keyframes modeIn{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:none;}}
+@keyframes modeIn{
+  from{opacity:0;transform:scale(.93) translateY(6px);}
+  to  {opacity:1;transform:scale(1)   translateY(0);  }
+}
 .mode-modal h3{
-  font-size:15px;font-weight:700;color:var(--txt);margin:0 0 6px;
-  font-family:'Inter',sans-serif;
+  margin:0 0 6px;
+  font-family:var(--ff-display,'Manrope',system-ui,sans-serif);
+  font-size:17px;font-weight:700;
+  color:var(--txt);letter-spacing:-.3px;text-align:center;
 }
 .mode-modal p{
-  font-size:11.5px;color:var(--txt3);margin:0 0 20px;line-height:1.5;
+  margin:0 0 18px;
+  font-size:13px;font-weight:400;
+  color:var(--txt2);line-height:1.55;text-align:center;
 }
-.mode-modal-btns{display:flex;gap:10px;justify-content:center;}
+.mode-modal-btns{
+  display:flex;gap:8px;padding-top:4px;
+}
 .mode-modal-btn{
-  padding:9px 22px;border-radius:var(--r-sm);font-size:11px;font-weight:700;
-  letter-spacing:.5px;cursor:pointer;border:1.5px solid transparent;
-  font-family:'Inter',sans-serif;transition:all .15s;
+  flex:1;height:38px;border-radius:10px;border:none;
+  font-size:14px;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;
+  transition:
+    transform .12s var(--ease),
+    box-shadow .18s var(--ease),
+    background .18s var(--ease);
 }
-.mode-modal-btn.primary{
-  background:var(--acc);color:#fff;border-color:var(--acc);
-}
-.mode-modal-btn.primary:hover{filter:brightness(1.1);}
 .mode-modal-btn.secondary{
-  background:var(--surf2);color:var(--txt2);border-color:var(--brd);
+  background:var(--surf2);color:var(--txt2);border:1px solid var(--brd2);
 }
-.mode-modal-btn.secondary:hover{background:var(--surf3);}
+.mode-modal-btn.secondary:hover{background:var(--surf3);color:var(--txt);}
+.mode-modal-btn.primary{
+  background:var(--acc);color:#fff;
+  box-shadow:0 2px 8px rgba(72,96,131,.3);
+}
+.mode-modal-btn.primary:hover{
+  background:var(--acc2);
+  box-shadow:0 4px 12px rgba(72,96,131,.4);
+}
+.mode-modal-btn:active{transform:scale(.97);}
 
 /* ── Feature NEW badge (registry-based) ───────────────────── */
 .feature-badge{

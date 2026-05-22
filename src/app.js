@@ -12760,6 +12760,10 @@ function openModeModal(){
   document.getElementById('modeConfirmBtn').onclick = () => { setMode('operator'); closeModeModal(); };
   document.getElementById('modeCancelBtn').onclick = closeModeModal;
   ov.addEventListener('click', e => { if(e.target === ov) closeModeModal(); });
+  const onKey = (e) => {
+    if(e.key === 'Escape'){ closeModeModal(); document.removeEventListener('keydown', onKey); }
+  };
+  document.addEventListener('keydown', onKey);
   ov.classList.add('open');
 }
 
