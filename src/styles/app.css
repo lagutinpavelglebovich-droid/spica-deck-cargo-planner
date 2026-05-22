@@ -8974,15 +8974,53 @@ body.hdr-tight .wt-gauge-label{ display:none; }
 .bp-sep{ width:1px;height:18px;background:var(--brd);flex-shrink:0; }
 .bp-spacer{ flex:1; }
 
+/* Autosave pill toggle — ON: accent blue, OFF: neutral surface */
 .bp-autosave{
-  display:flex;align-items:center;gap:5px;
-  background:none;border:none;cursor:pointer;
-  color:var(--txt4);font-family:'JetBrains Mono',monospace;font-size:11px;
-  padding:5px 12px;border-radius:5px;transition:all .18s;
+  display:inline-flex;align-items:center;justify-content:center;
+  height:26px;min-width:86px;
+  padding:0 14px;border-radius:999px;
+  cursor:pointer;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  font-weight:500;letter-spacing:0;
+  user-select:none;-webkit-user-select:none;
+  white-space:nowrap;flex-shrink:0;
+  transition:
+    background 200ms var(--ease),
+    color 200ms var(--ease),
+    border-color 200ms var(--ease),
+    box-shadow 200ms var(--ease);
 }
-.bp-autosave:hover{ color:var(--txt2);background:rgba(0,0,0,.04); }
-.bp-autosave.on{ color:var(--s-L);font-weight:600; }
-.bp-autosave-lbl{ font-weight:500; }
+.bp-autosave.is-on{
+  background:var(--acc);color:#fff;
+  border:1px solid transparent;
+  box-shadow:0 2px 8px rgba(72,96,131,.30);
+}
+.bp-autosave.is-off{
+  background:var(--surf2);color:var(--txt2);
+  border:1px solid var(--brd2);
+  box-shadow:none;
+}
+.bp-autosave.is-on:hover{
+  background:var(--acc2);
+  box-shadow:0 4px 12px rgba(72,96,131,.40);
+}
+.bp-autosave.is-off:hover{
+  background:var(--surf3);color:var(--txt);
+  border-color:var(--brd);
+}
+.bp-autosave:active:not(.is-flipping){ transform:scale(.96); }
+.bp-autosave-lbl{ pointer-events:none; }
+
+/* Flip: rotateX arc (visible → edge-on → visible), label swapped at apex */
+@keyframes bp-pill-flip{
+  0%  { transform:perspective(600px) rotateX(0deg); }
+  45% { transform:perspective(600px) rotateX(90deg); }
+  55% { transform:perspective(600px) rotateX(90deg); }
+  100%{ transform:perspective(600px) rotateX(0deg); }
+}
+.bp-autosave.is-flipping{
+  animation:bp-pill-flip 420ms cubic-bezier(.34,1.3,.64,1) both;
+}
 
 .bp-save-section{
   min-width:80px;
@@ -9000,9 +9038,7 @@ body.hdr-tight .wt-gauge-label{ display:none; }
 [data-theme="dark"] .bp-label{ color:var(--txt3); }
 [data-theme="dark"] .bp-value{ color:var(--txt); }
 [data-theme="dark"] .bp-action{ color:var(--acc); }
-[data-theme="dark"] .bp-autosave{ color:var(--txt4); }
-[data-theme="dark"] .bp-autosave:hover{ color:var(--txt2);background:rgba(255,255,255,.05); }
-[data-theme="dark"] .bp-autosave.on{ color:var(--s-L); }
+[data-theme="dark"] .bp-autosave.is-on{ box-shadow:0 2px 10px rgba(72,96,131,.45); }
 [data-theme="dark"] .bp-save-text{ color:var(--txt2); }
 
 /* Responsive */
@@ -9555,18 +9591,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
   opacity:.7;
   flex-shrink:0;
 }
-.bp-autosave{
-  font-size:11px !important;
-  padding:5px 12px !important;
-  border-radius:6px !important;
-}
-.bp-autosave:hover{
-  background:rgba(0,0,0,.04) !important;
-}
-.bp-autosave.on{
-  color:var(--s-L) !important;
-  font-weight:600 !important;
-}
 .bp-save-section{
   min-width:88px !important;
   padding:0 14px !important;
@@ -9783,9 +9807,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
   background:var(--surf) !important;
   border-top-color:var(--brd2) !important;
   box-shadow:0 -1px 3px rgba(0,0,0,.16), 0 -4px 12px rgba(0,0,0,.12) !important;
-}
-[data-theme="dark"] .bp-autosave:hover{
-  background:rgba(255,255,255,.05) !important;
 }
 [data-theme="dark"] .cp{
   box-shadow:-8px 0 32px rgba(0,0,0,.24), -20px 0 80px rgba(0,0,0,.20) !important;
@@ -11957,9 +11978,6 @@ body.is-viewer .shell-ribbon::after{
   position: relative;
   display: inline-block;
 }
-.bp-autosave{ border-radius:6px !important;transition:all .18s ease !important; }
-.bp-autosave:hover{ background:rgba(59,130,246,.05) !important; }
-.bp-autosave.on{ text-shadow:0 0 6px var(--glow-green); }
 
 /* Floating zoom pill */
 .shell-zoom{
@@ -12203,7 +12221,6 @@ body.is-viewer .shell-ribbon::after{
 
 /* Dark bottom panel */
 [data-theme="dark"] .bottom-panel{ background:var(--glass-status) !important;border-color:var(--glass-brd) !important;box-shadow:var(--sh-float), var(--glass-inset) !important; }
-[data-theme="dark"] .bp-autosave:hover{ background:rgba(96,165,250,.08) !important; }
 
 /* Dark zoom pill */
 [data-theme="dark"] .zoom-bar{ background:var(--glass-sub) !important;border-color:var(--glass-brd-dim) !important; }
@@ -18474,12 +18491,6 @@ body.insp-multi .insp-act-dup{ display:none; }
   color:var(--txt3) !important;
 }
 
-/* Autosave toggle — calm label + dot */
-.bottom-panel .bp-autosave{
-  font-size:10.5px !important;
-  padding:4px 10px !important;
-  border-radius:6px !important;
-}
 .bottom-panel .bp-autosave-lbl{ font-weight:500; }
 
 /* Heartbeat — a single ring pulse on save. The .pulse class is added

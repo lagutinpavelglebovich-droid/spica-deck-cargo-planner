@@ -14533,19 +14533,38 @@ function bindAutosaveToggle(){
   const stored = localStorage.getItem('spicaTide_autosave');
   if(stored === 'off'){
     _autosaveEnabled = false;
-    if(bottomBtn){ bottomBtn.classList.remove('on'); bottomBtn.title = 'Autosave Off'; }
+    if(bottomBtn){
+      bottomBtn.classList.remove('on', 'is-on');
+      bottomBtn.classList.add('is-off');
+      bottomBtn.setAttribute('aria-pressed', 'false');
+      bottomBtn.setAttribute('aria-label', 'Manual save mode, click to enable autosave');
+      bottomBtn.title = 'Autosave Off';
+      const lbl = bottomBtn.querySelector('.bp-autosave-lbl');
+      if(lbl) lbl.textContent = 'Manual';
+    }
+  } else {
+    if(bottomBtn) bottomBtn.classList.add('is-on');
   }
 
   function handleToggle(){
     _autosaveEnabled = !_autosaveEnabled;
     if(bottomBtn){
-      bottomBtn.classList.toggle('on', _autosaveEnabled);
+      bottomBtn.classList.toggle('is-on', _autosaveEnabled);
+      bottomBtn.classList.toggle('is-off', !_autosaveEnabled);
+      bottomBtn.setAttribute('aria-pressed', _autosaveEnabled ? 'true' : 'false');
+      bottomBtn.setAttribute('aria-label', _autosaveEnabled
+        ? 'Autosave on'
+        : 'Manual save mode, click to enable autosave');
       bottomBtn.title = _autosaveEnabled ? 'Autosave On' : 'Autosave Off';
+      bottomBtn.classList.add('is-flipping');
+      const lbl = bottomBtn.querySelector('.bp-autosave-lbl');
+      if(lbl) setTimeout(() => { lbl.textContent = _autosaveEnabled ? 'Autosave' : 'Manual'; }, 210);
+      bottomBtn.addEventListener('animationend', () => {
+        bottomBtn.classList.remove('is-flipping');
+      }, { once: true });
     }
     localStorage.setItem('spicaTide_autosave', _autosaveEnabled ? 'on' : 'off');
     _refreshSmartToolsSystem();
-    /* Removed success toast — the Smart Tools panel reflects the state
-       directly and the user explicitly asked for less notification noise. */
   }
 
   if(bottomBtn) bottomBtn.addEventListener('click', handleToggle);
