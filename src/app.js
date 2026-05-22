@@ -4082,6 +4082,7 @@ function inspPopulate(cargo){
 }
 
 function inspOpen(id){
+  if(!isOperator()) return;
   const cargo = S.cargo.find(c => c.id === id);
   if(!cargo) return;
   const prevId = inspSelId;
