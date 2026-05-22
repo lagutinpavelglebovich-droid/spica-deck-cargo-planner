@@ -18527,49 +18527,6 @@ body.is-viewer .bp-section.bp-viewer-indicator{
 ═══════════════════════════════════════════════════════════════════════ */
 .rct-group.rct-card2{ display:none !important; }
 
-/* Smart Tools — Display section: theme selector.
-   Segmented pair styled to match the existing .st-system-toggle vocabulary. */
-.st-theme-choices{
-  display:flex;
-  align-items:center;
-  gap:4px;
-  padding:3px;
-  background:rgba(30,48,72,.06);
-  border-radius:8px;
-}
-[data-theme="dark"] .st-theme-choices{
-  background:rgba(255,255,255,.05);
-}
-.st-theme-btn{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:5px 10px;
-  font-family:'Inter',system-ui,sans-serif;
-  font-size:11px;
-  font-weight:600;
-  letter-spacing:.1px;
-  color:var(--txt3);
-  background:transparent;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
-  transition:background var(--dur-short) var(--ease), color var(--dur-short) var(--ease);
-}
-.st-theme-btn svg{ opacity:.75; transition:opacity var(--dur-short) var(--ease); }
-.st-theme-btn:hover{ color:var(--txt); }
-.st-theme-btn:hover svg{ opacity:1; }
-.st-theme-btn.sel{
-  background:var(--surf);
-  color:var(--txt);
-  box-shadow:0 1px 2px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.04);
-}
-.st-theme-btn.sel svg{ opacity:1; color:var(--acc); }
-[data-theme="dark"] .st-theme-btn.sel{
-  background:rgba(255,255,255,.08);
-  box-shadow:0 1px 2px rgba(0,0,0,.30), 0 2px 6px rgba(0,0,0,.24);
-}
-[data-theme="dark"] .st-theme-btn.sel svg{ color:#93c5fd; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    INSPECTOR EMPTY-STATE — shown when no cargo is selected.

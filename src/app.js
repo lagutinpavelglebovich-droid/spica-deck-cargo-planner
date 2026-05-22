@@ -9492,15 +9492,6 @@ function applyTheme(theme){
   const lbl = document.getElementById('themeLbl');
   if(ico) ico.innerHTML = theme === 'dark' ? THEME_SVG_MOON : THEME_SVG_SUN;
   if(lbl) lbl.textContent = theme === 'dark' ? 'Dark' : 'Light';
-  /* Update Smart Tools Display section (the new primary surface) */
-  const stLight = document.getElementById('stThemeLight');
-  const stDark  = document.getElementById('stThemeDark');
-  if(stLight && stDark){
-    stLight.classList.toggle('sel', theme === 'light');
-    stDark.classList.toggle('sel',  theme === 'dark');
-    stLight.setAttribute('aria-pressed', String(theme === 'light'));
-    stDark.setAttribute('aria-pressed',  String(theme === 'dark'));
-  }
   /* Persist */
   try{ localStorage.setItem('spicaTide_theme', theme); }catch(e){}
 }
@@ -9512,12 +9503,6 @@ function bindThemeToggle(){
     const current = document.documentElement.getAttribute('data-theme') || 'light';
     applyTheme(current === 'light' ? 'dark' : 'light');
   });
-
-  /* Smart Tools theme choices (separate surface — kept) */
-  const stLight = document.getElementById('stThemeLight');
-  const stDark  = document.getElementById('stThemeDark');
-  if(stLight) stLight.addEventListener('click', () => applyTheme('light'));
-  if(stDark)  stDark.addEventListener('click',  () => applyTheme('dark'));
 
   /* Restore saved preference */
   let saved = 'light';
