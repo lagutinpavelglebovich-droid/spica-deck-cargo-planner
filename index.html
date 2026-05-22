@@ -2184,25 +2184,9 @@
       <div class="cp-pill on"  data-f="all">All</div>
       <div class="cp-pill"     data-f="unplaced">Unplaced</div>
       <div class="cp-pill"     data-f="ondk">On Deck</div>
-      <div class="cp-pill pdg" data-f="dg">⬥ DG</div>
-      <div class="cp-pill phl" data-f="hl">⬆ HL</div>
-      <div class="cp-pill"     data-f="L">Load</div>
-      <div class="cp-pill"     data-f="BL">Backload</div>
-      <div class="cp-pill"     data-f="ROB">ROB</div>
-      <div class="cp-pill ppri" data-f="pri">⚡ Priority</div>
     </div>
 
-    <!-- Manifest Match toggle strip -->
-    <div class="cp-match-strip" id="cpMatchStrip">
-      <span class="cp-match-lbl">Manifest Matching</span>
-      <button class="cp-match-info-btn" id="cpMatchInfoBtn" title="What is Manifest Matching?">?</button>
-      <label class="cp-match-toggle" title="Compare ASCO list with deck">
-        <input type="checkbox" id="cpMatchToggle">
-        <div class="cp-match-track"><div class="cp-match-thumb"></div></div>
-      </label>
-    </div>
-
-    <!-- Manifest Match results — shown when toggle is ON -->
+    <!-- Manifest Match results — shown automatically when queue is non-empty -->
     <div class="cp-match-section" id="cpMatchSection">
       <div id="cpMatchResults"></div>
       <button class="cp-match-refresh" id="cpMatchRefresh">
@@ -2235,15 +2219,6 @@
           <span class="cp-sec-arr">▾</span>
         </div>
         <div class="cp-sec-body" id="cpSecBodyLib"></div>
-      </div>
-
-      <!-- SECTION: DG Cargo -->
-      <div class="cp-sec" id="cpSecDg">
-        <div class="cp-sec-hdr" id="cpSecHdrDg">
-          <div class="cp-sec-title">⬥ Dangerous Goods</div>
-          <span class="cp-sec-arr">▾</span>
-        </div>
-        <div class="cp-sec-body" id="cpSecBodyDg"></div>
       </div>
 
       <!-- SECTION: Custom Cargo -->

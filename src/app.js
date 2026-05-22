@@ -6512,6 +6512,14 @@ function performAscoImport(){
   buildQueueList();
   updateQueueBadge();
 
+  /* Auto-run manifest match now that queue has new items */
+  if(added.length > 0){
+    MATCH_ACTIVE = true;
+    const sec = document.getElementById('cpMatchSection');
+    if(sec) sec.classList.add('active');
+    if(typeof runManifestMatch === 'function') runManifestMatch();
+  }
+
   /* Auto-open queue tab, auto-expand panel, show toast */
   if(added.length > 0){
     const qTab = document.querySelector('.stab[data-tab="queue"]');
@@ -7627,7 +7635,7 @@ let CP_OPEN      = false;
 let CP_COLLAPSED = false; /* panel open but shrunk to 48px icon strip */
 let CP_FILTER = 'all';
 let CP_Q      = '';
-const CP_SECTIONS = { queue:true, lib:true, dg:true, custom:true };
+const CP_SECTIONS = { queue:true, lib:true, custom:true };
 
 /* ── Collapse / Expand (panel stays 'open', shrinks to strip) ── */
 function cpCollapse(){
@@ -7673,6 +7681,13 @@ function cpOpen(){
   try{ wasCollapsed = localStorage.getItem('spicaTide_cpCollapsed') === '1'; }catch(e){}
   if(wasCollapsed) cpCollapse(); else { CP_COLLAPSED=false; cpRender(); }
   if(!CP_COLLAPSED) setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 180);
+  /* Auto-run manifest match whenever panel opens with a non-empty queue */
+  if((typeof IMPORT_QUEUE!=='undefined') && IMPORT_QUEUE.length > 0){
+    MATCH_ACTIVE = true;
+    const sec = document.getElementById('cpMatchSection');
+    if(sec) sec.classList.add('active');
+    if(typeof runManifestMatch === 'function') runManifestMatch();
+  }
 }
 function cpClose(){
   CP_OPEN = false;
@@ -7794,16 +7809,12 @@ function cpMatch(item){
 function cpPassFilter(item, src){
   const f = CP_FILTER;
   if(f==='all')     return true;
-  if(f==='dg')      return !!((item.dgClasses&&item.dgClasses.length>0)||item.cls||(src==='dg'));
-  if(f==='hl')      return !!(item.heavyLift);
-  if(f==='pri')     return !!(item.priority||item.pri);
   if(f==='ondk')    return src==='deck' || (src==='queue' && !!S.cargo.find(c=>c.ccu&&item.ccu&&c.ccu===item.ccu));
   if(f==='unplaced'){
     if(src==='queue') return !S.cargo.find(c=>c.ccu&&c.ccu===item.ccu);
     if(src==='lib'||src==='custom') return true; /* library items are always "unplaced templates" */
     return false;
   }
-  if(['L','BL','ROB'].includes(f)) return item.status===f;  /* queue OR deck — both have .status */
   return true;
 }
 
@@ -7811,7 +7822,6 @@ function cpPassFilter(item, src){
 function cpRender(){
   cpRenderQueue();
   cpRenderLib();
-  cpRenderDg();
   cpRenderCustom();
   cpUpdateBadge();
 }
@@ -8067,141 +8077,6 @@ function cpRenderLib(){
     return;
   }
 
-  /* DG filter — handled by the DG section below */
-  if(CP_FILTER==='dg'){
-    body.innerHTML='<div class="cp-empty">DG cargo shown in the Dangerous Goods section below.</div>';
-    if(badge) badge.textContent='—'; return;
-  }
-
-  /* Priority Lift filter */
-  if(CP_FILTER==='pri'){
-    const items = S.cargo.filter(c => c.priority);
-    const filtered = CP_Q ? items.filter(c=>[c.ccu||'',c.desc||''].join(' ').toLowerCase().includes(CP_Q)) : items;
-    if(badge) badge.textContent = filtered.length;
-    if(filtered.length===0){ body.innerHTML='<div class="cp-empty">No Priority Lift cargo on deck.</div>'; return; }
-    filtered.forEach(cargo=>{
-      const loc=locById(cargo.platform);
-      const card=document.createElement('div'); card.className='cp-qi';
-      const dot=document.createElement('div'); dot.className='cp-qi-dot';
-      dot.innerHTML='<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L4 7M8 3l4 4" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      card.appendChild(dot);
-      const bd=document.createElement('div'); bd.className='cp-qi-body';
-      const nm=document.createElement('div'); nm.className='cp-qi-name'; nm.textContent=cargo.ccu||'—'; bd.appendChild(nm);
-      const meta=document.createElement('div'); meta.className='cp-qi-meta'; meta.textContent=[cargo.desc,cargo.wt?cargo.wt+'T':''].filter(Boolean).join(' · '); bd.appendChild(meta);
-      const tags=document.createElement('div'); tags.className='cp-qi-tags';
-      if(loc){const t=document.createElement('span');t.className='cp-tag cp-tag-loc';t.textContent=loc.name;tags.appendChild(t);}
-      const pt=document.createElement('span');pt.className='cp-tag';pt.style.cssText='background:rgba(217,119,6,.12);color:rgba(180,90,0,1);border:1px solid rgba(217,119,6,.30);';pt.textContent='⚡ Priority';tags.appendChild(pt);
-      bd.appendChild(tags); card.appendChild(bd);
-      card.addEventListener('click',()=>{const el=document.querySelector(`.cb[data-id="${cargo.id}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'nearest'});el.classList.add('cp-hl');setTimeout(()=>el.classList.remove('cp-hl'),4500);if(typeof kbSelect==='function')kbSelect(cargo.id);}});
-      body.appendChild(card);
-    });
-    return;
-  }
-
-  /* Heavy Lift filter — show HL cargo from deck AND unplaced queue */
-  if(CP_FILTER==='hl'){
-    const deckHL = S.cargo.filter(c => c.heavyLift);
-    const filtered = CP_Q
-      ? deckHL.filter(c => [c.ccu||'',c.desc||''].join(' ').toLowerCase().includes(CP_Q))
-      : deckHL;
-    if(badge) badge.textContent = filtered.length;
-    if(filtered.length === 0){
-      body.innerHTML = '<div class="cp-empty">No Heavy Lift cargo on deck.<br>HL items in Import Queue shown above.</div>';
-      return;
-    }
-    filtered.forEach(cargo => {
-      const loc = locById(cargo.platform);
-      const card = document.createElement('div'); card.className = 'cp-qi';
-      const dot = document.createElement('div'); dot.className = 'cp-qi-dot';
-      dot.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L4 7M8 3l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      dot.style.color = '#785a1a';
-      card.appendChild(dot);
-      const bd = document.createElement('div'); bd.className = 'cp-qi-body';
-      const nm = document.createElement('div'); nm.className = 'cp-qi-name';
-      nm.textContent = cargo.ccu || '—'; bd.appendChild(nm);
-      const meta = document.createElement('div'); meta.className = 'cp-qi-meta';
-      meta.textContent = [cargo.desc, cargo.wt ? cargo.wt+'T' : ''].filter(Boolean).join(' · ');
-      bd.appendChild(meta);
-      const tags = document.createElement('div'); tags.className = 'cp-qi-tags';
-      if(loc){ const t=document.createElement('span');t.className='cp-tag cp-tag-loc';t.textContent=loc.name;tags.appendChild(t); }
-      const hl=document.createElement('span');hl.className='cp-tag cp-tag-hl';hl.textContent='⬆ HL';tags.appendChild(hl);
-      if(cargo.dgClasses&&cargo.dgClasses.length>0){ const d=document.createElement('span');d.className='cp-tag cp-tag-dg';d.textContent='⬥ DG '+cargo.dgClasses.join(', ');tags.appendChild(d); }
-      bd.appendChild(tags); card.appendChild(bd);
-      card.addEventListener('click', () => {
-        const el = document.querySelector(`.cb[data-id="${cargo.id}"]`);
-        if(el){ el.scrollIntoView({behavior:'smooth',block:'nearest'});
-          el.classList.add('cp-hl'); setTimeout(()=>el.classList.remove('cp-hl'),4500);
-          if(typeof kbSelect==='function') kbSelect(cargo.id); }
-      });
-      body.appendChild(card);
-    });
-    return;
-  }
-
-  /* Status filters (L / BL / ROB) — show actual deck cargo with that status */
-  if(['L','BL','ROB'].includes(CP_FILTER)){
-    const statusLabel = {L:'Load', BL:'Backload', ROB:'ROB'}[CP_FILTER];
-    let items = S.cargo.filter(c => c.status === CP_FILTER);
-    if(CP_Q) items = items.filter(c =>
-      [c.ccu||'', c.desc||'', c.platform||''].join(' ').toLowerCase().includes(CP_Q)
-    );
-    if(badge) badge.textContent = items.length;
-    if(items.length === 0){
-      body.innerHTML = `<div class="cp-empty">No ${statusLabel} cargo on deck.</div>`;
-      return;
-    }
-    items.forEach(cargo => {
-      const loc = (typeof locById !== 'undefined') ? locById(cargo.platform) : null;
-      const locName = loc ? loc.name : (cargo.platform || '');
-      const card = document.createElement('div');
-      card.className = 'cp-qi';
-
-      /* Icon dot */
-      const dot = document.createElement('div'); dot.className = 'cp-qi-dot';
-      const _cdg = cargo.dgClasses||[];
-      dot.innerHTML = _cdg.length>0
-        ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 5.5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="5" width="13" height="9.5" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 5l2.5-3.5h8L14.5 5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 5v2h4V5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-      if(_cdg.length>0) dot.style.color = '#785a1a';
-      card.appendChild(dot);
-
-      /* Body */
-      const bd = document.createElement('div'); bd.className = 'cp-qi-body';
-      /* Primary: CCU/ID in mono */
-      const nm = document.createElement('div'); nm.className = 'cp-qi-name';
-      nm.textContent = cargo.ccu || '—';
-      bd.appendChild(nm);
-      /* Secondary: description + weight */
-      const meta = document.createElement('div'); meta.className = 'cp-qi-meta';
-      meta.textContent = [cargo.desc, cargo.wt ? cargo.wt + 'T' : ''].filter(Boolean).join(' · ');
-      bd.appendChild(meta);
-      /* Tags: location, status, DG, HL */
-      const tags = document.createElement('div'); tags.className = 'cp-qi-tags';
-      const mkTag = (cls, txt) => {
-        const t = document.createElement('span'); t.className = 'cp-tag ' + cls;
-        t.textContent = txt; tags.appendChild(t);
-      };
-      if(locName)       mkTag('cp-tag-loc',              locName);
-      if(_cdg.length>0)  mkTag('cp-tag-dg',               '⬥ DG ' + _cdg.join(', '));
-      if(cargo.heavyLift) mkTag('cp-tag-hl',             '⬆ HL');
-      bd.appendChild(tags);
-      card.appendChild(bd);
-
-      /* Click: highlight that cargo on deck + keyboard-select it */
-      card.addEventListener('click', () => {
-        const el = document.querySelector(`.cb[data-id="${cargo.id}"]`);
-        if(el){
-          el.scrollIntoView({ behavior:'smooth', block:'nearest' });
-          el.classList.add('cp-hl');
-          setTimeout(() => el.classList.remove('cp-hl'), 4500);
-          if(typeof kbSelect === 'function') kbSelect(cargo.id);
-        }
-      });
-      body.appendChild(card);
-    });
-    return;
-  }
-
   /* Normal library view — merge standard CLIB + user custom cargo.
      Both sources feed through cpMatch() (same search/filter pipeline)
      and both contribute to the badge count. If neither source has
@@ -8359,54 +8234,6 @@ function cpMakeLibCard(item, isCustom=false){
   });
 
   return card;
-}
-
-/* ── Render: DG Section ── */
-function cpRenderDg(){
-  const body=document.getElementById('cpSecBodyDg'); if(!body) return;
-  body.innerHTML='';
-  if(!['all','dg'].includes(CP_FILTER)){
-    body.innerHTML='<div class="cp-empty">Set filter to "All" or "⬥ DG" to browse DG cargo.</div>'; return;
-  }
-  const dgData=(typeof DG_DATA!=='undefined')?DG_DATA:[];
-  const items=dgData.filter(dg=>{
-    if(!CP_Q) return true;
-    return ('class '+dg.cls+' '+dg.nm+' '+(dg.sub||'')).toLowerCase().includes(CP_Q);
-  });
-  if(items.length===0){body.innerHTML='<div class="cp-empty">No DG items match.</div>';return;}
-  items.forEach(dg=>{
-    const card=document.createElement('div'); card.className='cp-dg';
-    const dia=document.createElement('div'); dia.className='cp-dg-dia';
-    dia.style.cssText=`background:${dg.bg};border-color:${dg.bc};`;
-    const sp=document.createElement('span'); sp.textContent=dg.cls; sp.style.color=dg.tc;
-    dia.appendChild(sp); card.appendChild(dia);
-    const bd=document.createElement('div'); bd.className='cp-dg-body';
-    bd.innerHTML=`<div class="cp-dg-cls" style="color:${dg.bc}">Class ${dg.cls}</div>
-                  <div class="cp-dg-nm">${dg.nm.replace(/</g,'&lt;')}</div>`;
-    card.appendChild(bd);
-    card.addEventListener('click',()=>{
-      const wasSelected = card.classList.contains('cp-dg-sel');
-      document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x=>x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
-      document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(x=>x.classList.remove('sel','selected-q'));
-      if(wasSelected){
-        S.pending = null;
-        if(typeof cancelPending==='function') cancelPending();
-        if(typeof updateDGZones==='function') updateDGZones();
-        cpShowHint('');
-      } else {
-        card.classList.add('cp-dg-sel');
-        S.pending = {type:'dg',item:dg};
-        if(typeof updateDGZones==='function') updateDGZones();
-        cpShowHint('<b>◆ DG '+dg.cls+' · '+dg.nm.replace(/</g,'&lt;')+'</b> → click deck to place');
-      }
-    });
-    /* Phase 4 — drag-from-library for DG markers (no intrinsic dimensions;
-       helper uses its premium defaults for the ghost). */
-    card.addEventListener('mousedown', e => {
-      _libDragFromCard(e, { type:'dg', item:dg }, 'DG Class ' + dg.cls, null, null);
-    });
-    body.appendChild(card);
-  });
 }
 
 /* ── Render: Custom Section ── */
@@ -10148,59 +9975,9 @@ function runManifestMatch(){
 }
 
 function bindManifestMatch(){
-  const toggle   = document.getElementById('cpMatchToggle');
-  const section  = document.getElementById('cpMatchSection');
-  const infoBtn  = document.getElementById('cpMatchInfoBtn');
-  const infoOv   = document.getElementById('matchInfoOv');
-  const infoClose= document.getElementById('matchInfoClose');
-  const infoAct  = document.getElementById('matchInfoAction');
+  /* Toggle strip removed — matching is now automatic.
+     Only the refresh button needs wiring. */
   const refreshBtn = document.getElementById('cpMatchRefresh');
-  if(!toggle || !section) return;
-
-  const activate = (showInfo) => {
-    MATCH_ACTIVE = true;
-    toggle.checked = true;
-    section.classList.add('active');
-    runManifestMatch();
-    if(showInfo){
-      /* Open info modal explaining the feature */
-      if(infoOv) infoOv.classList.add('open');
-    }
-  };
-
-  const deactivate = () => {
-    MATCH_ACTIVE = false;
-    toggle.checked = false;
-    section.classList.remove('active');
-    /* Show brief info modal explaining what was turned off */
-    if(infoOv) infoOv.classList.add('open');
-  };
-
-  const closeInfo = () => { if(infoOv) infoOv.classList.remove('open'); };
-
-  toggle.addEventListener('change', () => {
-    if(toggle.checked) activate(true);
-    else deactivate();
-  });
-
-  /* Info button — always open info modal */
-  if(infoBtn) infoBtn.addEventListener('click', () => {
-    if(infoOv) infoOv.classList.add('open');
-  });
-
-  /* Info modal close controls */
-  if(infoClose) infoClose.addEventListener('click', closeInfo);
-  if(infoAct)   infoAct.addEventListener('click', () => {
-    closeInfo();
-    /* If not yet active, enable it */
-    if(!MATCH_ACTIVE) activate(false);
-  });
-  if(infoOv) infoOv.addEventListener('click', e => { if(e.target===infoOv) closeInfo(); });
-  document.addEventListener('keydown', e => {
-    if(e.key==='Escape' && infoOv && infoOv.classList.contains('open')) closeInfo();
-  });
-
-  /* Refresh button */
   if(refreshBtn) refreshBtn.addEventListener('click', runManifestMatch);
 }
 
@@ -11130,12 +10907,6 @@ function bindSmartTools(){
     SMART.match = matchChk.checked;
     saveSmartSettings();
     updateSmartDot();
-    /* Sync with the panel's own manifest toggle */
-    const panelToggle = document.getElementById('cpMatchToggle');
-    if(panelToggle){
-      panelToggle.checked = SMART.match;
-      panelToggle.dispatchEvent(new Event('change'));
-    }
   });
 
   if(dgFadeChk) dgFadeChk.addEventListener('change', () => {
@@ -11353,17 +11124,6 @@ function bindSmartTools(){
          the Auto Align preview modal. User commits via Apply. */
       document.getElementById('stOv')?.classList.remove('open');
       autoAlignDeck();
-    });
-  }
-
-  /* Sync: if cpMatchToggle changes (in the panel), update the Smart Tools checkbox too */
-  const cpMatch = document.getElementById('cpMatchToggle');
-  if(cpMatch){
-    cpMatch.addEventListener('change', () => {
-      SMART.match = cpMatch.checked;
-      if(matchChk) matchChk.checked = SMART.match;
-      saveSmartSettings();
-      updateSmartDot();
     });
   }
 
