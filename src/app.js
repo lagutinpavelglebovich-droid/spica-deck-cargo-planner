@@ -7749,7 +7749,7 @@ function cpUpdateBadge(){
 
 /* ── Section toggle ── */
 function cpBindSections(){
-  ['Queue','Freq','Lib','Dg','Custom'].forEach(sec=>{
+  ['Queue','Freq','Lib','Custom'].forEach(sec=>{
     const hdr = document.getElementById('cpSecHdr'+sec);
     const body= document.getElementById('cpSecBody'+sec);
     if(!hdr||!body) return;
