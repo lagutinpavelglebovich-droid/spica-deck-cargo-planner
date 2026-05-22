@@ -415,8 +415,8 @@ body.pdf-capture::before{ display:none !important; }
 .mode-overlay{
   position:fixed;inset:0;
   display:none;align-items:center;justify-content:center;
-  background:rgba(10,8,5,.38);
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  background:rgba(10,8,5,.48);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   z-index:10000;
 }
 .mode-overlay.open{display:flex;}
@@ -425,8 +425,16 @@ body.pdf-capture::before{ display:none !important; }
   padding:24px 24px 18px;
   overflow:hidden;
   animation:modeIn .22s cubic-bezier(.34,1.3,.64,1);
-  /* background, border, border-radius, box-shadow come from the
-     grouped glass override at line ~11973 — not duplicated here */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.42), rgba(250,252,255,.28)),
+    rgba(255,255,255,.88) !important;
+  backdrop-filter:blur(32px) saturate(1.35) !important;
+  -webkit-backdrop-filter:blur(32px) saturate(1.35) !important;
+  border:1px solid rgba(255,255,255,.60) !important;
+  box-shadow:
+    0 24px 64px rgba(30,60,90,.22),
+    0 8px 22px rgba(30,60,90,.12),
+    inset 0 1px 0 rgba(255,255,255,.75) !important;
 }
 @keyframes modeIn{
   from{opacity:0;transform:scale(.93) translateY(6px);}
@@ -12212,6 +12220,16 @@ body.is-viewer .shell-ribbon::after{
 /* Dark modals */
 [data-theme="dark"] .about-overlay,[data-theme="dark"] .mode-overlay,[data-theme="dark"] .wn-overlay,[data-theme="dark"] .asco-ov,[data-theme="dark"] .loc-del-ov,[data-theme="dark"] .rh-overlay{ background:rgba(0,0,0,.42) !important; }
 [data-theme="dark"] .about-modal,[data-theme="dark"] .mode-modal,[data-theme="dark"] .wn-modal,[data-theme="dark"] .asco-panel,[data-theme="dark"] .loc-del-panel,[data-theme="dark"] .rh-panel{ background:var(--glass) !important;border-color:var(--glass-brd) !important;box-shadow:var(--sh-float-panel), var(--glass-inset) !important; }
+[data-theme="dark"] .mode-modal{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)),
+    rgba(16,22,34,.94) !important;
+  border:1px solid rgba(255,255,255,.10) !important;
+  box-shadow:
+    0 24px 64px rgba(0,0,0,.52),
+    0 8px 22px rgba(0,0,0,.32),
+    inset 0 1px 0 rgba(255,255,255,.07) !important;
+}
 [data-theme="dark"] .st-ov{ background:var(--glass) !important;border-color:var(--glass-brd) !important; }
 [data-theme="dark"] .toast-msg{ background:var(--glass) !important;border-color:var(--glass-brd) !important; }
 
