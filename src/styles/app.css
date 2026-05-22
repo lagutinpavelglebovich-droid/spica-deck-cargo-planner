@@ -5942,10 +5942,39 @@ body.cp-panel-open.cp-panel-collapsed .deck-area{
   border:1px solid rgba(72,96,131,.14);
 }
 .cp-sec-badge.warn{color:var(--acc-warm);background:rgba(120,90,26,.08);border-color:rgba(120,90,26,.18);}
-.cp-sec-arr{font-size:10px;color:var(--txt4);transition:transform .18s;}
+.cp-sec-arr{font-size:10px;color:var(--txt4);transition:transform 240ms cubic-bezier(0.22, 1, 0.36, 1);}
 .cp-sec-hdr.collapsed .cp-sec-arr{transform:rotate(-90deg);}
 .cp-sec-body{padding:4px 12px 10px;}
-.cp-sec-body.hidden{display:none;}
+
+/* ── Section expand/collapse animation ──
+   Animates the body via a CSS grid track on the parent .cp-sec. The
+   .hidden class on .cp-sec-body is picked up by :has() and collapses
+   the grid row to 0fr; overflow:hidden + min-height:0 on the body lets
+   the row resolve to zero pixels regardless of intrinsic content size.
+   Duration and easing match the chevron rotation for visual coherence.
+   Easing is ease-out-quart — exponential ease-out per impeccable's
+   motion principles, no bounce, no elastic. */
+.cp-sec{
+  display: grid;
+  grid-template-rows: auto 1fr;
+  transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cp-sec:has(> .cp-sec-body.hidden){
+  grid-template-rows: auto 0fr;
+}
+.cp-sec-body{
+  overflow: hidden;
+  min-height: 0;
+}
+@media (prefers-reduced-motion: reduce){
+  .cp-sec,
+  .cp-sec-arr{
+    transition: none !important;
+  }
+  .cp-sec:has(> .cp-sec-body.hidden) .cp-sec-body{
+    display: none;
+  }
+}
 
 /* ── Import queue items ─────────────────────────────────────── */
 .cp-qi{
