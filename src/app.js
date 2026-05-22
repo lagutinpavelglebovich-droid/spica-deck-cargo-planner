@@ -1294,6 +1294,27 @@ function loadLibPrefs(){
     if(d.order) LIB_PREFS.order  = d.order;
     if(d.aliases)LIB_PREFS.aliases=d.aliases;
   }catch(e){}
+  seedDefaultFavs();
+}
+
+/* First-run seed for the Frequent section. Pins the five most commonly
+   reached-for library items so a brand-new install doesn't show an empty
+   Frequent row. Skipped entirely once the user has any saved favourites,
+   so it never overwrites real prefs. */
+function seedDefaultFavs(){
+  if(LIB_PREFS.favs instanceof Set && LIB_PREFS.favs.size > 0) return;
+  const defaults = [
+    'cont_10x8',     // 10ft × 8ft Container
+    'cont_mini_6',   // 6ft Mini Container
+    'cont_10x8_ot',  // 10ft Open Top
+    'cont_20x8',     // 20ft × 8ft Container
+    'cont_10x8_hh',  // 10ft Half Height
+  ];
+  if(!(LIB_PREFS.favs instanceof Set)){
+    LIB_PREFS.favs = new Set(Array.isArray(LIB_PREFS.favs) ? LIB_PREFS.favs : []);
+  }
+  defaults.forEach(k => LIB_PREFS.favs.add(k));
+  saveLibPrefs();
 }
 
 /* Sort a flat item array: favs first, then respect LIB_PREFS.order,
@@ -7635,7 +7656,7 @@ let CP_OPEN      = false;
 let CP_COLLAPSED = false; /* panel open but shrunk to 48px icon strip */
 let CP_FILTER = 'all';
 let CP_Q      = '';
-const CP_SECTIONS = { queue:true, lib:true, custom:true };
+const CP_SECTIONS = { queue:true, freq:true, lib:true, custom:true };
 
 /* ── Collapse / Expand (panel stays 'open', shrinks to strip) ── */
 function cpCollapse(){
@@ -7728,7 +7749,7 @@ function cpUpdateBadge(){
 
 /* ── Section toggle ── */
 function cpBindSections(){
-  ['Queue','Lib','Dg','Custom'].forEach(sec=>{
+  ['Queue','Freq','Lib','Dg','Custom'].forEach(sec=>{
     const hdr = document.getElementById('cpSecHdr'+sec);
     const body= document.getElementById('cpSecBody'+sec);
     if(!hdr||!body) return;
@@ -7821,6 +7842,7 @@ function cpPassFilter(item, src){
 /* ── Master render ── */
 function cpRender(){
   cpRenderQueue();
+  cpRenderFreq();
   cpRenderLib();
   cpRenderCustom();
   cpUpdateBadge();
@@ -8041,6 +8063,41 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
 }
 
 /* ── Render: Standard Library ── */
+/* ── Render: Frequent (favourited library items) ──
+   Surfaces LIB_PREFS.favs as its own section above the main Library.
+   Cards are built via cpMakeLibCard() — identical visuals, drag, click,
+   and star toggle to the Library section. An item that is starred shows
+   up here AND in its normal category group in cpRenderLib(). */
+function cpRenderFreq(){
+  const body  = document.getElementById('cpSecBodyFreq');
+  const badge = document.getElementById('cpFreqBadge');
+  if(!body) return;
+
+  const favSet = (LIB_PREFS.favs instanceof Set)
+    ? LIB_PREFS.favs
+    : new Set(Array.isArray(LIB_PREFS.favs) ? LIB_PREFS.favs : []);
+
+  const stdItems = (typeof CLIB !== 'undefined') ? CLIB : [];
+  const allItems = [
+    ...stdItems,
+    ...((S.customLib || []).map(c => ({ ...c, isCustom:true }))),
+  ];
+
+  const favItems = allItems
+    .filter(it => favSet.has(it.key || it.name))
+    .filter(it => cpMatch(it) && cpPassFilter(it, 'lib'));
+
+  if(badge) badge.textContent = favItems.length;
+  body.innerHTML = '';
+
+  if(favItems.length === 0){
+    body.innerHTML = '<div class="cp-empty">No frequent cargo yet. Star items to pin them here.</div>';
+    return;
+  }
+
+  favItems.forEach(it => body.appendChild(cpMakeLibCard(it, !!it.isCustom)));
+}
+
 function cpRenderLib(){
   const body  = document.getElementById('cpSecBodyLib');
   const badge = document.getElementById('cpLibBadge');
@@ -8097,26 +8154,6 @@ function cpRenderLib(){
   /* Group standard items by category */
   const groups={};
   items.forEach(it=>{ const c=it.cat||'Other'; (groups[c]=groups[c]||[]).push(it); });
-
-  /* Favourites section first.
-     Favourites: LIB_PREFS.favs is a Set keyed by libKey() = item.key || item.name.
-     Custom cargo items live in S.customLib (no `key`, so their libKey is `name`).
-     Previously this filter only scanned `items` (standard CLIB) so favourited
-     CUSTOM cargo never appeared in the Favourites section even though their
-     favourite state was saved correctly. Merge both sources so custom items
-     are first-class citizens in Favourites. */
-  const hasFav = k => (LIB_PREFS.favs instanceof Set) ? LIB_PREFS.favs.has(k) : false;
-  const favItems = [...items, ...customs].filter(it => hasFav(it.key||it.name));
-  if(favItems.length > 0 && !CP_Q){
-    const lbl=document.createElement('div'); lbl.className='cp-cat-lbl'; lbl.dataset.fav='true'; lbl.textContent='★ Favourites';
-    body.appendChild(lbl);
-    favItems.forEach(item => {
-      /* Preserve the custom icon when a favourited item is a custom-cargo
-         template — the Favourites card should still look like a Custom row. */
-      const isCustom = (item.cat === 'Custom');
-      body.appendChild(cpMakeLibCard(item, isCustom));
-    });
-  }
 
   /* Standard groups */
   Object.entries(groups).forEach(([cat,grp])=>{
@@ -8200,7 +8237,10 @@ function cpMakeLibCard(item, isCustom=false){
       star.title = 'Remove from Favourites';
     }
     saveLibPrefs();
-    /* Re-render the whole lib section so Favourites group updates immediately */
+    /* Re-render both Frequent and Library so the star toggle updates
+       the Frequent section membership immediately as well as the star
+       state in any other card showing the same key. */
+    cpRenderFreq();
     cpRenderLib();
   });
   card.appendChild(star);
