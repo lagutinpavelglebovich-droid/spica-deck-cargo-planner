@@ -19034,6 +19034,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   background-size: 100% 200%;
   background-position: 0% 100%;
   animation: brand-accent-flow 4s linear infinite;
+  opacity: 0;
+  transition: opacity 0.18s ease;
 }
 
 .brand-block.mode-operator .brand-accent {
@@ -19064,6 +19066,18 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   color: #185fa5;
 }
 
+/* Accent bar: hover-only per spec.
+   Operator (any theme): orange rim on hover.
+   Viewer + light: blue rim on hover.
+   Viewer + dark: no rim, not even on hover. */
+.brand-block.mode-operator:hover .brand-accent,
+.brand-block.mode-viewer:hover .brand-accent {
+  opacity: 1;
+}
+[data-theme="dark"] .brand-block.mode-viewer .brand-accent {
+  opacity: 0;
+}
+
 /* Hover-reveal ↔ swap-hint icon next to OPERATOR / VIEWER MODE label.
    Inherits colour from .brand-role; applyModeUI preserves this span when
    updating the label text node. */
@@ -19082,6 +19096,7 @@ body.hdr-tight .gp-cluster { gap: 10px; }
     animation: none;
     background-size: 100% 100%;
     background-position: 0 0;
+    transition: none;
   }
   .brand-block,
   .brand-role-hint {
