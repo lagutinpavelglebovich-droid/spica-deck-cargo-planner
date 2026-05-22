@@ -7658,6 +7658,11 @@ let CP_FILTER = 'all';
 let CP_Q      = '';
 const CP_SECTIONS = { queue:true, freq:true, lib:true, custom:true };
 
+/* Timer id for the post-drop auto-expand. Hoisted to module scope so a
+   second drag started inside the 300ms window can cancel the previous
+   pending expand and avoid the panel popping back open mid-drag. */
+let _LIB_AUTO_EXPAND_TIMER = null;
+
 /* ── Collapse / Expand (panel stays 'open', shrinks to strip) ── */
 function cpCollapse(){
   CP_COLLAPSED = true;
@@ -7980,7 +7985,19 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
   if(!isOperator()) return;
   if(e.button !== 0) return;
 
+  /* Cancel any post-drop auto-expand still pending from a previous drag.
+     Without this, starting a fresh drag inside the 300ms window would let
+     the previous timer fire mid-drag and pop the panel back open. */
+  if(_LIB_AUTO_EXPAND_TIMER){
+    clearTimeout(_LIB_AUTO_EXPAND_TIMER);
+    _LIB_AUTO_EXPAND_TIMER = null;
+  }
+
   const sx = e.clientX, sy = e.clientY;
+  /* Snapshot the panel state at mousedown so we can respect the user's
+     pre-drag choice. Only auto-collapse if they had it expanded; only
+     auto-expand back to the state they came from. */
+  const wasCollapsedBeforeDrag = CP_COLLAPSED;
   let dragging = false;
   let ghost = null;
   let overDeck = false;
@@ -8005,6 +8022,16 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
         lbl.textContent = displayName;
         ghost.appendChild(lbl);
         document.body.appendChild(ghost);
+
+        /* Drag is real — collapse the panel to its 48px icon strip so the
+           deck has maximum room for placement. Existing .30s cubic-bezier
+           transition slides the panel out behind the ghost. Skipped if the
+           user already had the panel collapsed — never override their
+           explicit choice. */
+        if(!wasCollapsedBeforeDrag) cpCollapse();
+
+        /* Install Escape cancellation only now that a real drag exists. */
+        document.addEventListener('keydown', onKey);
       }
     }
     if(ghost){
@@ -8026,17 +8053,42 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     }
   };
 
+  /* Escape cancels an in-progress drag: removes ghost, clears any pending
+     selection, and restores the panel if we collapsed it. Listener is only
+     attached after the 5px threshold so click-only flows don't see it. */
+  const onKey = ev => {
+    if(ev.key !== 'Escape') return;
+    ev.preventDefault();
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onKey);
+    if(ghost){ ghost.remove(); ghost = null; }
+    S.pending = null;
+    if(typeof cancelPending === 'function') cancelPending();
+    if(!wasCollapsedBeforeDrag) cpExpand();
+  };
+
   const onUp = ev => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onKey);
     if(ghost) ghost.remove();
     if(!dragging) return;         /* click-only: let the card's click handler run */
 
     const dcv = document.querySelector('.dcv');
-    if(!dcv) return;
+    if(!dcv){
+      /* Defensive: deck element missing — restore panel and bail. */
+      if(!wasCollapsedBeforeDrag) cpExpand();
+      return;
+    }
     const cr = dcv.getBoundingClientRect();
     if(ev.clientX < cr.left || ev.clientX > cr.right
-    || ev.clientY < cr.top  || ev.clientY > cr.bottom) return;   /* off-deck cancel */
+    || ev.clientY < cr.top  || ev.clientY > cr.bottom){
+      /* Off-deck release — expand immediately so the user can grab their
+         next item without an extra click. */
+      if(!wasCollapsedBeforeDrag) cpExpand();
+      return;
+    }
 
     const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
     const dropY = (ev.clientY - cr.top)  / zoomLevel - (ph || 1) / 2;
@@ -8055,6 +8107,18 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
         el.classList.add('just-placed');
         el.addEventListener('animationend', () => el.classList.remove('just-placed'), { once:true });
       }
+    }
+
+    /* Successful drop — return the panel to expanded state after a brief
+       delay so the cargo modal that just opened can render first. 300ms
+       is shorter than typical human "next action" latency, so the panel
+       is already back by the time the user looks away from the modal to
+       grab another item. */
+    if(!wasCollapsedBeforeDrag){
+      _LIB_AUTO_EXPAND_TIMER = setTimeout(() => {
+        _LIB_AUTO_EXPAND_TIMER = null;
+        cpExpand();
+      }, 300);
     }
   };
 
