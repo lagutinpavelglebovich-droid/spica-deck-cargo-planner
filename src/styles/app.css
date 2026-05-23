@@ -15509,11 +15509,13 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 .cp-backdrop{ display:none; }   /* unused — panel floats, no dim layer */
 
-/* ── Panel shell — A.4a navy glass ───────────────────────────
-   Mockup-canonical surface: rgba(20,28,42,.72) over blur(24).
-   Single tonal definition for both themes (mockup is dark-only
-   context). Cards inside (.cp-sec) sit at rgba(40,52,70,.55)
-   over blur(16) — same family, lighter & cooler stack. */
+/* ── Panel shell — A.4a.1 approved surface recipe ────────────
+   Same glass tier as .lang-opt / .loc-opt / .loc-drawer-hdr —
+   the validated 23 May 2026 family that reads correctly on both
+   the light-blue ocean background and the dark theme. A.4a's
+   mockup-canonical navy was authored over a dark gradient and
+   came out too opaque against the production background; this
+   restores tonal parity with the rest of the surface system. */
 .cp{
   position:fixed;
   top:calc(30px + var(--shell-m));
@@ -15522,12 +15524,12 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   left:auto;
   width:380px;
   border-radius:16px;
-  background:rgba(20,28,42,.72);
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
+  background:rgba(40,42,48,.48);
+  backdrop-filter:blur(12px) saturate(140%);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
   border:0.5px solid rgba(255,255,255,.08);
   box-shadow:
-    0 8px 32px rgba(0,0,0,0.30),
+    0 4px 20px rgba(0,0,0,0.18),
     inset 0 1px 0 rgba(255,255,255,.06);
   color:rgba(255,255,255,.92);
   overflow:hidden;
@@ -15546,13 +15548,22 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   opacity:1;
 }
 [data-theme="dark"] .cp{
-  /* Mockup is dark-only — no separate dark variant. Same navy
-     surface holds across themes; cards inside carry the contrast. */
-  background:rgba(20,28,42,.72);
-  border-color:rgba(255,255,255,.08);
+  /* Approved dark tier — same recipe as [data-theme="dark"] .lang-opt.
+     backdrop-filter cascades from the base .cp rule (blur 12 sat 140);
+     only background, border, box-shadow change for dark. */
+  background:rgba(35,38,44,.62);
+  border:0.5px solid rgba(255,255,255,.12);
   box-shadow:
-    0 8px 32px rgba(0,0,0,0.30),
+    0 4px 20px rgba(0,0,0,0.35),
     inset 0 1px 0 rgba(255,255,255,.06);
+}
+[data-theme="dark"] .cp-sec{
+  /* Grouped with dark .cp above so all dark-theme panel overrides
+     live in one block. backdrop-filter cascades from .cp-sec base
+     (blur 10 sat 130); only background + border change for dark. */
+  background:rgba(45,48,54,.65);
+  border:0.5px solid rgba(255,255,255,.10);
+  border-bottom:0.5px solid rgba(255,255,255,.10);
 }
 
 /* Deck never shifts when panel opens — panel floats above */
@@ -15689,20 +15700,25 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   border-color:rgba(55,138,221,.30);
 }
 
-/* ── A.4a — Section as nested card on navy panel ─────────────
+/* ── A.4a.1 — Section as nested card on approved-surface panel
    Each .cp-sec is its own rounded card. Grid display + the
    :has(> .cp-sec-body.hidden) → grid-template-rows: auto 0fr
    animation (defined in base block at ~line 5835) still owns
    the collapse mechanic — the rules below only add surface,
-   spacing and gutter; they do NOT touch display:grid. */
+   spacing and gutter; they do NOT touch display:grid.
+   Surface is neutral grey (NOT navy) — same colour family as
+   the main .cp panel, ~7% denser alpha so cards read as a
+   separate material stacked on the panel rather than a tonal
+   shift. */
 .cp-sec{
-  background:rgba(40,52,70,.55);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
+  background:rgba(50,52,58,.55);
+  backdrop-filter:blur(10px) saturate(130%);
+  -webkit-backdrop-filter:blur(10px) saturate(130%);
   border:0.5px solid rgba(255,255,255,.06);
   border-radius:10px;
   padding:10px 12px;
   border-bottom:0.5px solid rgba(255,255,255,.06); /* override base border-bottom */
+  /* [data-theme="dark"] .cp-sec override lives next to dark .cp ~200 lines up */
 }
 
 .cp-sec-hdr{
