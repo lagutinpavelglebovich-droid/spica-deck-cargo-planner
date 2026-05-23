@@ -7652,49 +7652,10 @@ async function _populateRecentFiles(){
 ════════════════════════════════════════════════════════════ */
 
 /* ── State ── */
-let CP_OPEN      = false;
-let CP_COLLAPSED = false; /* panel open but shrunk to 48px icon strip */
+let CP_OPEN  = false;
 let CP_FILTER = 'all';
 let CP_Q      = '';
 const CP_SECTIONS = { queue:true, freq:true, lib:true, custom:true };
-
-/* Timer id for the post-drop auto-expand. Hoisted to module scope so a
-   second drag started inside the 300ms window can cancel the previous
-   pending expand and avoid the panel popping back open mid-drag. */
-let _LIB_AUTO_EXPAND_TIMER = null;
-
-/* ── Collapse / Expand (panel stays 'open', shrinks to strip) ── */
-function cpCollapse(){
-  CP_COLLAPSED = true;
-  document.getElementById('cpOverlay').classList.add('cp-collapsed');
-  document.body.classList.add('cp-panel-collapsed');
-  /* Persist */
-  try{ localStorage.setItem('spicaTide_cpCollapsed','1'); }catch(e){}
-  /* Update strip badge */
-  cpUpdateStripBadge();
-}
-function cpExpand(skipFocus = false){
-  CP_COLLAPSED = false;
-  document.getElementById('cpOverlay').classList.remove('cp-collapsed');
-  document.body.classList.remove('cp-panel-collapsed');
-  try{ localStorage.setItem('spicaTide_cpCollapsed','0'); }catch(e){}
-  cpRender();
-  if(!skipFocus){
-    setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 120);
-  }
-}
-function cpToggleCollapse(){
-  CP_COLLAPSED ? cpExpand() : cpCollapse();
-}
-
-/* Strip badge — shows import queue count while collapsed */
-function cpUpdateStripBadge(){
-  const b = document.getElementById('cpStripBadge');
-  if(!b) return;
-  const n = (typeof IMPORT_QUEUE !== 'undefined') ? IMPORT_QUEUE.length : 0;
-  b.textContent = n > 0 ? (n > 9 ? '9+' : n) : '';
-  b.classList.toggle('visible', n > 0);
-}
 
 /* ── Open / Close ── */
 function cpOpen(){
@@ -7704,11 +7665,8 @@ function cpOpen(){
   document.getElementById('cpOverlay').classList.add('open');
   document.body.classList.add('cp-panel-open');
   const _lo = document.getElementById('btnLibOpen'); if(_lo) _lo.classList.add('panel-active');
-  /* Restore collapsed state */
-  let wasCollapsed = false;
-  try{ wasCollapsed = localStorage.getItem('spicaTide_cpCollapsed') === '1'; }catch(e){}
-  if(wasCollapsed) cpCollapse(); else { CP_COLLAPSED=false; cpRender(); }
-  if(!CP_COLLAPSED) setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 180);
+  cpRender();
+  setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 180);
   /* Auto-run manifest match whenever panel opens with a non-empty queue */
   if((typeof IMPORT_QUEUE!=='undefined') && IMPORT_QUEUE.length > 0){
     MATCH_ACTIVE = true;
@@ -7719,9 +7677,8 @@ function cpOpen(){
 }
 function cpClose(){
   CP_OPEN = false;
-  CP_COLLAPSED = false;
-  document.getElementById('cpOverlay').classList.remove('open','cp-collapsed');
-  document.body.classList.remove('cp-panel-open','cp-panel-collapsed');
+  document.getElementById('cpOverlay').classList.remove('open');
+  document.body.classList.remove('cp-panel-open');
   const _lo2 = document.getElementById('btnLibOpen'); if(_lo2) _lo2.classList.remove('panel-active');
   cancelPending();
   cpClearHl();
@@ -7751,7 +7708,6 @@ function cpUpdateBadge(){
   const n = (typeof IMPORT_QUEUE !== 'undefined') ? IMPORT_QUEUE.length : 0;
   b.textContent = n > 0 ? n : '';
   b.classList.toggle('has-items', n > 0);
-  cpUpdateStripBadge();
 }
 
 /* ── Section toggle ── */
@@ -7987,19 +7943,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
   if(!isOperator()) return;
   if(e.button !== 0) return;
 
-  /* Cancel any post-drop auto-expand still pending from a previous drag.
-     Without this, starting a fresh drag inside the 300ms window would let
-     the previous timer fire mid-drag and pop the panel back open. */
-  if(_LIB_AUTO_EXPAND_TIMER){
-    clearTimeout(_LIB_AUTO_EXPAND_TIMER);
-    _LIB_AUTO_EXPAND_TIMER = null;
-  }
-
   const sx = e.clientX, sy = e.clientY;
-  /* Snapshot the panel state at mousedown so we can respect the user's
-     pre-drag choice. Only auto-collapse if they had it expanded; only
-     auto-expand back to the state they came from. */
-  const wasCollapsedBeforeDrag = CP_COLLAPSED;
   let dragging = false;
   let ghost = null;
   let overDeck = false;
@@ -8025,13 +7969,6 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
         ghost.appendChild(lbl);
         document.body.appendChild(ghost);
 
-        /* Drag is real — collapse the panel to its 48px icon strip so the
-           deck has maximum room for placement. Existing .30s cubic-bezier
-           transition slides the panel out behind the ghost. Skipped if the
-           user already had the panel collapsed — never override their
-           explicit choice. */
-        if(!wasCollapsedBeforeDrag) cpCollapse();
-
         /* Install Escape cancellation only now that a real drag exists. */
         document.addEventListener('keydown', onKey);
       }
@@ -8056,8 +7993,8 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
   };
 
   /* Escape cancels an in-progress drag: removes ghost, clears any pending
-     selection, and restores the panel if we collapsed it. Listener is only
-     attached after the 5px threshold so click-only flows don't see it. */
+     selection. Listener is only attached after the 5px threshold so
+     click-only flows don't see it. */
   const onKey = ev => {
     if(ev.key !== 'Escape') return;
     ev.preventDefault();
@@ -8067,7 +8004,6 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     if(ghost){ ghost.remove(); ghost = null; }
     S.pending = null;
     if(typeof cancelPending === 'function') cancelPending();
-    if(!wasCollapsedBeforeDrag) cpExpand(true);
   };
 
   const onUp = ev => {
@@ -8078,18 +8014,11 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     if(!dragging) return;         /* click-only: let the card's click handler run */
 
     const dcv = document.querySelector('.dcv');
-    if(!dcv){
-      /* Defensive: deck element missing — restore panel and bail. */
-      if(!wasCollapsedBeforeDrag) cpExpand(true);
-      return;
-    }
+    if(!dcv) return;              /* defensive: deck element missing */
     const cr = dcv.getBoundingClientRect();
     if(ev.clientX < cr.left || ev.clientX > cr.right
     || ev.clientY < cr.top  || ev.clientY > cr.bottom){
-      /* Off-deck release — expand immediately so the user can grab their
-         next item without an extra click. */
-      if(!wasCollapsedBeforeDrag) cpExpand(true);
-      return;
+      return;                     /* off-deck release — graceful cancel */
     }
 
     const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
@@ -8109,18 +8038,6 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
         el.classList.add('just-placed');
         el.addEventListener('animationend', () => el.classList.remove('just-placed'), { once:true });
       }
-    }
-
-    /* Successful drop — return the panel to expanded state after a brief
-       delay so the cargo modal that just opened can render first. 300ms
-       is shorter than typical human "next action" latency, so the panel
-       is already back by the time the user looks away from the modal to
-       grab another item. */
-    if(!wasCollapsedBeforeDrag){
-      _LIB_AUTO_EXPAND_TIMER = setTimeout(() => {
-        _LIB_AUTO_EXPAND_TIMER = null;
-        cpExpand(true);
-      }, 300);
     }
   };
 
@@ -8436,11 +8353,6 @@ function cpBind(){
   const closeBtn = document.getElementById('cpClose');
   if(closeBtn) closeBtn.addEventListener('click', cpClose);
 
-  /* Collapse / expand strip buttons */
-  const collapseBtn = document.getElementById('cpCollapseBtn');
-  if(collapseBtn) collapseBtn.addEventListener('click', cpToggleCollapse);
-  const expandBtn = document.getElementById('cpExpandBtn');
-  if(expandBtn) expandBtn.addEventListener('click', cpExpand);
   /* Backdrop no longer blocks deck — click-outside handled by document listener.
      Panel stays open while placing cargo on deck (pendingClose guard). */
   /* Panel behaves as floating inspector — does NOT auto-close on outside click.
@@ -8828,14 +8740,10 @@ function kbHandleKey(e){
   /* ── Block-specific shortcuts (require selection) ── */
   const key = e.key.toLowerCase();
 
-  /* L — toggle library panel collapse */
+  /* L — toggle the library panel (open ↔ close) */
   if(key === 'l'){
     e.preventDefault();
-    if(typeof CP_OPEN !== 'undefined' && CP_OPEN){
-      cpToggleCollapse();
-    } else {
-      if(typeof cpOpen === 'function') cpOpen();
-    }
+    if(typeof cpToggle === 'function') cpToggle();
     return;
   }
 
