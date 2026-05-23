@@ -15562,8 +15562,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
      live in one block. backdrop-filter cascades from .cp-sec base
      (blur 10 sat 130); only background + border change for dark. */
   background:rgba(45,48,54,.65);
-  border:0.5px solid rgba(255,255,255,.10);
-  border-bottom:0.5px solid rgba(255,255,255,.10);
+  border:0.5px solid rgba(255,255,255,.14);              /* A.4a.2: .10 → .14, parity with light bump */
+  border-bottom:0.5px solid rgba(255,255,255,.14);       /* A.4a.2: .10 → .14 */
 }
 
 /* Deck never shifts when panel opens — panel floats above */
@@ -15641,7 +15641,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   width:100%;
   height:34px;
   padding:0 32px 0 36px;
-  background:rgba(0,0,0,.25);
+  background:rgba(0,0,0,.30);                            /* A.4a.2: .25 → .30, deeper anchor on lighter panel */
   border:0.5px solid rgba(255,255,255,.06);
   border-radius:10px;
   font-family:'Inter',sans-serif;
@@ -15652,7 +15652,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   /* magnifier SVG background-image inherited from base rule */
 }
 .cp-search::placeholder{
-  color:rgba(255,255,255,.40);
+  color:rgba(255,255,255,.55);                           /* A.4a.2: .40 → .55 */
 }
 .cp-search:focus{
   background:rgba(0,0,0,.35);
@@ -15675,9 +15675,9 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   height:26px;
   padding:0 11px;
   border-radius:999px;
-  border:0.5px solid rgba(255,255,255,.15);
+  border:0.5px solid rgba(255,255,255,.25);              /* A.4a.2: .15 → .25 */
   background:transparent;
-  color:rgba(255,255,255,.60);
+  color:rgba(255,255,255,.72);                            /* A.4a.2: .60 → .72 */
   font-family:'Inter',sans-serif;
   font-size:10px;
   font-weight:500;
@@ -15691,13 +15691,13 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 }
 .cp-pill:hover{
   background:rgba(255,255,255,.05);
-  color:rgba(255,255,255,.85);
-  border-color:rgba(255,255,255,.22);
+  color:rgba(255,255,255,.92);
+  border-color:rgba(255,255,255,.35);
 }
 .cp-pill.on{
-  background:rgba(55,138,221,.22);
+  background:rgba(55,138,221,.30);                        /* A.4a.2: .22 → .30 */
   color:#B5D4F4;
-  border-color:rgba(55,138,221,.30);
+  border-color:rgba(55,138,221,.45);                      /* A.4a.2: .30 → .45 */
 }
 
 /* ── A.4a.1 — Section as nested card on approved-surface panel
@@ -15714,10 +15714,10 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   background:rgba(50,52,58,.55);
   backdrop-filter:blur(10px) saturate(130%);
   -webkit-backdrop-filter:blur(10px) saturate(130%);
-  border:0.5px solid rgba(255,255,255,.06);
+  border:0.5px solid rgba(255,255,255,.10);              /* A.4a.2: .06 → .10, clearer card edge */
   border-radius:10px;
   padding:10px 12px;
-  border-bottom:0.5px solid rgba(255,255,255,.06); /* override base border-bottom */
+  border-bottom:0.5px solid rgba(255,255,255,.10);       /* A.4a.2: .06 → .10, matches border above */
   /* [data-theme="dark"] .cp-sec override lives next to dark .cp ~200 lines up */
 }
 
@@ -15734,7 +15734,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 }
 .cp-sec-hdr:hover .cp-sec-title,
 .cp-sec-hdr:hover .cp-sec-arr{
-  color:rgba(255,255,255,.65);
+  color:rgba(255,255,255,.85);                            /* A.4a.2: .65 → .85, must exceed new resting .70/.55 */
 }
 
 /* Section-level icon, rendered just before .cp-sec-title.
@@ -15769,7 +15769,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   font-size:9px;
   letter-spacing:1.5px;
   text-transform:uppercase;
-  color:rgba(255,255,255,.50);
+  color:rgba(255,255,255,.70);                            /* A.4a.2: .50 → .70 */
   flex:1;
   display:flex;align-items:center;
   transition:color .15s ease;
@@ -15779,7 +15779,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   font-family:'Inter',sans-serif;
   font-size:9px;
   font-weight:500;
-  color:rgba(255,255,255,.35);
+  color:rgba(255,255,255,.55);                            /* A.4a.2: .35 → .55 */
   background:transparent;
   border:none;
   padding:0;
@@ -15789,7 +15789,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 }
 .cp-sec-arr{
   font-size:11px;
-  color:rgba(255,255,255,.40);
+  color:rgba(255,255,255,.55);                            /* A.4a.2: .40 → .55 */
   transition:color .15s ease, transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .cp-sec-body{
@@ -15859,7 +15859,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 .cp .cp-sec-body > .cp-lc:nth-child(odd),
 .cp .cp-sec-body > .cp-qi:nth-child(odd),
 .cp #cpCustomList > .cp-lc:nth-child(odd){
-  background:rgba(255,255,255,.025);
+  background:rgba(255,255,255,.04);                       /* A.4a.2: .025 → .04, addresses borderline flag from A.4a.1 */
 }
 .cp .cp-lc:hover,
 .cp .cp-qi:hover{
@@ -15905,7 +15905,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 }
 .cp .cp-qi-meta,
 .cp .cp-lc-dim{
-  color:rgba(255,255,255,.40);
+  color:rgba(255,255,255,.55);                            /* A.4a.2: .40 → .55 */
   font-size:9px;
   font-family:'Inter',sans-serif;
   margin-top:1px;
@@ -15916,7 +15916,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
 /* Star — light-on-dark, amber when active, no scale on the row */
 .cp .cp-lc-star{
   font-size:11px;
-  color:rgba(255,255,255,.30);
+  color:rgba(255,255,255,.45);                            /* A.4a.2: .30 → .45, off-state more visible */
   cursor:pointer;
   flex-shrink:0;
   transition:color .12s ease, transform .12s ease;
@@ -15953,7 +15953,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
    section card. Used by Imported ("No imported cargo yet…"),
    Frequent, and Library no-match messages. */
 .cp .cp-empty{
-  color:rgba(255,255,255,.40);
+  color:rgba(255,255,255,.60);                            /* A.4a.2: .40 → .60 */
   text-align:left;
   padding:8px 4px 4px;
   font-size:10px;
