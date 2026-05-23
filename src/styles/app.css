@@ -15507,7 +15507,12 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 .cp-backdrop{ display:none; }   /* unused — panel floats, no dim layer */
 
-/* ── Panel shell ───────────────────────────────────────────── */
+/* ── Panel shell — Primary glass tier ────────────────────────
+   Stronger blur (24px) + ink-toned base anchors the panel as
+   foreground UI against the equal-luminance deck workspace.
+   Secondary tier (rgba(255,255,255,.55) + blur 2.5px) is for
+   cards over bright atmosphere strips; full-height rails over
+   a cream/beige deck plate need denser glass to read as material. */
 .cp{
   position:fixed;
   top:calc(30px + var(--shell-m));
@@ -15517,12 +15522,15 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   width:380px;
   border-radius:var(--r-float);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.00) 60%, rgba(0,0,0,.015) 100%),
-    rgba(255,255,255,.55);
-  backdrop-filter:blur(var(--glass-blur)) saturate(1.15);
-  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.15);
-  border:1px solid rgba(255,255,255,.48);
-  box-shadow:var(--sh-float-panel), var(--glass-inset-strong);
+    linear-gradient(180deg, rgba(16,24,40,.08) 0%, rgba(16,24,40,.03) 100%),
+    rgba(16,24,40,.06);
+  backdrop-filter:blur(24px) saturate(1.4);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);
+  border:1px solid rgba(16,24,40,.10);
+  box-shadow:
+    0 22px 64px rgba(16,24,40,.14),
+    0 6px 22px  rgba(16,24,40,.08),
+    inset 0 1px 0 rgba(255,255,255,.45);
   overflow:hidden;
   z-index:590;
   pointer-events:auto;
@@ -15540,10 +15548,13 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 [data-theme="dark"] .cp{
   background:
-    linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.00) 60%, rgba(0,0,0,.06) 100%),
-    rgba(16,24,40,.50);
-  border:1px solid rgba(255,255,255,.08);
-  box-shadow:var(--sh-float-panel), var(--glass-inset-strong);
+    linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.00) 100%),
+    rgba(16,24,40,.62);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:
+    0 22px 64px rgba(0,0,0,.55),
+    0 6px 22px  rgba(0,0,0,.40),
+    inset 0 1px 0 rgba(255,255,255,.08);
 }
 
 /* Deck never shifts when panel opens — panel floats above */
@@ -15746,4 +15757,94 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   background:rgba(245,158,11,.10);
   border-color:rgba(245,158,11,.22);
   color:var(--acc-warm);
+}
+
+/* ── Cargo block selected state ──────────────────────────────
+   Restores the quieted treatment the deleted Stitch override
+   carried: soft 2-step ring + small lift, no neon outline. The
+   !important here is required to win against the base rule at
+   line ~6073 which also uses !important; equal specificity, so
+   later source order takes precedence. */
+.cb.kb-sel{
+  outline: 0 !important;
+  outline-offset: 0 !important;
+  box-shadow:
+    0 0 0 1.5px rgba(255,255,255,.50),
+    0 0 0 2.5px rgba(72,96,131,.45),
+    0 4px 14px  rgba(72,96,131,.18),
+    inset 0 1px 0 rgba(255,255,255,.32) !important;
+  transform: translateY(-1px) scale(1.015);
+  z-index: 28 !important;
+  transition:
+    box-shadow .18s var(--ease, ease-out),
+    transform  .18s var(--ease, ease-out);
+}
+[data-theme="dark"] .cb.kb-sel{
+  box-shadow:
+    0 0 0 1.5px rgba(120,170,235,.42),
+    0 0 0 2.5px rgba(120,170,235,.30),
+    0 4px 14px  rgba(120,170,235,.22),
+    inset 0 1px 0 rgba(255,255,255,.10) !important;
+}
+
+/* ── Row cards, custom form, empty state — dark variants ─────
+   Restored from the deleted V4 audit + glass-token-dark blocks.
+   The base rules at 5858-5957 (light) keep their .68/.70 alpha
+   background; dark theme needs its own ink-toned BG so the
+   var(--txt) text (which flips to #f0f0f0 on dark) has contrast. */
+[data-theme="dark"] .cp-lc{
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.08);
+  box-shadow: 0 1px 2px rgba(0,0,0,.20);
+}
+[data-theme="dark"] .cp-lc:hover{
+  background: rgba(255,255,255,.07);
+  border-color: rgba(120,170,235,.30);
+  box-shadow: 0 2px 8px rgba(0,0,0,.30);
+}
+[data-theme="dark"] .cp-lc.cp-lc-sel{
+  background: rgba(96,165,250,.08);
+  border-color: var(--acc);
+  box-shadow: 0 0 0 2px rgba(96,165,250,.18);
+}
+[data-theme="dark"] .cp-qi{
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.08);
+}
+[data-theme="dark"] .cp-qi:hover{
+  background: rgba(255,255,255,.07);
+  border-color: rgba(120,170,235,.30);
+}
+[data-theme="dark"] .cp-qi.cp-qi-sel{
+  background: rgba(96,165,250,.08);
+  border-color: var(--acc);
+}
+
+[data-theme="dark"] .cp-cform{
+  background: rgba(255,255,255,.03);
+  border-color: rgba(255,255,255,.08);
+}
+[data-theme="dark"] .cp-cf-i{
+  background: rgba(255,255,255,.05);
+  border-color: rgba(255,255,255,.10);
+  color: var(--txt);
+}
+[data-theme="dark"] .cp-cf-i:focus{
+  background: rgba(255,255,255,.08);
+  border-color: var(--acc);
+}
+
+[data-theme="dark"] .cp-empty{
+  color: var(--txt3);
+}
+
+/* ── Scrollbar dark variant ──────────────────────────────────
+   Base thumb is rgba(0,0,0,.18) — fine on light glass, near
+   invisible on dark. White-tinted thumb keeps the gutter
+   readable without dominating. */
+[data-theme="dark"] .cp-body::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.14);
+}
+[data-theme="dark"] .cp-body::-webkit-scrollbar-thumb:hover{
+  background: rgba(255,255,255,.22);
 }
