@@ -15503,12 +15503,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 .cp-backdrop{ display:none; }   /* unused — panel floats, no dim layer */
 
-/* ── Panel shell — Primary glass tier ────────────────────────
-   Stronger blur (24px) + ink-toned base anchors the panel as
-   foreground UI against the equal-luminance deck workspace.
-   Secondary tier (rgba(255,255,255,.55) + blur 2.5px) is for
-   cards over bright atmosphere strips; full-height rails over
-   a cream/beige deck plate need denser glass to read as material. */
+/* ── Panel shell — dark-slate family ─────────────────────────
+   Same surface tier as .lang-opt + .loc-opt + .loc-drawer-hdr
+   (the validated user-approved family). Slightly denser alpha
+   and stronger blur than the popovers — panel scale needs more
+   visual weight to read as foreground anchor over the deck. */
 .cp{
   position:fixed;
   top:calc(30px + var(--shell-m));
@@ -15516,17 +15515,16 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   bottom:calc(38px + var(--shell-m) + var(--shell-gap));
   left:auto;
   width:380px;
-  border-radius:var(--r-float);
-  background:
-    linear-gradient(180deg, rgba(16,24,40,.08) 0%, rgba(16,24,40,.03) 100%),
-    rgba(16,24,40,.06);
-  backdrop-filter:blur(24px) saturate(1.4);
-  -webkit-backdrop-filter:blur(24px) saturate(1.4);
-  border:1px solid rgba(16,24,40,.10);
+  border-radius:16px;
+  background:rgba(40,42,48,.62);
+  backdrop-filter:blur(20px) saturate(140%);
+  -webkit-backdrop-filter:blur(20px) saturate(140%);
+  border:0.5px solid rgba(255,255,255,.10);
   box-shadow:
-    0 22px 64px rgba(16,24,40,.14),
-    0 6px 22px  rgba(16,24,40,.08),
-    inset 0 1px 0 rgba(255,255,255,.45);
+    0 8px 32px rgba(0,0,0,0.30),
+    0 2px 8px  rgba(0,0,0,0.18),
+    inset 0 1px 0 rgba(255,255,255,.06);
+  color:rgba(255,255,255,.92);
   overflow:hidden;
   z-index:590;
   pointer-events:auto;
@@ -15543,13 +15541,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   opacity:1;
 }
 [data-theme="dark"] .cp{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.00) 100%),
-    rgba(16,24,40,.62);
-  border:1px solid rgba(255,255,255,.10);
+  background:rgba(28,30,36,.78);
+  border-color:rgba(255,255,255,.14);
   box-shadow:
-    0 22px 64px rgba(0,0,0,.55),
-    0 6px 22px  rgba(0,0,0,.40),
+    0 8px 32px rgba(0,0,0,0.50),
+    0 2px 8px  rgba(0,0,0,0.30),
     inset 0 1px 0 rgba(255,255,255,.08);
 }
 
@@ -15561,198 +15557,177 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   height:56px;
   padding:0 18px;
   background:transparent;
-  border-bottom:1px solid rgba(255,255,255,.08);
+  border-bottom:0.5px solid rgba(255,255,255,.08);
   flex-shrink:0;
+  display:flex;
+  align-items:center;
+  gap:12px;
 }
 [data-theme="dark"] .cp-head{
-  border-bottom-color:rgba(255,255,255,.06);
+  border-bottom-color:rgba(255,255,255,.10);
 }
 
 .cp-head-icon{
-  width:32px;height:32px;
-  border-radius:var(--r-sm);
-  background:rgba(72,96,131,.10);
-  border:1px solid rgba(72,96,131,.22);
-  color:var(--acc);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.30);
-}
-[data-theme="dark"] .cp-head-icon{
-  background:rgba(96,165,250,.10);
-  border-color:rgba(96,165,250,.18);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  width:28px;height:28px;
+  border-radius:8px;
+  background:rgba(55,138,221,.18);
+  display:flex;align-items:center;justify-content:center;
+  color:#85B7EB;
+  flex-shrink:0;
 }
 
 .cp-title{
-  font-family:'Manrope',sans-serif;
-  font-weight:800;
-  font-size:16px;
-  letter-spacing:-.2px;
-  color:var(--txt);
+  font-family:'Inter',sans-serif;
+  font-weight:500;
+  font-size:13px;
+  color:rgba(255,255,255,.95);
+  letter-spacing:-.1px;
+  flex:1;
 }
 .cp-subtitle{
   font-family:'Inter',sans-serif;
-  font-size:9.5px;
-  font-weight:600;
-  letter-spacing:1.5px;
+  font-size:9px;
+  font-weight:500;
+  letter-spacing:1.2px;
   text-transform:uppercase;
-  color:var(--txt4);
-  margin-top:2px;
+  color:rgba(255,255,255,.45);
+  margin-top:1px;
 }
 
 .cp-close{
-  width:28px;height:28px;
+  width:24px;height:24px;
   border-radius:50%;
-  background:rgba(255,255,255,.40);
-  border:1px solid rgba(30,60,90,.10);
-  color:var(--txt3);
+  background:transparent;
+  border:none;
+  color:rgba(255,255,255,.50);
+  font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  transition:background .15s ease, color .15s ease;
+  flex-shrink:0;
 }
 .cp-close:hover{
-  background:rgba(0,0,0,.06);
-  color:var(--txt2);
-}
-[data-theme="dark"] .cp-close{
-  background:rgba(255,255,255,.04);
-  border-color:rgba(255,255,255,.08);
-  color:var(--txt3);
-}
-[data-theme="dark"] .cp-close:hover{
-  background:rgba(248,113,113,.10);
-  color:#f87171;
+  background:rgba(255,255,255,.10);
+  color:rgba(255,255,255,.95);
 }
 
 /* ── Search ────────────────────────────────────────────────── */
 .cp-search-wrap{
-  padding:12px 16px;
+  padding:12px 18px;
   background:transparent;
-  border-bottom:1px solid rgba(255,255,255,.06);
+  border-bottom:0.5px solid rgba(255,255,255,.06);
   position:relative;
   flex-shrink:0;
 }
-[data-theme="dark"] .cp-search-wrap{
-  border-bottom-color:rgba(255,255,255,.05);
-}
 
 .cp-search{
-  background-color:rgba(255,255,255,.50);
-  border:1px solid rgba(30,60,90,.12);
-  color:var(--txt);
+  width:100%;
+  height:34px;
+  padding:0 32px 0 36px;
+  background:rgba(0,0,0,.25);
+  border:0.5px solid rgba(255,255,255,.06);
+  border-radius:10px;
+  font-family:'Inter',sans-serif;
+  font-size:12px;
+  color:rgba(255,255,255,.92);
+  outline:none;
+  transition:background .15s ease, border-color .15s ease;
+  /* magnifier SVG background-image inherited from base rule */
+}
+.cp-search::placeholder{
+  color:rgba(255,255,255,.40);
 }
 .cp-search:focus{
-  background-color:rgba(255,255,255,.65);
-  border-color:var(--acc);
-  box-shadow:0 0 0 3px rgba(72,96,131,.15);
+  background:rgba(0,0,0,.35);
+  border-color:rgba(255,255,255,.18);
 }
-[data-theme="dark"] .cp-search{
-  background-color:rgba(255,255,255,.05);
-  border-color:rgba(255,255,255,.08);
-  color:var(--txt);
-}
-[data-theme="dark"] .cp-search:focus{
-  background-color:rgba(255,255,255,.08);
-  border-color:var(--acc);
-  box-shadow:0 0 0 3px rgba(96,165,250,.12);
-}
-[data-theme="dark"] .cp-search::placeholder{ color:var(--txt4); }
 
 /* ── Filter pills ──────────────────────────────────────────── */
 .cp-filters{
   display:grid;
   grid-template-columns:repeat(3, 1fr);   /* 3 pills: All / Unplaced / On Deck */
   gap:6px;
-  padding:8px 16px 10px;
+  padding:10px 18px;
   background:transparent;
-  border-bottom:1px solid rgba(255,255,255,.06);
+  border-bottom:0.5px solid rgba(255,255,255,.06);
   flex-shrink:0;
-}
-[data-theme="dark"] .cp-filters{
-  border-bottom-color:rgba(255,255,255,.05);
 }
 
 .cp-pill{
+  display:flex;align-items:center;justify-content:center;
   height:26px;
-  border-radius:7px;
+  padding:0 11px;
+  border-radius:999px;
+  border:0.5px solid rgba(255,255,255,.15);
+  background:transparent;
+  color:rgba(255,255,255,.60);
   font-family:'Inter',sans-serif;
   font-size:10px;
-  font-weight:600;
-  letter-spacing:.2px;
-  background:rgba(255,255,255,.40);
-  border:1px solid rgba(30,60,90,.10);
-  color:var(--txt3);
+  font-weight:500;
+  letter-spacing:.1px;
+  cursor:pointer;
+  transition:all .15s ease;
+  white-space:nowrap;
+  user-select:none;
+  width:100%;
+  box-sizing:border-box;
 }
 .cp-pill:hover{
-  background:rgba(255,255,255,.65);
-  border-color:rgba(30,60,90,.16);
-  color:var(--txt2);
+  background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.85);
+  border-color:rgba(255,255,255,.22);
 }
 .cp-pill.on{
-  background:var(--acc);
-  border-color:var(--acc);
-  color:#fff;
-  box-shadow:0 1px 4px rgba(74,111,165,.25);
-}
-[data-theme="dark"] .cp-pill{
-  background:rgba(255,255,255,.04);
-  border-color:rgba(255,255,255,.08);
-  color:var(--txt4);
-}
-[data-theme="dark"] .cp-pill:hover{
-  background:rgba(255,255,255,.08);
-  border-color:rgba(255,255,255,.12);
-  color:var(--txt3);
-}
-[data-theme="dark"] .cp-pill.on{
-  background:var(--acc);
-  border-color:var(--acc);
-  color:#fff;
-  box-shadow:0 2px 8px var(--glow-blue);
+  background:rgba(55,138,221,.22);
+  color:#B5D4F4;
+  border-color:rgba(55,138,221,.30);
 }
 
 /* ── Section headers (visual only — :has() animation owned by base) ── */
 .cp-sec{
-  border-bottom-color:rgba(255,255,255,.06);
-}
-[data-theme="dark"] .cp-sec{
-  border-bottom-color:rgba(255,255,255,.05);
+  border-bottom:none;            /* spacing carries the rhythm; no divider line */
 }
 
 .cp-sec-hdr{
+  display:flex;align-items:center;gap:8px;
+  padding:14px 18px 6px;
+  position:sticky;top:0;z-index:5;
   background:transparent;
+  cursor:pointer;
+  user-select:none;
 }
 .cp-sec-hdr:hover{
-  background:rgba(255,255,255,.04);
-}
-[data-theme="dark"] .cp-sec-hdr:hover{
-  background:rgba(255,255,255,.04);
+  background:rgba(255,255,255,.03);
 }
 
 .cp-sec-title{
-  font-family:'Manrope',sans-serif;
-  font-weight:700;
-  font-size:11px;
-  text-transform:uppercase;
+  font-family:'Inter',sans-serif;
+  font-weight:500;
+  font-size:9px;
   letter-spacing:1.5px;
-  color:var(--txt2);
+  text-transform:uppercase;
+  color:rgba(255,255,255,.40);
+  flex:1;
 }
 
 .cp-sec-badge{
-  background:rgba(72,96,131,.10);
-  color:var(--acc);
-  border:1px solid rgba(72,96,131,.14);
-}
-[data-theme="dark"] .cp-sec-badge{
-  background:rgba(96,165,250,.10);
-  border-color:rgba(96,165,250,.18);
-  color:var(--acc);
+  font-family:'Inter',sans-serif;
+  font-size:9px;
+  font-weight:500;
+  color:rgba(255,255,255,.35);
+  background:transparent;
+  border:none;
+  padding:0;
 }
 .cp-sec-badge.warn{
-  background:rgba(120,90,26,.08);
-  border-color:rgba(120,90,26,.18);
-  color:var(--acc-warm);
+  color:#EF9F27;
 }
-[data-theme="dark"] .cp-sec-badge.warn{
-  background:rgba(245,158,11,.10);
-  border-color:rgba(245,158,11,.22);
-  color:var(--acc-warm);
+.cp-sec-arr{
+  font-size:10px;
+  color:rgba(255,255,255,.40);
+}
+.cp-sec-body{
+  padding:4px 18px 10px;
 }
 
 /* ── Cargo block selected state ──────────────────────────────
@@ -15783,64 +15758,90 @@ body.cp-panel-open .deck-area{ margin-right:0; }
     inset 0 1px 0 rgba(255,255,255,.10) !important;
 }
 
-/* ── Row cards, custom form, empty state — dark variants ─────
-   Restored from the deleted V4 audit + glass-token-dark blocks.
-   The base rules at 5858-5957 (light) keep their .68/.70 alpha
-   background; dark theme needs its own ink-toned BG so the
-   var(--txt) text (which flips to #f0f0f0 on dark) has contrast. */
-[data-theme="dark"] .cp-lc{
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.08);
-  box-shadow: 0 1px 2px rgba(0,0,0,.20);
+/* ── Cargo cards inside the panel — slate family ─────────────
+   Panel is always dark-slate (both themes), so cards override
+   via `.cp ` parent specificity (0,2,0) — beats the base
+   .cp-lc/.cp-qi rules (0,1,0) without !important. Cards shift
+   hue slightly cooler/bluer to read as a different *material*
+   stacked on the slate, not just a tonal variation. */
+.cp .cp-lc,
+.cp .cp-qi{
+  background:rgba(40,52,70,.55);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:0.5px solid rgba(255,255,255,.06);
+  border-radius:10px;
+  padding:9px 12px;
+  color:rgba(255,255,255,.92);
+  box-shadow:none;
+  margin-bottom:6px;
+  transition:background .15s ease, border-color .15s ease;
 }
-[data-theme="dark"] .cp-lc:hover{
-  background: rgba(255,255,255,.07);
-  border-color: rgba(120,170,235,.30);
-  box-shadow: 0 2px 8px rgba(0,0,0,.30);
+.cp .cp-lc:hover,
+.cp .cp-qi:hover{
+  background:rgba(50,64,86,.65);
+  border-color:rgba(255,255,255,.12);
+  transform:none;                            /* kill base .cp-lc:hover translateY(-1px) */
+  box-shadow:none;
 }
-[data-theme="dark"] .cp-lc.cp-lc-sel{
-  background: rgba(96,165,250,.08);
-  border-color: var(--acc);
-  box-shadow: 0 0 0 2px rgba(96,165,250,.18);
-}
-[data-theme="dark"] .cp-qi{
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.08);
-}
-[data-theme="dark"] .cp-qi:hover{
-  background: rgba(255,255,255,.07);
-  border-color: rgba(120,170,235,.30);
-}
-[data-theme="dark"] .cp-qi.cp-qi-sel{
-  background: rgba(96,165,250,.08);
-  border-color: var(--acc);
-}
-
-[data-theme="dark"] .cp-cform{
-  background: rgba(255,255,255,.03);
-  border-color: rgba(255,255,255,.08);
-}
-[data-theme="dark"] .cp-cf-i{
-  background: rgba(255,255,255,.05);
-  border-color: rgba(255,255,255,.10);
-  color: var(--txt);
-}
-[data-theme="dark"] .cp-cf-i:focus{
-  background: rgba(255,255,255,.08);
-  border-color: var(--acc);
+.cp .cp-lc.cp-lc-sel,
+.cp .cp-qi.cp-qi-sel{
+  background:rgba(55,138,221,.22);
+  border-color:rgba(55,138,221,.40);
+  color:#fff;
 }
 
-[data-theme="dark"] .cp-empty{
-  color: var(--txt3);
+/* Card text — light-on-slate hierarchy */
+.cp .cp-lc-name,
+.cp .cp-qi-name{
+  color:rgba(255,255,255,.92);
+  font-size:12px;
+  font-weight:500;
+}
+.cp .cp-lc-cat,
+.cp .cp-qi-meta{
+  color:rgba(255,255,255,.45);
+  font-size:9px;
+  margin-top:2px;
+}
+.cp .cp-lc-dim{
+  color:rgba(255,255,255,.45);
+  font-size:9px;
 }
 
-/* ── Scrollbar dark variant ──────────────────────────────────
-   Base thumb is rgba(0,0,0,.18) — fine on light glass, near
-   invisible on dark. White-tinted thumb keeps the gutter
-   readable without dominating. */
-[data-theme="dark"] .cp-body::-webkit-scrollbar-thumb{
-  background: rgba(255,255,255,.14);
+/* Custom cargo form — inset darker recess */
+.cp .cp-cform{
+  background:rgba(0,0,0,.20);
+  border:0.5px solid rgba(255,255,255,.06);
+  border-radius:10px;
+  padding:12px;
 }
-[data-theme="dark"] .cp-body::-webkit-scrollbar-thumb:hover{
-  background: rgba(255,255,255,.22);
+.cp .cp-cf-i{
+  background:rgba(0,0,0,.30);
+  border:0.5px solid rgba(255,255,255,.10);
+  color:rgba(255,255,255,.92);
+}
+.cp .cp-cf-i:focus{
+  background:rgba(0,0,0,.40);
+  border-color:rgba(55,138,221,.30);
+}
+.cp .cp-cf-i::placeholder{
+  color:rgba(255,255,255,.35);
+}
+
+/* Empty state */
+.cp .cp-empty{
+  color:rgba(255,255,255,.45);
+  text-align:center;
+  padding:20px;
+  font-size:11px;
+  line-height:1.5;
+}
+
+/* ── Scrollbar — single rule, dark slate works for both themes */
+.cp-body::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.12);
+}
+.cp-body::-webkit-scrollbar-thumb:hover{
+  background:rgba(255,255,255,.20);
 }
