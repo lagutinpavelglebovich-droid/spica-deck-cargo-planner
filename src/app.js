@@ -7655,7 +7655,12 @@ async function _populateRecentFiles(){
 let CP_OPEN  = false;
 let CP_FILTER = 'all';
 let CP_Q      = '';
-const CP_SECTIONS = { queue:true, freq:true, lib:true, custom:true };
+/* A.4a.3 — `lib` starts false so Other Cargo is collapsed on initial
+   page load. cpRenderLib syncs DOM to this on first render; user clicks
+   on the header flip the value via cpBindSections, so toggle works
+   normally thereafter. Not persisted — module-scope const resets on
+   every page load. */
+const CP_SECTIONS = { queue:true, freq:true, lib:false, custom:true };
 
 /* ── Open / Close ── */
 function cpOpen(){
@@ -8102,6 +8107,19 @@ function cpRenderLib(){
   const body  = document.getElementById('cpSecBodyLib');
   const badge = document.getElementById('cpLibBadge');
   if(!body) return;
+
+  /* A.4a.3 — sync DOM collapse state from CP_SECTIONS.lib on every
+     render. Lib defaults to false (collapsed on initial load); user
+     toggle in cpBindSections flips CP_SECTIONS.lib and the DOM in
+     lockstep, so subsequent renders preserve user state. Placed
+     before the ondk early-return so the sync runs in all branches. */
+  const hdr = document.getElementById('cpSecHdrLib');
+  if(hdr){
+    const open = CP_SECTIONS.lib !== false;
+    hdr.classList.toggle('collapsed', !open);
+    body.classList.toggle('hidden', !open);
+  }
+
   body.innerHTML = '';
 
   /* On Deck filter: show placed cargo items instead */

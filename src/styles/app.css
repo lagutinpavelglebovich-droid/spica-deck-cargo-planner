@@ -11025,6 +11025,7 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
     0 2px 6px rgba(30,60,90,.05),
     inset 0 1px 0 rgba(255,255,255,.60) !important;
   width:auto;
+  align-self:center;  /* A.4a.3 — parent .shell-sub is flex column with align-items:stretch; this lets the capsule shrink to content width instead of spanning the full ribbon */
 }
 [data-theme="dark"] .dg-onboard-line{
   background:
@@ -15868,8 +15869,14 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   transform:none;                            /* kill base .cp-lc:hover translateY(-1px) */
   box-shadow:none;
 }
-.cp .cp-lc.cp-lc-sel,
-.cp .cp-qi.cp-qi-sel{
+/* A.4a.3 — selection rule selector depth mirrors zebra :nth-child(odd)
+   above (0,0,4,0) so selection and zebra share specificity; selection
+   wins the tie because it appears later in source order. Without this,
+   selection background was overridden by zebra on odd rows (zebra had
+   (0,0,4,0) vs old (0,0,3,0) selection). */
+.cp .cp-sec-body > .cp-lc.cp-lc-sel,
+.cp .cp-sec-body > .cp-qi.cp-qi-sel,
+.cp #cpCustomList > .cp-lc.cp-lc-sel{
   background:rgba(55,138,221,.22);
   border:0.5px solid rgba(55,138,221,.30);
   color:#fff;
