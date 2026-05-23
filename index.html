@@ -2149,7 +2149,7 @@
 </svg></div>
       <div style="flex:1;min-width:0;">
         <div class="cp-title">Cargo Library</div>
-        <div class="cp-subtitle">Cargo &amp; Logistics</div>
+        <div class="cp-subtitle">Mission Control</div>
       </div>
       <div class="cp-close" id="cpClose" title="Close panel">✕</div>
     </div>
@@ -2183,32 +2183,47 @@
       <!-- SECTION: Imported Cargo -->
       <div class="cp-sec" id="cpSecQueue">
         <div class="cp-sec-hdr" id="cpSecHdrQueue">
-          <div class="cp-sec-title">Imported Cargo</div>
-          <div class="cp-sec-badge warn" id="cpQueueBadge" style="display:none">0</div>
-          <button class="cp-clear-q" id="cpClearQueue" style="display:none">Clear</button>
-          <span class="cp-sec-arr">▾</span>
+          <div class="cp-sec-title">
+            <span class="cp-sec-icon s-import" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6M9 14l3 3 3-3"/></svg></span>
+            Imported Cargo
+          </div>
+          <div class="cp-sec-meta">
+            <div class="cp-sec-badge" id="cpQueueBadge">0</div>
+            <button class="cp-clear-q" id="cpClearQueue" style="display:none">Clear</button>
+            <span class="cp-sec-arr">▾</span>
+          </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyQueue">
-          <div class="cp-empty" id="cpQueueEmpty">No imported cargo yet.<br>Upload an ASCO file to start.</div>
+          <div class="cp-empty" id="cpQueueEmpty">No imported cargo yet. Upload an ASCO file to start.</div>
         </div>
       </div>
 
       <!-- SECTION: Frequent (favourited library items) -->
       <div class="cp-sec" id="cpSecFreq">
         <div class="cp-sec-hdr" id="cpSecHdrFreq">
-          <div class="cp-sec-title">Frequent</div>
-          <div class="cp-sec-badge" id="cpFreqBadge">0</div>
-          <span class="cp-sec-arr">▾</span>
+          <div class="cp-sec-title">
+            <span class="cp-sec-icon s-freq" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
+            Frequent
+          </div>
+          <div class="cp-sec-meta">
+            <div class="cp-sec-badge" id="cpFreqBadge">0</div>
+            <span class="cp-sec-arr">▾</span>
+          </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyFreq"></div>
       </div>
 
-      <!-- SECTION: Standard Library -->
+      <!-- SECTION: Other Cargo (standard library presets) -->
       <div class="cp-sec" id="cpSecLib">
         <div class="cp-sec-hdr" id="cpSecHdrLib">
-          <div class="cp-sec-title">Cargo Library</div>
-          <div class="cp-sec-badge" id="cpLibBadge">0</div>
-          <span class="cp-sec-arr">▾</span>
+          <div class="cp-sec-title">
+            <span class="cp-sec-icon s-other" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+            Other Cargo
+          </div>
+          <div class="cp-sec-meta">
+            <div class="cp-sec-badge" id="cpLibBadge">0</div>
+            <span class="cp-sec-arr">▾</span>
+          </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyLib"></div>
       </div>
@@ -2216,8 +2231,13 @@
       <!-- SECTION: Custom Cargo -->
       <div class="cp-sec" id="cpSecCustom">
         <div class="cp-sec-hdr" id="cpSecHdrCustom">
-          <div class="cp-sec-title">Custom Cargo</div>
-          <span class="cp-sec-arr">▾</span>
+          <div class="cp-sec-title">
+            <span class="cp-sec-icon s-custom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+            Custom Cargo
+          </div>
+          <div class="cp-sec-meta">
+            <span class="cp-sec-arr">▾</span>
+          </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyCustom">
           <!-- Custom Cargo = manual deck-footprint template.

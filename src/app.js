@@ -7814,6 +7814,7 @@ function cpRender(){
 /* ── Render: Imported Queue ── */
 function cpRenderQueue(){
   const body   = document.getElementById('cpSecBodyQueue');
+  const hdr    = document.getElementById('cpSecHdrQueue');
   const badge  = document.getElementById('cpQueueBadge');
   const clrBtn = document.getElementById('cpClearQueue');
   const empty  = document.getElementById('cpQueueEmpty');
@@ -7822,12 +7823,28 @@ function cpRenderQueue(){
   const queue = (typeof IMPORT_QUEUE!=='undefined') ? IMPORT_QUEUE : [];
   const items = queue.filter(it=>cpMatch(it) && cpPassFilter(it,'queue'));
 
-  if(badge){ badge.textContent=items.length; badge.style.display=items.length?'':'none'; }
+  /* A.4a — badge always visible (mockup shows "0" when empty). */
+  if(badge){ badge.textContent=items.length; badge.style.display=''; }
   if(clrBtn) clrBtn.style.display=queue.length?'':'none';
 
   /* Remove old cards (not the empty msg) */
   Array.from(body.children).forEach(ch=>{ if(ch.id!=='cpQueueEmpty') ch.remove(); });
   if(empty) empty.style.display = items.length===0 ? '' : 'none';
+
+  /* A.4a — default-collapsed visual when queue is empty: header chevron
+     rotates to point right, but body stays VISIBLE so the italic empty
+     message reads as the section's resting content. When the queue has
+     items, honour the user-toggled CP_SECTIONS.queue state. */
+  if(hdr){
+    if(items.length === 0){
+      hdr.classList.add('collapsed');
+      body.classList.remove('hidden');
+    } else {
+      const open = CP_SECTIONS.queue !== false;
+      hdr.classList.toggle('collapsed', !open);
+      body.classList.toggle('hidden', !open);
+    }
+  }
 
   items.forEach(item=>{
     const realIdx = queue.indexOf(item);
@@ -8121,7 +8138,12 @@ function cpRenderLib(){
      exclusively by cpRenderCustom() into #cpCustomList, and favourited
      items (including favourited customs) are surfaced by cpRenderFreq().
      This section is the single source of truth for the standard preset
-     catalogue. */
+     catalogue.
+
+     A.4a — flat list, no category group dividers (.cp-cat-lbl).
+     Mockup shows "Other Cargo" as a single flat zebra-row list; the
+     per-item .cp-lc-cat is also hidden via CSS, so categorisation
+     hierarchy is suppressed everywhere on the row level. */
   const src = (typeof CLIB !== 'undefined') ? CLIB : [];
   const items = src.filter(item => cpMatch(item));
 
@@ -8131,16 +8153,7 @@ function cpRenderLib(){
     return;
   }
 
-  /* Group standard items by category */
-  const groups={};
-  items.forEach(it=>{ const c=it.cat||'Other'; (groups[c]=groups[c]||[]).push(it); });
-
-  /* Standard groups */
-  Object.entries(groups).forEach(([cat,grp])=>{
-    const lbl=document.createElement('div'); lbl.className='cp-cat-lbl'; lbl.textContent=cat;
-    body.appendChild(lbl);
-    grp.forEach(item => body.appendChild(cpMakeLibCard(item)));
-  });
+  items.forEach(item => body.appendChild(cpMakeLibCard(item)));
 }
 
 /* ── Helper: build a library card ──

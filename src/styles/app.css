@@ -5790,9 +5790,15 @@ body.focus-deck .dcv{
 .cp-pill.on{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 1px 4px rgba(74,111,165,.20);}
 
 /* ── Scrollable panel body ──────────────────────────────────── */
+/* A.4a — flex column + gap puts 12px between section cards;
+   padding 14px frames them inside the navy panel surface. */
 .cp-body{
   flex:1;overflow-y:auto;overflow-x:hidden;
   scroll-behavior:smooth;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:14px;
 }
 .cp-body::-webkit-scrollbar{width:5px;}
 .cp-body::-webkit-scrollbar-track{background:transparent;}
@@ -15503,11 +15509,11 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 }
 .cp-backdrop{ display:none; }   /* unused — panel floats, no dim layer */
 
-/* ── Panel shell — dark-slate family ─────────────────────────
-   Same surface tier as .lang-opt + .loc-opt + .loc-drawer-hdr
-   (the validated user-approved family). Slightly denser alpha
-   and stronger blur than the popovers — panel scale needs more
-   visual weight to read as foreground anchor over the deck. */
+/* ── Panel shell — A.4a navy glass ───────────────────────────
+   Mockup-canonical surface: rgba(20,28,42,.72) over blur(24).
+   Single tonal definition for both themes (mockup is dark-only
+   context). Cards inside (.cp-sec) sit at rgba(40,52,70,.55)
+   over blur(16) — same family, lighter & cooler stack. */
 .cp{
   position:fixed;
   top:calc(30px + var(--shell-m));
@@ -15516,13 +15522,12 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   left:auto;
   width:380px;
   border-radius:16px;
-  background:rgba(40,42,48,.62);
-  backdrop-filter:blur(20px) saturate(140%);
-  -webkit-backdrop-filter:blur(20px) saturate(140%);
-  border:0.5px solid rgba(255,255,255,.10);
+  background:rgba(20,28,42,.72);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border:0.5px solid rgba(255,255,255,.08);
   box-shadow:
     0 8px 32px rgba(0,0,0,0.30),
-    0 2px 8px  rgba(0,0,0,0.18),
     inset 0 1px 0 rgba(255,255,255,.06);
   color:rgba(255,255,255,.92);
   overflow:hidden;
@@ -15541,12 +15546,13 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   opacity:1;
 }
 [data-theme="dark"] .cp{
-  background:rgba(28,30,36,.78);
-  border-color:rgba(255,255,255,.14);
+  /* Mockup is dark-only — no separate dark variant. Same navy
+     surface holds across themes; cards inside carry the contrast. */
+  background:rgba(20,28,42,.72);
+  border-color:rgba(255,255,255,.08);
   box-shadow:
-    0 8px 32px rgba(0,0,0,0.50),
-    0 2px 8px  rgba(0,0,0,0.30),
-    inset 0 1px 0 rgba(255,255,255,.08);
+    0 8px 32px rgba(0,0,0,0.30),
+    inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 /* Deck never shifts when panel opens — panel floats above */
@@ -15683,21 +15689,62 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   border-color:rgba(55,138,221,.30);
 }
 
-/* ── Section headers (visual only — :has() animation owned by base) ── */
+/* ── A.4a — Section as nested card on navy panel ─────────────
+   Each .cp-sec is its own rounded card. Grid display + the
+   :has(> .cp-sec-body.hidden) → grid-template-rows: auto 0fr
+   animation (defined in base block at ~line 5835) still owns
+   the collapse mechanic — the rules below only add surface,
+   spacing and gutter; they do NOT touch display:grid. */
 .cp-sec{
-  border-bottom:none;            /* spacing carries the rhythm; no divider line */
+  background:rgba(40,52,70,.55);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:0.5px solid rgba(255,255,255,.06);
+  border-radius:10px;
+  padding:10px 12px;
+  border-bottom:0.5px solid rgba(255,255,255,.06); /* override base border-bottom */
 }
 
 .cp-sec-hdr{
   display:flex;align-items:center;gap:8px;
-  padding:14px 18px 6px;
-  position:sticky;top:0;z-index:5;
+  padding:0;
+  position:static;            /* card-internal — no longer sticks to viewport */
   background:transparent;
   cursor:pointer;
   user-select:none;
 }
 .cp-sec-hdr:hover{
-  background:rgba(255,255,255,.03);
+  background:transparent;     /* hover handled per-element below */
+}
+.cp-sec-hdr:hover .cp-sec-title,
+.cp-sec-hdr:hover .cp-sec-arr{
+  color:rgba(255,255,255,.65);
+}
+
+/* Section-level icon, rendered just before .cp-sec-title.
+   Inline-SVG via <span class="cp-sec-icon s-{slug}"> in markup;
+   `s-*` modifier sets the section's accent tint. */
+.cp-sec-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:10px;height:10px;
+  margin-right:5px;
+  flex-shrink:0;
+  color:rgba(255,255,255,.60);
+}
+.cp-sec-icon svg{ width:10px;height:10px;display:block; }
+.cp-sec-icon.s-freq   { color:#EF9F27; }
+.cp-sec-icon.s-import { color:#85B7EB; }
+.cp-sec-icon.s-other  { color:rgba(255,255,255,.60); }
+.cp-sec-icon.s-custom { color:rgba(255,255,255,.60); }
+
+/* Right-side cluster: numeric count + collapse chevron, mockup gap 6px. */
+.cp-sec-meta{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  flex-shrink:0;
 }
 
 .cp-sec-title{
@@ -15706,8 +15753,10 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   font-size:9px;
   letter-spacing:1.5px;
   text-transform:uppercase;
-  color:rgba(255,255,255,.40);
+  color:rgba(255,255,255,.50);
   flex:1;
+  display:flex;align-items:center;
+  transition:color .15s ease;
 }
 
 .cp-sec-badge{
@@ -15723,11 +15772,16 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   color:#EF9F27;
 }
 .cp-sec-arr{
-  font-size:10px;
+  font-size:11px;
   color:rgba(255,255,255,.40);
+  transition:color .15s ease, transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .cp-sec-body{
-  padding:4px 18px 10px;
+  /* 8px gutter from header; flat zebra rows stacked with tight gap */
+  padding:8px 0 0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
 }
 
 /* ── Cargo block selected state ──────────────────────────────
@@ -15758,55 +15812,105 @@ body.cp-panel-open .deck-area{ margin-right:0; }
     inset 0 1px 0 rgba(255,255,255,.10) !important;
 }
 
-/* ── Cargo cards inside the panel — slate family ─────────────
-   Panel is always dark-slate (both themes), so cards override
-   via `.cp ` parent specificity (0,2,0) — beats the base
-   .cp-lc/.cp-qi rules (0,1,0) without !important. Cards shift
-   hue slightly cooler/bluer to read as a different *material*
-   stacked on the slate, not just a tonal variation. */
+/* ── A.4a — Cargo rows inside section cards ──────────────────
+   Items render as flat zebra rows, NOT as separate blur plates.
+   Per-card background/blur/border are dropped; alternation is
+   provided by nth-child(odd) on the row. The section card
+   above already carries the surface — rows just live on it. */
 .cp .cp-lc,
 .cp .cp-qi{
-  background:rgba(40,52,70,.55);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  border:0.5px solid rgba(255,255,255,.06);
-  border-radius:10px;
-  padding:9px 12px;
-  color:rgba(255,255,255,.92);
+  background:transparent;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  border:none;
+  border-radius:6px;
+  padding:5px 8px;
+  color:rgba(255,255,255,.85);
   box-shadow:none;
-  margin-bottom:6px;
-  transition:background .15s ease, border-color .15s ease;
+  margin-bottom:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  transition:background .12s ease;
+}
+/* Zebra alternation — nth-child works clean because .cp-cat-lbl
+   group dividers are no longer emitted (see cpRenderLib in app.js)
+   and .cp-lc-cat per-card category is display:none below.
+   #cpCustomList is the nested container holding custom items; rows
+   in that list also alternate so the Custom section reads like the
+   other section bodies once items are added. */
+.cp .cp-sec-body > .cp-lc:nth-child(odd),
+.cp .cp-sec-body > .cp-qi:nth-child(odd),
+.cp #cpCustomList > .cp-lc:nth-child(odd){
+  background:rgba(255,255,255,.025);
 }
 .cp .cp-lc:hover,
 .cp .cp-qi:hover{
-  background:rgba(50,64,86,.65);
-  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+  border-color:transparent;
   transform:none;                            /* kill base .cp-lc:hover translateY(-1px) */
   box-shadow:none;
 }
 .cp .cp-lc.cp-lc-sel,
 .cp .cp-qi.cp-qi-sel{
   background:rgba(55,138,221,.22);
-  border-color:rgba(55,138,221,.40);
+  border:0.5px solid rgba(55,138,221,.30);
   color:#fff;
 }
 
-/* Card text — light-on-slate hierarchy */
+/* Hide the leading card icon — mockup shows only name + dim + star. */
+.cp .cp-lc-icon,
+.cp .cp-qi-dot{
+  display:none;
+}
+
+/* Hide per-card category text (e.g. "Container", "Structure")
+   — mockup omits these on every item row. Group-divider rendering
+   (.cp-cat-lbl) is suppressed at the JS layer in cpRenderLib. */
+.cp .cp-lc-cat{
+  display:none;
+}
+
+/* Card text — flat row hierarchy */
+.cp .cp-lc-body,
+.cp .cp-qi-body{
+  flex:1;
+  min-width:0;
+}
 .cp .cp-lc-name,
 .cp .cp-qi-name{
-  color:rgba(255,255,255,.92);
-  font-size:12px;
-  font-weight:500;
+  color:rgba(255,255,255,.85);
+  font-size:11px;
+  font-weight:400;
+  font-family:'Inter',sans-serif;
+  letter-spacing:0;
+  margin:0;
 }
-.cp .cp-lc-cat,
-.cp .cp-qi-meta{
-  color:rgba(255,255,255,.45);
-  font-size:9px;
-  margin-top:2px;
-}
+.cp .cp-qi-meta,
 .cp .cp-lc-dim{
-  color:rgba(255,255,255,.45);
+  color:rgba(255,255,255,.40);
   font-size:9px;
+  font-family:'Inter',sans-serif;
+  margin-top:1px;
+  font-weight:400;
+  letter-spacing:0;
+}
+
+/* Star — light-on-dark, amber when active, no scale on the row */
+.cp .cp-lc-star{
+  font-size:11px;
+  color:rgba(255,255,255,.30);
+  cursor:pointer;
+  flex-shrink:0;
+  transition:color .12s ease, transform .12s ease;
+}
+.cp .cp-lc-star:hover{
+  color:#EF9F27;
+  transform:scale(1.15);
+}
+.cp .cp-lc-star.on{
+  color:#EF9F27;
 }
 
 /* Custom cargo form — inset darker recess */
@@ -15829,12 +15933,15 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   color:rgba(255,255,255,.35);
 }
 
-/* Empty state */
+/* Empty state — A.4a quiet italic line, left-aligned inside its
+   section card. Used by Imported ("No imported cargo yet…"),
+   Frequent, and Library no-match messages. */
 .cp .cp-empty{
-  color:rgba(255,255,255,.45);
-  text-align:center;
-  padding:20px;
-  font-size:11px;
+  color:rgba(255,255,255,.40);
+  text-align:left;
+  padding:8px 4px 4px;
+  font-size:10px;
+  font-style:italic;
   line-height:1.5;
 }
 
