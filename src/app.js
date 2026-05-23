@@ -7673,13 +7673,15 @@ function cpCollapse(){
   /* Update strip badge */
   cpUpdateStripBadge();
 }
-function cpExpand(){
+function cpExpand(skipFocus = false){
   CP_COLLAPSED = false;
   document.getElementById('cpOverlay').classList.remove('cp-collapsed');
   document.body.classList.remove('cp-panel-collapsed');
   try{ localStorage.setItem('spicaTide_cpCollapsed','0'); }catch(e){}
   cpRender();
-  setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 120);
+  if(!skipFocus){
+    setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 120);
+  }
 }
 function cpToggleCollapse(){
   CP_COLLAPSED ? cpExpand() : cpCollapse();
@@ -8065,7 +8067,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     if(ghost){ ghost.remove(); ghost = null; }
     S.pending = null;
     if(typeof cancelPending === 'function') cancelPending();
-    if(!wasCollapsedBeforeDrag) cpExpand();
+    if(!wasCollapsedBeforeDrag) cpExpand(true);
   };
 
   const onUp = ev => {
@@ -8078,7 +8080,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     const dcv = document.querySelector('.dcv');
     if(!dcv){
       /* Defensive: deck element missing — restore panel and bail. */
-      if(!wasCollapsedBeforeDrag) cpExpand();
+      if(!wasCollapsedBeforeDrag) cpExpand(true);
       return;
     }
     const cr = dcv.getBoundingClientRect();
@@ -8086,7 +8088,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     || ev.clientY < cr.top  || ev.clientY > cr.bottom){
       /* Off-deck release — expand immediately so the user can grab their
          next item without an extra click. */
-      if(!wasCollapsedBeforeDrag) cpExpand();
+      if(!wasCollapsedBeforeDrag) cpExpand(true);
       return;
     }
 
@@ -8117,7 +8119,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     if(!wasCollapsedBeforeDrag){
       _LIB_AUTO_EXPAND_TIMER = setTimeout(() => {
         _LIB_AUTO_EXPAND_TIMER = null;
-        cpExpand();
+        cpExpand(true);
       }, 300);
     }
   };
