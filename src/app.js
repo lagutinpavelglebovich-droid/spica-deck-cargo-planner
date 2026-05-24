@@ -7185,11 +7185,39 @@ async function buildPDF(deckCanvas, data, opts){
   const PW=297, PH=210, ML=10, MR=10, MT=8;
   const CW = PW - ML - MR;
 
+  /* Palette — Stage 1 normalization.
+     Old keys (ink/ink2/ink3/ink4/navy/navy2/ivory/surf2/surf3/surf4/green/amber/brd)
+     retain their pre-Stage-1 RGBs so KPI counters, location cards, DG band,
+     voyage notes, deck label, bay labels render bit-identical until Stage 2.
+     New keys are header-band + footer-only and add no visual change elsewhere. */
   const C = {
-    ink:[49,51,44], ink2:[94,96,88], ink3:[121,124,115], ink4:[177,179,169],
-    navy:[59,110,181], navy2:[47,90,161], ivory:[251,249,244], surf2:[245,244,237],
-    surf3:[239,238,230], surf4:[232,233,224], green:[30,143,74], amber:[160,125,46],
-    brd:[205,205,198], white:[255,255,255],
+    /* Brand (new in Stage 1 — header band) */
+    navyDark:        [10, 22, 40],
+    brandAmber:      [245, 158, 11],
+    /* Ink on dark navy (new) */
+    inkOnNavy:       [255, 255, 255],
+    inkOnNavyMute:   [180, 195, 215],
+    inkOnNavyFaint:  [140, 155, 180],
+    inkOnNavyHair:   [80, 90, 110],
+    /* Footer (new) */
+    brdSoft:         [180, 190, 200],
+    footerInk:       [120, 130, 145],
+    /* Legacy — kept at original RGBs for backward compatibility with
+       sections that Stage 1 does not modify. Stage 2 will rationalise. */
+    ink:    [49, 51, 44],
+    ink2:   [94, 96, 88],
+    ink3:   [121, 124, 115],
+    ink4:   [177, 179, 169],
+    navy:   [59, 110, 181],
+    navy2:  [47, 90, 161],
+    ivory:  [251, 249, 244],
+    surf2:  [245, 244, 237],
+    surf3:  [239, 238, 230],
+    surf4:  [232, 233, 224],
+    green:  [30, 143, 74],
+    amber:  [160, 125, 46],
+    brd:    [205, 205, 198],
+    white:  [255, 255, 255],
   };
 
   const hex2rgb = hex => { const h=(hex||'#999').replace('#',''); return [parseInt(h.slice(0,2),16)||150, parseInt(h.slice(2,4),16)||150, parseInt(h.slice(4,6),16)||150]; };
@@ -7203,28 +7231,89 @@ async function buildPDF(deckCanvas, data, opts){
 
   let y = MT;
 
-  /* 1. HEADER — Marine Editorial style, 23mm */
-  const HDR_H = 23;
-  const BAND_H = 6;   /* navy masthead strip height */
+  /* 1. HEADER — 14mm navy band + 1mm amber strip (Stage 1 redesign).
+        Brand mark + voyage metadata moved into the band; KPI counter strip
+        is preserved below as its own block. */
+  const HB_H = 14, HB_PAD = 6, HB_AMBER_H = 1;
 
-  /* Card background — ivory with thin border */
-  roundRect(ML, y, CW, HDR_H, 2, C.ivory, C.brd);
+  /* Navy band \u2014 full content width, no corner radius. */
+  doc.setFillColor(...C.navyDark);
+  doc.rect(ML, y, CW, HB_H, 'F');
+  /* Amber accent strip \u2014 last 1mm of band height. */
+  doc.setFillColor(...C.brandAmber);
+  doc.rect(ML, y + HB_H - HB_AMBER_H, CW, HB_AMBER_H, 'F');
 
-  /* Navy masthead band — full width, squared bottom corners */
-  doc.setFillColor(...C.navy);
-  doc.roundedRect(ML, y, CW, BAND_H, 2, 2, 'F');
-  doc.rect(ML, y + BAND_H - 2, CW, 2, 'F');
+  /* Shared text baseline through vertical centre of the navy region
+     (above the amber strip). Cap-height correction for ~11pt display glyph
+     pushes the baseline ~1.4mm below centre. */
+  const hbMidY = y + (HB_H - HB_AMBER_H) / 2;
+  const hbBL   = hbMidY + 1.4;
+  const hairH  = 5;
+  const drawHair = (xp) => {
+    doc.setDrawColor(...C.inkOnNavyHair);
+    doc.setLineWidth(0.3);
+    doc.line(xp, hbMidY - hairH/2, xp, hbMidY + hairH/2);
+  };
 
-  /* Vessel name — reversed white on navy */
-  doc.setFont('Inter','bold'); doc.setFontSize(10); doc.setTextColor(...C.white);
-  doc.text('SPICA TIDE', ML+5, y+4.2);
+  /* \u2500\u2500 Left cluster: SPICA TIDE | hair | DECK CARGO PLAN \u2500\u2500 */
+  let lx = ML + HB_PAD;
+  doc.setFont('Manrope','bold'); doc.setFontSize(11); doc.setTextColor(...C.inkOnNavy);
+  doc.setCharSpace(0.4);
+  doc.text('SPICA TIDE', lx, hbBL);
+  lx += doc.getTextWidth('SPICA TIDE');
+  doc.setCharSpace(0);
+  lx += 4; drawHair(lx); lx += 4;
+  doc.setFont('Inter','normal'); doc.setFontSize(7); doc.setTextColor(...C.inkOnNavyMute);
+  doc.setCharSpace(0.5);
+  doc.text('DECK CARGO PLAN', lx, hbBL);
+  doc.setCharSpace(0);
 
-  /* Subtitle — light on navy, all caps */
-  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(185,210,240);
-  doc.text('DECK CARGO PLAN  \u00B7  PSV  \u00B7  NORTH SEA  \u00B7  NEO ENERGY RESOURCES UK', ML+39, y+4.2);
+  /* \u2500\u2500 Right cluster: build right-to-left from PW-MR-HB_PAD \u2500\u2500
+        Order ending at right edge: NeoNext | hair | DATE pair | hair | VOYAGE pair | hair | PSV pair */
+  let rx = ML + CW - HB_PAD;
 
-  /* Content area starts below band — 3mm top pad before label */
-  const cy = y + BAND_H;
+  /* Render a "LABEL  VALUE" pair with rightmost edge at rx; returns pair width. */
+  const renderHbPair = (label, value, valueFont, valueStyle) => {
+    doc.setFont(valueFont, valueStyle); doc.setFontSize(8); doc.setCharSpace(0);
+    const valW = doc.getTextWidth(value);
+    doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setCharSpace(0.6);
+    const labW = doc.getTextWidth(label);
+    const pairW = labW + 2 + valW;
+    const labX  = rx - pairW;
+    doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.inkOnNavyFaint); doc.setCharSpace(0.6);
+    doc.text(label, labX, hbBL);
+    doc.setFont(valueFont, valueStyle); doc.setFontSize(8); doc.setTextColor(...C.inkOnNavy); doc.setCharSpace(0);
+    doc.text(value, labX + labW + 2, hbBL);
+    return pairW;
+  };
+
+  /* Item 1: NeoNext brand mark */
+  doc.setFont('Manrope','bold'); doc.setFontSize(9); doc.setTextColor(...C.inkOnNavy); doc.setCharSpace(0.2);
+  const neoW = doc.getTextWidth('NeoNext');
+  doc.text('NeoNext', rx - neoW, hbBL);
+  doc.setCharSpace(0);
+  rx -= neoW + 4; drawHair(rx); rx -= 4;
+
+  /* Item 5: DATE pair */
+  rx -= renderHbPair('DATE', dateStr, 'Inter', 'bold');
+  rx -= 4; drawHair(rx); rx -= 4;
+
+  /* Item 9: VOYAGE pair (value in JetBrainsMono Regular).
+        Empty / em-dash fallback rendered as hyphen-minus so the glyph is
+        guaranteed in Manrope's latin subset and so impeccable's no-em-dash
+        guidance is honoured. */
+  const voyVal = (voyageNum && voyageNum.trim() && voyageNum.trim() !== '\u2014')
+                 ? voyageNum
+                 : '-';
+  rx -= renderHbPair('VOYAGE', voyVal, 'JetBrainsMono', 'normal');
+  rx -= 4; drawHair(rx); rx -= 4;
+
+  /* Item 13: PSV pair */
+  rx -= renderHbPair('PSV', 'North Sea', 'Inter', 'bold');
+
+  /* ── KPI strip (preserved verbatim from earlier stage; cy now anchors
+        directly below the new 14mm band, no card frame above) ── */
+  const cy = y + HB_H;
 
   /* Counter cell — tight uppercase label + prominent value */
   const cell = (label, value, cx, colVal) => {
@@ -7241,21 +7330,8 @@ async function buildPDF(deckCanvas, data, opts){
    {lbl:'ROB',        val:String(robCount),    col:C.amber, dx:145},
   ].forEach(s => cell(s.lbl, s.val, ML+5+s.dx, s.col));
 
-  /* Thin divider between counters and voyage metadata */
-  doc.setDrawColor(...C.brd); doc.setLineWidth(0.2);
-  doc.line(ML+192, cy+2, ML+192, cy+HDR_H-BAND_H-2);
-
-  /* Voyage metadata — right zone */
-  const vCell = (label, value, cx, colVal) => {
-    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(), cx, cy+5);
-    doc.setFont('Inter','bold'); doc.setFontSize(11); doc.setTextColor(...colVal);
-    doc.text(value, cx, cy+13);
-  };
-  vCell('Voyage', voyageNum, ML+197, C.navy);
-  vCell('Date',   dateStr,   ML+240, C.ink);
-
-  y += HDR_H+2;
+  /* Advance past header band (14) + KPI strip (15: cy+13 value baseline + descender) + 2mm gap. */
+  y += HB_H + 15 + 2;
 
   /* 2. LOCATIONS — 17mm cards: ACCENT(3)+GAP(2)+NAME(5)+PILLS(5)+PAD(2) */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
@@ -7411,15 +7487,27 @@ async function buildPDF(deckCanvas, data, opts){
     }
   }
 
-  /* 8. FOOTER */
-  const fy = PH-FOOTER_H;
-  sepLine(fy-1);
-  doc.setFont('Inter','normal'); doc.setFontSize(5); doc.setTextColor(...C.ink3);
+  /* 8. FOOTER \u2014 hairline divider, generated timestamp left, page + brand right.
+        Rebrand: "NEO Energy Resources UK" \u2192 "NeoNext" throughout. */
+  const fy = PH - FOOTER_H;
+  /* Soft hairline divider \u2014 0.2mm stroke, brand-tinted neutral. */
+  doc.setDrawColor(...C.brdSoft);
+  doc.setLineWidth(0.2);
+  doc.line(ML, fy - 1, ML + CW, fy - 1);
+  /* Timestamp formatted as "DD MMM YYYY \u00B7 HH:mm" (Inter-friendly glyphs only). */
   const now = new Date();
-  const ts = now.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  doc.text('Generated '+ts+'  \u00B7  SPICA TIDE  \u00B7  NEO Energy Resources UK', ML, fy+4);
-  doc.setTextColor(...C.navy);
-  doc.text('Voyage '+voyageNum+'  \u00B7  '+dateStr, ML+CW, fy+4, {align:'right'});
+  const dd  = String(now.getDate()).padStart(2,'0');
+  const mon = now.toLocaleString('en-GB',{month:'short'});
+  const yyyy = now.getFullYear();
+  const hh  = String(now.getHours()).padStart(2,'0');
+  const mi  = String(now.getMinutes()).padStart(2,'0');
+  const ts  = `${dd} ${mon} ${yyyy} \u00B7 ${hh}:${mi}`;
+  /* Left: Generated ts + brand wordmark + version. */
+  doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.footerInk); doc.setCharSpace(0.2);
+  doc.text('Generated ' + ts + '  \u00B7  SPICA TIDE v' + APP_VERSION, ML, fy + 4);
+  /* Right: page indicator + brand. Single-page output for now (multi-page work is post-Stage-2). */
+  doc.text('Page 1 / 1  \u00B7  NeoNext', ML + CW, fy + 4, {align:'right'});
+  doc.setCharSpace(0);
 
   /* 9. OUTPUT — print or save depending on mode */
   if(_mode === 'print'){
