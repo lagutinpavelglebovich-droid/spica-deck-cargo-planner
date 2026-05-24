@@ -11,8 +11,9 @@ CLAUDE.local.md
 
 # Playwright MCP session artifacts
 .playwright-mcp/
-# Inter TTF source files — embedded as base64 in inter-fonts.js
-src/fonts/
+# TTF font source files — embedded as base64 in inter-fonts.js
+src/fonts/*
+!src/fonts/README.md
 
 # Local Claude Code skill router (project-private, not part of the app)
 taste-skill/

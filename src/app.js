@@ -13,7 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
-import { interRegularB64, interBoldB64 } from './inter-fonts.js';
+import { interRegularB64, interBoldB64, manropeExtraBoldB64, jetBrainsMonoRegularB64, jetBrainsMonoMediumB64 } from './inter-fonts.js';
 import { flipLayout } from './animations/locations.js';
 import { animateLangDropdownIn, animateLangDropdownOut, getLangState } from './animations/langDropdown.js';
 import { animateLocPickerIn, animateLocPickerOut, getLocPickerState } from './animations/locPicker.js';
@@ -7175,6 +7175,12 @@ async function buildPDF(deckCanvas, data, opts){
   doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
   doc.addFileToVFS('Inter-Bold.ttf', interBoldB64);
   doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+  doc.addFileToVFS('Manrope-ExtraBold.ttf', manropeExtraBoldB64);
+  doc.addFont('Manrope-ExtraBold.ttf', 'Manrope', 'bold');
+  doc.addFileToVFS('JetBrainsMono-Regular.ttf', jetBrainsMonoRegularB64);
+  doc.addFont('JetBrainsMono-Regular.ttf', 'JetBrainsMono', 'normal');
+  doc.addFileToVFS('JetBrainsMono-Medium.ttf', jetBrainsMonoMediumB64);
+  doc.addFont('JetBrainsMono-Medium.ttf', 'JetBrainsMono', 'bold');
 
   const PW=297, PH=210, ML=10, MR=10, MT=8;
   const CW = PW - ML - MR;
