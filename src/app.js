@@ -2395,7 +2395,8 @@ function ensureLocActive(id){
   if(!S.selLoc) S.selLoc = id;
   buildLocGrid();
 }
-function _placeAtCore(cx,cy,openEditor=true){
+let _stampPlacement = false;   /* set per placement: true = click-to-place cargo stamp (stays armed) */
+function _placeAtCore(cx,cy){
   const p=S.pending,it=p.item,isC=p.type==='cargo';
   /* Use preset canvas px dimensions; fallback to 6×6ft (~1.83×1.83m) square */
   const w=isC?(it.w||m2px_w(1.83)):m2px_w(1.83);
@@ -2418,15 +2419,17 @@ function _placeAtCore(cx,cy,openEditor=true){
     trDest:''};
   S.cargo.push(c);ensureLocActive(c.platform);renderAll();updateStats();buildActiveLocStrip();
   checkSeg();updateDGSummary();save();
-  /* Stamp mode: when openEditor is false (a cargo template armed for repeated
-     placement) skip the editor + panel refresh so S.pending stays armed and
-     the library card keeps its selected highlight — each subsequent empty-deck
-     click drops another copy. DG and drag-drop placements keep the configure
-     modal (openEditor defaults true). */
-  if(!openEditor) return;
-  /* Keep panel in sync */
-  if(typeof cpRenderLib==='function' && typeof CP_OPEN!=='undefined' && CP_OPEN) cpRenderLib();
-  if(typeof cpHideHint==='function') cpHideHint();
+  /* Hybrid stamp: the editor opens on every placement so the copy can be
+     named/configured. For a click-to-place stamp (_stampPlacement) we skip the
+     library-panel refresh, because cpRenderLib() rebuilds the cards without
+     their selected highlight — skipping it keeps the armed card highlighted and
+     its toggle-off disarm intact, so the template stays armed for the next
+     placement. Saving/cancelling the editor no longer disarms a stamp (see the
+     mSav handler). DG and drag-drop refresh the panel as before. */
+  if(!_stampPlacement){
+    if(typeof cpRenderLib==='function' && typeof CP_OPEN!=='undefined' && CP_OPEN) cpRenderLib();
+    if(typeof cpHideHint==='function') cpHideHint();
+  }
   openModal(c.id);
 }
 
@@ -4514,12 +4517,17 @@ function bindModal(){
     c.wt=parseFloat(document.getElementById('mWT').value)||0;
     const sl=document.getElementById('mLocGrid').querySelector('.mdl-loc.sel');
     c.platform=sl?sl.dataset.lid:(S.selLoc||S.activeLocs[0]||'BLEO');
+    ensureLocActive(c.platform);   /* keep a location chosen in the editor in the active strip */
     c.status=modalSt||'L';
     c.dgClasses=[..._dgMultiSelected];
     c.heavyLift=document.getElementById('mHL').classList.contains('on');
     c.priority=document.getElementById('mPriority')?.classList.contains('on')||false;
     c.trDest=(c.status==='TR')?(document.getElementById('mdlTrDest')?.value||''):'';
-    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();cancelPending();
+    renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();
+    /* Hybrid stamp: a click-to-place stamp stays armed across save so the next
+       click drops another copy; only non-stamp placements (DG, drag-drop) and
+       existing-block edits disarm here. The four explicit paths still disarm. */
+    if(!_stampPlacement) cancelPending();
   };
   document.getElementById('ov').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('mSav').click();});
   /* Family-style dismiss: Escape key + swipe-down gesture */
@@ -6841,10 +6849,11 @@ function placeAt(cx, cy){
   }
 
   /* ── Standard library / DG path ── */
-  /* Cargo templates stamp: place without the editor and keep the selection
-     armed so each subsequent empty-deck click drops another copy. DG keeps
-     its configure-on-place modal. */
-  _placeAtCore(cx, cy, S.pending.type !== 'cargo');
+  /* Click-to-place cargo is a stamp: it stays armed across the editor's
+     save/cancel so the next empty-deck click drops another copy. DG disarms
+     on save as before. */
+  _stampPlacement = (S.pending.type === 'cargo');
+  _placeAtCore(cx, cy);
 }
 
 /* ── Utility: simple HTML escape ── */
@@ -8184,6 +8193,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
     const dropY = (ev.clientY - cr.top)  / zoomLevel - (ph || 1) / 2;
     S.pending = pendingItem;
+    _stampPlacement = false;   /* drag-drop is one-shot — disarm on editor save */
     _placeAtCore(
       Math.max(0, Math.min(dropX, TW  - (pw || 1))),
       Math.max(0, Math.min(dropY, CVH - (ph || 1)))
@@ -14120,7 +14130,10 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
       /* Phase 29 — Esc also exits Focus Deck. Takes priority over other
          Esc behaviours since it's the most-recently-entered mode. */
       if(_focusDeckActive){ _focusDeckExit(); return; }
-      cancelPending();
+      /* Hybrid stamp: when the edit modal is open it owns Escape (closes via
+         bindEscapeDismiss) — don't disarm here, so a placed stamp stays armed
+         for the next placement. Escape with no modal open disarms as before. */
+      if(!document.getElementById('ov').classList.contains('open')) cancelPending();
       closeAscoModal();
       if(typeof kbDeselect==='function') kbDeselect();
       /* Clear location filter if active */
