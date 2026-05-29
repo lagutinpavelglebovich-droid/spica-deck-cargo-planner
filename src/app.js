@@ -1686,7 +1686,7 @@ function setupCanvas(){
 
   /* No DG zone — large elegant label */
   const noDGw=TW-DGX;
-  const nodg=document.createElement('div');nodg.className='z-nodg';   /* marker only — no CSS rule; used as a robust onclone target for PDF hatch */
+  const nodg=document.createElement('div');
   nodg.style.cssText=`position:absolute;left:${DGX}px;top:0;width:${noDGw}px;height:100%;pointer-events:none;z-index:2;
     background:repeating-linear-gradient(45deg,rgba(220,38,38,.055),rgba(220,38,38,.055) 6px,transparent 6px,transparent 12px);
     border-left:2px dashed rgba(220,38,38,.45);`;
@@ -7040,19 +7040,6 @@ async function printDeckPlan(){
   }
 }
 
-/* SVG diagonal-hatch background-image data-URI for the PDF capture — html2canvas
-   can't render repeating-linear-gradient but rasterizes SVG backgrounds. angle
-   135 → "/" stripes, 45 → "\". encodeURIComponent escapes all SVG chars. */
-function _zoneHatchURI(angle, line, base, P, w){
-  const d = (angle === 45)
-    ? `M0,0 L${P},${P} M${-P},0 L${P},${2*P} M0,${-P} L${2*P},${P}`
-    : `M0,${P} L${P},0 M${-P},${P} L${P},${-P} M0,${2*P} L${2*P},0`;
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${P}' height='${P}'>`
-    + (base ? `<rect width='${P}' height='${P}' fill='${base}'/>` : '')
-    + `<path d='${d}' stroke='${line}' stroke-width='${w}'/></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-}
-
 async function _renderReport(mode){
   if(_isReportRendering){ return; }
   _isReportRendering = true;
@@ -7135,8 +7122,36 @@ async function _renderReport(mode){
   /* 4. Hide body::before noise texture (feTurbulence taint source) */
   document.body.classList.add('pdf-capture');
 
-  /* 5. Zone hatching is painted onto the CLONED deck only, via the onclone
-        hook below — the live DOM is never touched for zones. */
+  /* 5. DIAGNOSTIC: Solid color fill test on real zone elements.
+        If these appear in PDF → we have the right elements.
+        If not → the visible hatching comes from a different layer. */
+  const _zoneSaved = [];
+
+  dcv.querySelectorAll('.zone').forEach(el => {
+    const cls = el.className;
+    const rect = el.getBoundingClientRect();
+    _zoneSaved.push({ el, cssText: el.style.cssText });
+
+    if(cls.includes('z-hose')){
+      el.style.backgroundColor = 'rgba(200,180,50,0.5)';
+      el.style.backgroundImage = 'none';
+    } else if(cls.includes('z-tiger')){
+      el.style.backgroundColor = 'rgba(160,100,30,0.5)';
+      el.style.backgroundImage = 'none';
+    } else if(cls.includes('z-store')){
+      el.style.backgroundColor = 'rgba(180,140,20,0.6)';
+      el.style.backgroundImage = 'none';
+    }
+  });
+
+  /* No-DG zone */
+  const _nodgEl = dcv.querySelector('[style*="repeating-linear-gradient(45deg,rgba(220,38,38"]');
+  let _nodgSavedCss = '';
+  if(_nodgEl){
+    _nodgSavedCss = _nodgEl.style.cssText;
+    _nodgEl.style.backgroundColor = 'rgba(220,50,50,0.15)';
+    _nodgEl.style.backgroundImage = 'none';
+  }
 
   const restore = () => {
     dzw.style.transform = savedTransform;
@@ -7147,6 +7162,9 @@ async function _renderReport(mode){
     /* Restore cargo shadows */
     allCb.forEach((cb,i) => { cb.style.boxShadow = _savedShadows[i] || ''; });
     document.body.classList.remove('pdf-capture');
+    /* Restore original zone styles */
+    _zoneSaved.forEach(s => { s.el.style.cssText = s.cssText; });
+    if(_nodgEl) _nodgEl.style.cssText = _nodgSavedCss;
   };
 
   /* 5. Capture live deck with html2canvas.
@@ -7163,16 +7181,6 @@ async function _renderReport(mode){
       logging: false, width: TW, height: CVH,
       windowWidth: TW, windowHeight: CVH,
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
-      /* setProperty(...,'important') beats the live !important gradient in the clone. */
-      onclone: (clonedDoc) => {
-        const apply = (sel, uri) => clonedDoc.querySelectorAll(sel).forEach(el => {
-          el.style.setProperty('background-image', uri, 'important');
-          el.style.setProperty('background-repeat', 'repeat', 'important');
-        });
-        apply('.z-hose, .z-tiger', _zoneHatchURI(135,'rgba(90,82,62,.22)','rgba(90,82,62,.06)',16,6));
-        apply('.z-store',          _zoneHatchURI(135,'rgba(85,78,58,.26)','rgba(85,78,58,.08)',16,6));
-        apply('.z-nodg',           _zoneHatchURI(45, 'rgba(220,38,38,.16)','',16,6));
-      },
     });
     restore();
     buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
