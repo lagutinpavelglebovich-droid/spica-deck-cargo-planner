@@ -7220,6 +7220,18 @@ async function buildPDF(deckCanvas, data, opts){
     white:  [255, 255, 255],
   };
 
+  /* Stage-2 "Variant A" soft palette — tinted fills + neutral card borders.
+     Values are the Pavel-approved reference triples; used by the KPI pills,
+     destination cards, deck label and DG card. */
+  const ink         = [10, 22, 40];
+  const inkMute     = [90, 100, 120];
+  const green       = [74, 124, 89];
+  const amberStatus = [217, 119, 6];
+  const tintGreen   = [233, 240, 235];
+  const tintAmber   = [250, 242, 230];
+  const tintNavy    = [238, 240, 243];
+  const cardBorder  = [225, 228, 235];
+
   const hex2rgb = hex => { const h=(hex||'#999').replace('#',''); return [parseInt(h.slice(0,2),16)||150, parseInt(h.slice(2,4),16)||150, parseInt(h.slice(4,6),16)||150]; };
   const contrastText = rgb => (0.2126*(rgb[0]/255)+0.7152*(rgb[1]/255)+0.0722*(rgb[2]/255)) > 0.45 ? C.ink : C.white;
   const roundRect = (x,y,w,h,r,fill,strokeCol) => {
@@ -7306,137 +7318,83 @@ async function buildPDF(deckCanvas, data, opts){
                  ? voyageNum
                  : '-';
   rx -= renderHbPair('VOYAGE', voyVal, 'JetBrainsMono', 'normal');
-  rx -= 4; drawHair(rx); rx -= 4;
 
-  /* Item 13: PSV pair */
-  rx -= renderHbPair('PSV', 'North Sea', 'Inter', 'bold');
+  /* 1. KPI STRIP — 4 soft pills (Total Lifts 1.5× width), Variant A.
+        Tinted fills, no borders, Manrope numerics right-aligned. */
+  const kpiY  = y + HB_H + 2;
+  const KPI_H = 15, KPI_GAP = 2;
+  const kUnit = (CW - 3*KPI_GAP) / 4.5;   /* base pill; Total Lifts is 1.5× */
+  const kBL   = kpiY + 9.7;               /* baseline centring the 17pt value */
+  let kx = ML;
+  [
+    { w:kUnit*1.5, fill:C.navyDark, lbl:'TOTAL LIFTS', lblCol:[150,160,180], val:String(lifts),     valCol:C.white },
+    { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green },
+    { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus },
+    { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100] },
+  ].forEach(p => {
+    roundRect(kx, kpiY, p.w, KPI_H, 2.5, p.fill, null);
+    doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...p.lblCol); doc.setCharSpace(0.3);
+    doc.text(p.lbl, kx+5, kBL);
+    doc.setCharSpace(0);
+    doc.setFont('Manrope','bold'); doc.setFontSize(17); doc.setTextColor(...p.valCol);
+    const vW = doc.getTextWidth(p.val);
+    doc.text(p.val, kx+p.w-5-vW, kBL);
+    kx += p.w + KPI_GAP;
+  });
 
-  /* ── KPI strip (preserved verbatim from earlier stage; cy now anchors
-        directly below the new 14mm band, no card frame above) ── */
-  const cy = y + HB_H;
+  y = kpiY + KPI_H + 2;
 
-  /* Counter cell — tight uppercase label + prominent value */
-  const cell = (label, value, cx, colVal) => {
-    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.ink3);
-    doc.text(label.toUpperCase(), cx, cy+4);
-    doc.setFont('Inter','bold'); doc.setFontSize(13); doc.setTextColor(...colVal);
-    doc.text(value, cx, cy+13);
-  };
-
-  /* Counters — left zone */
-  [{lbl:'Total Lifts',val:String(lifts),      col:C.ink,   dx:0},
-   {lbl:'Load',       val:String(loadCount),   col:C.green, dx:52},
-   {lbl:'Backload',   val:String(blCount),     col:C.navy,  dx:100},
-   {lbl:'ROB',        val:String(robCount),    col:C.amber, dx:145},
-  ].forEach(s => cell(s.lbl, s.val, ML+5+s.dx, s.col));
-
-  /* Advance past header band (14) + KPI strip (15: cy+13 value baseline + descender) + 2mm gap. */
-  y += HB_H + 15 + 2;
-
-  /* 2. LOCATIONS — 17mm cards: ACCENT(3)+GAP(2)+NAME(5)+PILLS(5)+PAD(2) */
+  /* 2. DESTINATIONS — soft cards with dot indicators (Variant A).
+        Active locations only; equal-width row; no tonnage. */
   const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
   if(filledLocs.length > 0){
-    const LOC_H=17, GAP=2;
-    const locW = Math.min(Math.floor((CW-(filledLocs.length-1)*GAP)/filledLocs.length), 90);
+    const DEST_H = 16, DGAP = 2, DPAD = 4, dotR = 1.4;
+    const cardW = (CW - (filledLocs.length-1)*DGAP) / filledLocs.length;
     filledLocs.forEach((loc,i) => {
-      const lx = ML+i*(locW+GAP), rgb = hex2rgb(loc.base);
-      roundRect(lx,y,locW,LOC_H,2,C.white,C.brd);
-      /* Accent stripe 3mm — squared bottom corners via overdraw */
-      doc.setFillColor(...rgb); doc.roundedRect(lx,y,locW,3,1,1,'F');
-      doc.rect(lx, y+1, locW, 2, 'F');
-      /* Dot + name + weight on one line — 2mm below accent */
-      doc.setFillColor(...rgb); doc.circle(lx+5,y+8,1.5,'F');
-      doc.setFont('Inter','bold'); doc.setFontSize(9); doc.setTextColor(...C.ink);
-      const maxChars = Math.floor(locW/2.6);
-      const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'\u2026' : loc.name;
-      doc.text(nm, lx+10, y+8.5);
-      doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.ink3);
-      doc.text(loc.wt+'T', lx+locW-3, y+8.5, {align:'right'});
-      /* Pills — 2mm below name row, 2mm bottom pad before card edge */
-      let px = lx+4; const py = y+13;
-      const colL  = hex2rgb(opColor(loc.id, 'L'));
-      const colBL = hex2rgb(opColor(loc.id, 'BL'));
-      const colROB= hex2rgb(opColor(loc.id, 'ROB'));
-      [{lbl:'L',val:loc.L,col:colL},{lbl:'BL',val:loc.BL,col:colBL},{lbl:'ROB',val:loc.ROB,col:colROB}]
+      const cx = ML + i*(cardW+DGAP), rgb = hex2rgb(loc.base);
+      roundRect(cx, y, cardW, DEST_H, 2.5, C.white, cardBorder);
+      /* Row 1 — colour dot + location name */
+      doc.setFillColor(...rgb); doc.circle(cx+DPAD+dotR, y+5, dotR, 'F');
+      const nameX = cx+DPAD+2*dotR+2.5;
+      doc.setFont('Manrope','bold'); doc.setFontSize(10.5); doc.setTextColor(...ink);
+      const maxChars = Math.max(4, Math.floor((cardW-(nameX-cx)-DPAD)/2.0));
+      const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'…' : loc.name;
+      doc.text(nm, nameX, y+6.3);
+      /* Row 2 — soft status pills, left-aligned (only counts > 0) */
+      let px = cx+DPAD; const pillY = y+9, pillH = 5;
+      [{lbl:'L',val:loc.L,fill:tintGreen,col:green},
+       {lbl:'BL',val:loc.BL,fill:tintAmber,col:amberStatus},
+       {lbl:'ROB',val:loc.ROB,fill:tintNavy,col:inkMute}]
         .filter(p=>p.val>0).forEach(p => {
-          const pw = p.lbl==='ROB'?14:p.lbl==='BL'?12:10;
-          const pillBg = p.col.map(v=>Math.round(v*0.20+230));
-          roundRect(px,py-2,pw,5,1.5,pillBg,null);
-          doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.col);
-          doc.text(`${p.lbl} ${p.val}`, px+pw/2, py+1.2, {align:'center'}); px+=pw+2;
+          const txt = `${p.lbl} ${p.val}`;
+          doc.setFont('Inter','bold'); doc.setFontSize(7.5);
+          const pw = doc.getTextWidth(txt) + 5;
+          roundRect(px, pillY, pw, pillH, 2, p.fill, null);
+          doc.setTextColor(...p.col);
+          doc.text(txt, px+pw/2, pillY+3.4, {align:'center'});
+          px += pw + 1.5;
         });
     });
-    y += LOC_H+2;
+    y += DEST_H + 2;
   }
 
-  /* 3. DG ON BOARD — pill-based, matches Location card pills exactly
-        Structure: BAND(4) + GAP(2) + PILL-ROW(5) + PAD(3) = 14mm */
-  if(dgEntries.length > 0){
-    const DG_BAND  = 4;     /* chestnut accent band mm */
-    const DG_PAD_T = 2;     /* gap below band before pills */
-    const DG_PAD_B = 3;     /* bottom padding */
-    const PILL_H   = 5;     /* matches Location card pills exactly */
-    const PILL_GAP = 2;     /* between pills */
-    const chestnut = [168, 50, 50];  /* #a83232 */
-
-    /* Build pill labels and measure widths for wrapping */
-    const dgPills = dgEntries.map(dg => {
-      const bgRgb  = hex2rgb(dg.bg);
-      const txtRgb = hex2rgb(dg.bc);  /* border color = saturated text color */
-      const label  = `${dg.cls} ${dg.nm} \u00D7${dg.count}`;
-      /* Estimate pill width: 7pt ≈ 1.85mm/char + 4mm padding */
-      const pw = Math.round(label.length * 1.85) + 6;
-      const pillBg = bgRgb.map(v => Math.round(v * 0.20 + 230));
-      return { label, pw, pillBg, txtRgb };
-    });
-
-    /* Layout: flow pills left-to-right, wrap rows if overflow */
-    const maxPillX = ML + CW - 5;
-    const rows = [];
-    let currentRow = [], rowX = ML + 5;
-    dgPills.forEach(p => {
-      if(currentRow.length > 0 && rowX + p.pw > maxPillX){
-        rows.push(currentRow); currentRow = []; rowX = ML + 5;
-      }
-      currentRow.push({...p, x: rowX});
-      rowX += p.pw + PILL_GAP;
-    });
-    if(currentRow.length) rows.push(currentRow);
-
-    const DG_H = DG_BAND + DG_PAD_T + rows.length * (PILL_H + PILL_GAP) - PILL_GAP + DG_PAD_B;
-
-    /* Card — white bg, thin border */
-    roundRect(ML, y, CW, DG_H, 2, C.white, C.brd);
-
-    /* Chestnut accent band — squared bottom corners */
-    doc.setFillColor(...chestnut);
-    doc.roundedRect(ML, y, CW, DG_BAND, 2, 2, 'F');
-    doc.rect(ML, y + DG_BAND - 1, CW, 1, 'F');
-
-    /* Title — white bold in band */
-    doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...C.white);
-    doc.text('DANGEROUS GOODS ON BOARD', ML+5, y+2.8);
-
-    /* Pills — same render logic as Location pills */
-    rows.forEach((row, ri) => {
-      const py = y + DG_BAND + DG_PAD_T + ri * (PILL_H + PILL_GAP);
-      row.forEach(p => {
-        roundRect(p.x, py, p.pw, PILL_H, 1.5, p.pillBg, null);
-        doc.setFont('Inter','bold'); doc.setFontSize(7); doc.setTextColor(...p.txtRgb);
-        doc.text(p.label, p.x + p.pw/2, py + 3.3, {align:'center'});
-      });
-    });
-
-    y += DG_H + 2;
-  }
-
-  /* 4. DECK PLAN LABEL */
-  doc.setFont('Inter','bold'); doc.setFontSize(5.5); doc.setTextColor(...C.ink3);
-  doc.text('DECK CARGO PLAN', ML, y+3.5);
-  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
-  doc.text('\u2190 AFT / BAY 12', ML, y+7);
-  doc.text('BAY 1 / BOW \u2192', ML+CW, y+7, {align:'right'});
-  y += 8;
+  /* 3. DECK LABEL — hairline + DECK LAYOUT / vessel spec, bow-aft markers */
+  doc.setDrawColor(...cardBorder); doc.setLineWidth(0.15);
+  doc.line(ML, y, ML+CW, y);
+  const lblBL = y + 4;
+  doc.setFont('Inter','bold'); doc.setFontSize(6.5); doc.setTextColor(...ink); doc.setCharSpace(0.5);
+  doc.text('DECK LAYOUT', ML, lblBL);
+  const lblW1 = doc.getTextWidth('DECK LAYOUT');
+  doc.setCharSpace(0);
+  doc.setFont('Inter','normal'); doc.setFontSize(6); doc.setTextColor(...inkMute);
+  doc.text('SPICA TIDE · 54.92 × 15.0 m', ML+lblW1+3, lblBL);
+  doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...inkMute); doc.setCharSpace(0.4);
+  const rB = 'BAY 1 · BOW →', rA = '← AFT · BAY 12';
+  doc.text(rB, ML+CW, lblBL, {align:'right'});
+  const rBW = doc.getTextWidth(rB);
+  doc.text(rA, ML+CW-rBW-8, lblBL, {align:'right'});
+  doc.setCharSpace(0);
+  y += 6.5;
 
   /* 5. DECK IMAGE — the html2canvas capture */
   const FOOTER_H=8, BAY_LBL_H=6;
@@ -7472,6 +7430,43 @@ async function buildPDF(deckCanvas, data, opts){
   const bayNms = ['12','11','10','9','8','7','6','5','4','3','2','1'];
   doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
   BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+4, {align:'center'}); });
+
+  /* clear the bay-number row before the DG card */
+  y += BAY_LBL_H;
+
+  /* DG ON BOARD — soft card below the deck plan (Variant A) */
+  y += 3;
+  const dgRed = [185, 28, 28], dgBorder = [220, 180, 180];
+  const DG_H = 12, dgPad = 4;
+  roundRect(ML, y, CW, DG_H, 2.5, C.white, dgBorder);
+  /* Row 1 — label (left) + total units (right) */
+  const dgR1 = y + dgPad + 1.5;
+  doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...dgRed); doc.setCharSpace(0.4);
+  doc.text('DG ON BOARD', ML+dgPad, dgR1);
+  doc.setCharSpace(0);
+  const dgTotal = dgEntries.reduce((a,e) => a + e.count, 0);
+  doc.setFont('JetBrainsMono','bold'); doc.setFontSize(8); doc.setTextColor(...inkMute);
+  doc.text(dgEntries.length ? String(dgTotal) : 'None', ML+CW-dgPad, dgR1, {align:'right'});
+  /* Row 2 — IMDG class chips (colour chip + count) */
+  if(dgEntries.length){
+    const chipY = y + dgPad + 3.5, chipH = 4;
+    let dgx = ML + dgPad;
+    dgEntries.forEach(e => {
+      const chipBg = hex2rgb(e.bg), chipTc = hex2rgb(e.tc);
+      doc.setFont('JetBrainsMono','bold'); doc.setFontSize(7);
+      const chipW = doc.getTextWidth(e.cls) + 3;
+      roundRect(dgx, chipY, chipW, chipH, 1.5, chipBg, null);
+      doc.setTextColor(...chipTc);
+      doc.text(e.cls, dgx+chipW/2, chipY+2.9, {align:'center'});
+      const cnt = '×' + e.count;
+      const cntX = dgx + chipW + 1.2;
+      doc.setTextColor(...inkMute);
+      doc.text(cnt, cntX, chipY+2.9);
+      dgx = cntX + doc.getTextWidth(cnt) + 2;
+    });
+  }
+  y += DG_H + 2;
+
 
   /* 7. VOYAGE NOTES */
   const voyRemarks = (typeof S !== 'undefined' && S.voyRemarks) ? S.voyRemarks.trim() : '';
