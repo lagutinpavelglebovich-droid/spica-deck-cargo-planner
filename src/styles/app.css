@@ -4816,6 +4816,7 @@ body.focus-deck .dcv{
   overflow:hidden;
   cursor:inherit;            /* inherit grab/not-allowed/crosshair from .cb parent — name area is part of the drag affordance, not a text-edit target */
   user-select:none;          /* prevent accidental text selection during drag gesture */
+  pointer-events:none;       /* clicks fall through to .cb so small blocks (where the centred label covers most of the card) stay draggable/selectable; real handles (.cb-del/.cb-rot/.rh) keep their own pointer-events */
   letter-spacing:.1px;
   line-height:1.2;
   padding:3px 5px;
