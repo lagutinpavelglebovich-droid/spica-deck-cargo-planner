@@ -2395,7 +2395,7 @@ function ensureLocActive(id){
   if(!S.selLoc) S.selLoc = id;
   buildLocGrid();
 }
-function _placeAtCore(cx,cy){
+function _placeAtCore(cx,cy,openEditor=true){
   const p=S.pending,it=p.item,isC=p.type==='cargo';
   /* Use preset canvas px dimensions; fallback to 6×6ft (~1.83×1.83m) square */
   const w=isC?(it.w||m2px_w(1.83)):m2px_w(1.83);
@@ -2418,6 +2418,12 @@ function _placeAtCore(cx,cy){
     trDest:''};
   S.cargo.push(c);ensureLocActive(c.platform);renderAll();updateStats();buildActiveLocStrip();
   checkSeg();updateDGSummary();save();
+  /* Stamp mode: when openEditor is false (a cargo template armed for repeated
+     placement) skip the editor + panel refresh so S.pending stays armed and
+     the library card keeps its selected highlight — each subsequent empty-deck
+     click drops another copy. DG and drag-drop placements keep the configure
+     modal (openEditor defaults true). */
+  if(!openEditor) return;
   /* Keep panel in sync */
   if(typeof cpRenderLib==='function' && typeof CP_OPEN!=='undefined' && CP_OPEN) cpRenderLib();
   if(typeof cpHideHint==='function') cpHideHint();
@@ -6835,7 +6841,10 @@ function placeAt(cx, cy){
   }
 
   /* ── Standard library / DG path ── */
-  _placeAtCore(cx, cy);
+  /* Cargo templates stamp: place without the editor and keep the selection
+     armed so each subsequent empty-deck click drops another copy. DG keeps
+     its configure-on-place modal. */
+  _placeAtCore(cx, cy, S.pending.type !== 'cargo');
 }
 
 /* ── Utility: simple HTML escape ── */
