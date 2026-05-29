@@ -7251,19 +7251,20 @@ async function buildPDF(deckCanvas, data, opts){
   /* 1. HEADER — 14mm navy band + 1mm amber strip (Stage 1 redesign).
         Brand mark + voyage metadata moved into the band; KPI counter strip
         is preserved below as its own block. */
-  const HB_H = 14, HB_PAD = 6, HB_AMBER_H = 1;
+  const HB_H = 14, HB_PAD = 6, HB_AMBER_H = 1.5;
 
-  /* Navy band \u2014 full content width, no corner radius. */
+  /* Navy band \u2014 rounded inset masthead (radius 2.5mm), full content width. */
   doc.setFillColor(...C.navyDark);
-  doc.rect(ML, y, CW, HB_H, 'F');
-  /* Amber accent strip \u2014 last 1mm of band height. */
+  doc.roundedRect(ML, y, CW, HB_H, 2.5, 2.5, 'F');
+  /* Amber accent \u2014 thin rounded bar (1.5mm, fully-pilled ends) sitting
+     directly BENEATH the navy band, not inside it. */
   doc.setFillColor(...C.brandAmber);
-  doc.rect(ML, y + HB_H - HB_AMBER_H, CW, HB_AMBER_H, 'F');
+  doc.roundedRect(ML, y + HB_H + 0.8, CW, HB_AMBER_H, 0.75, 0.75, 'F');
 
-  /* Shared text baseline through vertical centre of the navy region
-     (above the amber strip). Cap-height correction for ~11pt display glyph
-     pushes the baseline ~1.4mm below centre. */
-  const hbMidY = y + (HB_H - HB_AMBER_H) / 2;
+  /* Shared text baseline through the vertical centre of the navy band.
+     Cap-height correction for ~11pt display glyph pushes the baseline
+     ~1.4mm below centre. */
+  const hbMidY = y + HB_H / 2;
   const hbBL   = hbMidY + 1.4;
   const hairH  = 5;
   const drawHair = (xp) => {
@@ -7295,12 +7296,12 @@ async function buildPDF(deckCanvas, data, opts){
     const valW = doc.getTextWidth(value);
     doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setCharSpace(0.6);
     const labW = doc.getTextWidth(label);
-    const pairW = labW + 2 + valW;
+    const pairW = labW + 3 + valW;
     const labX  = rx - pairW;
     doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...C.inkOnNavyFaint); doc.setCharSpace(0.6);
     doc.text(label, labX, hbBL);
     doc.setFont(valueFont, valueStyle); doc.setFontSize(8); doc.setTextColor(...C.inkOnNavy); doc.setCharSpace(0);
-    doc.text(value, labX + labW + 2, hbBL);
+    doc.text(value, labX + labW + 3, hbBL);
     return pairW;
   };
 
@@ -7309,11 +7310,11 @@ async function buildPDF(deckCanvas, data, opts){
   const neoW = doc.getTextWidth('NeoNext');
   doc.text('NeoNext', rx - neoW, hbBL);
   doc.setCharSpace(0);
-  rx -= neoW + 4; drawHair(rx); rx -= 4;
+  rx -= neoW + 5; drawHair(rx); rx -= 5;
 
   /* Item 5: DATE pair */
   rx -= renderHbPair('DATE', dateStr, 'Inter', 'bold');
-  rx -= 4; drawHair(rx); rx -= 4;
+  rx -= 5; drawHair(rx); rx -= 5;
 
   /* Item 9: VOYAGE pair (value in JetBrainsMono Regular).
         Empty / em-dash fallback rendered as hyphen-minus so the glyph is
@@ -7326,23 +7327,23 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* 1. KPI STRIP — 4 soft pills (Total Lifts 1.5× width), Variant A.
         Tinted fills, no borders, Manrope numerics right-aligned. */
-  const kpiY  = y + HB_H + 2;
-  const KPI_H = 15, KPI_GAP = 2;
+  const kpiY  = y + HB_H + 4.5;           /* clears the amber bar (ends at +2.3) */
+  const KPI_H = 17, KPI_GAP = 2;
   const kUnit = (CW - 3*KPI_GAP) / 4.5;   /* base pill; Total Lifts is 1.5× */
-  const kBL   = kpiY + 9.7;               /* baseline centring the 17pt value */
+  const kBL   = kpiY + 11.5;              /* baseline centring the 26pt value */
   let kx = ML;
   [
-    { w:kUnit*1.5, fill:C.navyDark, lbl:'TOTAL LIFTS', lblCol:[150,160,180], val:String(lifts),     valCol:C.white,         valSize:22 },
-    { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green,           valSize:17 },
-    { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus,     valSize:17 },
-    { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100],     valSize:17 },
+    { w:kUnit*1.5, fill:C.navyDark, lbl:'TOTAL LIFTS', lblCol:[150,160,180], val:String(lifts),     valCol:C.white,         valSize:26 },
+    { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green,           valSize:20 },
+    { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus,     valSize:20 },
+    { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100],     valSize:20 },
   ].forEach(p => {
     roundRect(kx, kpiY, p.w, KPI_H, 2.5, p.fill, null);
-    doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...p.lblCol); doc.setCharSpace(0.3);
+    doc.setFont('Inter','normal'); doc.setFontSize(9); doc.setTextColor(...p.lblCol); doc.setCharSpace(0.3);
     doc.text(p.lbl, kx+5, kBL);
     doc.setCharSpace(0);
-    /* Total Lifts is the dominant numeric (22pt) — supporting counts at 17pt
-       create a ≥1.25 ratio per typeset hierarchy guidance. */
+    /* Total Lifts is the dominant numeric (26pt) — supporting counts at 20pt
+       hold a ≥1.25 ratio per typeset hierarchy guidance. */
     doc.setFont('Manrope','bold'); doc.setFontSize(p.valSize); doc.setTextColor(...p.valCol);
     const vW = doc.getTextWidth(p.val);
     doc.text(p.val, kx+p.w-5-vW, kBL);
@@ -7357,6 +7358,15 @@ async function buildPDF(deckCanvas, data, opts){
   if(filledLocs.length > 0){
     const DEST_H = 16, DGAP = 2, DPAD = 4, dotR = 1.4;
     const cardW = (CW - (filledLocs.length-1)*DGAP) / filledLocs.length;
+    /* FIX D — one uniform pill width = widest "LBL N" across ALL destination
+       cards, computed once so every capsule is identical in size. */
+    doc.setFont('Inter','bold'); doc.setFontSize(7.5);
+    let uniPillW = 12;
+    filledLocs.forEach(loc => {
+      [['L',loc.L],['BL',loc.BL],['ROB',loc.ROB]].forEach(([lbl,val]) => {
+        if(val>0) uniPillW = Math.max(uniPillW, doc.getTextWidth(`${lbl} ${val}`) + 6);
+      });
+    });
     filledLocs.forEach((loc,i) => {
       const cx = ML + i*(cardW+DGAP), rgb = hex2rgb(loc.base);
       roundRect(cx, y, cardW, DEST_H, 2.5, C.white, cardBorder);
@@ -7367,28 +7377,23 @@ async function buildPDF(deckCanvas, data, opts){
       const maxChars = Math.max(4, Math.floor((cardW-(nameX-cx)-DPAD)/2.0));
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'…' : loc.name;
       doc.text(nm, nameX, y+6.3);
-      /* Row 2 — filled capsule pills coloured by the per-(loc,status) opColor()
-         (DESIGN_RULES §1, §3) so they mirror the deck cargo blocks. Ivory blend at 0.68
-         emulates the live `.loc-pill` rgba(var(--op-color),.68) without alpha. */
+      /* Row 2 — filled capsule pills in the SOLID per-(loc,status) opColor()
+         (DESIGN_RULES §1, §3, §8): identical to the deck cargo block fill, never an
+         ivory wash, so muted hues (Claymore CPP olive, slate) read true instead of
+         greying. On a genuine miss fall back to loc.base (getLocBase) — never slate. */
       let px = cx+DPAD; const pillY = y+9, pillH = 5.5, pillR = pillH/2;
-      const blendIvory = rgb => [
-        Math.round(rgb[0]*0.68 + C.ivory[0]*0.32),
-        Math.round(rgb[1]*0.68 + C.ivory[1]*0.32),
-        Math.round(rgb[2]*0.68 + C.ivory[2]*0.32),
-      ];
-      [{lbl:'L',  val:loc.L,   hex: loc.pillColors && loc.pillColors.L},
-       {lbl:'BL', val:loc.BL,  hex: loc.pillColors && loc.pillColors.BL},
-       {lbl:'ROB',val:loc.ROB, hex: loc.pillColors && loc.pillColors.ROB}]
+      [{lbl:'L',  val:loc.L,   hex: (loc.pillColors && loc.pillColors.L)   || loc.base},
+       {lbl:'BL', val:loc.BL,  hex: (loc.pillColors && loc.pillColors.BL)  || loc.base},
+       {lbl:'ROB',val:loc.ROB, hex: (loc.pillColors && loc.pillColors.ROB) || loc.base}]
         .filter(p=>p.val>0).forEach(p => {
           const txt = `${p.lbl} ${p.val}`;
-          doc.setFont('Inter','bold'); doc.setFontSize(7.5);
-          const pw = doc.getTextWidth(txt) + 5;
-          const fill = blendIvory(hex2rgb(p.hex));
-          roundRect(px, pillY, pw, pillH, pillR, fill, null);
-          /* Text is fixed near-black — the capsule colour IS the status indicator (§3). */
-          doc.setTextColor(20, 24, 30);
-          doc.text(txt, px+pw/2, pillY+3.7, {align:'center'});
-          px += pw + 1.5;
+          const rgbFill = hex2rgb(p.hex);
+          roundRect(px, pillY, uniPillW, pillH, pillR, rgbFill, null);
+          /* Capsule colour IS the status indicator (§3); text picks max contrast
+             against the solid fill exactly as the deck block does. */
+          doc.setFont('Inter','bold'); doc.setFontSize(7.5); doc.setTextColor(...contrastText(rgbFill));
+          doc.text(txt, px+uniPillW/2, pillY+3.7, {align:'center'});
+          px += uniPillW + 1.5;
         });
     });
     y += DEST_H + 2;
@@ -7403,7 +7408,7 @@ async function buildPDF(deckCanvas, data, opts){
   doc.text('◄ AFT / STERN — BAY 12', ML, lblBL);
   doc.text('BAY 1 — BOW / FORE ►', ML+CW, lblBL, {align:'right'});
   doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...ink); doc.setCharSpace(0.3);
-  doc.text('SPICA TIDE · 54.92 m × 15 m · 752 m² · Max 2500 T · 10 T/m²',
+  doc.text('SPICA TIDE · 54.92 m × 15 m · 752 m²',
            ML+CW/2, lblBL, {align:'center'});
   doc.setCharSpace(0);
   y += 5;
@@ -7474,13 +7479,16 @@ async function buildPDF(deckCanvas, data, opts){
     const chipW = maxClsW + 4;
     let dgx = ML + dgPad;
     dgEntries.forEach(e => {
-      const chipBg = hex2rgb(e.bg), chipTc = hex2rgb(e.tc);
+      const chipBg = hex2rgb(e.bg);
       roundRect(dgx, chipY, chipW, chipH, 1.5, chipBg, null);
-      doc.setFont('Inter','bold'); doc.setFontSize(8); doc.setTextColor(...chipTc);
+      /* PDF override (DESIGN_RULES §8): class glyph is always near-black
+         [17,17,17] regardless of chip bg — print legibility on this report
+         trumps the live DG_DATA.tc white-on-red. */
+      doc.setFont('Inter','bold'); doc.setFontSize(8); doc.setTextColor(17, 17, 17);
       doc.text(e.cls, dgx+chipW/2, chipY+3.7, {align:'center'});
       const cnt = '×' + e.count;
       const cntX = dgx + chipW + 1.5;
-      doc.setFont('JetBrainsMono','bold'); doc.setFontSize(7); doc.setTextColor(20, 24, 30);
+      doc.setFont('JetBrainsMono','bold'); doc.setFontSize(9); doc.setTextColor(20, 24, 30);
       doc.text(cnt, cntX, chipY+3.7);
       dgx = cntX + doc.getTextWidth(cnt) + 3;
     });

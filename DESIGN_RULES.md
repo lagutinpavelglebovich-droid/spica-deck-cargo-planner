@@ -202,10 +202,28 @@ Authoritative vessel facts encoded here: **SPICA TIDE**, deck **54.92 m × 15 m*
   above**, sourced via `opColor()` / `getLocBase()` / `DG_DATA` — not arbitrary
   green/amber/grey.
 
-  **KNOWN DIVERGENCE — needs Pavel confirmation:** the current `buildPDF` destination
-  cards color the L / BL / ROB pills with **fixed tints** (green / amber / navy), whereas
-  the live app colors each pill by the **per-(location,status)** `opColor()` value
-  (§1, §3). The DG chip color does correctly read `DG_DATA`. Before the next PDF chrome
-  pass, confirm whether the destination pills should switch to the live per-pair colors
-  (via `opColor(loc.id, status)`, already available in `_renderReport`) to truly mirror
-  the deck.
+### 8a. PDF-specific overrides (authoritative — PDF only)
+
+These three rules deviate from the live-UI sections above **on purpose, in the PDF only**,
+for print legibility and faithful deck mirroring. They are the resolution of the former
+"destination pill color divergence".
+
+1. **Destination pills source color from `opColor()` and paint SOLID.** Each L / BL / ROB
+   capsule is filled with the **per-(location,status)** value `opColor(canonical platform id, status)`
+   — the exact same hex the deck block uses (`src/app.js:2435`), the id being the canonical
+   `S.activeLocs` id (identical to `cargo.platform`). The fill is **solid**, not an ivory wash:
+   washing muted hues (Claymore CPP olive, slate pool entries) toward cream greyed them out
+   and broke the deck mirror. On a genuine miss the pill falls back to `loc.base`
+   (= `getLocBase(id)`) — **never** slate / `#999` / a grey default. Label text uses a
+   luminance contrast pick against the solid fill (mirrors the deck block's `isDark(fill)`),
+   so dark op-colors get white text. Pills are one **uniform width** across all destination
+   cards (widest `"LBL N"` measured once). (Overrides §3's "fixed near-black pill text".)
+
+2. **DG class glyphs render near-black `[17,17,17]` regardless of chip background.** The
+   chip background still reads `DG_DATA[class].bg`, but the class glyph ignores
+   `DG_DATA[class].tc` and is always near-black so it stays legible on the small printed
+   chips. (Overrides §4's white-on-red `tc` — PDF only.)
+
+3. **Deck-label vessel facts are shortened in the PDF.** The centred deck-label band prints
+   exactly `SPICA TIDE · 54.92 m × 15 m · 752 m²` — the `· Max 2500 T · 10 T/m²` load specs
+   from the live `.deck-compass` (§7) are dropped to keep the printed strip uncrowded.
