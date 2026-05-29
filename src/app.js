@@ -2384,6 +2384,17 @@ function bindLocDrawer(){
 /* ════════════════════════════════════
    PLACEMENT + RENDER
 ════════════════════════════════════ */
+/* Idempotently activate a location id so a freshly placed cargo's platform
+   always appears in the location strip and the Edit modal. Mirrors the ⊕
+   picker's seeding (dedupe + colour assign + selLoc default + grid refresh);
+   both placement call sites re-render the strip and persist afterwards. */
+function ensureLocActive(id){
+  if(!id || S.activeLocs.includes(id)) return;
+  S.activeLocs.push(id);
+  assignLocColor(id);
+  if(!S.selLoc) S.selLoc = id;
+  buildLocGrid();
+}
 function _placeAtCore(cx,cy){
   const p=S.pending,it=p.item,isC=p.type==='cargo';
   /* Use preset canvas px dimensions; fallback to 6×6ft (~1.83×1.83m) square */
@@ -2405,7 +2416,7 @@ function _placeAtCore(cx,cy){
     dgClasses:p.type==='dg'?[it.cls]:[],
     priority:false,
     trDest:''};
-  S.cargo.push(c);renderAll();updateStats();buildActiveLocStrip();
+  S.cargo.push(c);ensureLocActive(c.platform);renderAll();updateStats();buildActiveLocStrip();
   checkSeg();updateDGSummary();save();
   /* Keep panel in sync */
   if(typeof cpRenderLib==='function' && typeof CP_OPEN!=='undefined' && CP_OPEN) cpRenderLib();
@@ -6801,6 +6812,7 @@ function placeAt(cx, cy){
       trDest: '',
     };
     S.cargo.push(c);
+    ensureLocActive(c.platform);
 
     /* Remove from queue after placement */
     IMPORT_QUEUE.splice(p.queueIdx, 1);
