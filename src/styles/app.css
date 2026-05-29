@@ -4420,6 +4420,16 @@ body.focus-deck .dcv{
   transform:scale(.97);
 }
 
+/* Transient guard: while a Library cargo card is dragged onto the deck, the
+   browser would otherwise grab a native text selection across the page. The
+   class is added at drag start and removed on every drag-exit path, so normal
+   text selection (Library search, labels, etc.) is unaffected outside a drag. */
+body.dragging-cargo,
+body.dragging-cargo *{
+  user-select:none;
+  -webkit-user-select:none;
+}
+
 /* Respect operator preference for reduced motion — all pulses collapse
    to instant class-add/remove with no animation. */
 @media (prefers-reduced-motion: reduce){

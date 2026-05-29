@@ -8111,6 +8111,10 @@ function cpRenderQueue(){
 function _libDragFromCard(e, pendingItem, displayName, pw, ph){
   if(!isOperator()) return;
   if(e.button !== 0) return;
+  /* Stop the browser's native text-selection grab on the card; the click event
+     still fires, so click-to-place is unaffected. The page-wide suppression
+     (body.dragging-cargo) is added once a real drag begins, below. */
+  e.preventDefault();
 
   const sx = e.clientX, sy = e.clientY;
   let dragging = false;
@@ -8128,6 +8132,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
       const dy = Math.abs(ev.clientY - sy);
       if(dx > 5 || dy > 5){
         dragging = true;
+        document.body.classList.add('dragging-cargo');   /* suppress page-wide text selection for this drag only */
         ghost = document.createElement('div');
         ghost.className = 'ghost ghost-lib';
         ghost.style.width  = GW + 'px';
@@ -8170,6 +8175,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     document.removeEventListener('keydown', onKey);
+    document.body.classList.remove('dragging-cargo');
     if(ghost){ ghost.remove(); ghost = null; }
     S.pending = null;
     if(typeof cancelPending === 'function') cancelPending();
@@ -8179,6 +8185,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     document.removeEventListener('keydown', onKey);
+    document.body.classList.remove('dragging-cargo');
     if(ghost) ghost.remove();
     if(!dragging) return;         /* click-only: let the card's click handler run */
 
