@@ -7036,7 +7036,12 @@ async function _renderReport(mode){
     const BL  = cargos.filter(c => c.status === 'BL').length;
     const ROB = cargos.filter(c => c.status === 'ROB').length;
     const wt  = cargos.reduce((a,c) => a + (parseFloat(c.wt)||0), 0);
-    return { id, name: loc.name, base, cols, L, BL, ROB, wt: wt.toFixed(1) };
+    /* Per-(loc,status) opColor() so PDF pills match the deck blocks (DESIGN_RULES §1, §3, §8). */
+    const pillColors = {};
+    if(L   > 0) pillColors.L   = opColor(id, 'L');
+    if(BL  > 0) pillColors.BL  = opColor(id, 'BL');
+    if(ROB > 0) pillColors.ROB = opColor(id, 'ROB');
+    return { id, name: loc.name, base, cols, L, BL, ROB, wt: wt.toFixed(1), pillColors };
   }).filter(Boolean);
 
   /* ── DG classes actually on deck ── */
@@ -7327,16 +7332,18 @@ async function buildPDF(deckCanvas, data, opts){
   const kBL   = kpiY + 9.7;               /* baseline centring the 17pt value */
   let kx = ML;
   [
-    { w:kUnit*1.5, fill:C.navyDark, lbl:'TOTAL LIFTS', lblCol:[150,160,180], val:String(lifts),     valCol:C.white },
-    { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green },
-    { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus },
-    { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100] },
+    { w:kUnit*1.5, fill:C.navyDark, lbl:'TOTAL LIFTS', lblCol:[150,160,180], val:String(lifts),     valCol:C.white,         valSize:22 },
+    { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green,           valSize:17 },
+    { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus,     valSize:17 },
+    { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100],     valSize:17 },
   ].forEach(p => {
     roundRect(kx, kpiY, p.w, KPI_H, 2.5, p.fill, null);
     doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...p.lblCol); doc.setCharSpace(0.3);
     doc.text(p.lbl, kx+5, kBL);
     doc.setCharSpace(0);
-    doc.setFont('Manrope','bold'); doc.setFontSize(17); doc.setTextColor(...p.valCol);
+    /* Total Lifts is the dominant numeric (22pt) — supporting counts at 17pt
+       create a ≥1.25 ratio per typeset hierarchy guidance. */
+    doc.setFont('Manrope','bold'); doc.setFontSize(p.valSize); doc.setTextColor(...p.valCol);
     const vW = doc.getTextWidth(p.val);
     doc.text(p.val, kx+p.w-5-vW, kBL);
     kx += p.w + KPI_GAP;
@@ -7360,44 +7367,52 @@ async function buildPDF(deckCanvas, data, opts){
       const maxChars = Math.max(4, Math.floor((cardW-(nameX-cx)-DPAD)/2.0));
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'…' : loc.name;
       doc.text(nm, nameX, y+6.3);
-      /* Row 2 — soft status pills, left-aligned (only counts > 0) */
-      let px = cx+DPAD; const pillY = y+9, pillH = 5;
-      [{lbl:'L',val:loc.L,fill:tintGreen,col:green},
-       {lbl:'BL',val:loc.BL,fill:tintAmber,col:amberStatus},
-       {lbl:'ROB',val:loc.ROB,fill:tintNavy,col:inkMute}]
+      /* Row 2 — filled capsule pills coloured by the per-(loc,status) opColor()
+         (DESIGN_RULES §1, §3) so they mirror the deck cargo blocks. Ivory blend at 0.68
+         emulates the live `.loc-pill` rgba(var(--op-color),.68) without alpha. */
+      let px = cx+DPAD; const pillY = y+9, pillH = 5.5, pillR = pillH/2;
+      const blendIvory = rgb => [
+        Math.round(rgb[0]*0.68 + C.ivory[0]*0.32),
+        Math.round(rgb[1]*0.68 + C.ivory[1]*0.32),
+        Math.round(rgb[2]*0.68 + C.ivory[2]*0.32),
+      ];
+      [{lbl:'L',  val:loc.L,   hex: loc.pillColors && loc.pillColors.L},
+       {lbl:'BL', val:loc.BL,  hex: loc.pillColors && loc.pillColors.BL},
+       {lbl:'ROB',val:loc.ROB, hex: loc.pillColors && loc.pillColors.ROB}]
         .filter(p=>p.val>0).forEach(p => {
           const txt = `${p.lbl} ${p.val}`;
           doc.setFont('Inter','bold'); doc.setFontSize(7.5);
           const pw = doc.getTextWidth(txt) + 5;
-          roundRect(px, pillY, pw, pillH, 2, p.fill, null);
-          doc.setTextColor(...p.col);
-          doc.text(txt, px+pw/2, pillY+3.4, {align:'center'});
+          const fill = blendIvory(hex2rgb(p.hex));
+          roundRect(px, pillY, pw, pillH, pillR, fill, null);
+          /* Text is fixed near-black — the capsule colour IS the status indicator (§3). */
+          doc.setTextColor(20, 24, 30);
+          doc.text(txt, px+pw/2, pillY+3.7, {align:'center'});
           px += pw + 1.5;
         });
     });
     y += DEST_H + 2;
   }
 
-  /* 3. DECK LABEL — hairline + DECK LAYOUT / vessel spec, bow-aft markers */
+  /* 3. DECK LABEL — mirrors the live `.deck-compass` strip (DESIGN_RULES §7).
+        3-part space-between row: aft marker (left), vessel facts (centred), bow marker (right).
+        Text is verbatim from §7 — em dashes are Pavel's authoritative spec, overriding the
+        impeccable no-em-dash guideline for this specific deck wayfinding band. */
+  const lblBL = y + 4;
+  doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...inkMute); doc.setCharSpace(0.4);
+  doc.text('◄ AFT / STERN — BAY 12', ML, lblBL);
+  doc.text('BAY 1 — BOW / FORE ►', ML+CW, lblBL, {align:'right'});
+  doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...ink); doc.setCharSpace(0.3);
+  doc.text('SPICA TIDE · 54.92 m × 15 m · 752 m² · Max 2500 T · 10 T/m²',
+           ML+CW/2, lblBL, {align:'center'});
+  doc.setCharSpace(0);
+  y += 5;
   doc.setDrawColor(...cardBorder); doc.setLineWidth(0.15);
   doc.line(ML, y, ML+CW, y);
-  const lblBL = y + 4;
-  doc.setFont('Inter','bold'); doc.setFontSize(6.5); doc.setTextColor(...ink); doc.setCharSpace(0.5);
-  doc.text('DECK LAYOUT', ML, lblBL);
-  const lblW1 = doc.getTextWidth('DECK LAYOUT');
-  doc.setCharSpace(0);
-  doc.setFont('Inter','normal'); doc.setFontSize(6); doc.setTextColor(...inkMute);
-  doc.text('SPICA TIDE · 54.92 × 15.0 m', ML+lblW1+3, lblBL);
-  doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...inkMute); doc.setCharSpace(0.4);
-  const rB = 'BAY 1 · BOW →', rA = '← AFT · BAY 12';
-  doc.text(rB, ML+CW, lblBL, {align:'right'});
-  const rBW = doc.getTextWidth(rB);
-  doc.text(rA, ML+CW-rBW-8, lblBL, {align:'right'});
-  doc.setCharSpace(0);
-  y += 6.5;
+  y += 1.5;
 
   /* 5. DECK IMAGE — the html2canvas capture */
-  const FOOTER_H=8, BAY_LBL_H=6;
+  const FOOTER_H=8, BAY_LBL_H=7;
   const availH = PH-y-FOOTER_H-BAY_LBL_H-2;
   const dw = CW, dh = Math.min(dw*(CVH/TW), availH);
   roundRect(ML-0.4,y-0.4,dw+0.8,dh+0.8,1.5,C.ivory,C.brd);
@@ -7426,43 +7441,48 @@ async function buildPDF(deckCanvas, data, opts){
 
   y += dh+2;
 
-  /* 6. BAY LABELS */
+  /* 6. BAY LABELS — Inter bold 11pt inkMute, centred under each real bay segment
+        (DESIGN_RULES §6). The bottom row stays even though the snapshot already
+        carries the ghost-watermark Manrope 900 numbers — cargo can cover those,
+        so the explicit row gives a guaranteed readable reference. */
   const bayNms = ['12','11','10','9','8','7','6','5','4','3','2','1'];
-  doc.setFont('Inter','normal'); doc.setFontSize(4.5); doc.setTextColor(...C.ink4);
-  BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+4, {align:'center'}); });
+  doc.setFont('Inter','bold'); doc.setFontSize(11); doc.setTextColor(...inkMute);
+  BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+5, {align:'center'}); });
 
   /* clear the bay-number row before the DG card */
   y += BAY_LBL_H;
 
-  /* DG ON BOARD — soft card below the deck plan (Variant A) */
+  /* DG ON BOARD — soft tinted card, premium like the load/backload pills
+        (DESIGN_RULES §4). No standalone total count. Uniform chip dimensions;
+        class glyph rendered in DG_DATA.tc so light backgrounds (2.3/6.x/8/9)
+        keep their dark text and red backgrounds (2.1/3) stay white-on-red. */
   y += 3;
-  const dgRed = [185, 28, 28], dgBorder = [220, 180, 180];
-  const DG_H = 12, dgPad = 4;
-  roundRect(ML, y, CW, DG_H, 2.5, C.white, dgBorder);
-  /* Row 1 — label (left) + total units (right) */
+  const dgRed = [185, 28, 28], dgBorder = [220, 180, 180], dgTint = [250, 238, 238];
+  const DG_H = 14, dgPad = 4;
+  roundRect(ML, y, CW, DG_H, 2.5, dgTint, dgBorder);
+  /* Row 1 — eyebrow label only (no standalone total) */
   const dgR1 = y + dgPad + 1.5;
   doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...dgRed); doc.setCharSpace(0.4);
-  doc.text('DG ON BOARD', ML+dgPad, dgR1);
+  doc.text(dgEntries.length ? 'DG ON BOARD' : 'DG ON BOARD · None', ML+dgPad, dgR1);
   doc.setCharSpace(0);
-  const dgTotal = dgEntries.reduce((a,e) => a + e.count, 0);
-  doc.setFont('JetBrainsMono','bold'); doc.setFontSize(8); doc.setTextColor(...inkMute);
-  doc.text(dgEntries.length ? String(dgTotal) : 'None', ML+CW-dgPad, dgR1, {align:'right'});
-  /* Row 2 — IMDG class chips (colour chip + count) */
+  /* Row 2 — uniform IMDG class chips: width = max class-text width + 4mm,
+        height 5.5mm, radius 1.5mm. Fill from DG_DATA.bg, glyph in DG_DATA.tc. */
   if(dgEntries.length){
-    const chipY = y + dgPad + 3.5, chipH = 4;
+    const chipY = y + dgPad + 3.5, chipH = 5.5;
+    doc.setFont('Inter','bold'); doc.setFontSize(8);
+    const maxClsW = dgEntries.reduce((mx, e) => Math.max(mx, doc.getTextWidth(e.cls)), 0);
+    const chipW = maxClsW + 4;
     let dgx = ML + dgPad;
     dgEntries.forEach(e => {
       const chipBg = hex2rgb(e.bg), chipTc = hex2rgb(e.tc);
-      doc.setFont('JetBrainsMono','bold'); doc.setFontSize(7);
-      const chipW = doc.getTextWidth(e.cls) + 3;
       roundRect(dgx, chipY, chipW, chipH, 1.5, chipBg, null);
-      doc.setTextColor(...chipTc);
-      doc.text(e.cls, dgx+chipW/2, chipY+2.9, {align:'center'});
+      doc.setFont('Inter','bold'); doc.setFontSize(8); doc.setTextColor(...chipTc);
+      doc.text(e.cls, dgx+chipW/2, chipY+3.7, {align:'center'});
       const cnt = '×' + e.count;
-      const cntX = dgx + chipW + 1.2;
-      doc.setTextColor(...inkMute);
-      doc.text(cnt, cntX, chipY+2.9);
-      dgx = cntX + doc.getTextWidth(cnt) + 2;
+      const cntX = dgx + chipW + 1.5;
+      doc.setFont('JetBrainsMono','bold'); doc.setFontSize(7); doc.setTextColor(20, 24, 30);
+      doc.text(cnt, cntX, chipY+3.7);
+      dgx = cntX + doc.getTextWidth(cnt) + 3;
     });
   }
   y += DG_H + 2;
