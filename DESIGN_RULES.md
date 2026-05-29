@@ -227,3 +227,12 @@ for print legibility and faithful deck mirroring. They are the resolution of the
 3. **Deck-label vessel facts are shortened in the PDF.** The centred deck-label band prints
    exactly `SPICA TIDE · 54.92 m × 15 m · 752 m²` — the `· Max 2500 T · 10 T/m²` load specs
    from the live `.deck-compass` (§7) are dropped to keep the printed strip uncrowded.
+
+4. **PDF color conversion must preserve 0 channels.** Use a NaN-guard, **never**
+   `parseInt(...)||fallback` — JS treats `0` as falsy, so any channel equal to a `00` byte
+   gets silently replaced by the fallback. This corrupted hexes containing a `00` byte
+   (e.g. Claymore CPP `#6b7a00` rendered slate-blue `[107,122,150]` instead of olive
+   `[107,122,0]`; also latent for `#d35400`, `#c27b00`). The PDF pill/DG colors derive from
+   the same `opColor()` / `DG_DATA` hexes as the live deck, which uses the correct `h2r`
+   converter (`src/app.js:575`) — so `buildPDF`'s `hex2rgb` now just delegates to `h2r`. A
+   0-channel must render identically in the PDF and on the live deck.

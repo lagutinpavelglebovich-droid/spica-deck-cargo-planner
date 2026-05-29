@@ -7267,7 +7267,7 @@ async function buildPDF(deckCanvas, data, opts){
   const tintNavy    = [238, 240, 243];
   const cardBorder  = [225, 228, 235];
 
-  const hex2rgb = hex => { const h=(hex||'#999').replace('#',''); return [parseInt(h.slice(0,2),16)||150, parseInt(h.slice(2,4),16)||150, parseInt(h.slice(4,6),16)||150]; };
+  const hex2rgb = hex => h2r(hex || '#999999'); // delegate to live h2r — preserves 0 channels (never ||fallback, which corrupts a 00 byte e.g. #6b7a00)
   const contrastText = rgb => (0.2126*(rgb[0]/255)+0.7152*(rgb[1]/255)+0.0722*(rgb[2]/255)) > 0.45 ? C.ink : C.white;
   const roundRect = (x,y,w,h,r,fill,strokeCol) => {
     if(fill) doc.setFillColor(...fill);
