@@ -14642,10 +14642,11 @@ body.insp-multi .insp-act-dup{ display:none; }
 }
 .rc-lifts .gst-lift-num{
   font-family:'Manrope','Inter',sans-serif;
-  font-size:22px;
+  font-size:28px;                 /* hero metric — 1.4x the 20px sub-metrics; backs off 32px so the cap clears the headroom */
   font-weight:700;
   letter-spacing:0;
   margin-left:0;
+  padding-left:4px;               /* small right nudge so the bold left curve reads free */
   color:var(--txt);
   font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1;
@@ -15463,8 +15464,10 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   background: transparent;
   border: 0;
   padding: 2px 0;
-  width: 100%;
-  max-width: 140px;
+  /* Give the voyage code room so longer codes never clip; shrink
+     gracefully under a narrow header instead of overflowing. */
+  width: 200px;
+  max-width: 100%;
   cursor: text;
   font-family: inherit;
   /* Pro-tool clean: hover/focus emphasis is colour + thin underline,
