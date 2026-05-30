@@ -14646,10 +14646,13 @@ body.insp-multi .insp-act-dup{ display:none; }
   font-weight:700;
   letter-spacing:0;
   margin-left:0;
-  padding-left:4px;               /* small right nudge so the bold left curve reads free */
+  padding-left:10px;              /* shift the figure clear of the left edge */
   color:var(--txt);
-  font-variant-numeric:tabular-nums;
-  font-feature-settings:"tnum" 1;
+  /* Proportional figures: #sLifts is set via textContent (no count-up), so the
+     fixed-width tabular cell isn't needed — and it was cropping the "6" on its
+     left. Proportional lets each digit use its natural side-bearing. */
+  font-variant-numeric:proportional-nums;
+  font-feature-settings:"pnum" 1;
   line-height:1.1;
   text-shadow:0 1px 0 rgba(255,255,255,.45);
 }
