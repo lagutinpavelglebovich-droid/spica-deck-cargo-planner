@@ -7122,25 +7122,22 @@ async function _renderReport(mode){
   /* 4. Hide body::before noise texture (feTurbulence taint source) */
   document.body.classList.add('pdf-capture');
 
-  /* 5. DIAGNOSTIC: Solid color fill test on real zone elements.
-        If these appear in PDF → we have the right elements.
-        If not → the visible hatching comes from a different layer. */
+  /* 5. Option A — flat premium zone fills for the snapshot. Live zones use
+        !important hatch backgrounds, so overrides MUST use setProperty(...,
+        'important') (plain assignment is a no-op). No data-URI (taints WKWebView). */
   const _zoneSaved = [];
 
   dcv.querySelectorAll('.zone').forEach(el => {
     const cls = el.className;
-    const rect = el.getBoundingClientRect();
-    _zoneSaved.push({ el, cssText: el.style.cssText });
+    const lbl = el.querySelector('.z-lbl');
+    _zoneSaved.push({ el, cssText: el.style.cssText, lbl, lblCss: lbl ? lbl.style.cssText : null });
 
-    if(cls.includes('z-hose')){
-      el.style.backgroundColor = 'rgba(200,180,50,0.5)';
-      el.style.backgroundImage = 'none';
-    } else if(cls.includes('z-tiger')){
-      el.style.backgroundColor = 'rgba(160,100,30,0.5)';
-      el.style.backgroundImage = 'none';
-    } else if(cls.includes('z-store')){
-      el.style.backgroundColor = 'rgba(180,140,20,0.6)';
-      el.style.backgroundImage = 'none';
+    const store = cls.includes('z-store');
+    el.style.setProperty('background', store ? 'rgba(85,78,58,0.18)' : 'rgba(90,82,62,0.15)', 'important');
+    el.style.setProperty('border', store ? '1px solid rgba(85,78,58,0.34)' : '1px solid rgba(90,82,62,0.32)', 'important');
+    if(lbl){
+      lbl.style.setProperty('color', store ? '#3d2200' : '#3d280a', 'important');
+      lbl.style.setProperty('font-weight', '700', 'important');
     }
   });
 
@@ -7149,9 +7146,18 @@ async function _renderReport(mode){
   let _nodgSavedCss = '';
   if(_nodgEl){
     _nodgSavedCss = _nodgEl.style.cssText;
-    _nodgEl.style.backgroundColor = 'rgba(220,50,50,0.15)';
-    _nodgEl.style.backgroundImage = 'none';
+    _nodgEl.style.setProperty('background', 'rgba(220,38,38,0.07)', 'important');
+    _nodgEl.style.setProperty('border', 'none', 'important');
+    _nodgEl.style.setProperty('border-left', '1.5px dashed rgba(220,38,38,0.45)', 'important');
   }
+
+  /* No-DG rotated label + DG limit line → flat brick-red */
+  const _nodgLbl = [...dcv.querySelectorAll('span')].find(s => /no dg cargo/i.test(s.textContent));
+  let _nodgLblCss = '';
+  if(_nodgLbl){ _nodgLblCss = _nodgLbl.style.cssText; _nodgLbl.style.setProperty('color', 'rgba(180,30,30,0.55)', 'important'); }
+  const _dgLine = dcv.querySelector('.dg-limit-line');
+  let _dgLineCss = '';
+  if(_dgLine){ _dgLineCss = _dgLine.style.cssText; _dgLine.style.setProperty('background', 'rgba(159,64,61,0.55)', 'important'); _dgLine.style.setProperty('opacity', '1', 'important'); }
 
   const restore = () => {
     dzw.style.transform = savedTransform;
@@ -7162,9 +7168,11 @@ async function _renderReport(mode){
     /* Restore cargo shadows */
     allCb.forEach((cb,i) => { cb.style.boxShadow = _savedShadows[i] || ''; });
     document.body.classList.remove('pdf-capture');
-    /* Restore original zone styles */
-    _zoneSaved.forEach(s => { s.el.style.cssText = s.cssText; });
+    /* Restore original zone + label styles */
+    _zoneSaved.forEach(s => { s.el.style.cssText = s.cssText; if(s.lbl) s.lbl.style.cssText = s.lblCss || ''; });
     if(_nodgEl) _nodgEl.style.cssText = _nodgSavedCss;
+    if(_nodgLbl) _nodgLbl.style.cssText = _nodgLblCss || '';
+    if(_dgLine) _dgLine.style.cssText = _dgLineCss || '';
   };
 
   /* 5. Capture live deck with html2canvas.
