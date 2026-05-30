@@ -7361,34 +7361,39 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 /* ═══════════════════════════════════════
    SMART TOOLS MODAL / SIDE PANEL
 ═══════════════════════════════════════ */
+/* Overlay wrapper — mirrors Library .cp-overlay: a fixed full-screen layer
+   that doesn't dim or blur the deck. pointer-events flip to auto when open
+   so the transparent backdrop can catch click-outside-to-close. */
 .st-ov{
   position:fixed;inset:0;z-index:6000;
-  display:none;align-items:flex-start;justify-content:flex-end;
   pointer-events:none;
 }
-.st-ov.open{ display:flex; pointer-events:auto; }
+.st-ov.open{ pointer-events:auto; }
 
-/* Backdrop for click-to-close */
+/* Backdrop — transparent (deck stays SHARP, no dim/blur) but still
+   catches outside clicks to close (handler in app.js). */
 .st-backdrop{
   position:absolute;inset:0;
-  background:rgba(49,51,44,.18);
-  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
-  animation:stFadeIn .18s ease both;
+  background:transparent;
 }
-@keyframes stFadeIn{ from{opacity:0} to{opacity:1} }
 
-/* The panel itself — slides in from right */
+/* The panel itself — floating inset card, mirrors Library .cp geometry. */
 .st-panel{
-  position:relative;z-index:1;
-  width:320px;min-width:320px;max-width:92vw;
-  height:100%;
+  position:fixed;
+  top:calc(30px + var(--shell-m));
+  right:var(--shell-m);
+  bottom:calc(38px + var(--shell-m) + var(--shell-gap));
+  left:auto;
+  z-index:1;
+  width:320px;
+  border-radius:16px;
   /* Library .cp surface recipe — dark glass over the map in BOTH themes.
      (Was light var(--surf); the glass used to sit on .st-ov, which glassed
      the whole overlay and let the System rows bleed at the top.) */
   background:rgba(40,42,48,.48);
   backdrop-filter:blur(12px) saturate(140%);
   -webkit-backdrop-filter:blur(12px) saturate(140%);
-  border-left:0.5px solid rgba(255,255,255,.08);
+  border:0.5px solid rgba(255,255,255,.08);
   box-shadow:0 4px 20px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,.06);
   color:rgba(255,255,255,.92);
   /* Repaint inner controls white-on-dark via the cascade — text + neutral
@@ -7407,11 +7412,19 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   --brd:  rgba(255,255,255,.12);
   --brd2: rgba(255,255,255,.16);
   display:flex;flex-direction:column;
-  animation:stSlideIn .22s cubic-bezier(.32,.72,0,1) both;
   overflow:hidden;
-  flex-shrink:0;
+  /* Library .cp open/close — slide + fade via transition (interruptible),
+     panel parked off-screen right until .st-ov gets .open. */
+  transform:translateX(calc(100% + 40px));
+  opacity:0;
+  transition:
+    transform .25s cubic-bezier(.2,.8,.2,1),
+    opacity   .25s cubic-bezier(.2,.8,.2,1);
 }
-@keyframes stSlideIn{ from{transform:translateX(100%)} to{transform:translateX(0)} }
+.st-ov.open .st-panel{
+  transform:translateX(0);
+  opacity:1;
+}
 
 .st-head{
   display:flex;align-items:center;gap:12px;
@@ -7827,6 +7840,65 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 [data-theme="dark"] .st-action-btn:hover{
   background:var(--surf4);
 }
+
+/* ── Smart Tools: SYSTEM status block (Autosave / Last save / Status) ──
+   Compact aligned label/value rows in the panel type voice. Uses the
+   scoped white-on-dark tokens; status colours stay semantic (green/amber/red). */
+.st-system{ display:flex;flex-direction:column;padding:2px 0; }
+.st-system-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:7px 20px;
+  font-family:'Inter',sans-serif;
+  font-size:11.5px;
+}
+.st-system-row > span:first-child{
+  color:var(--txt3);font-weight:500;letter-spacing:.1px;
+}
+#stLastSave{
+  color:var(--txt2);
+  font-family:'JetBrains Mono','Inter',monospace;
+  font-size:10.5px;letter-spacing:.2px;
+  font-variant-numeric:tabular-nums;
+}
+/* Autosave pill — dot + ON/OFF */
+.st-system-toggle{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:3px 9px;border-radius:999px;
+  border:1px solid var(--brd);background:var(--surf2);
+  color:var(--txt2);
+  font-family:'Inter',sans-serif;
+  font-size:10px;font-weight:600;letter-spacing:.4px;
+  cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+.st-system-toggle:hover{ background:var(--surf3);border-color:var(--brd2); }
+.st-system-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--txt4);
+  transition:background .15s ease, box-shadow .15s ease;
+}
+.st-system-toggle.on{
+  color:var(--s-L);
+  border-color:rgba(58,125,82,.35);
+  background:rgba(58,125,82,.12);
+}
+.st-system-toggle.on .st-system-dot{
+  background:var(--s-L);
+  box-shadow:0 0 0 3px rgba(58,125,82,.18);
+}
+/* Status pill — leading dot via currentColor */
+.st-system-status{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:'Inter',sans-serif;
+  font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  padding:2px 8px;border-radius:999px;
+}
+.st-system-status::before{
+  content:'';width:6px;height:6px;border-radius:50%;background:currentColor;
+}
+.st-system-status.ok{    color:var(--s-L);background:rgba(58,125,82,.12); }
+.st-system-status.warn{  color:#d98324;background:rgba(217,131,36,.12); }
+.st-system-status.error{ color:#dc2626;background:rgba(220,38,38,.12); }
 
 /* Smart Bounce ripple animation on cargo block */
 @keyframes stBounce{
@@ -8962,7 +9034,7 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
    only background / border / shadow change for dark. */
 [data-theme="dark"] .st-panel{
   background:rgba(35,38,44,.62);
-  border-left:0.5px solid rgba(255,255,255,.12);
+  border:0.5px solid rgba(255,255,255,.12);
   box-shadow:0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,.06);
 }
 [data-theme="dark"] .st-row{ border-color:var(--sep); }

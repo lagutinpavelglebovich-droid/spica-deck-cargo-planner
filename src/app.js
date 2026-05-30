@@ -14462,7 +14462,7 @@ function _refreshSmartToolsSystem(){
   const lastEl = document.getElementById('stLastSave');
   if(lastEl){
     if(!_lastSaveAt){
-      lastEl.textContent = '—';
+      lastEl.textContent = 'Not yet saved';
     } else {
       const d = new Date(_lastSaveAt);
       const hh = String(d.getHours()).padStart(2,'0');
