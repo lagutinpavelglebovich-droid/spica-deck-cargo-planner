@@ -7159,6 +7159,18 @@ async function _renderReport(mode){
   let _dgLineCss = '';
   if(_dgLine){ _dgLineCss = _dgLine.style.cssText; _dgLine.style.setProperty('background', 'rgba(159,64,61,0.55)', 'important'); _dgLine.style.setProperty('opacity', '1', 'important'); }
 
+  /* Ship's Waste Skip — one-off .ships-skip fixture (not a .zone; its label
+        is inline text on the element, so color is set on el, not a child). */
+  const _skipEl = dcv.querySelector('.ships-skip');
+  let _skipCss = '';
+  if(_skipEl){
+    _skipCss = _skipEl.style.cssText;
+    _skipEl.style.setProperty('background', 'rgba(90,82,62,0.15)', 'important');
+    _skipEl.style.setProperty('border', '1px solid rgba(90,82,62,0.32)', 'important');
+    _skipEl.style.setProperty('color', '#3d280a', 'important');
+    _skipEl.style.setProperty('font-weight', '700', 'important');
+  }
+
   const restore = () => {
     dzw.style.transform = savedTransform;
     dcv.style.overflow = savedDcvOv;
@@ -7173,6 +7185,7 @@ async function _renderReport(mode){
     if(_nodgEl) _nodgEl.style.cssText = _nodgSavedCss;
     if(_nodgLbl) _nodgLbl.style.cssText = _nodgLblCss || '';
     if(_dgLine) _dgLine.style.cssText = _dgLineCss || '';
+    if(_skipEl) _skipEl.style.cssText = _skipCss || '';
   };
 
   /* 5. Capture live deck with html2canvas.
