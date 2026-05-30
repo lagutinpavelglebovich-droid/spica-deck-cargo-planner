@@ -7354,14 +7354,14 @@ async function buildPDF(deckCanvas, data, opts){
   rx -= renderHbPair('DATE', dateStr, 'Inter', 'bold');
   rx -= 5; drawHair(rx); rx -= 5;
 
-  /* Item 9: VOYAGE pair (value in JetBrainsMono Regular).
+  /* Item 9: VOYAGE pair (value in Inter Bold).
         Empty / em-dash fallback rendered as hyphen-minus so the glyph is
         guaranteed in Manrope's latin subset and so impeccable's no-em-dash
         guidance is honoured. */
   const voyVal = (voyageNum && voyageNum.trim() && voyageNum.trim() !== '\u2014')
                  ? voyageNum
                  : '-';
-  rx -= renderHbPair('VOYAGE', voyVal, 'JetBrainsMono', 'normal');
+  rx -= renderHbPair('VOYAGE', voyVal, 'Inter', 'bold');
 
   /* 1. KPI STRIP — 4 soft pills (Total Lifts 1.5× width), Variant A.
         Tinted fills, no borders, Manrope numerics right-aligned. */
