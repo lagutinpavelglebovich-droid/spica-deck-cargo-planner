@@ -7382,9 +7382,30 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   position:relative;z-index:1;
   width:320px;min-width:320px;max-width:92vw;
   height:100%;
-  background:var(--surf);
-  border-left:1px solid var(--brd2);
-  box-shadow:var(--sh-panel);
+  /* Library .cp surface recipe — dark glass over the map in BOTH themes.
+     (Was light var(--surf); the glass used to sit on .st-ov, which glassed
+     the whole overlay and let the System rows bleed at the top.) */
+  background:rgba(40,42,48,.48);
+  backdrop-filter:blur(12px) saturate(140%);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
+  border-left:0.5px solid rgba(255,255,255,.08);
+  box-shadow:0 4px 20px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,.06);
+  color:rgba(255,255,255,.92);
+  /* Repaint inner controls white-on-dark via the cascade — text + neutral
+     surface + border tokens only. Accent/status tokens (--acc, --acc2,
+     --s-*) are deliberately NOT overridden so toggles + status dots keep
+     their colour. */
+  --txt:  rgba(255,255,255,.92);
+  --txt2: rgba(255,255,255,.78);
+  --txt3: rgba(255,255,255,.58);
+  --txt4: rgba(255,255,255,.42);
+  --surf:  #232830;
+  --surf2: rgba(255,255,255,.06);
+  --surf3: rgba(255,255,255,.10);
+  --surf4: rgba(255,255,255,.16);
+  --sep:  rgba(255,255,255,.08);
+  --brd:  rgba(255,255,255,.12);
+  --brd2: rgba(255,255,255,.16);
   display:flex;flex-direction:column;
   animation:stSlideIn .22s cubic-bezier(.32,.72,0,1) both;
   overflow:hidden;
@@ -7394,23 +7415,29 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 
 .st-head{
   display:flex;align-items:center;gap:12px;
-  padding:18px 20px 14px;
-  border-bottom:1px solid var(--sep);
+  height:56px;
+  padding:0 18px;
+  border-bottom:0.5px solid rgba(255,255,255,.08);
   flex-shrink:0;
 }
 .st-head-icon{
-  width:34px;height:34px;flex-shrink:0;border-radius:9px;
-  background:rgba(72,96,131,.10);border:1px solid rgba(72,96,131,.18);
-  display:flex;align-items:center;justify-content:center;color:var(--acc);
+  width:28px;height:28px;flex-shrink:0;border-radius:8px;
+  background:rgba(55,138,221,.18);
+  display:flex;align-items:center;justify-content:center;color:#85B7EB;
 }
-.st-title{ font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;color:var(--txt);flex:1; }
+.st-title{ font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:rgba(255,255,255,.95);letter-spacing:-.1px; }
+.st-subtitle{
+  font-family:'Inter',sans-serif;
+  font-size:9px;font-weight:500;letter-spacing:1.2px;
+  text-transform:uppercase;color:rgba(255,255,255,.45);margin-top:1px;
+}
 .st-close{
-  width:28px;height:28px;border-radius:8px;border:none;
-  background:transparent;color:var(--txt3);cursor:pointer;
+  width:24px;height:24px;border-radius:50%;border:none;
+  background:transparent;color:rgba(255,255,255,.50);cursor:pointer;
   font-size:14px;display:flex;align-items:center;justify-content:center;
-  transition:all .12s;
+  transition:background .15s ease, color .15s ease;
 }
-.st-close:hover{ background:var(--surf3);color:var(--txt); }
+.st-close:hover{ background:rgba(255,255,255,.10);color:rgba(255,255,255,.95); }
 
 .st-body{ flex:1;overflow-y:auto;overflow-x:hidden;padding:0 0 24px; }
 .st-body::-webkit-scrollbar{ width:3px; }
@@ -7418,23 +7445,23 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 
 /* Section header inside panel */
 .st-sec-hdr{
-  padding:16px 20px 8px;
-  font-size:7.5px;letter-spacing:2px;text-transform:uppercase;
-  color:var(--txt4);font-weight:700;font-family:'Inter',sans-serif;
+  padding:12px 20px 8px;
+  font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+  color:rgba(255,255,255,.70);font-weight:500;font-family:'Inter',sans-serif;
   /* Phase 30A — interactive header. Click to collapse section. */
   display:flex; align-items:center; gap:8px;
   cursor:pointer;
   user-select:none;
   transition: color var(--dur-short) var(--ease), background var(--dur-short) var(--ease);
 }
-.st-sec-hdr:hover{ color:var(--txt); background:rgba(72,96,131,.04); }
-.st-sec-title{ flex:0 0 auto; }
+.st-sec-hdr:hover{ color:rgba(255,255,255,.85); background:rgba(255,255,255,.04); }
+.st-sec-title{ flex:1; }
 .st-sec-count{
-  font-family:'Manrope','Inter',sans-serif;
-  font-size:9px; font-weight:600; letter-spacing:.3px;
-  color:var(--txt4);
-  padding:1px 7px; border-radius:999px;
-  background:rgba(72,96,131,.10);
+  font-family:'Inter',sans-serif;
+  font-size:9px; font-weight:500; letter-spacing:.3px;
+  color:rgba(255,255,255,.55);
+  padding:0; border:none;
+  background:transparent;
   text-transform:none;
   font-variant-numeric:tabular-nums;
 }
@@ -7445,6 +7472,22 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   color:var(--txt4);
   transition: transform var(--dur-short) var(--ease);
   transform: rotate(0deg);
+}
+/* Library-parity: each section is its own rounded dark-glass card,
+   same surface recipe as .cp-sec. overflow:hidden clips row borders +
+   header hover to the rounded corners; margin provides the gutter. */
+.st-section{
+  background:rgba(50,52,58,.55);
+  backdrop-filter:blur(10px) saturate(130%);
+  -webkit-backdrop-filter:blur(10px) saturate(130%);
+  border:0.5px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  overflow:hidden;
+  margin:0 12px 10px;
+}
+[data-theme="dark"] .st-section{
+  background:rgba(45,48,54,.65);
+  border:0.5px solid rgba(255,255,255,.14);
 }
 .st-section.collapsed .st-sec-chv{ transform: rotate(-90deg); }
 .st-section .st-sec-body{
@@ -7467,7 +7510,7 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   padding:8px 32px 8px 12px;
   border:1px solid var(--brd);
   border-radius:10px;
-  background:rgba(255,255,255,.85);
+  background:rgba(255,255,255,.06);
   font-family:'Inter',system-ui,sans-serif;
   font-size:12px;
   color:var(--txt);
@@ -7501,7 +7544,7 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   padding: 5px 11px;
   border: 1px solid var(--brd);
   border-radius: 999px;
-  background: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.06);
   color: var(--txt2);
   font-family:'Inter',system-ui,sans-serif;
   font-size: 10.5px;
@@ -7567,8 +7610,8 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   color: #e4eaf3;
 }
 [data-theme="dark"] .st-sec-count{
-  background: rgba(140,170,220,.14);
-  color: #9aa5b4;
+  background: transparent;
+  color: rgba(255,255,255,.55);
 }
 [data-theme="dark"] .st-sec-hdr:hover{
   background: rgba(140,170,220,.06);
@@ -8914,8 +8957,14 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
 
 /* Voyage card dark mode */
 
-/* Smart Tools panel dark mode */
-[data-theme="dark"] .st-panel{ background:var(--surf2); }
+/* Smart Tools panel dark mode — Library [data-theme="dark"] .cp recipe.
+   backdrop-filter + scoped tokens cascade from the base .st-panel rule;
+   only background / border / shadow change for dark. */
+[data-theme="dark"] .st-panel{
+  background:rgba(35,38,44,.62);
+  border-left:0.5px solid rgba(255,255,255,.12);
+  box-shadow:0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,.06);
+}
 [data-theme="dark"] .st-row{ border-color:var(--sep); }
 [data-theme="dark"] .st-row-title{ color:var(--txt); }
 [data-theme="dark"] .st-row-desc{ color:var(--txt3); }
@@ -11557,7 +11606,9 @@ body.is-viewer .shell-ribbon::after{
   border:1px solid var(--glass-brd) !important;border-radius:18px !important;
   box-shadow:var(--sh-float-panel), var(--glass-inset) !important;
 }
-.st-ov{ background:var(--glass) !important;backdrop-filter:blur(24px) saturate(1.3) !important;-webkit-backdrop-filter:blur(24px) saturate(1.3) !important;border:1px solid var(--glass-brd) !important;box-shadow:var(--sh-float-panel), var(--glass-inset) !important; }
+/* Smart Tools glass now lives on .st-panel (see ~line 7381); the overlay
+   stays transparent so the panel reads as a floating drawer, not a
+   full-screen tint, and the System rows no longer bleed at the top. */
 .toast-msg{ background:var(--glass) !important;backdrop-filter:blur(20px) saturate(1.3) !important;-webkit-backdrop-filter:blur(20px) saturate(1.3) !important;border:1px solid var(--glass-brd) !important;border-radius:var(--r-float-sm) !important;box-shadow:var(--sh-float-lg) !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -11761,7 +11812,10 @@ body.is-viewer .shell-ribbon::after{
     0 8px 22px rgba(0,0,0,.32),
     inset 0 1px 0 rgba(255,255,255,.07) !important;
 }
-[data-theme="dark"] .st-ov{ background:var(--glass) !important;border-color:var(--glass-brd) !important; }
+/* .st-ov stays transparent in dark theme too — the dark-glass material now
+   lives on .st-panel (Library parity), not the full-screen overlay. Glassing
+   the overlay re-introduced the System-row bleed. */
+[data-theme="dark"] .st-ov{ background:transparent !important; }
 [data-theme="dark"] .toast-msg{ background:var(--glass) !important;border-color:var(--glass-brd) !important; }
 
 /* Dark scrollbars */
