@@ -7385,7 +7385,7 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   bottom:calc(38px + var(--shell-m) + var(--shell-gap));
   left:auto;
   z-index:1;
-  width:320px;
+  width:380px;            /* parity with Library .cp width */
   border-radius:16px;
   /* Library .cp surface recipe — dark glass over the map in BOTH themes.
      (Was light var(--surf); the glass used to sit on .st-ov, which glassed
@@ -7768,6 +7768,9 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   padding:14px 20px;
   border-bottom:1px solid var(--sep);
 }
+/* Last action row sits at the rounded card's bottom — drop the separator
+   so no straight rule butts the rounded corner (mirrors .st-row:last-child). */
+.st-action-row:last-child{ border-bottom:none; }
 .st-action-btn{
   width:100%;
   display:flex;align-items:center;gap:12px;
