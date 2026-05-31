@@ -5821,10 +5821,8 @@ body.dragging-cargo *{
   gap:12px;
   padding:14px;
 }
-.cp-body::-webkit-scrollbar{width:5px;}
-.cp-body::-webkit-scrollbar-track{background:transparent;}
-.cp-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:3px;}
-.cp-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.28);}
+#cpBody::-webkit-scrollbar{width:3px;}
+#cpBody::-webkit-scrollbar-track{background:transparent;}
 
 /* ── Section ────────────────────────────────────────────────── */
 .cp-sec{border-bottom:1px solid var(--sep);}
@@ -16124,10 +16122,10 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   line-height:1.5;
 }
 
-/* ── Scrollbar — single rule, dark slate works for both themes */
-.cp-body::-webkit-scrollbar-thumb{
-  background:rgba(255,255,255,.12);
-}
-.cp-body::-webkit-scrollbar-thumb:hover{
-  background:rgba(255,255,255,.20);
+/* ── Scrollbar — matches Smart Tools: 3px width, subtle white thumb on the dark navy panel.
+   Uses #cpBody (id, specificity 1,0,1) so it outranks .vst-custom-scroll .cp-body (0,2,1)
+   when Smart Tools toggles body.vst-custom-scroll. Don't downgrade #cpBody to .cp-body. */
+#cpBody::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.16);
+  border-radius:3px;
 }
