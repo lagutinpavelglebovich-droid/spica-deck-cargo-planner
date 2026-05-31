@@ -5675,12 +5675,22 @@ body.dragging-cargo *{
     -16px 0 64px rgba(0,0,0,.10);
   display:flex;flex-direction:column;
   transform:translateX(100%);
-  transition:transform .30s cubic-bezier(.32,.72,0,1);
+  transition:transform .36s cubic-bezier(.34, 1.56, .64, 1);
   z-index:590;    /* below deck modals (600) so cargo edit modal renders above panel */
   overflow:hidden;
   pointer-events:auto;          /* panel itself is interactive */
 }
-.cp-overlay.open .cp{transform:translateX(0);}
+.cp-overlay.open .cp{
+  transform:translateX(0);
+  transition:transform .24s cubic-bezier(.25, 1, .5, 1);   /* slide-in = temporal reverse of slide-out (.5,0,.75,0), same .24s */
+}
+/* Placing state — slide the panel fully clear of the deck while the
+   operator drops/clicks cargo. 110% (vs 100%) clears the panel shadow
+   and subpixel rounding so the deck is unobstructed. */
+.cp-overlay.open.placing .cp{
+  transform:translateX(110%);
+  transition:transform .24s cubic-bezier(.5, 0, .75, 0);
+}
 
 /* ── Drag / slide-open edge handle ──────────────────────────── */
 .cp-edge-handle{

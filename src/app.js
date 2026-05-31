@@ -4456,7 +4456,7 @@ function bindInspector(){
   });
 }
 function bindModal(){
-  document.getElementById('mCan').onclick=closeModal;
+  document.getElementById('mCan').onclick=()=>{_cpExitPlacing();closeModal();};   /* HOOK 5 — return library on cancel */
   /* Heavy Lift toggle */
   document.getElementById('mHL').onclick=()=>{
     const btn=document.getElementById('mHL');
@@ -4489,10 +4489,11 @@ function bindModal(){
       setTimeout(() => { wtField.style.background = ''; }, 600);
     }
   });
-  document.getElementById('ov').onclick=e=>{if(e.target===document.getElementById('ov'))closeModal();};
+  document.getElementById('ov').onclick=e=>{if(e.target===document.getElementById('ov')){_cpExitPlacing();closeModal();}};
   document.querySelectorAll('.mdl-st').forEach(b=>{b.onclick=()=>{modalSt=b.dataset.s;document.querySelectorAll('.mdl-st').forEach(x=>x.classList.toggle('sel',x===b));};});
   document.getElementById('mRm').onclick=()=>{if(!isModalActionable(document.getElementById('ov')))return;if(!isOperator())return;const _rmId=editId;animateCargoExit(_rmId);S.cargo=S.cargo.filter(c=>c.id!==_rmId);dgEvictDeletedCargo(_rmId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();_forceCloseModal();};
   document.getElementById('mSav').onclick=()=>{
+    _cpExitPlacing();   /* HOOK 5 — return library on save, incl. stamp mode which skips cancelPending below */
     if(!isModalActionable(document.getElementById('ov'))) return;
     if(!isOperator()) return;          /* Viewer: block save */
     const c=S.cargo.find(x=>x.id===editId);if(!c)return;
@@ -4533,8 +4534,8 @@ function bindModal(){
   /* Family-style dismiss: Escape key + swipe-down gesture */
   const _ovRef = document.getElementById('ov');
   const _mdlRef = _ovRef.querySelector('.mdl');
-  bindEscapeDismiss(_ovRef, closeModal);
-  bindSwipeDismiss(_mdlRef, closeModal);
+  bindEscapeDismiss(_ovRef, ()=>{_cpExitPlacing();closeModal();});
+  bindSwipeDismiss(_mdlRef, ()=>{_cpExitPlacing();closeModal();});
 }
 
 /* ════════════════════════════════════
@@ -4781,7 +4782,7 @@ function buildCustList(){
     document.getElementById('hint').innerHTML=t('hint_place', LIB_PREFS.aliases[libKey(item)]||item.name, '');
   };
 }
-function cancelPending(){S.pending=null;document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(c=>c.classList.remove('sel','selected-q'));document.getElementById('hint').innerHTML=t('hint_select');updateDGZones();}
+function cancelPending(){_cpExitPlacing();S.pending=null;document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(c=>c.classList.remove('sel','selected-q'));document.getElementById('hint').innerHTML=t('hint_select');updateDGZones();}
 function bindTabs(){document.querySelectorAll('.stab').forEach(t=>{t.onclick=()=>{document.querySelectorAll('.stab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tpane').forEach(x=>x.classList.remove('active'));t.classList.add('active');document.getElementById('tab'+t.dataset.tab.charAt(0).toUpperCase()+t.dataset.tab.slice(1)).classList.add('active');};});}
 function bindLibPanel(){
   const panel  = document.getElementById('libPanel');
@@ -7830,6 +7831,19 @@ let CP_Q      = '';
    every page load. */
 const CP_SECTIONS = { queue:true, freq:true, lib:false, custom:true };
 
+/* ── Placing state — slide library clear of deck during placement ── */
+let _cpPlacingActive = false;
+function _cpEnterPlacing(){
+  if(_cpPlacingActive) return;
+  _cpPlacingActive = true;
+  document.getElementById('cpOverlay')?.classList.add('placing');
+}
+function _cpExitPlacing(){
+  if(!_cpPlacingActive) return;
+  _cpPlacingActive = false;
+  document.getElementById('cpOverlay')?.classList.remove('placing');
+}
+
 /* ── Open / Close ── */
 function cpOpen(){
   CP_OPEN = true;
@@ -8153,6 +8167,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
       const dy = Math.abs(ev.clientY - sy);
       if(dx > 5 || dy > 5){
         dragging = true;
+        _cpEnterPlacing();                                /* real drag confirmed — slide library clear (idempotent) */
         document.body.classList.add('dragging-cargo');   /* suppress page-wide text selection for this drag only */
         ghost = document.createElement('div');
         ghost.className = 'ghost ghost-lib';
@@ -8209,6 +8224,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     document.body.classList.remove('dragging-cargo');
     if(ghost) ghost.remove();
     if(!dragging) return;         /* click-only: let the card's click handler run */
+    _cpExitPlacing();             /* drag completed (any landing) — one-shot return */
 
     const dcv = document.querySelector('.dcv');
     if(!dcv) return;              /* defensive: deck element missing */
@@ -8494,6 +8510,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
     } else {
       card.classList.add('cp-lc-sel');
       S.pending = pendingItem;
+      _cpEnterPlacing();
       cpShowHint('<b>' + displayName.replace(/</g,'&lt;') + '</b> → click deck to place');
     }
   });
