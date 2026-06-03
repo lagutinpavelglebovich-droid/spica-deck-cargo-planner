@@ -2538,7 +2538,7 @@ function renderBlock(cv,cargo){
     playSound('rotate');
     _pulseCargo(_rotId, 'cb-rotate-pulse');
   }));
-  b.appendChild(mkBtn('cb-copy','+',e=>{e.stopPropagation();const _newId=Date.now()+Math.random();const _srcX=cargo.x,_srcY=cargo.y,_srcW=cargo.w,_srcH=cargo.h;S.cargo.push({...cargo,id:_newId,x:Math.min(cargo.x+cargo.w+6,TW-cargo.w),y:cargo.y});renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('duplicate');_emitDuplicateTrail(_srcX,_srcY,_srcW,_srcH,_newId);}));
+  b.appendChild(mkBtn('cb-copy','+',e=>{e.stopPropagation();const _newId=Date.now()+Math.random();const _srcX=cargo.x,_srcY=cargo.y,_srcW=cargo.w,_srcH=cargo.h;const _spot=findFreeSpot(cargo.x+cargo.w+6,cargo.y,cargo.w,cargo.h);S.cargo.push({...cargo,id:_newId,x:_spot.x,y:_spot.y});renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('duplicate');_emitDuplicateTrail(_srcX,_srcY,_srcW,_srcH,_newId);}));
 
   const idEl=document.createElement('div');idEl.className='cb-id';
   /* Inline style — font size only; layout handled by CSS + parent flex */
@@ -9131,11 +9131,12 @@ function kbHandleKey(e){
     const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
     if(!cargo) return;
     const _srcX = cargo.x, _srcY = cargo.y, _srcW = cargo.w, _srcH = cargo.h;
+    const _spot = findFreeSpot(cargo.x + cargo.w + 6, cargo.y, cargo.w, cargo.h);
     const newCargo = {
       ...cargo,
       id: Date.now() + Math.random(),
-      x:  Math.min(cargo.x + cargo.w + 6, TW  - cargo.w),
-      y:  Math.min(cargo.y + 0,           CVH - cargo.h),
+      x: _spot.x,
+      y: _spot.y,
       ccu: cargo.ccu ? cargo.ccu + ' (copy)' : '',
     };
     S.cargo.push(newCargo);
@@ -10332,6 +10333,31 @@ function updateSmartDot(){
   if(!btn) return;
   const anyOn = Object.values(SMART).some(v => v);
   btn.classList.toggle('has-active', anyOn);
+}
+
+/* findFreeSpot — nearest free, non-overlapping position for a NEW/duplicated block,
+   starting at (seedX,seedY) near the original and spiralling outward. Tests against
+   existing S.cargo only (same scope as smartBounce; fixed zones are NOT considered).
+   Runs unconditionally — independent of the Smart Bounce toggle. */
+function findFreeSpot(seedX, seedY, w, h){
+  const others = S.cargo;
+  const clampX = x => Math.max(0, Math.min(x, TW - w));
+  const clampY = y => Math.max(0, Math.min(y, CVH - h));
+  const overlaps = (x, y) => others.some(o =>
+    x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y);
+  const sx = clampX(seedX), sy = clampY(seedY);
+  if(!overlaps(sx, sy)) return { x: sx, y: sy };
+  const STEP = 8;
+  const maxR = Math.max(TW, CVH);
+  for(let r = STEP; r <= maxR; r += STEP){
+    for(let a = 0; a < 360; a += 12){
+      const rad = a * Math.PI / 180;
+      const x = clampX(sx + r * Math.cos(rad));
+      const y = clampY(sy + r * Math.sin(rad));
+      if(!overlaps(x, y)) return { x, y };
+    }
+  }
+  return { x: sx, y: sy };   /* deck packed: best-effort, keep seed */
 }
 
 /* ── Smart Bounce — called after drop to resolve overlaps ──
@@ -12711,7 +12737,7 @@ function bindContextMenu(){
       const tmp=cargo.length_m; cargo.length_m=cargo.width_m; cargo.width_m=tmp;
       renderAll(); updateStats(); save();
     } else if(action === 'duplicate'){
-      const nc={...cargo, id:Date.now()+Math.random(), x:Math.min(cargo.x+cargo.w+5,TW-cargo.w)};
+      const _spot=findFreeSpot(cargo.x+cargo.w+5,cargo.y,cargo.w,cargo.h);const nc={...cargo, id:Date.now()+Math.random(), x:_spot.x, y:_spot.y};
       S.cargo.push(nc);
       renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
     } else if(action === 'delete'){
