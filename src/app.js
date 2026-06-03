@@ -2476,9 +2476,9 @@ function renderBlock(cv,cargo){
   const labelText = String(cargo.ccu || '');
   const nameLen   = Math.max(1, labelText.length);
   const labelWidth = cargo.w - 10;                                    /* ~5 px padding each side */
-  const fontByName = Math.floor(labelWidth / (nameLen * 0.6));
-  const blockBased = Math.round(minDim * 0.26);
-  const textSz = Math.max(7, Math.min(14, blockBased, fontByName)) + 'px';
+  const fontByName = Math.floor(labelWidth / (nameLen * 0.54));
+  const blockBased = Math.round(minDim * 0.30);
+  const textSz = Math.max(12, Math.min(18, blockBased, fontByName)) + 'px';
   const badgeSz=Math.max(9,Math.min(14,Math.floor(minDim/6)))+'px';
 
   /* Make the cargo block itself a flex column so the label is truly centred
