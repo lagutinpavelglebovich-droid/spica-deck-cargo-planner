@@ -6559,13 +6559,7 @@ function performAscoImport(){
   buildQueueList();
   updateQueueBadge();
 
-  /* Auto-run manifest match now that queue has new items */
-  if(added.length > 0){
-    MATCH_ACTIVE = true;
-    const sec = document.getElementById('cpMatchSection');
-    if(sec) sec.classList.add('active');
-    if(typeof runManifestMatch === 'function') runManifestMatch();
-  }
+  /* Manifest-comparison readout retired from the drawer (dormant in place). */
 
   /* Auto-open queue tab, auto-expand panel, show toast */
   if(added.length > 0){
@@ -7854,13 +7848,10 @@ function cpOpen(){
   const _lo = document.getElementById('btnLibOpen'); if(_lo) _lo.classList.add('panel-active');
   cpRender();
   setTimeout(()=>{ const s=document.getElementById('cpSearch'); if(s) s.focus(); }, 180);
-  /* Auto-run manifest match whenever panel opens with a non-empty queue */
-  if((typeof IMPORT_QUEUE!=='undefined') && IMPORT_QUEUE.length > 0){
-    MATCH_ACTIVE = true;
-    const sec = document.getElementById('cpMatchSection');
-    if(sec) sec.classList.add('active');
-    if(typeof runManifestMatch === 'function') runManifestMatch();
-  }
+  /* Manifest-comparison readout retired from the drawer — the Imported Cargo
+     (.cp-qi) cards are the placement surface now. runManifestMatch() and the
+     .cp-match-section markup stay dormant in place (re-enable by restoring the
+     activation here and in performAscoImport). */
 }
 function cpClose(){
   CP_OPEN = false;
