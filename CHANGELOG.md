@@ -2,6 +2,13 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.1] - 2026-06-03
+
+### Fixed
+- Enlarged cargo-block ID labels for legibility on deck and in the printed PDF.
+- Duplicating a block now drops the copy in the nearest free spot near the original instead of under existing cargo.
+- Removed the floating hover info-card that overlapped neighbouring cargo on the deck.
+
 ## [3.6.0] - 2026-06-03
 
 ### Added
