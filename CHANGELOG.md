@@ -2,6 +2,25 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.0] - 2026-06-03
+
+### Added
+- Imported ASCO containers can now be placed by **dragging** the "Imported
+  Cargo" cards straight onto the deck (previously click-to-place only).
+
+### Changed
+- Cargo Library drawer simplified — the manifest-comparison readout is retired,
+  leaving "Imported Cargo" as the single placement surface.
+
+### Fixed
+- Unplaced ASCO list now scrolls; long manifests were previously clipped.
+- Arrow-key nudging works at any zoom and immediately after selecting a block —
+  it was being captured by the CCU input field on selection.
+- Selection action buttons (delete / rotate / duplicate) moved to a side stack
+  so they no longer cover the corner resize handles.
+
+---
+
 ## [3.2.0] - 2026-05-21
 
 ### Added
