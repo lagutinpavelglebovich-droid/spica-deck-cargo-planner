@@ -1006,40 +1006,6 @@
 <!-- DECK — "Spica Tide" in compass -->
 <div class="deck-area" id="deckArea">
 
-<!-- Phase 11 — Cargo hover info card (floating, contextual).
-     Shows a compact read-only summary of the hovered cargo after a brief
-     delay. Never interactive; never permanent. Hidden by default; the
-     hover wiring in renderBlock() populates + positions it on demand. -->
-<div class="chc" id="cargoHoverCard" aria-hidden="true" hidden>
-  <div class="chc-head">
-    <span class="chc-status-dot" id="chcStatusDot" aria-hidden="true"></span>
-    <span class="chc-ccu" id="chcCcu">—</span>
-    <span class="chc-status-lbl" id="chcStatusLbl">—</span>
-  </div>
-  <div class="chc-desc" id="chcDesc"></div>
-  <div class="chc-grid">
-    <div class="chc-cell">
-      <div class="chc-k">weight</div>
-      <div class="chc-v" id="chcWt">—</div>
-    </div>
-    <div class="chc-cell">
-      <div class="chc-k">location</div>
-      <div class="chc-v chc-v-loc">
-        <span class="chc-loc-swatch" id="chcLocSwatch" aria-hidden="true"></span>
-        <span id="chcLoc">—</span>
-      </div>
-    </div>
-    <div class="chc-cell">
-      <div class="chc-k">size</div>
-      <div class="chc-v" id="chcSize">—</div>
-    </div>
-  </div>
-  <div class="chc-flags" id="chcFlags" hidden>
-    <span class="chc-dg-list" id="chcDgList"></span>
-    <span class="chc-pri" id="chcPri" hidden>PRIORITY</span>
-  </div>
-</div>
-
 <!-- KEYBOARD SHORTCUTS CHEATSHEET MODAL -->
 <div class="kb-cheat-ov" id="kbCheatOv">
   <div class="kb-cheat-panel">
