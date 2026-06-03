@@ -8099,6 +8099,24 @@ function cpRenderQueue(){
     });
     card.appendChild(rm);
 
+    /* Drag-to-place — same gesture as library cards. Carries the fromQueue
+       pending object (identical to selectQueueItem) so a drop keeps the
+       manifest CCU / DG / heavy-lift / platform and splices from IMPORT_QUEUE.
+       A plain click (no 5px drag) is a no-op here and falls through to the
+       click handler below, preserving click-to-place. */
+    card.addEventListener('mousedown', e => {
+      if(isPlaced) return;                       /* placed cards aren't re-placeable */
+      if(e.target.closest('.cp-qi-rm')) return;  /* don't drag from the × button */
+      if(realIdx < 0) return;
+      const qItem = queue[realIdx];
+      const pending = {
+        type:'cargo',
+        item:{ name:qItem.name, w:qItem.w, h:qItem.h, length_m:qItem.length_m, width_m:qItem.width_m, wt:qItem.wt, cat:'Imported' },
+        fromQueue:true, queueIdx:realIdx, queueItem:qItem,
+      };
+      _libDragFromCard(e, pending, qItem.ccu||qItem.name||'Cargo', qItem.w, qItem.h);
+    });
+
     /* click action */
     card.addEventListener('click',()=>{
       if(isPlaced){
@@ -8234,14 +8252,22 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
       return;                     /* off-deck release — graceful cancel */
     }
 
-    const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
-    const dropY = (ev.clientY - cr.top)  / zoomLevel - (ph || 1) / 2;
     S.pending = pendingItem;
     _stampPlacement = false;   /* drag-drop is one-shot — disarm on editor save */
-    _placeAtCore(
-      Math.max(0, Math.min(dropX, TW  - (pw || 1))),
-      Math.max(0, Math.min(dropY, CVH - (ph || 1)))
-    );
+    if(pendingItem.fromQueue){
+      /* Imported-queue card: route through placeAt's fromQueue branch so the
+         manifest item keeps its CCU / DG / heavy-lift / platform and is spliced
+         out of IMPORT_QUEUE. That branch centres on the cursor deck coord (it
+         subtracts w/2), so pass the cursor-centre, not the top-left. */
+      placeAt((ev.clientX - cr.left) / zoomLevel, (ev.clientY - cr.top) / zoomLevel);
+    } else {
+      const dropX = (ev.clientX - cr.left) / zoomLevel - (pw || 1) / 2;
+      const dropY = (ev.clientY - cr.top)  / zoomLevel - (ph || 1) / 2;
+      _placeAtCore(
+        Math.max(0, Math.min(dropX, TW  - (pw || 1))),
+        Math.max(0, Math.min(dropY, CVH - (ph || 1)))
+      );
+    }
 
     /* Placement confirmation — tag the new cargo block for a 180ms
        scale-in. CSS handles the rest; class self-removes via animationend. */
