@@ -8878,10 +8878,15 @@ function kbHandleKey(e){
     if(!isOperator()) return;          /* Viewer: block keyboard move */
     e.preventDefault();
     e.stopPropagation();
+    /* Fine/medium nudges are zoom-compensated so the on-screen move equals
+       the intended pixel amount at any zoom — the deck renders inside a
+       scale(zoomLevel) wrapper, so model delta must be divided by zoomLevel.
+       The coarse step is a real 1-metre deck distance and must stay a fixed
+       model delta regardless of zoom, so it is NOT compensated. */
     let step;
     if(e.shiftKey)    step = KB_STEP_COARSE;
-    else if(e.altKey) step = KB_STEP_MED;
-    else              step = KB_STEP_FINE;
+    else if(e.altKey) step = KB_STEP_MED  / zoomLevel;
+    else              step = KB_STEP_FINE / zoomLevel;
     let dx = 0, dy = 0;
     if(e.key === 'ArrowLeft')  dx = -step;
     if(e.key === 'ArrowRight') dx = +step;
