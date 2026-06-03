@@ -2446,6 +2446,13 @@ function renderAll(){
   }
 }
 
+/* Edge-aware side for the selection action buttons (×/↻/+). They live in a
+   vertical stack just outside the block's right side; flip LEFT when the
+   block sits near the deck's right edge, where a right-side stack would
+   overflow the deck area. 34 px = 8 gap + 22 btn + 4 cushion. Shared by
+   renderBlock and kbMove so nudging stays consistent with full renders. */
+function cbControlsFlipLeft(cargo){ return cargo.x + cargo.w > TW - 34; }
+
 function renderBlock(cv,cargo){
   const loc=locById(cargo.platform)||LOC_ALL[0];
   /* Cargo fill uses the SAME central operation palette as pills — one
@@ -2500,6 +2507,11 @@ function renderBlock(cv,cargo){
     'border-radius:7px',
     trExtra,
   ].filter(Boolean).join(';');
+
+  /* Action-button stack sits outside the block's side; flip left near the
+     deck's right edge (see cbControlsFlipLeft). Anchoring-only — the CSS
+     reuses the same vertical-offset transforms for both sides. */
+  if(cbControlsFlipLeft(cargo)) b.classList.add('cb-ctrl-left');
 
   /* Right-click context menu (Operator only — Viewer can still see block but not act) */
   b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); if(!isOperator()) return; showCtxMenu(cargo.id, e.clientX, e.clientY); });
@@ -8800,6 +8812,9 @@ function kbMove(dx, dy){
     el.style.top  = cargo.y + 'px';
     /* Keep kb-sel class alive after direct DOM update */
     el.classList.add('kb-sel');
+    /* Keep the action-button side consistent as the block nudges across
+       the right edge (kbMove skips the full re-render that renderBlock uses). */
+    el.classList.toggle('cb-ctrl-left', cbControlsFlipLeft(cargo));
   }
 
   /* Update coord tip live */
