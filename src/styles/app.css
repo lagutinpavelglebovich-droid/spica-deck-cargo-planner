@@ -7232,8 +7232,17 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
   flex-direction:column;
   border-bottom:1px solid var(--brd);
   flex-shrink:0;
+  min-height:0;          /* let the inner results list bound + scroll */
+  max-height:42vh;       /* cap so a tall list can't eat the whole panel — keeps .cp-body usable */
 }
 .cp-match-section.active{ display:flex; }
+/* Inner list scrolls within the capped section; refresh button stays pinned below it */
+#cpMatchResults{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
 .cp-match-group{
   padding:8px 14px 4px;
 }
