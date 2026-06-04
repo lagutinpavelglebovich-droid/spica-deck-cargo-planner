@@ -1776,7 +1776,7 @@ function setupCanvas(){
 
   /* DG drag segregation overlay (live during block drag) */
   const dgd=document.createElement('div');dgd.id='dgDragOverlay';
-  dgd.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:9;';
+  dgd.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:21;';
   cv.appendChild(dgd);
 
   cv.addEventListener('mousedown',e=>{
