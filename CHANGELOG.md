@@ -2,6 +2,11 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.2] - 2026-06-04
+
+### Fixed
+- The "Update" button in the About window did nothing on Windows — it now correctly starts the update download and install.
+
 ## [3.6.1] - 2026-06-03
 
 ### Fixed
