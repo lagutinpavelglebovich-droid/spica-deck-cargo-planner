@@ -2,6 +2,13 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.3] - 2026-06-04
+
+### Fixed
+- Removed the during-drag positioning guide lines that cluttered the deck when many containers were placed. Smart Grid Snap (snap-to-neighbours on drop) is unchanged.
+- The DG segregation zone is now clearly visible while dragging, stays steady instead of flickering, and its label is no longer hidden behind cargo.
+- The drop-preview outline that shows where a container will land is brighter with a sharper border — placement is obvious at a glance.
+
 ## [3.6.2] - 2026-06-04
 
 ### Fixed
