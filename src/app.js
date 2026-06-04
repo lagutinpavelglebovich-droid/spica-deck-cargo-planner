@@ -12847,7 +12847,11 @@ async function _checkForUpdates(manual){
           _showUpdateBanner(ver);
           if(manual){
             showToast('Update available: v' + ver, 'ok');
-            if(resultEl) resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button onclick="_doUpdate()" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+            if(resultEl){
+              resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button id="aboutUpdateBtn" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
+              const _aub = resultEl.querySelector('#aboutUpdateBtn');
+              if(_aub) _aub.onclick = () => { _doUpdate(); };
+            }
           }
         } else {
           /* Remote is older or same — ignore */
