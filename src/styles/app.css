@@ -4516,48 +4516,6 @@ body.dragging-cargo *{
     inset -1px 0 0 rgba(220,190,140,.24);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   PHASE 10 — LIVE SNAP GUIDE PREVIEW
-   Thin alignment lines drawn inside #cvDECK while a cargo is being
-   dragged. Scales with the deck zoom transform; cleared on release.
-   Restrained by design: 1px, calm indigo, no motion, no labels.
-═══════════════════════════════════════════════════════════════════════ */
-.snap-guide-wrap{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  z-index:20; /* above bay-line (1), center-line (3), side-lbl (15) */
-}
-.snap-guide{
-  position:absolute;
-  pointer-events:none;
-  /* Dim tier — "also in range" hint. Kept quiet so crowded snap zones
-     don't clutter the deck. Winner gets bumped up via .is-winner below. */
-  background:rgba(72,96,131,.28);
-  display:none;
-}
-.snap-guide.is-winner{
-  background:rgba(72,96,131,.62);
-}
-/* Slight polish: hair-thin glow to read cleanly over ivory deck without
-   competing with bay-line geometry. Applied only to the winner so losers
-   stay fully quiet. */
-.snap-guide.is-winner.snap-guide-x,
-.snap-guide.is-winner.snap-guide-y{
-  box-shadow:0 0 0 0.5px rgba(72,96,131,.08);
-}
-
-[data-theme="dark"] .snap-guide{
-  background:rgba(180,200,235,.30);
-}
-[data-theme="dark"] .snap-guide.is-winner{
-  background:rgba(180,200,235,.68);
-}
-[data-theme="dark"] .snap-guide.is-winner.snap-guide-x,
-[data-theme="dark"] .snap-guide.is-winner.snap-guide-y{
-  box-shadow:0 0 0 0.5px rgba(180,200,235,.10);
-}
-
 /* PORT / STBD labels */
 .side-lbl{position:absolute;left:14px;font-family:'Inter',sans-serif;font-size:9.5px;letter-spacing:1.4px;color:rgba(0,0,0,.22);text-transform:uppercase;pointer-events:none;z-index:15;font-weight:600;}
 .center-line{position:absolute;left:0;right:0;height:1px;background:rgba(0,0,0,.08);pointer-events:none;z-index:3;}

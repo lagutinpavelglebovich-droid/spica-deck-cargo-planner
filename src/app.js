@@ -2655,19 +2655,12 @@ function renderBlock(cv,cargo){
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
       if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id);_dragSegTimer=0;});}
-      /* Phase 10 — live snap guide preview. Mirrors the onUp math for the
-         intended drop position so guides show exactly what will fire on
-         release. Suppressed during group drag (snap math also skips then). */
       if(moved){
         const cv = document.getElementById('cvDECK');
         if(cv){
           const cr = cv.getBoundingClientRect();
           const ix = Math.max(0, Math.min((ev.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
           const iy = Math.max(0, Math.min((ev.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
-          const groupMove = (typeof KB_SEL_SET !== 'undefined'
-                          && KB_SEL_SET.size > 1
-                          && KB_SEL_SET.has(cargo.id));
-          scheduleSnapGuides(cargo, ix, iy, groupMove);
           /* Phase 28 — live readout pill. Updates on every move while the
              drag is beyond the 4 px threshold. Feeds bay (1..12), deck
              x/y in metres, and cargo size in metres. Hidden if the user
@@ -2695,7 +2688,6 @@ function renderBlock(cv,cargo){
       }
       if(_ghostTrail) _ghostTrail.remove();
       clearDragSegOverlay();
-      clearSnapGuides();
       /* Phase 28 — hide drag readout. Post-drop bay tag shows below
          only if the drag actually moved AND SMART.dragReadout is on. */
       _hideDragReadout();
@@ -2840,23 +2832,10 @@ function renderBlock(cv,cargo){
       if(Math.abs(t.clientX-sx)>4||Math.abs(t.clientY-sy)>4) moved=true;
       ghost.style.left=(t.clientX-ox*zoomLevel)+'px'; ghost.style.top=(t.clientY-oy*zoomLevel)+'px';
       if(cargo.dgClasses&&cargo.dgClasses.length>0) showDragSegOverlay(cargo.dgClasses, cargo.id);
-      /* Phase 10 — live snap guide preview on touch drags. */
-      if(moved){
-        const cv = document.getElementById('cvDECK');
-        if(cv){
-          const cr = cv.getBoundingClientRect();
-          const ix = Math.max(0, Math.min((t.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
-          const iy = Math.max(0, Math.min((t.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
-          const groupMove = (typeof KB_SEL_SET !== 'undefined'
-                          && KB_SEL_SET.size > 1
-                          && KB_SEL_SET.has(cargo.id));
-          scheduleSnapGuides(cargo, ix, iy, groupMove);
-        }
-      }
     };
     const onTouchEnd = ev => {
       document.removeEventListener('touchmove',onTouchMove); document.removeEventListener('touchend',onTouchEnd);
-      ghost.remove(); clearDragSegOverlay(); clearSnapGuides();
+      ghost.remove(); clearDragSegOverlay();
       const t = ev.changedTouches[0];
       if(moved){
         b.style.visibility='hidden';const el=document.elementFromPoint(t.clientX,t.clientY);b.style.visibility='';
@@ -10425,147 +10404,6 @@ function smartGridSnap(cargo){
   if(overlaps) return null;
 
   return { x: newX, y: newY };
-}
-
-/* ════════════════════════════════════════════════════════════
-   PHASE 10 — LIVE SNAP GUIDE PREVIEW
-   Makes the existing silent Smart Grid Snap visible during drag
-   as thin alignment guides — without changing snap math, thresholds,
-   or behaviour. Guides simply mirror the same threshold checks
-   used by smartGridSnap() and render lines at every alignment
-   target within range. Cleared on release / cancel / group drag.
-════════════════════════════════════════════════════════════ */
-
-/* Snap thresholds — mirror smartGridSnap() exactly. */
-const SNAP_PREVIEW_THRESH_X = Math.round(0.75 * M);
-const SNAP_PREVIEW_THRESH_Y = Math.round(0.75 * (CVH / 15));
-
-let _snapGuideFrame = 0;
-let _snapGuideEls = []; /* pooled divs, reused across frames */
-
-function _ensureSnapGuideContainer(){
-  const cv = document.getElementById('cvDECK');
-  if(!cv) return null;
-  let wrap = cv.querySelector(':scope > .snap-guide-wrap');
-  if(!wrap){
-    wrap = document.createElement('div');
-    wrap.className = 'snap-guide-wrap';
-    /* Sits inside the deck canvas so guides scale with zoom naturally. */
-    cv.appendChild(wrap);
-  }
-  return wrap;
-}
-
-/* Compute every alignment target within threshold for the dragged cargo at
-   the given intended deck-local position. Does not mutate anything.
-   Tracks per-candidate delta so the renderer can emphasise the winning
-   target (same min-delta rule smartGridSnap uses internally) and dim the
-   rest to a secondary "also in range" tier. */
-function _computeSnapGuides(cargo, gx, gy){
-  if(!SMART.gridSnap) return { x:[], y:[], winX:null, winY:null };
-  const w = cargo.w, h = cargo.h;
-  const others = S.cargo.filter(c => c.id !== cargo.id);
-  /* Map pos -> minDelta so a single guide position takes its strongest
-     contribution (e.g. a neighbour edge that also happens to sit on a bay
-     line wins with the smaller of the two deltas). */
-  const xs = new Map(), ys = new Map();
-  const addX = (pos, d) => { if(!xs.has(pos) || xs.get(pos) > d) xs.set(pos, d); };
-  const addY = (pos, d) => { if(!ys.has(pos) || ys.get(pos) > d) ys.set(pos, d); };
-
-  /* Bay boundary lines */
-  BL_.forEach(bx => {
-    const dL = Math.abs(gx - bx);
-    const dR = Math.abs((gx + w) - bx);
-    if(dL <= SNAP_PREVIEW_THRESH_X) addX(bx, dL);
-    if(dR <= SNAP_PREVIEW_THRESH_X) addX(bx, dR);
-  });
-
-  /* Deck walls */
-  if(gx <= SNAP_PREVIEW_THRESH_X)             addX(0,   gx);
-  if((TW  - (gx + w)) <= SNAP_PREVIEW_THRESH_X) addX(TW,  TW  - (gx + w));
-  if(gy <= SNAP_PREVIEW_THRESH_Y)             addY(0,   gy);
-  if((CVH - (gy + h)) <= SNAP_PREVIEW_THRESH_Y) addY(CVH, CVH - (gy + h));
-
-  /* Neighbour edges + X/Y alignment */
-  others.forEach(o => {
-    const dRL = Math.abs((gx + w) - o.x);
-    const dLR = Math.abs(gx - (o.x + o.w));
-    const dLL = Math.abs(gx - o.x);
-    const dRR = Math.abs((gx + w) - (o.x + o.w));
-    if(dRL <= SNAP_PREVIEW_THRESH_X) addX(o.x, dRL);
-    if(dLR <= SNAP_PREVIEW_THRESH_X) addX(o.x + o.w, dLR);
-    if(dLL <= SNAP_PREVIEW_THRESH_X) addX(o.x, dLL);
-    if(dRR <= SNAP_PREVIEW_THRESH_X) addX(o.x + o.w, dRR);
-
-    const dTB = Math.abs((gy + h) - o.y);
-    const dBT = Math.abs(gy - (o.y + o.h));
-    const dTT = Math.abs(gy - o.y);
-    const dBB = Math.abs((gy + h) - (o.y + o.h));
-    if(dTB <= SNAP_PREVIEW_THRESH_Y) addY(o.y, dTB);
-    if(dBT <= SNAP_PREVIEW_THRESH_Y) addY(o.y + o.h, dBT);
-    if(dTT <= SNAP_PREVIEW_THRESH_Y) addY(o.y, dTT);
-    if(dBB <= SNAP_PREVIEW_THRESH_Y) addY(o.y + o.h, dBB);
-  });
-
-  /* Winner per axis = candidate with the smallest delta. Matches
-     smartGridSnap's internal tie-break by min-delta ordering. */
-  let winX = null, winY = null, best;
-  best = Infinity; xs.forEach((d, pos) => { if(d < best){ best = d; winX = pos; } });
-  best = Infinity; ys.forEach((d, pos) => { if(d < best){ best = d; winY = pos; } });
-
-  return { x: [...xs.keys()], y: [...ys.keys()], winX, winY };
-}
-
-/* Render the guide lines for the current pointer position. Pooled div nodes
-   reused across frames to avoid reflow churn. Called from the drag onMove
-   loop, wrapped in rAF for smoothness. */
-function renderSnapGuides(cargo, intendedX, intendedY){
-  const wrap = _ensureSnapGuideContainer();
-  if(!wrap) return;
-  const { x, y, winX, winY } = _computeSnapGuides(cargo, intendedX, intendedY);
-  const total = x.length + y.length;
-
-  /* Grow pool if needed */
-  while(_snapGuideEls.length < total){
-    const d = document.createElement('div');
-    d.className = 'snap-guide';
-    wrap.appendChild(d);
-    _snapGuideEls.push(d);
-  }
-
-  /* Position + show actives; hide the rest. Winner per axis gets the
-     `.is-winner` class (CSS bumps it to the full opacity tier); losers
-     render at the dim tier so the deck stays quiet in crowded cases. */
-  let i = 0;
-  x.forEach(xv => {
-    const el = _snapGuideEls[i++];
-    el.className = 'snap-guide snap-guide-x' + (xv === winX ? ' is-winner' : '');
-    el.style.cssText = `left:${xv}px;top:0;width:1px;height:${CVH}px;display:block;`;
-  });
-  y.forEach(yv => {
-    const el = _snapGuideEls[i++];
-    el.className = 'snap-guide snap-guide-y' + (yv === winY ? ' is-winner' : '');
-    el.style.cssText = `left:0;top:${yv}px;width:${TW}px;height:1px;display:block;`;
-  });
-  for(; i < _snapGuideEls.length; i++){
-    _snapGuideEls[i].style.display = 'none';
-  }
-}
-
-function clearSnapGuides(){
-  if(_snapGuideFrame){ cancelAnimationFrame(_snapGuideFrame); _snapGuideFrame = 0; }
-  _snapGuideEls.forEach(el => { el.style.display = 'none'; });
-}
-
-/* Schedule a rAF-throttled guide update during drag. Skips group drags
-   (smartGridSnap does too — keep visual contract consistent). */
-function scheduleSnapGuides(cargo, intendedX, intendedY, isGroupDrag){
-  if(isGroupDrag || !SMART.gridSnap){ clearSnapGuides(); return; }
-  if(_snapGuideFrame) return;
-  _snapGuideFrame = requestAnimationFrame(() => {
-    _snapGuideFrame = 0;
-    renderSnapGuides(cargo, intendedX, intendedY);
-  });
 }
 
 /* ════════════════════════════════════════════════════════════
