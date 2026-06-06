@@ -2,6 +2,13 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.4] - 2026-06-06
+
+### Fixed
+- Cargo near the bow (Bay 1–2) is no longer hidden behind the details panel — selecting it slides the deck into view so it stays fully editable (resize, duplicate, action buttons), and the deck returns to position when you close the panel.
+- Cargo-block and location colours now stay identical between operator and viewer when synced online, and remain stable after restarting the app.
+- Auto-update reliability improvements.
+
 ## [3.6.3] - 2026-06-04
 
 ### Fixed
