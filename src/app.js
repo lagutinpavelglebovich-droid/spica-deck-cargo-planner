@@ -5279,6 +5279,7 @@ function _buildEnvelope() {
       selLoc:     S.selLoc,
       date:       selDate.toISOString(),
       dynColors:  DYN_COLORS,
+      cargoColors: CARGO_COLORS,
       voyRemarks: S.voyRemarks || '',
       zoomLevel:  zoomLevel
     }
@@ -5385,6 +5386,7 @@ async function openPlanFromFile() {
     if (d.selLoc) S.selLoc = d.selLoc;
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
+    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -5426,6 +5428,7 @@ async function openRecentFile(path) {
     if (d.selLoc) S.selLoc = d.selLoc;
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
+    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -5546,6 +5549,7 @@ function _applyProjectData(jsonString, fileName) {
     if (d.selLoc) S.selLoc = d.selLoc;
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
+    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -13841,6 +13845,7 @@ function _syncApplyRemote(remoteState){
   if(remoteState.voyage) document.getElementById('voyIn').value = remoteState.voyage;
   if(remoteState.date){ selDate = new Date(remoteState.date); if(isNaN(selDate)) selDate = new Date(); }
   if(remoteState.dynColors){ Object.keys(DYN_COLORS).forEach(k=>delete DYN_COLORS[k]); Object.assign(DYN_COLORS, remoteState.dynColors); }
+  if(remoteState.cargoColors){ Object.keys(CARGO_COLORS).forEach(k=>delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, remoteState.cargoColors); }
   if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
   initDynColors(); setDateDisplay();
   buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
