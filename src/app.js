@@ -3829,6 +3829,86 @@ async function closeModal(){
 ════════════════════════════════════════════════════════════ */
 let inspSelId = null;
 
+/* Inspector-gutter reveal state. When the rail opens, `body.insp-open` adds
+   a 340px right gutter to .deck-area, shrinking the overflow:auto deck
+   viewport so bow (Bay 1–2 / fore) blocks can scroll past the fore edge —
+   putting their on-deck resize handles (.rh) out of reach. We scroll a
+   clipped block back into view on open and restore the prior scroll on close. */
+let _inspPrevScrollLeft = null;
+let _inspScrollAnim = null;
+
+/* Smoothly animate .deck-area horizontal scroll via the shared Motion One
+   import. Clamps the target to the scrollable range and cancels any in-flight
+   tween so open/close don't fight. */
+function _inspAnimateScrollLeft(area, to){
+  const from   = area.scrollLeft;
+  const target = Math.max(0, Math.min(to, area.scrollWidth - area.clientWidth));
+  if(_inspScrollAnim && typeof _inspScrollAnim.stop === 'function') _inspScrollAnim.stop();
+  if(Math.abs(target - from) < 1){ area.scrollLeft = target; _inspScrollAnim = null; return; }
+  _inspScrollAnim = motionAnimate(from, target, {
+    duration: 0.32,
+    ease: [0.22, 1, 0.36, 1],   /* iOS-style ease-out */
+    onUpdate: v => { area.scrollLeft = v; },
+    onComplete: () => { area.scrollLeft = target; _inspScrollAnim = null; },
+  });
+}
+
+/* If the selected block is clipped by the gutter-shrunken deck viewport,
+   scroll it (with its resize handles) fully into view. Fully-visible blocks
+   (Bay 3–12 etc.) are left untouched so non-bow cargo never jumps.
+   Zoom-robust: works off getBoundingClientRect, which is already
+   post-transform. */
+function revealSelectedFromGutter(cargoId){
+  const area  = document.getElementById('deckArea');
+  const block = document.querySelector(`.cb[data-id="${cargoId}"]`);
+  if(!area || !block) return;
+  const areaRect  = area.getBoundingClientRect();
+  const blockRect = block.getBoundingClientRect();
+  /* .rh handles sit ~5px outside each edge and scale with the deck; reserve
+     handle width (11px, app.css) × zoom + breathing room so the active handle
+     clears the gutter edge. */
+  const z = (typeof zoomLevel === 'number') ? zoomLevel : 1;
+  const handleMargin = 11 * z + 12;
+  let target = null;
+  if(blockRect.right + handleMargin > areaRect.right){
+    /* clipped on the fore (right) edge — the typical bow case */
+    target = area.scrollLeft + (blockRect.right + handleMargin - areaRect.right);
+  } else if(blockRect.left - handleMargin < areaRect.left){
+    /* clipped on the aft (left) edge — symmetric robustness */
+    target = area.scrollLeft + (blockRect.left - handleMargin - areaRect.left);
+  }
+  if(target == null) return;   /* already fully visible → no movement */
+  /* NOTE: at zoom>1 a block wider than the viewport can't be fully revealed;
+     the clamp in _inspAnimateScrollLeft scrolls as far as allowed. Possible
+     follow-up: compose a translateX in the zoom transform. */
+  _inspAnimateScrollLeft(area, target);
+}
+
+/* The gutter (margin-right:340px) animates over --dur-medium, so one rAF
+   would read a mid-transition viewport and under-detect clipping. On a
+   closed→open transition, wait for the gutter to settle before measuring;
+   when the rail is already open (e.g. switching selection / panel Duplicate),
+   the gutter is in place so a single rAF suffices. */
+function _inspRevealWhenSettled(id, alreadyOpen){
+  if(alreadyOpen){
+    requestAnimationFrame(() => revealSelectedFromGutter(id));
+    return;
+  }
+  const area = document.getElementById('deckArea');
+  if(!area){ requestAnimationFrame(() => revealSelectedFromGutter(id)); return; }
+  let done = false;
+  const finish = () => {
+    if(done) return; done = true;
+    area.removeEventListener('transitionend', onEnd);
+    requestAnimationFrame(() => revealSelectedFromGutter(id));
+  };
+  const onEnd = e => {
+    if(e.target === area && (e.propertyName === 'margin-right' || e.propertyName === 'margin')) finish();
+  };
+  area.addEventListener('transitionend', onEnd);
+  setTimeout(finish, 340);   /* fallback > --dur-medium (260ms) if no transitionend fires */
+}
+
 function inspBuildDescSelect(){
   /* Mirrors buildModalDescSelect but targets #inspDesc. Uses the same
      CCU_PRESETS + custom library so description choices stay consistent. */
@@ -3974,9 +4054,22 @@ function inspOpen(id){
     if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
   }
 
+  /* Capture the pre-open deck scroll once (closed→open) so inspClose can
+     restore it. Don't overwrite it when merely switching selection while the
+     rail is already open. Captured before the gutter applies, so it reflects
+     the true pre-gutter scroll position. */
+  if(!alreadyOpen){
+    const _area = document.getElementById('deckArea');
+    _inspPrevScrollLeft = _area ? _area.scrollLeft : null;
+  }
+
   rail.classList.add('open');
   rail.setAttribute('aria-hidden', 'false');
   document.body.classList.add('insp-open');
+
+  /* Once the gutter has applied and layout settles, scroll a clipped (bow)
+     block back into view so its resize handles clear the gutter edge. */
+  _inspRevealWhenSettled(id, alreadyOpen);
 
   /* Deliberately do NOT auto-focus the CCU/ID field on open. A plain block
      selection opens this rail, and stealing focus into the text input would
@@ -4049,6 +4142,14 @@ function inspClose(){
   }
   document.body.classList.remove('insp-open');
   document.body.classList.remove('insp-multi');
+  /* Restore the pre-open deck scroll. The gutter is being removed, so the
+     viewport expands and a smaller target scrollLeft stays in range
+     throughout the transition — safe to animate immediately. */
+  if(_inspPrevScrollLeft != null){
+    const area = document.getElementById('deckArea');
+    if(area) _inspAnimateScrollLeft(area, _inspPrevScrollLeft);
+    _inspPrevScrollLeft = null;
+  }
   if(typeof kbDeselect === 'function') kbDeselect();
 }
 
