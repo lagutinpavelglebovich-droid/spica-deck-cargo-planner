@@ -5605,6 +5605,7 @@ function savePlan(key) {
       selLoc:     S.selLoc,
       date:       selDate.toISOString(),
       dynColors:  DYN_COLORS,
+      cargoColors: CARGO_COLORS,
       voyRemarks: S.voyRemarks || ''
     }
   };
@@ -5659,6 +5660,7 @@ function loadPlan(key) {
   if (d.selLoc) S.selLoc = d.selLoc;
   if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
   if (d.dynColors) Object.assign(DYN_COLORS, d.dynColors);
+  if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
   if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
   if (d.zoomLevel) applyZoom(d.zoomLevel);
 
