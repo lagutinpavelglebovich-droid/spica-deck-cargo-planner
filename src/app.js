@@ -3863,19 +3863,29 @@ function revealSelectedFromGutter(cargoId){
   const block = document.querySelector(`.cb[data-id="${cargoId}"]`);
   if(!area || !block) return;
   const areaRect  = area.getBoundingClientRect();
-  const blockRect = block.getBoundingClientRect();
-  /* .rh handles sit ~5px outside each edge and scale with the deck; reserve
-     handle width (11px, app.css) × zoom + breathing room so the active handle
-     clears the gutter edge. */
   const z = (typeof zoomLevel === 'number') ? zoomLevel : 1;
-  const handleMargin = 11 * z + 12;
+  /* A selected block also shows an on-block action cluster (× / ↻ / +) that
+     sits ~30px beyond one side (left:100% + margin + 22px width, see
+     .cb-del/.cb-rot/.cb-copy in app.css; flips left via .cb-ctrl-left). Union
+     the block with those buttons so the reveal clears the FULL selected
+     footprint — not just the block + a resize handle, which left the bow
+     cluster clipped by the gutter. getBoundingClientRect keeps it zoom-correct. */
+  const blockRect = block.getBoundingClientRect();
+  let footLeft = blockRect.left, footRight = blockRect.right;
+  block.querySelectorAll('.cb-del,.cb-rot,.cb-copy').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if(r.width || r.height){ footLeft = Math.min(footLeft, r.left); footRight = Math.max(footRight, r.right); }
+  });
+  /* breathing room so the .rh resize handle on the side WITHOUT the cluster
+     (handle ~11px, app.css) also clears the gutter edge. */
+  const pad = 11 * z + 12;
   let target = null;
-  if(blockRect.right + handleMargin > areaRect.right){
+  if(footRight + pad > areaRect.right){
     /* clipped on the fore (right) edge — the typical bow case */
-    target = area.scrollLeft + (blockRect.right + handleMargin - areaRect.right);
-  } else if(blockRect.left - handleMargin < areaRect.left){
+    target = area.scrollLeft + (footRight + pad - areaRect.right);
+  } else if(footLeft - pad < areaRect.left){
     /* clipped on the aft (left) edge — symmetric robustness */
-    target = area.scrollLeft + (blockRect.left - handleMargin - areaRect.left);
+    target = area.scrollLeft + (footLeft - pad - areaRect.left);
   }
   if(target == null) return;   /* already fully visible → no movement */
   /* NOTE: at zoom>1 a block wider than the viewport can't be fully revealed;
