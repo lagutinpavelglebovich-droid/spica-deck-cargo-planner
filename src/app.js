@@ -3909,6 +3909,21 @@ function _inspRevealWhenSettled(id, alreadyOpen){
   setTimeout(finish, 340);   /* fallback > --dur-medium (260ms) if no transitionend fires */
 }
 
+/* Single restore chokepoint. Animates the deck back to the home scroll
+   captured at session start, then ends the session (clears home) so the next
+   reveal recaptures. Idempotent — a no-op once home is cleared, so it can be
+   called from every dismissal path without double-firing. Wired into
+   kbDeselect(), which every inspector-dismissal / selection-clear path funnels
+   through (inspClose() ends by calling it; the deck-background click, drag
+   fall-through, command palette, etc. call it directly). */
+function restoreDeckHome(){
+  if(_inspPrevScrollLeft == null) return;
+  const home = _inspPrevScrollLeft;
+  _inspPrevScrollLeft = null;   /* end session before animating so a new reveal mid-restore recaptures */
+  const area = document.getElementById('deckArea');
+  if(area) _inspAnimateScrollLeft(area, home);
+}
+
 function inspBuildDescSelect(){
   /* Mirrors buildModalDescSelect but targets #inspDesc. Uses the same
      CCU_PRESETS + custom library so description choices stay consistent. */
@@ -4142,14 +4157,8 @@ function inspClose(){
   }
   document.body.classList.remove('insp-open');
   document.body.classList.remove('insp-multi');
-  /* Restore the pre-open deck scroll. The gutter is being removed, so the
-     viewport expands and a smaller target scrollLeft stays in range
-     throughout the transition — safe to animate immediately. */
-  if(_inspPrevScrollLeft != null){
-    const area = document.getElementById('deckArea');
-    if(area) _inspAnimateScrollLeft(area, _inspPrevScrollLeft);
-    _inspPrevScrollLeft = null;
-  }
+  /* Deck-home restore is funnelled through kbDeselect() → restoreDeckHome(),
+     called below, so every dismissal path (not just this one) restores. */
   if(typeof kbDeselect === 'function') kbDeselect();
 }
 
@@ -8665,6 +8674,11 @@ function kbDeselect(){
     document.body.classList.remove('insp-open');
     document.body.classList.remove('insp-multi');
   }
+  /* Universal deck-home restore. Outside the guard above because inspClose()
+     nulls inspSelId before calling us — every dismissal/deselect path funnels
+     through here, so this is the single chokepoint that returns the deck to
+     its pre-reveal position. No-op when no session is active. */
+  restoreDeckHome();
 }
 
 /* ── Show coordinate tip near selected block ───────────────── */
