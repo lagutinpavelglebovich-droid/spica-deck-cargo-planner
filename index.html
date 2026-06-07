@@ -910,51 +910,6 @@
 
 <!-- Phase 23 — Measure tool floating label. Position:fixed so its text
      size is invariant under deck zoom. Hidden until a measurement exists. -->
-<!-- Phase 30B — Auto Align Preview modal. Opens on Auto Align click,
-     shows a plan + summary, user commits with Apply or discards with
-     Cancel/Esc. Never mutates cargo state until Apply. -->
-<div class="aap-ov" id="aapOv" aria-hidden="true" hidden>
-  <div class="aap-backdrop" id="aapBackdrop"></div>
-  <div class="aap-modal" role="dialog" aria-labelledby="aapTitle">
-    <div class="aap-head">
-      <div class="aap-head-icon" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <rect x="1" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-          <rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-          <rect x="1" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-          <rect x="9" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-          <path d="M7 4h2M7 12h2M4 6v4M12 6v4" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".45"/>
-        </svg>
-      </div>
-      <div class="aap-title" id="aapTitle">Auto Align Preview</div>
-      <button class="aap-close" id="aapClose" aria-label="Close preview">✕</button>
-    </div>
-    <div class="aap-body">
-      <div class="aap-kpi-row">
-        <div class="aap-kpi">
-          <div class="aap-kpi-num" id="aapMovedNum">0</div>
-          <div class="aap-kpi-lbl">to move</div>
-        </div>
-        <div class="aap-kpi">
-          <div class="aap-kpi-num" id="aapSkippedNum">0</div>
-          <div class="aap-kpi-lbl">skipped</div>
-        </div>
-        <div class="aap-kpi">
-          <div class="aap-kpi-num aap-kpi-safe" id="aapConflictsNum">0</div>
-          <div class="aap-kpi-lbl">new conflicts</div>
-        </div>
-      </div>
-      <div class="aap-breakdown" id="aapBreakdown"></div>
-      <div class="aap-skip-list" id="aapSkipList" hidden></div>
-      <div class="aap-empty" id="aapEmpty" hidden>Deck is already aligned — nothing to move.</div>
-    </div>
-    <div class="aap-foot">
-      <button class="aap-btn aap-btn-cancel" id="aapCancel" type="button">Cancel</button>
-      <button class="aap-btn aap-btn-apply" id="aapApply" type="button">Apply</button>
-    </div>
-  </div>
-</div>
-
 <div class="ruler-label" id="rulerLabel" aria-hidden="true" hidden>
   <span class="ruler-label-dist" id="rulerLabelDist">—</span>
   <span class="ruler-label-sep" aria-hidden="true"></span>
@@ -1819,39 +1774,6 @@
         </div>
       </div>
       </div><!-- /st-sec-body --></div><!-- /st-section weather -->
-
-      <div class="st-section" data-section-id="actions">
-      <div class="st-sec-hdr">
-        <span class="st-sec-title">Actions</span>
-        <span class="st-sec-count" hidden></span>
-        <span class="st-sec-chv" aria-hidden="true">▾</span>
-      </div>
-      <div class="st-sec-body">
-
-      <!-- Auto Align Deck -->
-      <div class="st-action-row">
-        <button class="st-action-btn" id="stAutoAlignBtn" type="button">
-          <div class="st-action-btn-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-              <rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-              <rect x="1" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-              <rect x="9" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/>
-              <path d="M7 4h2M7 12h2M4 6v4M12 6v4" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".45"/>
-            </svg>
-          </div>
-          <div class="st-action-btn-body">
-            <div class="st-action-btn-title">
-              Auto Align Deck
-              <span class="feat-badge" data-since="v38.14" data-type="action" data-tooltip="Added in v38.14">ONE-SHOT</span>
-            </div>
-            <div class="st-action-btn-desc" id="stAutoAlignDesc">Выравнивает все контейнеры на палубе — подтягивает близко стоящие к соседям и границам бэёв. Одноразовое действие.</div>
-          </div>
-          <span class="st-action-btn-arrow">→</span>
-        </button>
-      </div>
-
-      </div><!-- /st-sec-body --></div><!-- /st-section actions -->
 
       <!-- Footer note -->
       <div style="padding:16px 20px 0;font-size:9.5px;color:var(--txt4);font-family:'Inter',sans-serif;line-height:1.4;">
