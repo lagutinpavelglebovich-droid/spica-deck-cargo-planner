@@ -2,6 +2,13 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## 3.7.0
+
+- Streamlined the Smart Tools panel: removed unused, legacy, and redundant toggles (Animated Counter, Status Bar Icons, Manifest Matching, Bay Dashed Lines, Cargo Hover Glow, Smooth Colours, Deck Shadow, Drag & Resize Readouts, Custom Scrollbars, Corner Badges, Night Watch, Weight Gauge) and the Auto Align Deck action.
+- Cargo Hover Motion and Button Effects are now built-in defaults (their toggles were removed).
+- DG Badge Fade on Hover now defaults to off.
+- Deck weight monitoring is unchanged: the capacity bar, overweight threshold colouring, and PDF/Excel weight readout remain.
+
 ## [3.6.5] - 2026-06-07
 
 ### Performance
