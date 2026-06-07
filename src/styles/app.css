@@ -4193,115 +4193,6 @@ body.focus-deck .dcv{
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   PHASE 28 — LIVE DRAG & RESIZE READOUTS
-   Three transient glass pills matching the ruler-label language:
-   • .drag-readout     — follows the ghost during cargo drag
-   • .resize-readout   — near the active handle during resize
-   • .drop-bay-confirm — brief post-drop bay tag, fades after 700 ms
-   All position:fixed so they are zoom-invariant and never scale with
-   the deck transform. Hidden via [hidden] until JS shows them.
-═══════════════════════════════════════════════════════════════════════ */
-.drag-readout,
-.resize-readout,
-.drop-bay-confirm{
-  position:fixed;
-  z-index:9500;
-  display:inline-flex;
-  align-items:center;
-  gap:9px;
-  padding:5px 12px;
-  border-radius:999px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.72) 0%, rgba(250,252,255,.52) 100%),
-    rgba(255,255,255,.88);
-  backdrop-filter:blur(18px) saturate(1.3);
-  -webkit-backdrop-filter:blur(18px) saturate(1.3);
-  border:1px solid rgba(72,96,131,.24);
-  box-shadow:
-    0 2px 6px rgba(30,40,55,.10),
-    0 10px 28px rgba(30,40,55,.14),
-    inset 0 1px 0 rgba(255,255,255,.70);
-  pointer-events:none;
-  font-family:'Inter',system-ui,sans-serif;
-  user-select:none;
-  white-space:nowrap;
-  font-size:12px;
-  font-weight:600;
-  letter-spacing:-.1px;
-  color:var(--txt);
-  transition:opacity var(--dur-short) var(--ease);
-}
-.drag-readout[hidden],
-.resize-readout[hidden],
-.drop-bay-confirm[hidden]{ display:none; }
-
-.drag-readout-sep{
-  width:1px; height:12px;
-  background:rgba(72,96,131,.22);
-  align-self:center;
-}
-.drag-readout-bay,
-.drag-readout-pos,
-.drag-readout-size,
-.resize-readout-dim,
-.resize-readout-area{
-  font-family:'Manrope','Inter',sans-serif;
-  font-variant-numeric:tabular-nums;
-  letter-spacing:-.1px;
-}
-.drag-readout-bay{ font-weight:700; color:var(--acc); }
-.drag-readout-pos{ color:var(--txt2); }
-.drag-readout-size{ color:var(--txt); font-weight:600; }
-.resize-readout-dim{ font-weight:700; color:var(--acc); }
-.resize-readout-area{ color:var(--txt2); }
-
-/* Drop-bay confirmation — slightly smaller, has a two-stage fade. */
-.drop-bay-confirm{
-  font-family:'Manrope','Inter',sans-serif;
-  font-size:11px;
-  font-weight:700;
-  color:var(--acc);
-  padding:4px 11px;
-  opacity:1;
-  transition:opacity 380ms var(--ease), transform 380ms var(--ease);
-  transform:translateY(0);
-}
-.drop-bay-confirm.is-fading{
-  opacity:0;
-  transform:translateY(-4px);
-}
-
-/* Dark theme — same ink-glass language as the ruler label. */
-[data-theme="dark"] .drag-readout,
-[data-theme="dark"] .resize-readout,
-[data-theme="dark"] .drop-bay-confirm{
-  background:
-    linear-gradient(180deg, rgba(36,44,58,.72) 0%, rgba(24,30,42,.58) 100%),
-    rgba(24,30,42,.90);
-  border-color:rgba(140,170,220,.24);
-  box-shadow:
-    0 3px 10px rgba(0,0,0,.38),
-    0 14px 34px rgba(0,0,0,.38),
-    inset 0 1px 0 rgba(255,255,255,.08);
-  color:#e4eaf3;
-}
-[data-theme="dark"] .drag-readout-sep{ background:rgba(140,170,220,.22); }
-[data-theme="dark"] .drag-readout-bay,
-[data-theme="dark"] .resize-readout-dim,
-[data-theme="dark"] .drop-bay-confirm{ color:#8cb8eb; }
-[data-theme="dark"] .drag-readout-pos,
-[data-theme="dark"] .resize-readout-area{ color:#9aa5b4; }
-
-/* Reduced motion — the pills still show (they are informational), but
-   the drop-bay fade collapses to instant hide via the setTimeout safety
-   fallback in _showDropBayConfirm. No transitions. */
-@media (prefers-reduced-motion: reduce){
-  .drag-readout,
-  .resize-readout,
-  .drop-bay-confirm{ transition:none !important; }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
    PHASE 27 — INTERACTION FEEDBACK EXPANSION
    Adds motion vocabulary for undo/redo, rotate, duplicate, dg-resolved,
    toast-export-success, and ghost-dissolve. All timings use the existing
@@ -8517,20 +8408,6 @@ body.hdr-tight .save-state-text{ display:none; }
   transform:translateY(1px) !important;
   box-shadow:none !important;
 }
-
-/* 12. Deck edge shadow */
-.vst-deck-shadow .deck-outer{
-  box-shadow:0 6px 28px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.9) !important;
-}
-[data-theme="dark"] .vst-deck-shadow .deck-outer{
-  box-shadow:0 6px 28px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25) !important;
-}
-
-/* 13. Custom scrollbars */
-.vst-custom-scroll .cp-body::-webkit-scrollbar{ width:6px; }
-.vst-custom-scroll .cp-body::-webkit-scrollbar-track{ background:var(--surf2); }
-.vst-custom-scroll .cp-body::-webkit-scrollbar-thumb{ background:var(--acc); border-radius:3px; }
-.vst-custom-scroll .cp-body::-webkit-scrollbar-thumb:hover{ background:var(--acc2); }
 
 /* ═══════════════════════════════════════════════════════════
    PHASE 2 — SMART TOOLS ADDITIONS
@@ -15836,9 +15713,7 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   line-height:1.5;
 }
 
-/* ── Scrollbar — matches Smart Tools: 3px width, subtle white thumb on the dark navy panel.
-   Uses #cpBody (id, specificity 1,0,1) so it outranks .vst-custom-scroll .cp-body (0,2,1)
-   when Smart Tools toggles body.vst-custom-scroll. Don't downgrade #cpBody to .cp-body. */
+/* ── Scrollbar thumb — subtle white on the dark navy library panel. */
 #cpBody::-webkit-scrollbar-thumb{
   background:rgba(255,255,255,.16);
   border-radius:3px;

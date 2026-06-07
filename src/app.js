@@ -2655,19 +2655,6 @@ function renderBlock(cv,cargo){
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
       if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id);_dragSegTimer=0;});}
-      if(moved){
-        const cv = document.getElementById('cvDECK');
-        if(cv){
-          const cr = cv.getBoundingClientRect();
-          const ix = Math.max(0, Math.min((ev.clientX-cr.left)/zoomLevel - ox, TW  - cargo.w));
-          const iy = Math.max(0, Math.min((ev.clientY-cr.top) /zoomLevel - oy, CVH - cargo.h));
-          /* Phase 28 — live readout pill. Updates on every move while the
-             drag is beyond the 4 px threshold. Feeds bay (1..12), deck
-             x/y in metres, and cargo size in metres. Hidden if the user
-             disabled it in Smart Tools. */
-          _updateDragReadout(ev.clientX, ev.clientY, ix, iy, cargo);
-        }
-      }
     };
     const onUp=ev=>{
       document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
@@ -2688,9 +2675,6 @@ function renderBlock(cv,cargo){
       }
       if(_ghostTrail) _ghostTrail.remove();
       clearDragSegOverlay();
-      /* Phase 28 — hide drag readout. Post-drop bay tag shows below
-         only if the drag actually moved AND SMART.dragReadout is on. */
-      _hideDragReadout();
       /* Phase 29 — resume Night Watch glint. */
       if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
       if(moved){
@@ -2770,11 +2754,6 @@ function renderBlock(cv,cargo){
 
         updateStats();buildActiveLocStrip();
         checkSeg();save();playSound('drop');
-        /* Phase 28 — post-drop bay tag. Shows which bay (1..12) the
-           cargo landed in, fades after 700 ms. Only fires for moved
-           single-cargo drops; group moves get the existing .just-placed
-           group signal so this doesn't pile on visually. */
-        if(!isGroupDrag) _showDropBayConfirm(cargo);
         /* Phase 25 — snap lock-in confirmation. When Smart Grid Snap
            committed a snap target on this drop, fire a tiny pulse +
            tick on the cargo so the operator sees "yes it locked on".
@@ -2904,9 +2883,6 @@ function startResize(e,cargo,block,dir){
     if(dir.includes('n')){nh=Math.max(20,oh-dy);ny=oy+oh-nh;}
     cargo.x=nx;cargo.y=ny;cargo.w=nw;cargo.h=nh;
     block.style.cssText+=`left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
-    /* Phase 28 — live resize readout. Pill near the active handle shows
-       the new dimensions in metres + area. Only when SMART.dragReadout. */
-    _updateResizeReadout(ev.clientX, ev.clientY, cargo);
   };
   const onUp=()=>{
     document.removeEventListener('mousemove',onMove);
@@ -2916,7 +2892,6 @@ function startResize(e,cargo,block,dir){
     cargo.length_m = parseFloat((cargo.w / M).toFixed(3));
     cargo.width_m  = parseFloat((cargo.h / (CVH/15)).toFixed(3));
     renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
-    _hideResizeReadout();
     /* Phase 29 — resume Night Watch glint. */
     if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
   };
@@ -5045,116 +5020,6 @@ function _pulseCargo(id, cls){
   el.addEventListener('animationend',
     () => el.classList.remove(cls),
     { once: true });
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   PHASE 28 — Live drag & resize readout pills + post-drop bay confirm.
-   Transient glass pills that match the ruler-label surface language.
-   All three pills respect SMART.dragReadout (operator can disable).
-══════════════════════════════════════════════════════════════════════ */
-function _updateDragReadout(clientX, clientY, ix, iy, cargo){
-  if(!SMART.dragReadout) return;
-  const pill = document.getElementById('dragReadout');
-  if(!pill) return;
-  /* Hide when a modal/palette/cheatsheet owns focus — same grammar as
-     the hover card so stacked surfaces don't pile up. */
-  if(document.getElementById('ov')?.classList.contains('open')
-     || document.getElementById('ascoOv')?.classList.contains('open')
-     || document.getElementById('kbCheatOv')?.classList.contains('open')
-     || document.getElementById('cmdpOv')?.classList.contains('open')){
-    if(!pill.hidden){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
-    return;
-  }
-  /* Bay number (1..12 user-facing, visual-render index i → 12 - i). */
-  const bayIdx = bayIndexFromX(ix + cargo.w / 2);
-  const bayNum = bayIdx >= 0 ? (12 - bayIdx) : '—';
-  /* Metres via the physical-model helpers — same source of truth as
-     ruler and status bar. Uses the cargo's top-left for position. */
-  const xm = deckXToMeters(ix).toFixed(2);
-  const ym = deckYToMeters(iy).toFixed(2);
-  const wm = (cargo.length_m || cargo.w / M).toFixed(2);
-  const hm = (cargo.width_m  || cargo.h / (CVH/15)).toFixed(2);
-  const bayEl  = document.getElementById('dragReadoutBay');
-  const posEl  = document.getElementById('dragReadoutPos');
-  const sizeEl = document.getElementById('dragReadoutSize');
-  if(bayEl)  bayEl.textContent  = 'Bay ' + bayNum;
-  if(posEl)  posEl.textContent  = 'X ' + xm + ' m  ·  Y ' + ym + ' m';
-  if(sizeEl) sizeEl.textContent = wm + ' × ' + hm + ' m';
-  /* Position: track 18 px above the pointer, clamp to viewport. */
-  pill.hidden = false;
-  pill.setAttribute('aria-hidden','false');
-  const pr = pill.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, clientX - pr.width / 2));
-  const top  = Math.max(8, clientY - pr.height - 18);
-  pill.style.left = left + 'px';
-  pill.style.top  = top  + 'px';
-}
-function _hideDragReadout(){
-  const pill = document.getElementById('dragReadout');
-  if(pill){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
-}
-
-function _updateResizeReadout(clientX, clientY, cargo){
-  if(!SMART.dragReadout) return;
-  const pill = document.getElementById('resizeReadout');
-  if(!pill) return;
-  const wm = (cargo.w / M).toFixed(2);
-  const hm = (cargo.h / (CVH/15)).toFixed(2);
-  const area = (parseFloat(wm) * parseFloat(hm)).toFixed(1);
-  const dimEl  = document.getElementById('resizeReadoutDim');
-  const areaEl = document.getElementById('resizeReadoutArea');
-  if(dimEl)  dimEl.textContent  = wm + ' × ' + hm + ' m';
-  if(areaEl) areaEl.textContent = area + ' m²';
-  pill.hidden = false;
-  pill.setAttribute('aria-hidden','false');
-  const pr = pill.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - pr.width - 8, clientX + 16));
-  const top  = Math.max(8, clientY + 16);
-  pill.style.left = left + 'px';
-  pill.style.top  = top  + 'px';
-}
-function _hideResizeReadout(){
-  const pill = document.getElementById('resizeReadout');
-  if(pill){ pill.hidden = true; pill.setAttribute('aria-hidden','true'); }
-}
-
-/* Post-drop bay confirmation. A tiny tag fades above the dropped cargo
-   for ~700 ms showing which bay it landed in. Suppressed when reduced-
-   motion is on (the fade is the whole effect). */
-let _dropBayConfirmTimer = 0;
-function _showDropBayConfirm(cargo){
-  if(!SMART.dragReadout) return;
-  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const tag = document.getElementById('dropBayConfirm');
-  if(!tag) return;
-  const bayIdx = bayIndexFromX(cargo.x + cargo.w / 2);
-  const bayNum = bayIdx >= 0 ? (12 - bayIdx) : '—';
-  const txt = document.getElementById('dropBayConfirmText');
-  if(txt) txt.textContent = 'Placed in Bay ' + bayNum;
-  /* Position the tag above the cargo, fixed-coords. Convert deck-local
-     to viewport through the canvas rect + zoom. */
-  const cv = document.getElementById('cvDECK');
-  if(!cv) return;
-  const cr = cv.getBoundingClientRect();
-  tag.hidden = false;
-  tag.classList.remove('is-fading');
-  tag.setAttribute('aria-hidden','false');
-  /* Read own size AFTER un-hiding. */
-  const tr = tag.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - tr.width - 8,
-                  cr.left + (cargo.x + cargo.w / 2) * zoomLevel - tr.width / 2));
-  const top  = Math.max(8, cr.top + cargo.y * zoomLevel - tr.height - 8);
-  tag.style.left = left + 'px';
-  tag.style.top  = top  + 'px';
-  clearTimeout(_dropBayConfirmTimer);
-  /* Two-stage: small dwell, then add .is-fading which CSS transitions
-     opacity to 0; the fade-end handler hides. */
-  _dropBayConfirmTimer = setTimeout(() => {
-    tag.classList.add('is-fading');
-    const onEnd = () => { tag.hidden = true; tag.classList.remove('is-fading'); tag.setAttribute('aria-hidden','true'); };
-    tag.addEventListener('transitionend', onEnd, { once: true });
-    setTimeout(onEnd, 500); /* safety fallback */
-  }, 700);
 }
 
 /* Phase 27 — duplicate trail. A pale ghost at the source position fades
@@ -10202,13 +10067,8 @@ const SMART_DEFAULTS = {
   dragGhost:     false, /* Ghost trail during drag */
   nameShimmer:   false, /* Vessel name shimmer */
   btnMicro:      true,  /* Button micro-interactions */
-  deckShadow:    true,  /* Deck edge shadow */
-  customScroll:  true,  /* Custom scrollbar styling */
   soundEnabled:  true,  /* Sound effects on/off */
   soundVolume:   70,    /* Master volume 0-100 */
-  /* Phase 28 — live readouts during drag + resize. Default ON; operators
-     who want a cleaner deck-during-drag can disable in Smart Tools. */
-  dragReadout:   true,
   /* Phase 29 — Night Watch ambient deck glint (dark mode only). Default
      OFF so the opt-in is deliberate; no one hits a moving element on
      first open. Paused during drag/resize via body[data-dragging]. */
@@ -10945,7 +10805,6 @@ function bindSmartTools(){
   const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
   const emptyHintChk    = document.getElementById('stEmptyHintToggle');
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
-  const dragReadoutChk  = document.getElementById('stDragReadoutToggle');
   const nightWatchChk   = document.getElementById('stNightWatchToggle');
   const perfModeChk     = document.getElementById('stPerfModeToggle');
 
@@ -10964,7 +10823,6 @@ function bindSmartTools(){
   if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
   if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
-  if(dragReadoutChk)  dragReadoutChk.checked  = SMART.dragReadout;
   if(nightWatchChk)   nightWatchChk.checked   = SMART.nightWatch;
   if(perfModeChk)     perfModeChk.checked     = SMART.perfMode;
   if(typeof _applyNightWatch === 'function') _applyNightWatch();
@@ -11004,19 +10862,6 @@ function bindSmartTools(){
     } else {
       clearDGViolationHighlights();
       closeDGCheckModal();
-    }
-  });
-
-  if(dragReadoutChk) dragReadoutChk.addEventListener('change', () => {
-    SMART.dragReadout = dragReadoutChk.checked;
-    saveSmartSettings();
-    updateSmartDot();
-    /* If disabled mid-drag, hide any visible pill immediately. */
-    if(!SMART.dragReadout){
-      const dp = document.getElementById('dragReadout');
-      const rp = document.getElementById('resizeReadout');
-      const db = document.getElementById('dropBayConfirm');
-      [dp, rp, db].forEach(el => { if(el){ el.hidden = true; el.setAttribute('aria-hidden', 'true'); } });
     }
   });
 
@@ -11160,8 +11005,6 @@ function bindSmartTools(){
     dragGhost:    { id:'stDragGhost' },
     nameShimmer:  { id:'stNameShimmer',  cls:'vst-name-shimmer',  target:'body' },
     btnMicro:     { id:'stBtnMicro',     cls:'vst-btn-micro',     target:'body' },
-    deckShadow:   { id:'stDeckShadow',   cls:'vst-deck-shadow',   target:'body' },
-    customScroll: { id:'stCustomScroll', cls:'vst-custom-scroll', target:'body' },
   };
   const dcvEl = document.getElementById('cvDECK');
   Object.entries(vstMap).forEach(([key, cfg]) => {
@@ -11315,7 +11158,7 @@ const _ST_PRESETS = {
     description: 'Calm, safety-forward defaults',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, weightGauge:false, dragReadout:true,
+      hoverMotion:true, weightGauge:false,
       kbShortcuts:true, nightWatch:false, soundEnabled:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
@@ -11324,9 +11167,9 @@ const _ST_PRESETS = {
     description: 'Full visual & audio language',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, weightGauge:true, dragReadout:true,
+      hoverMotion:true, weightGauge:true,
       kbShortcuts:true, soundEnabled:true,
-      nameShimmer:true, deckShadow:true,
+      nameShimmer:true,
     },
     soundCats: { basic:true, ambient:true, advanced:true },
   },
@@ -11334,9 +11177,9 @@ const _ST_PRESETS = {
     description: 'Essentials only — quietest possible workspace',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true,
-      dgFade:false, hoverMotion:false, weightGauge:false, dragReadout:false,
+      dgFade:false, hoverMotion:false, weightGauge:false,
       nightWatch:false, soundEnabled:false,
-      nameShimmer:false, deckShadow:true,
+      nameShimmer:false,
       cornerBadges:false, dragGhost:false,
       btnMicro:false,
     },
@@ -11346,9 +11189,8 @@ const _ST_PRESETS = {
     description: 'Dark theme + ambient deck glint + calm feedback',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, dragReadout:true, nightWatch:true,
+      hoverMotion:true, nightWatch:true,
       soundEnabled:true,
-      deckShadow:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
     theme: 'dark',
@@ -11423,12 +11265,11 @@ const _ST_SMART_TO_CHK = {
   locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
-  dragReadout:'stDragReadoutToggle', nightWatch:'stNightWatchToggle',
+  nightWatch:'stNightWatchToggle',
   cornerBadges:'stCornerBadges',
   portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
   nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
-  deckShadow:'stDeckShadow', customScroll:'stCustomScroll',
 };
 function _stSyncAllCheckboxesFromSmart(){
   Object.keys(_ST_SMART_TO_CHK).forEach(key => {
