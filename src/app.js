@@ -2488,10 +2488,6 @@ function renderBlock(cv,cargo){
   b.dataset.loc = cargo.platform || '';
   const _dgList = cargo.dgClasses || [];
   if(_dgList.length > 0) b.dataset.dg = _dgList[0];
-  /* Corner badge text for Visual Smart Tool */
-  if(_dgList.length > 0) b.dataset.cornerBadge = _dgList.join(',');
-  else if(cargo.status === 'BL') b.dataset.cornerBadge = 'BL';
-  else if(cargo.status === 'ROB') b.dataset.cornerBadge = 'ROB';
   /* Premium tactile finish — subtle inset highlight + ambient shadow */
   const shadowCol = isDark(fill) ? 'rgba(0,0,0,.22)' : 'rgba(49,51,44,.10)';
   const hlCol     = isDark(fill) ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.55)';
@@ -10061,7 +10057,6 @@ const SMART_DEFAULTS = {
   emptyHint:   true,   /* V12: Show hint when deck is empty */
   dgOnly:      false,  /* S3: Show DG cargo only */
   /* Visual Smart Tools */
-  cornerBadges:  false, /* Corner badges on cargo blocks */
   portStbd:      true,  /* STBD/PORT labels on deck */
   secWatermark:  true,  /* Section number watermarks */
   dragGhost:     false, /* Ghost trail during drag */
@@ -10999,7 +10994,6 @@ function bindSmartTools(){
 
   /* ── Visual Smart Tools — 13 toggles ── */
   const vstMap = {
-    cornerBadges: { id:'stCornerBadges', cls:'vst-corner-badges', target:'body' },
     portStbd:     { id:'stPortStbd',     cls:'vst-no-portstbd',   target:'dcv', invert:true },
     secWatermark: { id:'stSecWatermark', cls:'vst-no-watermark',  target:'dcv', invert:true },
     dragGhost:    { id:'stDragGhost' },
@@ -11029,8 +11023,6 @@ function bindSmartTools(){
           else el.classList.toggle(cfg.cls, SMART[key]);
         }
       }
-      /* Some toggles need re-render */
-      if(key === 'cornerBadges') renderAll();
     });
   });
 
@@ -11180,7 +11172,7 @@ const _ST_PRESETS = {
       dgFade:false, hoverMotion:false, weightGauge:false,
       nightWatch:false, soundEnabled:false,
       nameShimmer:false,
-      cornerBadges:false, dragGhost:false,
+      dragGhost:false,
       btnMicro:false,
     },
     soundCats: { basic:false, ambient:false, advanced:false },
@@ -11266,7 +11258,6 @@ const _ST_SMART_TO_CHK = {
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
   nightWatch:'stNightWatchToggle',
-  cornerBadges:'stCornerBadges',
   portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
   nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',

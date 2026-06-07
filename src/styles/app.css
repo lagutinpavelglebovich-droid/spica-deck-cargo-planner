@@ -8360,18 +8360,6 @@ body.hdr-tight .save-state-text{ display:none; }
 .st-row-mini .st-row-title{ font-size:11px; }
 .st-row-mini .st-row-desc{ font-size:9px; }
 
-/* 1. Corner badges */
-.vst-corner-badges .cb::after{
-  content:attr(data-corner-badge);
-  position:absolute;top:0;right:0;
-  font-size:7px;font-weight:800;font-family:'Inter',sans-serif;
-  color:#fff;background:rgba(0,0,0,.45);
-  padding:1px 4px;border-radius:0 6px 0 4px;
-  line-height:1.3;letter-spacing:.3px;
-  pointer-events:none;
-}
-.vst-corner-badges .cb:not([data-corner-badge])::after{ display:none; }
-
 /* 5. PORT/STBD labels visibility */
 .side-lbl{ transition:opacity .3s; }
 .vst-no-portstbd .side-lbl{ opacity:0 !important; }
