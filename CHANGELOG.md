@@ -2,6 +2,13 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.6.5] - 2026-06-07
+
+### Performance
+- New **Performance Mode** toggle in Smart Tools (default ON) — disables glass blur and decorative animations to reduce GPU load on integrated graphics. Turn OFF for the full visual experience.
+- Removed the always-on amber ribbon glow in viewer mode and the brand-accent shimmer in the header — both ran continuously even when idle.
+- Dropped resting GPU-layer promotion on the deck-zoom wrapper and stat numerals; inspector blur now applies only while the inspector is open.
+
 ## [3.6.4] - 2026-06-06
 
 ### Fixed
