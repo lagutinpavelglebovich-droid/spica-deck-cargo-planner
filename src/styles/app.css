@@ -4025,7 +4025,6 @@ body[data-wx="clear-night"]          .wx-chip-icon{ color:#1e2a42; } /* mirrors 
    PHASE 29 — SIGNATURE MARITIME INTERACTIONS
 
    1) .brand-name.id-revealing  — once-per-day wordmark breathe-in
-   2) body.night-watch-active   — dark-mode ambient deck specular sweep
    3) .ruler-label-bearing      — vessel-relative chip on the ruler label
    4) body.focus-deck           — chrome dims so deck alone is legible
 
@@ -4044,44 +4043,6 @@ body[data-wx="clear-night"]          .wx-chip-icon{ color:#1e2a42; } /* mirrors 
   0%   { opacity:.28; letter-spacing:-.6px; filter:blur(.6px); }
   60%  { opacity:.92; letter-spacing: .2px; filter:blur(0);    }
   100% { opacity:1;   letter-spacing: 0;    filter:blur(0);    }
-}
-
-/* 2) Night Watch ambient glint — dark-mode only. A diagonal band of
-      light traverses the deck over ~28 s. Very low alpha; no color
-      tint beyond a cool blue. The band is blurred so its edges don't
-      register as a defined shape. Pauses while body[data-dragging="1"]. */
-[data-theme="dark"] body.night-watch-active .deck-outer{
-  position: relative;
-  overflow: hidden;   /* contain the glint band within the deck frame */
-}
-[data-theme="dark"] body.night-watch-active .deck-outer::after{
-  content:'';
-  position: absolute;
-  top:    -40%;
-  left:   -40%;
-  width:  60%;
-  height: 180%;
-  background:
-    linear-gradient(115deg,
-      rgba(180,210,255,0)    0%,
-      rgba(180,210,255,.045) 38%,
-      rgba(220,235,255,.085) 50%,
-      rgba(180,210,255,.045) 62%,
-      rgba(180,210,255,0)    100%);
-  filter: blur(22px);
-  mix-blend-mode: screen;
-  pointer-events: none;
-  z-index: 4;   /* above deck fill, below cargo blocks */
-  animation: nightWatchGlint 28s linear infinite;
-  will-change: transform;
-}
-@keyframes nightWatchGlint{
-  0%   { transform: translate3d(   0%, 0, 0); }
-  100% { transform: translate3d( 260%, 0, 0); }
-}
-/* Pause during drag/resize — any active pointer work on the deck. */
-body[data-dragging="1"] .deck-outer::after{
-  animation-play-state: paused !important;
 }
 
 /* 3) Ruler ship-bearing chip — matches the ruler-label family but
@@ -4160,14 +4121,10 @@ body.focus-deck .dcv{
   filter: none;
 }
 
-/* Reduced motion — reveal shortened to 1ms, glint disabled, bearing
-   untouched (static display), focus-deck transitions collapse. */
+/* Reduced motion — reveal shortened to 1ms, bearing untouched
+   (static display), focus-deck transitions collapse. */
 @media (prefers-reduced-motion: reduce){
   .brand-name.id-revealing{ animation-duration: 1ms !important; }
-  [data-theme="dark"] body.night-watch-active .deck-outer::after{
-    animation: none !important;
-    opacity: 0 !important;
-  }
   body.focus-deck .rcrow,
   body.focus-deck .rc,
   body.focus-deck .menubar,
@@ -15794,11 +15751,6 @@ html[data-perf="reduced"] .wx-scene .wx-lightning{
 
 html[data-perf="reduced"] .brand-name.id-revealing{
   animation-duration:1ms !important;
-}
-
-html[data-perf="reduced"][data-theme="dark"] body.night-watch-active .deck-outer::after{
-  animation:none !important;
-  opacity:0 !important;
 }
 
 html[data-perf="reduced"] .cb.dg-violation,

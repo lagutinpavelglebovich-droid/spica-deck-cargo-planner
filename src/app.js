@@ -2642,9 +2642,6 @@ function renderBlock(cv,cargo){
       const cv=document.getElementById('cvDECK');if(cv)cv.appendChild(_ghostTrail);
     }
     let _dragSegTimer=0;
-    /* Phase 29 — pause Night Watch glint during an active drag. Cleared
-       on mouseup below. No-op when SMART.nightWatch is off. */
-    if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(true);
     const onMove=ev=>{
       if(Math.abs(ev.clientX-sx)>4||Math.abs(ev.clientY-sy)>4)moved=true;
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
@@ -2671,8 +2668,6 @@ function renderBlock(cv,cargo){
       }
       if(_ghostTrail) _ghostTrail.remove();
       clearDragSegOverlay();
-      /* Phase 29 — resume Night Watch glint. */
-      if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
       if(moved){
         /* Phase 4 — Group drag detection. If the cargo being dragged is
            part of an active multi-selection, every other selected cargo
@@ -2868,8 +2863,6 @@ function animateCargoExit(ids){
 function startResize(e,cargo,block,dir){
   const sx=e.clientX,sy=e.clientY,ox=cargo.x,oy=cargo.y,ow=cargo.w,oh=cargo.h;
   block.style.opacity='.55';
-  /* Phase 29 — pause Night Watch glint during an active resize. */
-  if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(true);
   const onMove=ev=>{
     const dx=(ev.clientX-sx)/zoomLevel,dy=(ev.clientY-sy)/zoomLevel;
     let nx=ox,ny=oy,nw=ow,nh=oh;
@@ -2888,8 +2881,6 @@ function startResize(e,cargo,block,dir){
     cargo.length_m = parseFloat((cargo.w / M).toFixed(3));
     cargo.width_m  = parseFloat((cargo.h / (CVH/15)).toFixed(3));
     renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
-    /* Phase 29 — resume Night Watch glint. */
-    if(typeof _nightWatchSetDragging === 'function') _nightWatchSetDragging(false);
   };
   document.addEventListener('mousemove',onMove);
   document.addEventListener('mouseup',onUp);
@@ -10064,10 +10055,6 @@ const SMART_DEFAULTS = {
   btnMicro:      true,  /* Button micro-interactions */
   soundEnabled:  true,  /* Sound effects on/off */
   soundVolume:   70,    /* Master volume 0-100 */
-  /* Phase 29 — Night Watch ambient deck glint (dark mode only). Default
-     OFF so the opt-in is deliberate; no one hits a moving element on
-     first open. Paused during drag/resize via body[data-dragging]. */
-  nightWatch:    false,
   /* Performance Mode — reduces blur + decorative looping animations for
      weak integrated GPUs (Intel HD 630 class). Default ON for the fleet;
      full glass + motion return when toggled OFF. Implemented via
@@ -10800,7 +10787,6 @@ function bindSmartTools(){
   const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
   const emptyHintChk    = document.getElementById('stEmptyHintToggle');
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
-  const nightWatchChk   = document.getElementById('stNightWatchToggle');
   const perfModeChk     = document.getElementById('stPerfModeToggle');
 
   if(!btn || !ov) return;
@@ -10818,9 +10804,7 @@ function bindSmartTools(){
   if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
   if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
-  if(nightWatchChk)   nightWatchChk.checked   = SMART.nightWatch;
   if(perfModeChk)     perfModeChk.checked     = SMART.perfMode;
-  if(typeof _applyNightWatch === 'function') _applyNightWatch();
 
   /* Open / Close */
   const open  = () => ov.classList.add('open');
@@ -10858,13 +10842,6 @@ function bindSmartTools(){
       clearDGViolationHighlights();
       closeDGCheckModal();
     }
-  });
-
-  if(nightWatchChk) nightWatchChk.addEventListener('change', () => {
-    SMART.nightWatch = nightWatchChk.checked;
-    saveSmartSettings();
-    updateSmartDot();
-    _applyNightWatch();
   });
 
   if(perfModeChk) perfModeChk.addEventListener('change', () => {
@@ -11151,7 +11128,7 @@ const _ST_PRESETS = {
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
       hoverMotion:true, weightGauge:false,
-      kbShortcuts:true, nightWatch:false, soundEnabled:true,
+      kbShortcuts:true, soundEnabled:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
   },
@@ -11170,22 +11147,12 @@ const _ST_PRESETS = {
     smart: {
       bounce:true, gridSnap:true, dgSeg:true,
       dgFade:false, hoverMotion:false, weightGauge:false,
-      nightWatch:false, soundEnabled:false,
+      soundEnabled:false,
       nameShimmer:false,
       dragGhost:false,
       btnMicro:false,
     },
     soundCats: { basic:false, ambient:false, advanced:false },
-  },
-  nightwatch: {
-    description: 'Dark theme + ambient deck glint + calm feedback',
-    smart: {
-      bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, nightWatch:true,
-      soundEnabled:true,
-    },
-    soundCats: { basic:true, ambient:true, advanced:false },
-    theme: 'dark',
   },
 };
 
@@ -11223,7 +11190,6 @@ function _stApplyPreset(id){
   _stUpdateAllSectionCounters();
   if(typeof updateSmartDot === 'function') updateSmartDot();
   if(typeof applyDgFade === 'function') applyDgFade();
-  if(typeof _applyNightWatch === 'function') _applyNightWatch();
   if(typeof showToast === 'function'){
     const label = id.charAt(0).toUpperCase() + id.slice(1).replace('w',' W');
     showToast('Preset: ' + label + ' \u00B7 click Undo to revert', 'ok');
@@ -11241,7 +11207,6 @@ function _stApplyReset(){
   _stUpdateAllSectionCounters();
   if(typeof updateSmartDot === 'function') updateSmartDot();
   if(typeof applyDgFade === 'function') applyDgFade();
-  if(typeof _applyNightWatch === 'function') _applyNightWatch();
   if(typeof showToast === 'function'){
     showToast('Reset to Recommended', 'ok');
   }
@@ -11257,7 +11222,6 @@ const _ST_SMART_TO_CHK = {
   locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
-  nightWatch:'stNightWatchToggle',
   portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
   nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
@@ -13184,9 +13148,8 @@ function _wxBind(){
 
 /* ══════════════════════════════════════════════════════════
    PHASE 29 — SIGNATURE MARITIME INTERACTIONS
-   Four quiet, premium moments:
+   Three quiet, premium moments:
      1) Daily identity reveal  — once-per-day wordmark breathe-in
-     2) Night Watch glint      — dark-mode opt-in deck specular sweep
      3) Ruler ship-bearing     — vessel-relative direction on ruler
      4) Focus Deck mode        — command-palette dim-chrome review
    Each is independent, toggleable where appropriate, and respects
@@ -13210,20 +13173,6 @@ function _maybeTriggerDailyReveal(){
       () => brand.classList.remove('id-revealing'),
       { once: true });
   } catch(e){ /* localStorage not available — silently skip */ }
-}
-
-/* 2) Night Watch ambient glint ─────────────────────────── */
-function _applyNightWatch(){
-  /* Class on <body>; CSS targets it only under [data-theme="dark"]. The
-     animation self-pauses via CSS when body[data-dragging="1"] is set
-     by the drag / resize paths (_nightWatchSetDragging helper). */
-  const on = !!SMART.nightWatch;
-  document.body.classList.toggle('night-watch-active', on);
-}
-function _nightWatchSetDragging(isDragging){
-  if(!SMART.nightWatch) return;
-  if(isDragging) document.body.setAttribute('data-dragging', '1');
-  else           document.body.removeAttribute('data-dragging');
 }
 
 /* 3) Ruler ship-bearing ────────────────────────────────── */

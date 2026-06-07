@@ -1349,8 +1349,8 @@
     <div class="st-body">
 
       <!-- Phase 30A — search + presets bar. Live filter by title/desc
-           and four named presets (Operational / Premium / Minimal /
-           Night Watch) plus Reset to Recommended. -->
+           and three named presets (Operational / Premium / Minimal)
+           plus Reset to Recommended. -->
       <div class="st-search-wrap">
         <input type="text" class="st-search" id="stSearchInput" placeholder="Search Smart Tools…" autocomplete="off" spellcheck="false" aria-label="Search Smart Tools">
         <button type="button" class="st-search-clear" id="stSearchClear" title="Clear search" aria-label="Clear search" hidden>×</button>
@@ -1359,7 +1359,6 @@
         <button type="button" class="st-preset" data-preset="operational" title="Operational — calm, safety-forward defaults">Operational</button>
         <button type="button" class="st-preset" data-preset="premium"     title="Premium — full visual & audio language">Premium</button>
         <button type="button" class="st-preset" data-preset="minimal"     title="Minimal — essentials only">Minimal</button>
-        <button type="button" class="st-preset" data-preset="nightwatch"  title="Night Watch — dark ambient + calm feedback">Night Watch</button>
         <button type="button" class="st-preset st-preset-reset" data-preset="reset" title="Reset to Recommended">Reset</button>
       </div>
       <div class="st-empty-search" id="stEmptySearch" hidden>No matching settings.</div>
@@ -1443,28 +1442,6 @@
         </div>
         <label class="st-toggle" title="Smart Grid Snap">
           <input type="checkbox" id="stGridSnapToggle">
-          <div class="st-track"><div class="st-thumb"></div></div>
-        </label>
-      </div>
-
-      <!-- Phase 29 — Night Watch. Dark-mode-only ambient deck glint. -->
-      <div class="st-row">
-        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M12 3.5a5 5 0 1 0 .5 6.5A4 4 0 0 1 12 3.5z" stroke="var(--acc)" stroke-width="1.3" stroke-linejoin="round"/>
-            <circle cx="4" cy="3" r=".8" fill="var(--acc)" opacity=".6"/>
-            <circle cx="2.5" cy="6" r=".6" fill="var(--acc)" opacity=".4"/>
-          </svg>
-        </div>
-        <div class="st-row-body">
-          <div class="st-row-title">
-            Night Watch
-            <span class="feat-badge" data-since="v2.4.0" data-tooltip="Added in v2.4.0">NEW</span>
-          </div>
-          <div class="st-row-desc">Slow, very subtle ambient glint across the deck in dark theme. Pauses automatically while dragging or resizing.</div>
-        </div>
-        <label class="st-toggle" title="Night Watch (dark mode only)">
-          <input type="checkbox" id="stNightWatchToggle">
           <div class="st-track"><div class="st-thumb"></div></div>
         </label>
       </div>
