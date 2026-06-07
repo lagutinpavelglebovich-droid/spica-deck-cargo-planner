@@ -8347,9 +8347,9 @@ body.hdr-tight .save-state-text{ display:none; }
 }
 
 /* 11. Button micro-interactions */
-.vst-btn-micro button:active:not(:disabled),
-.vst-btn-micro .menu-action:active,
-.vst-btn-micro .sb:active{
+button:active:not(:disabled),
+.menu-action:active,
+.sb:active{
   transform:translateY(1px) !important;
   box-shadow:none !important;
 }
@@ -15779,9 +15779,7 @@ html[data-perf="reduced"] .cb.cb-dg-resolved{
   animation:none !important;
 }
 
-/* ── Neutralize hover-scale + stat-numeral transitions regardless of
-      their individual toggles. The hover-scale lives in a JS-injected
-      <style id="stHoverMotionStyle">; the !important overrides it. */
+/* ── Neutralize the .cb:hover lift transform under reduced-performance mode. */
 html[data-perf="reduced"] .cb:hover{
   transform:none !important;
 }

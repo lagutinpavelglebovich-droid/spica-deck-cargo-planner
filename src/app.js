@@ -10040,7 +10040,6 @@ const SMART_DEFAULTS = {
   bounce:      true,   /* Smart Bounce / Magnetic Snap */
   dgFade:      true,   /* DG Badge fade on hover */
   dgSeg:       true,   /* DG Auto-Segregation Check — safety critical, default ON */
-  hoverMotion: true,   /* Cargo hover lift/scale animation */
   gridSnap:    true,   /* Smart Grid Snap — align on drop to neighbours / bay lines */
   kbShortcuts: true,   /* Keyboard Shortcuts System */
   locHighlight:false,  /* Highlight by Platform — dim non-selected platform cargo */
@@ -10052,7 +10051,6 @@ const SMART_DEFAULTS = {
   secWatermark:  true,  /* Section number watermarks */
   dragGhost:     false, /* Ghost trail during drag */
   nameShimmer:   false, /* Vessel name shimmer */
-  btnMicro:      true,  /* Button micro-interactions */
   soundEnabled:  true,  /* Sound effects on/off */
   soundVolume:   70,    /* Master volume 0-100 */
   /* Performance Mode — reduces blur + decorative looping animations for
@@ -10093,20 +10091,6 @@ function applyDgFade(){
 function applyPerfMode(){
   if(SMART.perfMode) document.documentElement.setAttribute('data-perf', 'reduced');
   else               document.documentElement.removeAttribute('data-perf');
-}
-
-function applyHoverMotion(){
-  let styleEl = document.getElementById('stHoverMotionStyle');
-  if(!styleEl){
-    styleEl = document.createElement('style');
-    styleEl.id = 'stHoverMotionStyle';
-    document.head.appendChild(styleEl);
-  }
-  styleEl.textContent = SMART.hoverMotion
-    /* ON — original lift + scale */
-    ? '.cb:hover{transform:translateY(-2px) scale(1.01);}'
-    /* OFF — no transform, keep only shadow + z-index from base .cb:hover rule */
-    : '.cb:hover{transform:none;}';
 }
 
 /* Update the gear button dot (shows if any smart feature is active) */
@@ -10763,7 +10747,6 @@ function _autoAlignBindPreviewModal(){
 function bindSmartTools(){
   loadSmartSettings();
   applyDgFade();
-  applyHoverMotion();
   applyPerfMode();
   /* S3: Apply DG-only mode from persisted settings */
   const _dcvInit = document.getElementById('cvDECK');
@@ -10777,7 +10760,6 @@ function bindSmartTools(){
   const bounceChk       = document.getElementById('stBounceToggle');
   const dgFadeChk       = document.getElementById('stDgFadeToggle');
   const dgSegChk        = document.getElementById('stDgSegToggle');
-  const hoverMotionChk  = document.getElementById('stHoverMotionToggle');
   const gridSnapChk     = document.getElementById('stGridSnapToggle');
   const kbShortcutsChk  = document.getElementById('stKbShortcutsToggle');
   const locHighlightChk = document.getElementById('stLocHighlightToggle');
@@ -10795,7 +10777,6 @@ function bindSmartTools(){
   if(bounceChk)      bounceChk.checked      = SMART.bounce;
   if(dgFadeChk)      dgFadeChk.checked      = SMART.dgFade;
   if(dgSegChk)       dgSegChk.checked       = SMART.dgSeg;
-  if(hoverMotionChk) hoverMotionChk.checked = SMART.hoverMotion;
   if(gridSnapChk)    gridSnapChk.checked    = SMART.gridSnap;
   if(kbShortcutsChk) kbShortcutsChk.checked = SMART.kbShortcuts;
   if(locHighlightChk) locHighlightChk.checked = SMART.locHighlight;
@@ -10849,13 +10830,6 @@ function bindSmartTools(){
     saveSmartSettings();
     updateSmartDot();
     applyPerfMode();
-  });
-
-  if(hoverMotionChk) hoverMotionChk.addEventListener('change', () => {
-    SMART.hoverMotion = hoverMotionChk.checked;
-    saveSmartSettings();
-    updateSmartDot();
-    applyHoverMotion();
   });
 
   if(gridSnapChk) gridSnapChk.addEventListener('change', () => {
@@ -10975,7 +10949,6 @@ function bindSmartTools(){
     secWatermark: { id:'stSecWatermark', cls:'vst-no-watermark',  target:'dcv', invert:true },
     dragGhost:    { id:'stDragGhost' },
     nameShimmer:  { id:'stNameShimmer',  cls:'vst-name-shimmer',  target:'body' },
-    btnMicro:     { id:'stBtnMicro',     cls:'vst-btn-micro',     target:'body' },
   };
   const dcvEl = document.getElementById('cvDECK');
   Object.entries(vstMap).forEach(([key, cfg]) => {
@@ -11127,7 +11100,7 @@ const _ST_PRESETS = {
     description: 'Calm, safety-forward defaults',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, weightGauge:false,
+      weightGauge:false,
       kbShortcuts:true, soundEnabled:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
@@ -11136,7 +11109,7 @@ const _ST_PRESETS = {
     description: 'Full visual & audio language',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      hoverMotion:true, weightGauge:true,
+      weightGauge:true,
       kbShortcuts:true, soundEnabled:true,
       nameShimmer:true,
     },
@@ -11146,11 +11119,10 @@ const _ST_PRESETS = {
     description: 'Essentials only — quietest possible workspace',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true,
-      dgFade:false, hoverMotion:false, weightGauge:false,
+      dgFade:false, weightGauge:false,
       soundEnabled:false,
       nameShimmer:false,
       dragGhost:false,
-      btnMicro:false,
     },
     soundCats: { basic:false, ambient:false, advanced:false },
   },
@@ -11217,14 +11189,14 @@ function _stApplyReset(){
 /* Map SMART keys → Smart Tools checkbox IDs for automatic re-sync. */
 const _ST_SMART_TO_CHK = {
   bounce:'stBounceToggle', dgFade:'stDgFadeToggle',
-  dgSeg:'stDgSegToggle', hoverMotion:'stHoverMotionToggle',
+  dgSeg:'stDgSegToggle',
   gridSnap:'stGridSnapToggle', kbShortcuts:'stKbShortcutsToggle',
   locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
   portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
-  nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
+  nameShimmer:'stNameShimmer',
 };
 function _stSyncAllCheckboxesFromSmart(){
   Object.keys(_ST_SMART_TO_CHK).forEach(key => {
@@ -11280,7 +11252,6 @@ const LANG = {
     st_bounce_desc: 'When cargo overlaps after drag — the block smoothly bounces to the nearest free position instead of staying in overlap.',
     st_dgfade_desc: 'On hover over a cargo block — DG and HL badges fade to show the CCU/ID underneath.',
     st_dgseg_desc:  'When a DG item is placed or edited — automatically checks compatibility against the IMDG segregation matrix. Violations are flagged immediately with pair details.',
-    st_hovermotion_desc: 'When hovering over a cargo block — it gently lifts and scales up. Disable for a fully static, calm interface.',
     st_gridsnap_desc: 'On drop — gently snaps cargo to the nearest neighbour edge, bay line, or deck boundary within ~0.5 m. One-time assist: no sticky behaviour on subsequent moves.',
 
     /* Manifest Match info modal */
@@ -11358,7 +11329,6 @@ const LANG = {
     st_bounce_desc: 'При перекрытии грузов после drag — контейнер мягко отталкивается в ближайшую свободную позицию рядом, а не остаётся в overlap.',
     st_dgfade_desc: 'При наведении на грузовой блок — DG и HL бейджи становятся полупрозрачными, чтобы был виден CCU/ID.',
     st_dgseg_desc:  'При размещении или редактировании DG груза — автоматическая проверка совместимости по матрице IMDG. Нарушения сегрегации отображаются немедленно.',
-    st_hovermotion_desc: 'При наведении на грузовой блок — он плавно приподнимается и немного увеличивается. Выключите для полностью статичного интерфейса.',
     st_gridsnap_desc: 'При сбросе — контейнер аккуратно выравнивается по ближайшему соседу, границе бэя или палубы в радиусе ~0.5 м. Одноразовый assist: при следующем движении прилипания нет.',
 
     mi_sub:           'ASCO список vs реальная палуба',
@@ -11431,7 +11401,6 @@ const LANG = {
     st_bounce_desc: 'Якщо вантажі перекриваються після drag — контейнер плавно відштовхується до найближчої вільної позиції, а не залишається в overlap.',
     st_dgfade_desc: 'При наведенні на вантажний блок — DG та HL бейджі стають напівпрозорими, щоб був видимий CCU/ID.',
     st_dgseg_desc:  'При розміщенні або редагуванні DG вантажу — автоматична перевірка сумісності за матрицею IMDG. Порушення сегрегації відображаються негайно.',
-    st_hovermotion_desc: 'При наведенні на вантажний блок — він плавно піднімається та трохи збільшується. Вимкніть для повністю статичного інтерфейсу.',
     st_gridsnap_desc: 'При скиданні — вантаж акуратно вирівнюється по найближчому сусіду, межі бею або палуби в радіусі ~0.5 м. Одноразовий assist: при наступному русі прилипання немає.',
 
     mi_sub:           'ASCO список vs реальна палуба',
