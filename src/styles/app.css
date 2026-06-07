@@ -8481,18 +8481,6 @@ body.hdr-tight .save-state-text{ display:none; }
 }
 .vst-corner-badges .cb:not([data-corner-badge])::after{ display:none; }
 
-/* 3. Bay dashed lines */
-.vst-bay-dashes .bay-line{
-  background:none !important;
-  border-left:2px dashed rgba(200,170,40,.55) !important;
-  width:0 !important;
-}
-
-/* 4. Hover glow */
-.vst-hover-glow .cb:hover{
-  box-shadow:0 0 16px 4px var(--lc, rgba(72,96,131,.3)), 0 3px 10px rgba(49,51,44,.10) !important;
-}
-
 /* 5. PORT/STBD labels visibility */
 .side-lbl{ transition:opacity .3s; }
 .vst-no-portstbd .side-lbl{ opacity:0 !important; }
@@ -8507,11 +8495,6 @@ body.hdr-tight .save-state-text{ display:none; }
   border:1.5px dashed rgba(72,96,131,.3);border-radius:7px;
   background:rgba(72,96,131,.04);
   transition:opacity .3s;
-}
-
-/* 8. Smooth colour transitions */
-.vst-smooth-color .cb{
-  transition:background .4s ease, border-color .4s ease, box-shadow .3s !important;
 }
 
 /* 10. Name shimmer */

@@ -10197,12 +10197,9 @@ const SMART_DEFAULTS = {
   dgOnly:      false,  /* S3: Show DG cargo only */
   /* Visual Smart Tools */
   cornerBadges:  false, /* Corner badges on cargo blocks */
-  bayDashes:     false, /* Yellow dashed bay dividers */
-  hoverGlow:     false, /* Cargo block hover glow */
   portStbd:      true,  /* STBD/PORT labels on deck */
   secWatermark:  true,  /* Section number watermarks */
   dragGhost:     false, /* Ghost trail during drag */
-  smoothColor:   true,  /* Smooth colour transitions */
   nameShimmer:   false, /* Vessel name shimmer */
   btnMicro:      true,  /* Button micro-interactions */
   deckShadow:    true,  /* Deck edge shadow */
@@ -11158,12 +11155,9 @@ function bindSmartTools(){
   /* ── Visual Smart Tools — 13 toggles ── */
   const vstMap = {
     cornerBadges: { id:'stCornerBadges', cls:'vst-corner-badges', target:'body' },
-    bayDashes:    { id:'stBayDashes',    cls:'vst-bay-dashes',    target:'dcv' },
-    hoverGlow:    { id:'stHoverGlow',    cls:'vst-hover-glow',    target:'dcv' },
     portStbd:     { id:'stPortStbd',     cls:'vst-no-portstbd',   target:'dcv', invert:true },
     secWatermark: { id:'stSecWatermark', cls:'vst-no-watermark',  target:'dcv', invert:true },
     dragGhost:    { id:'stDragGhost' },
-    smoothColor:  { id:'stSmoothColor',  cls:'vst-smooth-color',  target:'dcv' },
     nameShimmer:  { id:'stNameShimmer',  cls:'vst-name-shimmer',  target:'body' },
     btnMicro:     { id:'stBtnMicro',     cls:'vst-btn-micro',     target:'body' },
     deckShadow:   { id:'stDeckShadow',   cls:'vst-deck-shadow',   target:'body' },
@@ -11332,7 +11326,7 @@ const _ST_PRESETS = {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
       hoverMotion:true, weightGauge:true, dragReadout:true,
       kbShortcuts:true, soundEnabled:true,
-      hoverGlow:true, nameShimmer:true, smoothColor:true, deckShadow:true,
+      nameShimmer:true, deckShadow:true,
     },
     soundCats: { basic:true, ambient:true, advanced:true },
   },
@@ -11342,8 +11336,8 @@ const _ST_PRESETS = {
       bounce:true, gridSnap:true, dgSeg:true,
       dgFade:false, hoverMotion:false, weightGauge:false, dragReadout:false,
       nightWatch:false, soundEnabled:false,
-      hoverGlow:false, nameShimmer:false, smoothColor:false, deckShadow:true,
-      cornerBadges:false, bayDashes:false, dragGhost:false,
+      nameShimmer:false, deckShadow:true,
+      cornerBadges:false, dragGhost:false,
       btnMicro:false,
     },
     soundCats: { basic:false, ambient:false, advanced:false },
@@ -11354,7 +11348,7 @@ const _ST_PRESETS = {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
       hoverMotion:true, dragReadout:true, nightWatch:true,
       soundEnabled:true,
-      deckShadow:true, smoothColor:true, hoverGlow:false,
+      deckShadow:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
     theme: 'dark',
@@ -11431,9 +11425,8 @@ const _ST_SMART_TO_CHK = {
   soundEnabled:'stSoundToggle',
   dragReadout:'stDragReadoutToggle', nightWatch:'stNightWatchToggle',
   cornerBadges:'stCornerBadges',
-  bayDashes:'stBayDashes', hoverGlow:'stHoverGlow', portStbd:'stPortStbd',
+  portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
-  smoothColor:'stSmoothColor',
   nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
   deckShadow:'stDeckShadow', customScroll:'stCustomScroll',
 };
