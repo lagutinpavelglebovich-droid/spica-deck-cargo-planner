@@ -8800,7 +8800,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
    Enhanced from 0.15s to 0.25s ease for smoother feel. */
 .deck-zoom-wrap{
   transition:transform .25s cubic-bezier(.25,.46,.45,.94) !important;
-  will-change:transform;
 }
 /* Prevent fullscreen flicker during drag — promote layers */
 .dcv{ contain:layout style; }
@@ -9847,7 +9846,6 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
   margin-top: 3px;
   position: relative;
   overflow: visible !important;
-  will-change: transform, filter, box-shadow;
   transition:
     transform .30s cubic-bezier(.32,.72,0,1),
     filter .30s ease,
@@ -13224,8 +13222,6 @@ html body #ov .mdl-priority-toggle{
   background:
     linear-gradient(180deg, rgba(255,255,255,.58) 0%, rgba(255,252,242,.42) 100%),
     rgba(253,248,232,.84);
-  backdrop-filter:blur(20px) saturate(1.10);
-  -webkit-backdrop-filter:blur(20px) saturate(1.10);
   box-shadow:
     -6px 0 20px rgba(60,45,25,.10),
     -18px 0 48px rgba(60,45,25,.06);
@@ -13233,13 +13229,15 @@ html body #ov .mdl-priority-toggle{
   transition:transform var(--dur-medium) var(--ease);
   overflow:hidden;
   pointer-events:none;
-  /* GPU hint — the rail is composited separately, so sliding is smooth
-     even when the deck area reflows simultaneously. */
-  will-change:transform;
 }
 .insp.open{
   transform:translateX(0);
   pointer-events:auto;
+  backdrop-filter:blur(20px) saturate(1.10);
+  -webkit-backdrop-filter:blur(20px) saturate(1.10);
+  /* GPU hint — the rail is composited separately, so sliding is smooth
+     even when the deck area reflows simultaneously. */
+  will-change:transform;
 }
 [data-theme="dark"] .insp{
   border-left-color:rgba(220,190,140,.12);
