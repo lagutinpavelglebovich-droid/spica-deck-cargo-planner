@@ -10038,7 +10038,7 @@ function bindManifestMatch(){
 
 const SMART_DEFAULTS = {
   bounce:      true,   /* Smart Bounce / Magnetic Snap */
-  dgFade:      true,   /* DG Badge fade on hover */
+  dgFade:      false,  /* DG Badge fade on hover */
   dgSeg:       true,   /* DG Auto-Segregation Check — safety critical, default ON */
   gridSnap:    true,   /* Smart Grid Snap — align on drop to neighbours / bay lines */
   kbShortcuts: true,   /* Keyboard Shortcuts System */
