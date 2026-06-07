@@ -10180,14 +10180,12 @@ function bindManifestMatch(){
    
    Global settings object — all smart features read from here.
    Persisted to localStorage key 'spicaTide_smartTools'.
-   
-   Each feature is opt-in (default on for Bounce, DG fade;
-   manifest matching defaults off since it needs ASCO data).
+
+   Each feature is opt-in (default on for Bounce, DG fade).
 ════════════════════════════════════════════════════════════ */
 
 const SMART_DEFAULTS = {
   bounce:      true,   /* Smart Bounce / Magnetic Snap */
-  match:       false,  /* ASCO Manifest Matching */
   dgFade:      true,   /* DG Badge fade on hover */
   dgSeg:       true,   /* DG Auto-Segregation Check — safety critical, default ON */
   hoverMotion: true,   /* Cargo hover lift/scale animation */
@@ -10199,14 +10197,12 @@ const SMART_DEFAULTS = {
   dgOnly:      false,  /* S3: Show DG cargo only */
   /* Visual Smart Tools */
   cornerBadges:  false, /* Corner badges on cargo blocks */
-  animCounter:   false, /* Animated import counter */
   bayDashes:     false, /* Yellow dashed bay dividers */
   hoverGlow:     false, /* Cargo block hover glow */
   portStbd:      true,  /* STBD/PORT labels on deck */
   secWatermark:  true,  /* Section number watermarks */
   dragGhost:     false, /* Ghost trail during drag */
   smoothColor:   true,  /* Smooth colour transitions */
-  statusIcons:   false, /* Status bar SVG icons */
   nameShimmer:   false, /* Vessel name shimmer */
   btnMicro:      true,  /* Button micro-interactions */
   deckShadow:    true,  /* Deck edge shadow */
@@ -10940,7 +10936,6 @@ function bindSmartTools(){
   const backdrop   = document.getElementById('stBackdrop');
   const closeBtn   = document.getElementById('stClose');
   const bounceChk       = document.getElementById('stBounceToggle');
-  const matchChk        = document.getElementById('stMatchToggle');
   const dgFadeChk       = document.getElementById('stDgFadeToggle');
   const dgSegChk        = document.getElementById('stDgSegToggle');
   const hoverMotionChk  = document.getElementById('stHoverMotionToggle');
@@ -10961,7 +10956,6 @@ function bindSmartTools(){
 
   /* Set initial toggle states from loaded settings */
   if(bounceChk)      bounceChk.checked      = SMART.bounce;
-  if(matchChk)       matchChk.checked       = SMART.match;
   if(dgFadeChk)      dgFadeChk.checked      = SMART.dgFade;
   if(dgSegChk)       dgSegChk.checked       = SMART.dgSeg;
   if(hoverMotionChk) hoverMotionChk.checked = SMART.hoverMotion;
@@ -10991,12 +10985,6 @@ function bindSmartTools(){
   /* Toggle handlers — update SMART object, persist, apply side-effects */
   if(bounceChk) bounceChk.addEventListener('change', () => {
     SMART.bounce = bounceChk.checked;
-    saveSmartSettings();
-    updateSmartDot();
-  });
-
-  if(matchChk) matchChk.addEventListener('change', () => {
-    SMART.match = matchChk.checked;
     saveSmartSettings();
     updateSmartDot();
   });
@@ -11180,8 +11168,6 @@ function bindSmartTools(){
     btnMicro:     { id:'stBtnMicro',     cls:'vst-btn-micro',     target:'body' },
     deckShadow:   { id:'stDeckShadow',   cls:'vst-deck-shadow',   target:'body' },
     customScroll: { id:'stCustomScroll', cls:'vst-custom-scroll', target:'body' },
-    animCounter:  { id:'stAnimCounter' },
-    statusIcons:  { id:'stStatusIcons' },
   };
   const dcvEl = document.getElementById('cvDECK');
   Object.entries(vstMap).forEach(([key, cfg]) => {
@@ -11357,8 +11343,8 @@ const _ST_PRESETS = {
       dgFade:false, hoverMotion:false, weightGauge:false, dragReadout:false,
       nightWatch:false, soundEnabled:false,
       hoverGlow:false, nameShimmer:false, smoothColor:false, deckShadow:true,
-      cornerBadges:false, animCounter:false, bayDashes:false, dragGhost:false,
-      statusIcons:false, btnMicro:false,
+      cornerBadges:false, bayDashes:false, dragGhost:false,
+      btnMicro:false,
     },
     soundCats: { basic:false, ambient:false, advanced:false },
   },
@@ -11437,17 +11423,17 @@ function _stApplyReset(){
 }
 /* Map SMART keys → Smart Tools checkbox IDs for automatic re-sync. */
 const _ST_SMART_TO_CHK = {
-  bounce:'stBounceToggle', match:'stMatchToggle', dgFade:'stDgFadeToggle',
+  bounce:'stBounceToggle', dgFade:'stDgFadeToggle',
   dgSeg:'stDgSegToggle', hoverMotion:'stHoverMotionToggle',
   gridSnap:'stGridSnapToggle', kbShortcuts:'stKbShortcutsToggle',
   locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
   dragReadout:'stDragReadoutToggle', nightWatch:'stNightWatchToggle',
-  cornerBadges:'stCornerBadges', animCounter:'stAnimCounter',
+  cornerBadges:'stCornerBadges',
   bayDashes:'stBayDashes', hoverGlow:'stHoverGlow', portStbd:'stPortStbd',
   secWatermark:'stSecWatermark', dragGhost:'stDragGhost',
-  smoothColor:'stSmoothColor', statusIcons:'stStatusIcons',
+  smoothColor:'stSmoothColor',
   nameShimmer:'stNameShimmer', btnMicro:'stBtnMicro',
   deckShadow:'stDeckShadow', customScroll:'stCustomScroll',
 };
@@ -11498,13 +11484,11 @@ const LANG = {
 
     /* Smart Tools sections */
     st_sec_placement: 'Cargo Placement',
-    st_sec_library:   'Cargo Library',
     st_sec_visual:    'Visual',
     st_persist_note:  'Settings are saved automatically and restored on next open.',
 
     /* Smart Tools descriptions */
     st_bounce_desc: 'When cargo overlaps after drag — the block smoothly bounces to the nearest free position instead of staying in overlap.',
-    st_match_desc:  'Shows discrepancies between the imported ASCO list and what is actually placed on deck.',
     st_dgfade_desc: 'On hover over a cargo block — DG and HL badges fade to show the CCU/ID underneath.',
     st_dgseg_desc:  'When a DG item is placed or edited — automatically checks compatibility against the IMDG segregation matrix. Violations are flagged immediately with pair details.',
     st_hovermotion_desc: 'When hovering over a cargo block — it gently lifts and scales up. Disable for a fully static, calm interface.',
@@ -11579,12 +11563,10 @@ const LANG = {
     rmk_hint:   'Заметки отображаются в PDF-экспорте под планом палубы и в Excel-манифесте.',
 
     st_sec_placement: 'Размещение груза',
-    st_sec_library:   'Cargo Library',
     st_sec_visual:    'Отображение',
     st_persist_note:  'Настройки сохраняются автоматически и восстанавливаются при следующем открытии.',
 
     st_bounce_desc: 'При перекрытии грузов после drag — контейнер мягко отталкивается в ближайшую свободную позицию рядом, а не остаётся в overlap.',
-    st_match_desc:  'Показывает расхождения между импортированным ASCO списком и реальным расположением груза на палубе.',
     st_dgfade_desc: 'При наведении на грузовой блок — DG и HL бейджи становятся полупрозрачными, чтобы был виден CCU/ID.',
     st_dgseg_desc:  'При размещении или редактировании DG груза — автоматическая проверка совместимости по матрице IMDG. Нарушения сегрегации отображаются немедленно.',
     st_hovermotion_desc: 'При наведении на грузовой блок — он плавно приподнимается и немного увеличивается. Выключите для полностью статичного интерфейса.',
@@ -11654,12 +11636,10 @@ const LANG = {
     rmk_hint:   'Нотатки відображаються в PDF-експорті під планом палуби та в Excel-маніфесті.',
 
     st_sec_placement: 'Розміщення вантажу',
-    st_sec_library:   'Cargo Library',
     st_sec_visual:    'Відображення',
     st_persist_note:  'Налаштування зберігаються автоматично та відновлюються при наступному відкритті.',
 
     st_bounce_desc: 'Якщо вантажі перекриваються після drag — контейнер плавно відштовхується до найближчої вільної позиції, а не залишається в overlap.',
-    st_match_desc:  'Показує розбіжності між імпортованим ASCO списком та реальним розташуванням вантажу на палубі.',
     st_dgfade_desc: 'При наведенні на вантажний блок — DG та HL бейджі стають напівпрозорими, щоб був видимий CCU/ID.',
     st_dgseg_desc:  'При розміщенні або редагуванні DG вантажу — автоматична перевірка сумісності за матрицею IMDG. Порушення сегрегації відображаються негайно.',
     st_hovermotion_desc: 'При наведенні на вантажний блок — він плавно піднімається та трохи збільшується. Вимкніть для повністю статичного інтерфейсу.',
