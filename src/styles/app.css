@@ -15860,3 +15860,137 @@ body.cp-panel-open .deck-area{ margin-right:0; }
   background:rgba(255,255,255,.16);
   border-radius:3px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PERFORMANCE MODE  —  html[data-perf="reduced"]
+   Wired to Smart Tools → Performance Mode (SMART.perfMode, default ON).
+   Removes backdrop-filter blur from always-on glass surfaces (raising
+   base alpha to keep legibility over the workspace) and disables
+   decorative looping/infinite animations. Functional transitions
+   (inspector slide-in/out, modal in/out, deck zoom, section collapse)
+   are intentionally untouched.
+═══════════════════════════════════════════════════════════════════════ */
+
+/* ── No backdrop blur on always-on glass surfaces ─────────────────── */
+html[data-perf="reduced"] .menubar{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  background:rgba(255,255,255,.86) !important;
+}
+html[data-perf="reduced"][data-theme="dark"] .menubar{
+  background:rgba(24,32,46,.90) !important;
+}
+
+html[data-perf="reduced"] .shell-ribbon::before{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+html[data-perf="reduced"] .rc-lifts,
+html[data-perf="reduced"] .rc-ops,
+html[data-perf="reduced"] .rct-group.rct-utility,
+html[data-perf="reduced"] .rct-group.rct-card2,
+html[data-perf="reduced"] .loc-card{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.00) 60%, rgba(0,0,0,.020) 100%),
+    rgba(255,255,255,.88) !important;
+}
+html[data-perf="reduced"][data-theme="dark"] .rc-lifts,
+html[data-perf="reduced"][data-theme="dark"] .rc-ops,
+html[data-perf="reduced"][data-theme="dark"] .loc-card{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.00) 60%, rgba(0,0,0,.08) 100%),
+    rgba(16,24,40,.88) !important;
+}
+
+html[data-perf="reduced"] .bottom-panel,
+html[data-perf="reduced"] .zoom-bar{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,.06) 45%, rgba(255,255,255,.14) 100%),
+    rgba(255,255,255,.86) !important;
+}
+html[data-perf="reduced"][data-theme="dark"] .bottom-panel,
+html[data-perf="reduced"][data-theme="dark"] .zoom-bar{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.02) 45%, rgba(255,255,255,.04) 100%),
+    rgba(24,32,46,.90) !important;
+}
+
+html[data-perf="reduced"] .insp.open{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+html[data-perf="reduced"] .cp{
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  background:rgba(32,36,44,.92) !important;
+}
+
+/* ── Disable decorative / infinite animations ─────────────────────── */
+html[data-perf="reduced"] .wx-scene .wx-cloud-a,
+html[data-perf="reduced"] .wx-scene .wx-cloud-b,
+html[data-perf="reduced"] .wx-scene .wx-cloud-c,
+html[data-perf="reduced"] .wx-scene .wx-cloud-d,
+html[data-perf="reduced"] .wx-scene .wx-stars,
+html[data-perf="reduced"] .wx-scene .wx-fog,
+html[data-perf="reduced"] .wx-scene .wx-sun,
+html[data-perf="reduced"] .wx-scene .wx-moon,
+html[data-perf="reduced"] .wx-scene .wx-precip::before,
+html[data-perf="reduced"] .wx-scene .wx-precip::after,
+html[data-perf="reduced"] .wx-scene .wx-lightning{
+  animation:none !important;
+}
+
+html[data-perf="reduced"] .brand-name.id-revealing{
+  animation-duration:1ms !important;
+}
+
+html[data-perf="reduced"][data-theme="dark"] body.night-watch-active .deck-outer::after{
+  animation:none !important;
+  opacity:0 !important;
+}
+
+html[data-perf="reduced"] .cb.dg-violation,
+html[data-perf="reduced"] .cb.dg-violation-warn{
+  animation:none !important;
+}
+
+html[data-perf="reduced"] .empty-deck-hint .edh-art{
+  animation:none !important;
+}
+
+html[data-perf="reduced"] .save-dot--unsaved,
+html[data-perf="reduced"] .save-dot--saving .save-dot__spinner,
+html[data-perf="reduced"] .save-dot--autosaved,
+html[data-perf="reduced"] .save-dot--autosaved .save-dot__check{
+  animation:none !important;
+}
+
+html[data-perf="reduced"] .cb.cb-snap-pulse,
+html[data-perf="reduced"] .cb.cb-status-pulse,
+html[data-perf="reduced"] .cb.cb-priority-pulse,
+html[data-perf="reduced"] .cb.cb-undo-pulse,
+html[data-perf="reduced"] .cb.cb-rotate-pulse,
+html[data-perf="reduced"] .cb.cb-duplicate-pulse,
+html[data-perf="reduced"] .cb.cb-dg-resolved{
+  animation:none !important;
+}
+
+/* ── Neutralize hover-scale + stat-numeral transitions regardless of
+      their individual toggles. The hover-scale lives in a JS-injected
+      <style id="stHoverMotionStyle">; the !important overrides it. */
+html[data-perf="reduced"] .cb:hover{
+  transform:none !important;
+}
+
+html[data-perf="reduced"] .rc-lifts .gst-val.load,
+html[data-perf="reduced"] .rc-lifts .gst-val.bl,
+html[data-perf="reduced"] .rc-lifts .gst-val.rob,
+html[data-perf="reduced"] .rc-lifts .gst-val.tr{
+  transition:none !important;
+}

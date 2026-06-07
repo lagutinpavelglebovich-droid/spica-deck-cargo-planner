@@ -10220,6 +10220,11 @@ const SMART_DEFAULTS = {
      OFF so the opt-in is deliberate; no one hits a moving element on
      first open. Paused during drag/resize via body[data-dragging]. */
   nightWatch:    false,
+  /* Performance Mode — reduces blur + decorative looping animations for
+     weak integrated GPUs (Intel HD 630 class). Default ON for the fleet;
+     full glass + motion return when toggled OFF. Implemented via
+     html[data-perf="reduced"] (see app.css block at end of file). */
+  perfMode:      true,
 };
 
 let SMART = { ...SMART_DEFAULTS };
@@ -10246,6 +10251,13 @@ function applyDgFade(){
   styleEl.textContent = SMART.dgFade
     ? '.cb:hover .cb-dg-badge,.cb:hover .cb-hl-badge,.cb:hover .cb-pri-badge{opacity:.12;}'
     : '.cb:hover .cb-dg-badge,.cb:hover .cb-hl-badge,.cb:hover .cb-pri-badge{opacity:1;}';
+}
+
+/* Apply Performance Mode: set/remove html[data-perf="reduced"]. The CSS
+   block at the end of app.css scopes its overrides under that attribute. */
+function applyPerfMode(){
+  if(SMART.perfMode) document.documentElement.setAttribute('data-perf', 'reduced');
+  else               document.documentElement.removeAttribute('data-perf');
 }
 
 function applyHoverMotion(){
@@ -10917,6 +10929,7 @@ function bindSmartTools(){
   loadSmartSettings();
   applyDgFade();
   applyHoverMotion();
+  applyPerfMode();
   /* S3: Apply DG-only mode from persisted settings */
   const _dcvInit = document.getElementById('cvDECK');
   if(_dcvInit && SMART.dgOnly) _dcvInit.classList.add('deck-dg-only');
@@ -10942,6 +10955,7 @@ function bindSmartTools(){
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
   const dragReadoutChk  = document.getElementById('stDragReadoutToggle');
   const nightWatchChk   = document.getElementById('stNightWatchToggle');
+  const perfModeChk     = document.getElementById('stPerfModeToggle');
 
   if(!btn || !ov) return;
 
@@ -10961,6 +10975,7 @@ function bindSmartTools(){
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
   if(dragReadoutChk)  dragReadoutChk.checked  = SMART.dragReadout;
   if(nightWatchChk)   nightWatchChk.checked   = SMART.nightWatch;
+  if(perfModeChk)     perfModeChk.checked     = SMART.perfMode;
   if(typeof _applyNightWatch === 'function') _applyNightWatch();
 
   /* Open / Close */
@@ -11025,6 +11040,13 @@ function bindSmartTools(){
     saveSmartSettings();
     updateSmartDot();
     _applyNightWatch();
+  });
+
+  if(perfModeChk) perfModeChk.addEventListener('change', () => {
+    SMART.perfMode = perfModeChk.checked;
+    saveSmartSettings();
+    updateSmartDot();
+    applyPerfMode();
   });
 
   if(hoverMotionChk) hoverMotionChk.addEventListener('change', () => {
