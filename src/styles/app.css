@@ -15093,9 +15093,8 @@ body.hdr-tight .gp-cluster { gap: 10px; }
   border-radius: 3px;
   flex-shrink: 0;
   align-self: stretch;
-  background-size: 100% 200%;
-  background-position: 0% 100%;
-  animation: brand-accent-flow 4s linear infinite;
+  background-size: 100% 100%;
+  background-position: 0 0;
 }
 
 .brand-block.mode-operator .brand-accent {
@@ -15104,10 +15103,6 @@ body.hdr-tight .gp-cluster { gap: 10px; }
 
 .brand-block.mode-viewer .brand-accent {
   background-image: linear-gradient(to top, #154a85 0%, #b8d8f5 50%, #154a85 100%);
-}
-
-@keyframes brand-accent-flow {
-  to { background-position: 0% -100%; }
 }
 
 .brand-role {
