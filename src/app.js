@@ -2919,19 +2919,6 @@ function updateStats(){
     bar.classList.toggle('crit', pct > 90);
   }
 
-  /* Legacy gauge — retained for Smart Tools toggle backward-compat. */
-  const gaugeEl=document.getElementById('wtGauge');
-  const fillEl =document.getElementById('wtGaugeFill');
-  const gaugeTxt=document.getElementById('wtGaugeText');
-  if(gaugeEl&&fillEl){
-    gaugeEl.style.display=SMART.weightGauge?'':'none';
-    if(SMART.weightGauge){
-      fillEl.style.width=pct+'%';
-      fillEl.className='wt-gauge-fill'+(pct>90?' crit':pct>70?' warn':'');
-      if(gaugeTxt)gaugeTxt.textContent=wt.toFixed(0)+' / '+MAX_WT+' T';
-    }
-  }
-
   /* V12: Empty deck hint */
   const hintEl=document.getElementById('emptyDeckHint');
   if(hintEl){hintEl.classList.toggle('hidden',tot>0||!SMART.emptyHint);}
@@ -10043,7 +10030,6 @@ const SMART_DEFAULTS = {
   gridSnap:    true,   /* Smart Grid Snap — align on drop to neighbours / bay lines */
   kbShortcuts: true,   /* Keyboard Shortcuts System */
   locHighlight:false,  /* Highlight by Platform — dim non-selected platform cargo */
-  weightGauge: false,  /* V2: Show weight gauge in header */
   emptyHint:   true,   /* V12: Show hint when deck is empty */
   dgOnly:      false,  /* S3: Show DG cargo only */
   /* Visual Smart Tools */
@@ -10766,7 +10752,6 @@ function bindSmartTools(){
   const soundChk        = document.getElementById('stSoundToggle');
   const soundVolSlider  = document.getElementById('stSoundVolume');
   const soundVolLabel   = document.getElementById('stSoundVolLabel');
-  const weightGaugeChk  = document.getElementById('stWeightGaugeToggle');
   const emptyHintChk    = document.getElementById('stEmptyHintToggle');
   const dgOnlyChk       = document.getElementById('stDgOnlyToggle');
   const perfModeChk     = document.getElementById('stPerfModeToggle');
@@ -10782,7 +10767,6 @@ function bindSmartTools(){
   if(locHighlightChk) locHighlightChk.checked = SMART.locHighlight;
   if(soundChk) soundChk.checked = SMART.soundEnabled;
   if(soundVolSlider){ soundVolSlider.value = SMART.soundVolume; if(soundVolLabel) soundVolLabel.textContent = SMART.soundVolume+'%'; }
-  if(weightGaugeChk)  weightGaugeChk.checked  = SMART.weightGauge;
   if(emptyHintChk)    emptyHintChk.checked    = SMART.emptyHint;
   if(dgOnlyChk)       dgOnlyChk.checked       = SMART.dgOnly;
   if(perfModeChk)     perfModeChk.checked     = SMART.perfMode;
@@ -10924,11 +10908,6 @@ function bindSmartTools(){
     _sndUpdateBadge(cat);
     const catEl = document.getElementById('sndCat-'+cat);
     if(catEl && !_sndCats[cat].on) catEl.classList.add('disabled');
-  });
-
-  if(weightGaugeChk) weightGaugeChk.addEventListener('change', () => {
-    SMART.weightGauge = weightGaugeChk.checked;
-    saveSmartSettings(); updateSmartDot(); updateStats();
   });
 
   if(emptyHintChk) emptyHintChk.addEventListener('change', () => {
@@ -11100,7 +11079,6 @@ const _ST_PRESETS = {
     description: 'Calm, safety-forward defaults',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      weightGauge:false,
       kbShortcuts:true, soundEnabled:true,
     },
     soundCats: { basic:true, ambient:true, advanced:false },
@@ -11109,7 +11087,6 @@ const _ST_PRESETS = {
     description: 'Full visual & audio language',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
-      weightGauge:true,
       kbShortcuts:true, soundEnabled:true,
       nameShimmer:true,
     },
@@ -11119,7 +11096,7 @@ const _ST_PRESETS = {
     description: 'Essentials only — quietest possible workspace',
     smart: {
       bounce:true, gridSnap:true, dgSeg:true,
-      dgFade:false, weightGauge:false,
+      dgFade:false,
       soundEnabled:false,
       nameShimmer:false,
       dragGhost:false,
@@ -11191,7 +11168,7 @@ const _ST_SMART_TO_CHK = {
   bounce:'stBounceToggle', dgFade:'stDgFadeToggle',
   dgSeg:'stDgSegToggle',
   gridSnap:'stGridSnapToggle', kbShortcuts:'stKbShortcutsToggle',
-  locHighlight:'stLocHighlightToggle', weightGauge:'stWeightGaugeToggle',
+  locHighlight:'stLocHighlightToggle',
   emptyHint:'stEmptyHintToggle', dgOnly:'stDgOnlyToggle',
   soundEnabled:'stSoundToggle',
   portStbd:'stPortStbd',

@@ -450,14 +450,6 @@
       <div class="gst"><span class="gst-lbl">ROB</span><div class="gst-val rob" id="sROB">0</div></div>
       <div class="gst" id="gstTR" style="display:none"><span class="gst-lbl">Transfer</span><div class="gst-val tr" id="sTR">0</div></div>
 
-      <!-- Legacy gauge retained as hidden DOM; updateStats writes to it under
-           the SMART.weightGauge flag for backward compat. The new hero bar
-           above is the primary surface. -->
-      <div class="wt-gauge" id="wtGauge" style="display:none">
-        <div class="wt-gauge-track"><div class="wt-gauge-fill" id="wtGaugeFill"></div></div>
-        <div class="wt-gauge-label"><span id="wtGaugeText">0 / 2500 T</span></div>
-      </div>
-
       <div class="gst-sep"></div>
 
       <!-- Deck Usage — area occupancy indicator (equal-mode full-circle gauge) -->
@@ -1485,24 +1477,6 @@
         </div>
         <label class="st-toggle" title="Highlight by Platform">
           <input type="checkbox" id="stLocHighlightToggle">
-          <div class="st-track"><div class="st-thumb"></div></div>
-        </label>
-      </div>
-
-      <!-- V2: Weight Gauge -->
-      <div class="st-row">
-        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="6" width="12" height="4" rx="2" stroke="var(--acc)" stroke-width="1.3"/>
-            <rect x="3" y="7" width="5" height="2" rx="1" fill="var(--acc)" opacity=".5"/>
-          </svg>
-        </div>
-        <div class="st-row-body">
-          <div class="st-row-title">Weight Gauge</div>
-          <div class="st-row-desc">Shows total deck weight vs 2500T max capacity as a fill bar in the header.</div>
-        </div>
-        <label class="st-toggle" title="Weight Gauge">
-          <input type="checkbox" id="stWeightGaugeToggle">
           <div class="st-track"><div class="st-thumb"></div></div>
         </label>
       </div>

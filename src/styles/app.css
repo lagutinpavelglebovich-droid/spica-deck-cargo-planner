@@ -8358,32 +8358,6 @@ button:active:not(:disabled),
    PHASE 2 — SMART TOOLS ADDITIONS
 ═══════════════════════════════════════════════════════════ */
 
-/* ── V2: Weight Gauge ───────────────────────────────────── */
-.wt-gauge{
-  display:flex;align-items:center;gap:6px;
-  padding:0 12px;border-left:1px solid var(--sep);flex-shrink:0;
-}
-.wt-gauge-track{
-  width:80px;height:6px;border-radius:3px;
-  background:var(--surf3);border:1px solid var(--brd);
-  overflow:hidden;
-}
-.wt-gauge-fill{
-  height:100%;border-radius:3px;
-  background:var(--s-L);
-  transition:width .4s ease, background .3s;
-  width:0%;
-}
-.wt-gauge-fill.warn{ background:#c89a38; }
-.wt-gauge-fill.crit{ background:#c0392b; }
-.wt-gauge-label{
-  font-family:'JetBrains Mono',monospace;font-size:8px;
-  color:var(--txt3);white-space:nowrap;font-weight:500;
-}
-[data-theme="dark"] .wt-gauge-track{ background:var(--surf4); border-color:var(--brd2); }
-body.hdr-mini .wt-gauge{ display:none; }
-body.hdr-tight .wt-gauge-label{ display:none; }
-
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 16 — PREMIUM EMPTY DECK HERO
    Covers the full deck canvas when no cargo is on board. Purely
