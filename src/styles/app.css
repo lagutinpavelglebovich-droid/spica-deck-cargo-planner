@@ -15423,3 +15423,194 @@ html[data-perf="reduced"] .rc-lifts .gst-val.rob,
 html[data-perf="reduced"] .rc-lifts .gst-val.tr{
   transition:none !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Cargo Library — Stage B light-theme white glass
+   Stage A (~line 14806) authored the panel as dark glass with
+   UNSCOPED rules that the dark theme depends on — they must not
+   change. Light theme has no attribute of its own, so the only
+   safe light scope is :root:not([data-theme="dark"]); every rule
+   below uses it and out-specifies the unscoped Stage A values.
+   Dark theme resolves none of these and stays pixel-identical.
+
+   Surface: Secondary-tier white glass (blur 12 / sat 140 cascades
+   from the Stage A .cp rule — no new filters). Ink: #0a1628 deep
+   navy; secondary .62, disabled .38. Active = solid Premium Navy
+   #1e3a5f + white. Amber appears only as accent/warn and is
+   darkened (#b45309 / #d97706) to survive a white surface.
+   Hover feedback is background/color only — no transforms, no
+   new persistent animation (Intel HD 630 target).
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Panel shell ── */
+:root:not([data-theme="dark"]) .cp{
+  background:rgba(255,255,255,.62);
+  border:0.5px solid rgba(10,22,40,.08);
+  box-shadow:
+    0 4px 20px rgba(10,22,40,.10),
+    inset 0 1px 0 rgba(255,255,255,.55);
+  color:#0a1628;
+}
+
+/* ── Header ── */
+:root:not([data-theme="dark"]) .cp-head{
+  border-bottom-color:rgba(10,22,40,.08);
+}
+:root:not([data-theme="dark"]) .cp-head-icon{
+  background:rgba(30,58,95,.10);
+  color:#1e3a5f;
+}
+:root:not([data-theme="dark"]) .cp-title{ color:#0a1628; }
+:root:not([data-theme="dark"]) .cp-subtitle{ color:rgba(10,22,40,.62); }
+:root:not([data-theme="dark"]) .cp-close{ color:rgba(10,22,40,.55); }
+:root:not([data-theme="dark"]) .cp-close:hover{
+  background:rgba(10,22,40,.07);
+  color:#0a1628;
+}
+
+/* ── Search ──
+   background-color longhand only: the Stage A shorthand already
+   settled the background-image question; re-shorthanding here
+   would diverge the magnifier between themes. */
+:root:not([data-theme="dark"]) .cp-search-wrap{
+  border-bottom-color:rgba(10,22,40,.06);
+}
+:root:not([data-theme="dark"]) .cp-search{
+  background-color:rgba(255,255,255,.70);
+  border-color:rgba(10,22,40,.10);
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .cp-search::placeholder{
+  color:rgba(10,22,40,.38);
+}
+:root:not([data-theme="dark"]) .cp-search:focus{
+  background-color:rgba(255,255,255,.92);
+  border-color:rgba(30,58,95,.45);
+  box-shadow:0 0 0 3px rgba(30,58,95,.12);
+}
+
+/* ── Filter pills ── */
+:root:not([data-theme="dark"]) .cp-filters{
+  border-bottom-color:rgba(10,22,40,.06);
+}
+:root:not([data-theme="dark"]) .cp-pill{
+  border-color:rgba(10,22,40,.18);
+  color:rgba(10,22,40,.62);
+}
+:root:not([data-theme="dark"]) .cp-pill:hover{
+  background:rgba(10,22,40,.05);
+  color:#0a1628;
+  border-color:rgba(10,22,40,.32);
+}
+:root:not([data-theme="dark"]) .cp-pill.on{
+  background:#1e3a5f;
+  color:#fff;
+  border-color:#1e3a5f;
+}
+
+/* ── Section cards ── */
+:root:not([data-theme="dark"]) .cp-sec{
+  background:rgba(255,255,255,.78);
+  border:0.5px solid rgba(10,22,40,.08);
+  border-bottom:0.5px solid rgba(10,22,40,.08);
+}
+:root:not([data-theme="dark"]) .cp-sec-hdr:hover .cp-sec-title,
+:root:not([data-theme="dark"]) .cp-sec-hdr:hover .cp-sec-arr{
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .cp-sec-icon{ color:rgba(10,22,40,.55); }
+:root:not([data-theme="dark"]) .cp-sec-icon.s-freq  { color:#b45309; }
+:root:not([data-theme="dark"]) .cp-sec-icon.s-import{ color:#2c5f96; }
+:root:not([data-theme="dark"]) .cp-sec-icon.s-other,
+:root:not([data-theme="dark"]) .cp-sec-icon.s-custom{ color:rgba(10,22,40,.55); }
+:root:not([data-theme="dark"]) .cp-sec-title{ color:rgba(10,22,40,.70); }
+:root:not([data-theme="dark"]) .cp-sec-badge{ color:rgba(10,22,40,.62); }
+:root:not([data-theme="dark"]) .cp-sec-badge.warn{ color:#b45309; }
+:root:not([data-theme="dark"]) .cp-sec-arr{ color:rgba(10,22,40,.55); }
+
+/* ── Item rows — flat zebra on the section card ──
+   Order matters: zebra → hover → selection. Hover mirrors the
+   zebra selector depth so it stays visible on odd rows; selection
+   is last so it wins the specificity tie over both. */
+:root:not([data-theme="dark"]) .cp .cp-lc,
+:root:not([data-theme="dark"]) .cp .cp-qi{
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-lc:nth-child(odd),
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-qi:nth-child(odd),
+:root:not([data-theme="dark"]) .cp #cpCustomList > .cp-lc:nth-child(odd){
+  background:rgba(10,22,40,.035);
+}
+:root:not([data-theme="dark"]) .cp .cp-lc:hover,
+:root:not([data-theme="dark"]) .cp .cp-qi:hover,
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-lc:hover,
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-qi:hover,
+:root:not([data-theme="dark"]) .cp #cpCustomList > .cp-lc:hover{
+  background:rgba(10,22,40,.06);
+}
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-lc.cp-lc-sel,
+:root:not([data-theme="dark"]) .cp .cp-sec-body > .cp-qi.cp-qi-sel,
+:root:not([data-theme="dark"]) .cp #cpCustomList > .cp-lc.cp-lc-sel{
+  background:rgba(30,58,95,.12);
+  border:0.5px solid rgba(30,58,95,.38);
+  color:#0a1628;
+}
+
+/* ── Row text — CCU codes and dimensions return to mono in light
+   per the design-system ink rules (dark keeps Stage A's Inter). ── */
+:root:not([data-theme="dark"]) .cp .cp-lc-name,
+:root:not([data-theme="dark"]) .cp .cp-qi-name{
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .cp .cp-qi-name{
+  font-family:'JetBrains Mono',monospace;
+  font-weight:600;
+}
+:root:not([data-theme="dark"]) .cp .cp-qi-meta,
+:root:not([data-theme="dark"]) .cp .cp-lc-dim{
+  color:rgba(10,22,40,.62);
+}
+:root:not([data-theme="dark"]) .cp .cp-lc-dim{
+  font-family:'JetBrains Mono',monospace;
+}
+
+/* ── Favourite star — amber-600 keeps the gold identity at ~3.3:1
+   on the white card; raw #f59e0b reads washed (~2.2:1). ── */
+:root:not([data-theme="dark"]) .cp .cp-lc-star{ color:rgba(10,22,40,.35); }
+:root:not([data-theme="dark"]) .cp .cp-lc-star:hover,
+:root:not([data-theme="dark"]) .cp .cp-lc-star.on{ color:#d97706; }
+
+/* ── Custom cargo form ── */
+:root:not([data-theme="dark"]) .cp .cp-cform{
+  background:rgba(10,22,40,.04);
+  border-color:rgba(10,22,40,.08);
+}
+:root:not([data-theme="dark"]) .cp .cp-cf-i{
+  background:rgba(255,255,255,.75);
+  border-color:rgba(10,22,40,.12);
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .cp .cp-cf-i:focus{
+  background:rgba(255,255,255,.95);
+  border-color:rgba(30,58,95,.45);
+}
+:root:not([data-theme="dark"]) .cp .cp-cf-i::placeholder{
+  color:rgba(10,22,40,.38);
+}
+:root:not([data-theme="dark"]) .cp .cp-cf-add{ background:#1e3a5f; }
+:root:not([data-theme="dark"]) .cp .cp-cf-add:hover{ background:#2a4d78; }
+
+/* ── Empty state ── */
+:root:not([data-theme="dark"]) .cp .cp-empty{ color:rgba(10,22,40,.55); }
+
+/* ── Scrollbar thumb ── */
+:root:not([data-theme="dark"]) #cpBody::-webkit-scrollbar-thumb{
+  background:rgba(10,22,40,.20);
+}
+
+/* ── Performance mode counterpart — the unscoped perf rule above
+   forces a solid dark plate in both themes; light gets a solid
+   white plate instead (blur removal cascades from that rule). ── */
+html[data-perf="reduced"]:not([data-theme="dark"]) .cp{
+  background:rgba(255,255,255,.92) !important;
+}
