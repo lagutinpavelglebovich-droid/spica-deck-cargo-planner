@@ -6295,10 +6295,22 @@ function updateAscoSelection(){
 /* ── Perform import: move selected items to IMPORT_QUEUE ── */
 function performAscoImport(){
   const added = [];
+  /* Dedup by CCU against existing queue entries and cargo already placed
+     on deck. Same normalisation as runManifestMatch (trim + uppercase).
+     Rows without a CCU are never dedup-matched — always imported. */
+  const normCcu = v => (v || '').trim().toUpperCase();
+  const queueKeys = new Set(IMPORT_QUEUE.map(q => normCcu(q.ccu)).filter(Boolean));
+  const deckKeys  = new Set(S.cargo.map(c => normCcu(c.ccu)).filter(Boolean));
+  let skippedInQueue = 0, skippedOnDeck = 0, noCcuCount = 0;
   ascoImportData.forEach((sheet, si) => {
     sheet.items.forEach((item, ii) => {
       const key = `${si}-${ii}`;
       if(!ascoSelected.has(key)) return;
+
+      const ccuKey = normCcu(item.ccu);
+      if(ccuKey && deckKeys.has(ccuKey)){ skippedOnDeck++; return; }
+      if(ccuKey && queueKeys.has(ccuKey)){ skippedInQueue++; return; }
+      if(ccuKey) queueKeys.add(ccuKey); else noCcuCount++;
 
       const qItem = {
         id: Date.now() + Math.random(),
@@ -6333,14 +6345,23 @@ function performAscoImport(){
 
   /* Manifest-comparison readout retired from the drawer (dormant in place). */
 
-  /* Auto-open queue tab, auto-expand panel, show toast */
+  /* Auto-open queue tab, auto-expand panel */
   if(added.length > 0){
     const qTab = document.querySelector('.stab[data-tab="queue"]');
     if(qTab) qTab.click();
 
     /* Gently expand the library panel so items are visible */
     if(window._libExpandForImport) window._libExpandForImport();
+  }
 
+  /* Import summary: plain "N added" when nothing was skipped, otherwise
+     full added / already-imported / already-on-deck / no-CCU breakdown. */
+  if(skippedInQueue + skippedOnDeck > 0){
+    showToast(
+      t('toast_import_summary', added.length, skippedInQueue, skippedOnDeck, noCcuCount),
+      added.length > 0 ? 'info' : 'warn'
+    );
+  } else if(added.length > 0){
     showToast(t('toast_queue_added', added.length));
   }
 }
@@ -10861,6 +10882,7 @@ const LANG = {
 
     /* Toast messages */
     toast_queue_added:  (n) => `${n} item${n!==1?'s':''} added to Import Queue`,
+    toast_import_summary: (a, sq, sd, nc) => `Import: ${a} added · ${sq} skipped (already imported) · ${sd} skipped (already on deck)` + (nc ? ` · ${nc} without CCU imported` : ''),
     toast_no_cargo:     'No recognisable cargo data found in this file.',
     toast_read_err:     (msg) => 'Could not read Excel file: ' + msg,
     toast_preparing:    'Preparing export…',
@@ -10935,6 +10957,7 @@ const LANG = {
     match_refresh:    'Обновить сравнение',
 
     toast_queue_added:  (n) => `${n} позиц${n===1?'ия':n<5?'ии':'ий'} добавлено в Import Queue`,
+    toast_import_summary: (a, sq, sd, nc) => `Импорт: ${a} добавлено · ${sq} пропущено (уже импортировано) · ${sd} пропущено (уже на палубе)` + (nc ? ` · ${nc} без CCU импортировано` : ''),
     toast_no_cargo:     'Данные о грузе в файле не распознаны.',
     toast_read_err:     (msg) => 'Ошибка чтения файла: ' + msg,
     toast_preparing:    'Подготовка экспорта…',
@@ -11007,6 +11030,7 @@ const LANG = {
     match_refresh:    'Оновити порівняння',
 
     toast_queue_added:  (n) => `${n} позиц${n===1?'ію':n<5?'ії':'ій'} додано до Import Queue`,
+    toast_import_summary: (a, sq, sd, nc) => `Імпорт: ${a} додано · ${sq} пропущено (вже імпортовано) · ${sd} пропущено (вже на палубі)` + (nc ? ` · ${nc} без CCU імпортовано` : ''),
     toast_no_cargo:     'Дані про вантаж у файлі не розпізнані.',
     toast_read_err:     (msg) => 'Помилка читання файлу: ' + msg,
     toast_preparing:    'Підготовка експорту…',
