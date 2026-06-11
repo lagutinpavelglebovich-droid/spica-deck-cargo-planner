@@ -828,6 +828,11 @@ function _assignCargoColor(locId, status){
    assigned uniquely per (location, status) from the shared pool. */
 function opColor(locId, status){
   if(locId === 'BLEO' && status === 'L') return '#b8bcc2';
+  /* Manual per-(location, status) override from the Bloom Picker.
+     Pills and deck blocks both resolve through here, so they always
+     match. Absent override → existing auto pool assignment. */
+  const ov = S.locColors[locId] && S.locColors[locId][status];
+  if(ov) return ov;
   return _assignCargoColor(locId, status);
 }
 
@@ -1338,7 +1343,7 @@ function sortedLibItems(items){
   return ranked.map(r=>r.it);
 }
 
-const S={activeLocs:['BLEO','TART'],selLoc:'BLEO',pending:null,cargo:[],customLib:[],customLocs:[],voyRemarks:''};
+const S={activeLocs:['BLEO','TART'],selLoc:'BLEO',pending:null,cargo:[],customLib:[],customLocs:[],voyRemarks:'',locColors:{}};
 
 /* ════════════════════════════════════
    CARGO LIBRARY
@@ -2193,6 +2198,17 @@ function buildActiveLocStrip(){
           pill.innerHTML=
             `<span class="loc-pill-lbl">${s.label}</span>`+
             `<span class="loc-pill-val">${s.count}</span>`;
+          /* Bloom Picker trigger — Operator only. In Viewer the click
+             keeps bubbling to the card's location-filter toggle
+             (pre-existing behaviour, unchanged). BLEO Load is excluded:
+             fixed grey is an operational rule, not overridable. */
+          if(!(id === 'BLEO' && s.key === 'L')){
+            pill.addEventListener('click', e => {
+              if(!isOperator()) return;
+              e.stopPropagation();
+              openBloomPicker(id, s.key, pill);
+            });
+          }
           pillStrip.appendChild(pill);
         });
       }
@@ -2230,6 +2246,207 @@ function buildActiveLocStrip(){
     const bar = document.getElementById('locsToggleBar');
     if(bar) bar.classList.add('filter-active');
   }
+}
+
+/* ════════════════════════════════════
+   BLOOM PICKER — manual per-(location, status) colour override
+   Liquid-glass popover anchored to a loc-card status pill; swatches
+   bloom radially outward. Picks write S.locColors[locId][status]
+   (sparse map, synced/persisted exactly like CARGO_COLORS); "Auto"
+   deletes that one key so the auto pool assignment shows through.
+════════════════════════════════════ */
+
+/* 20 curated hues split into two concentric petal rings. Each ring is
+   sorted by perceptual hue starting near red at 12 o'clock and sweeping
+   clockwise, so hue maps to angle consistently in BOTH rings — warm on
+   one side of the bloom, cool on the other. */
+const BLOOM_RING_INNER = [
+  '#b91c1c','#d97706','#65a30d','#16a34a',
+  '#0891b2','#1d4ed8','#7c3aed','#db2777',
+];
+const BLOOM_RING_OUTER = [
+  '#ea580c','#92400e','#ca8a04','#6b7a00','#047857','#0d9488',
+  '#0369a1','#1e3a8a','#4338ca','#9333ea','#c026d3','#be123c',
+];
+const BLOOM_COLORS = [...BLOOM_RING_INNER, ...BLOOM_RING_OUTER];
+
+let _bloomPop = null;
+
+function closeBloomPicker(){
+  if(!_bloomPop) return;
+  const el = _bloomPop;
+  _bloomPop = null;
+  document.removeEventListener('pointerdown', _bloomOutside, true);
+  document.removeEventListener('keydown', _bloomKey, true);
+  if(el._springAnim && el._springAnim.stop) el._springAnim.stop();
+  el.classList.add('closing');
+  /* Remove only after the surface fold animation finishes. The timeout
+     is a safety net — a dropped animationend can never leave a zombie. */
+  const rm = () => { if(el.isConnected) el.remove(); };
+  el.addEventListener('animationend', e => { if(e.target === el) rm(); });
+  setTimeout(rm, 300);
+}
+
+function _bloomOutside(e){
+  if(!_bloomPop) return;
+  if(_bloomPop.contains(e.target)) return;
+  /* Let the anchor pill's own click handler run the toggle-close */
+  if(_bloomPop._anchor && _bloomPop._anchor.contains(e.target)) return;
+  closeBloomPicker();
+}
+
+function _bloomKey(e){ if(e.key === 'Escape') closeBloomPicker(); }
+
+function _setLocColor(locId, status, hex){
+  if(hex){
+    if(!S.locColors[locId]) S.locColors[locId] = {};
+    S.locColors[locId][status] = hex;
+  } else if(S.locColors[locId]){
+    delete S.locColors[locId][status];
+    /* Keep the map sparse — drop emptied per-location objects */
+    if(!Object.keys(S.locColors[locId]).length) delete S.locColors[locId];
+  }
+  /* Pure colour change: only the deck blocks and the location strip
+     need repainting. Stats / DG / segregation are colour-independent. */
+  renderAll();
+  buildActiveLocStrip();
+  save();
+}
+
+function openBloomPicker(locId, status, anchor){
+  if(!isOperator()) return;
+  if(_bloomPop){
+    const samePill = _bloomPop.dataset.locId === locId
+                  && _bloomPop.dataset.status === status;
+    closeBloomPicker();
+    if(samePill) return;                 /* second click on same pill → toggle off */
+  }
+
+  const pop = document.createElement('div');
+  pop.className = 'bloom-pop';
+  pop.dataset.locId = locId;
+  pop.dataset.status = status;
+  pop._anchor = anchor;
+
+  const current = (S.locColors[locId] && S.locColors[locId][status])
+    ? S.locColors[locId][status].toLowerCase() : null;
+  /* What this pill/blocks actually show right now (override or auto) —
+     the ring marks the EFFECTIVE colour. */
+  const effective = opColor(locId, status).toLowerCase();
+  /* Auto colour for this pair — what "Auto" would restore. The pair is
+     already assigned in CARGO_COLORS (the pill exists ⇒ cargo exists),
+     so this read is idempotent. */
+  const autoHex = _assignCargoColor(locId, status);
+
+  /* Radial bloom stage: centre disc = current effective colour, two
+     concentric petal rings around it. Each petal stores its resting
+     offset in --tx/--ty (the unfold/fold keyframes travel between the
+     centre and that offset) and its angular stagger in --d (consumed
+     ONLY by the open rule, so fold/pulse start undelayed). */
+  const stage = document.createElement('div');
+  stage.className = 'bloom-stage';
+
+  /* Inner plate — the raised dish layer the bloom sits on. Purely
+     visual; no handlers, no backdrop-filter (the surface blur below
+     does the work). */
+  const plate = document.createElement('div');
+  plate.className = 'bloom-plate';
+  stage.appendChild(plate);
+
+  const centre = document.createElement('div');
+  centre.className = 'bloom-center';
+  centre.style.background = effective;
+  stage.appendChild(centre);
+
+  [
+    { colors: BLOOM_RING_INNER, radius: 58, delay0: 50,  cls: ' inner' },
+    { colors: BLOOM_RING_OUTER, radius: 98, delay0: 120, cls: '' },
+  ].forEach(ring => {
+    ring.colors.forEach((hex, i) => {
+      const a = (-90 + i * 360 / ring.colors.length) * Math.PI / 180;
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'bloom-petal' + ring.cls + (effective === hex ? ' cur' : '');
+      sw.style.background = hex;
+      sw.style.setProperty('--tx', Math.round(Math.cos(a) * ring.radius) + 'px');
+      sw.style.setProperty('--ty', Math.round(Math.sin(a) * ring.radius) + 'px');
+      sw.style.setProperty('--d', (ring.delay0 + i * 10) + 'ms');
+      sw.addEventListener('click', () => {
+        /* Confirm pulse on the hit petal, then the bloom folds shut */
+        sw.classList.add('picked');
+        _setLocColor(locId, status, hex);
+        setTimeout(closeBloomPicker, 150);
+      });
+      stage.appendChild(sw);
+    });
+  });
+  pop.appendChild(stage);
+
+  const foot = document.createElement('div');
+  foot.className = 'bloom-foot';
+
+  const autoBtn = document.createElement('button');
+  autoBtn.type = 'button';
+  autoBtn.className = 'bloom-auto' + (current ? '' : ' cur');
+  const autoDot = document.createElement('span');
+  autoDot.className = 'bloom-auto-dot';
+  autoDot.style.background = autoHex;
+  autoBtn.appendChild(autoDot);
+  autoBtn.appendChild(document.createTextNode('Auto'));
+  autoBtn.addEventListener('click', () => { _setLocColor(locId, status, null); closeBloomPicker(); });
+
+  const customBtn = document.createElement('button');
+  customBtn.type = 'button';
+  customBtn.className = 'bloom-custom'
+    + (current && !BLOOM_COLORS.includes(current) ? ' cur' : '');
+  customBtn.textContent = 'Custom…';
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.className = 'bloom-input';
+  inp.value = current || effective;
+  inp.addEventListener('change', () => { _setLocColor(locId, status, inp.value); closeBloomPicker(); });
+  customBtn.addEventListener('click', () => inp.click());
+
+  foot.appendChild(autoBtn);
+  foot.appendChild(customBtn);
+  foot.appendChild(inp);
+  pop.appendChild(foot);
+
+  document.body.appendChild(pop);
+
+  /* Anchor below the swatch, clamped to viewport; flip above if needed.
+     transform-origin points back at the anchor so the pop scales FROM it. */
+  const r  = anchor.getBoundingClientRect();
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = r.left + r.width / 2 - pw / 2;
+  let top  = r.bottom + 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+  if(top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
+  pop.style.left = left + 'px';
+  pop.style.top  = top + 'px';
+  pop.style.transformOrigin =
+    (r.left + r.width / 2 - left) + 'px ' + (r.top + r.height / 2 - top) + 'px';
+
+  /* Surface spring-in (scale .92→1 with a slight overshoot) via the
+     shared Motion One value pattern. Petal/pill choreography is CSS.
+     Reduced motion: skip — the CSS media block supplies a plain fade. */
+  if(!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)){
+    pop.style.opacity = '0';
+    pop._springAnim = motionAnimate(0.92, 1, {
+      type: 'spring', stiffness: 260, damping: 26,
+      onUpdate: v => {
+        pop.style.transform = `scale(${v})`;
+        pop.style.opacity = Math.min(1, Math.max(0, (v - 0.92) / 0.07)).toFixed(3);
+      },
+      onComplete: () => {
+        pop.style.transform = ''; pop.style.opacity = ''; pop._springAnim = null;
+      },
+    });
+  }
+
+  _bloomPop = pop;
+  document.addEventListener('pointerdown', _bloomOutside, true);
+  document.addEventListener('keydown', _bloomKey, true);
 }
 
 /* ════════════════════════════════════
@@ -2337,6 +2554,7 @@ function execDeleteLoc(id){
   /* Deactivate from voyage */
   S.activeLocs = S.activeLocs.filter(x=>x!==id);
   delete DYN_COLORS[id];
+  delete S.locColors[id];
   if(S.selLoc===id) S.selLoc = S.activeLocs[0]||null;
 
   /* Remove from customLocs if it's custom (built-ins are never purged from LOC_ALL) */
@@ -5119,6 +5337,7 @@ function _buildEnvelope() {
       date:       selDate.toISOString(),
       dynColors:  DYN_COLORS,
       cargoColors: CARGO_COLORS,
+      locColors:  S.locColors,
       voyRemarks: S.voyRemarks || '',
       zoomLevel:  zoomLevel
     }
@@ -5226,6 +5445,7 @@ async function openPlanFromFile() {
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
+    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -5268,6 +5488,7 @@ async function openRecentFile(path) {
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
+    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -5389,6 +5610,7 @@ function _applyProjectData(jsonString, fileName) {
     if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
     if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
+    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -5445,6 +5667,7 @@ function savePlan(key) {
       date:       selDate.toISOString(),
       dynColors:  DYN_COLORS,
       cargoColors: CARGO_COLORS,
+      locColors:  S.locColors,
       voyRemarks: S.voyRemarks || ''
     }
   };
@@ -5500,6 +5723,7 @@ function loadPlan(key) {
   if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
   if (d.dynColors) Object.assign(DYN_COLORS, d.dynColors);
   if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
+  if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
   if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
   if (d.zoomLevel) applyZoom(d.zoomLevel);
 
@@ -13205,6 +13429,7 @@ function _syncApplyRemote(remoteState){
   if(remoteState.date){ selDate = new Date(remoteState.date); if(isNaN(selDate)) selDate = new Date(); }
   if(remoteState.dynColors){ Object.keys(DYN_COLORS).forEach(k=>delete DYN_COLORS[k]); Object.assign(DYN_COLORS, remoteState.dynColors); }
   if(remoteState.cargoColors){ Object.keys(CARGO_COLORS).forEach(k=>delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, remoteState.cargoColors); }
+  if(remoteState.locColors){ Object.keys(S.locColors).forEach(k=>delete S.locColors[k]); Object.assign(S.locColors, remoteState.locColors); }
   if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
   initDynColors(); setDateDisplay();
   buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();

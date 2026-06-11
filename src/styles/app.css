@@ -953,6 +953,191 @@ body.is-viewer .bp-viewer-indicator{
   font-family:'Manrope',sans-serif;
 }
 
+/* ── Bloom Picker — radial bloom on liquid glass ────────────────────
+   Transform/opacity only; ONE backdrop-filter on the surface (Intel
+   HD 630 budget). The surface springs in from JS (Motion One); the
+   petals unfold from the centre via CSS keyframes parameterised by
+   per-petal --tx/--ty (resting offset) and --d (angular stagger).
+   All animations are one-shot — nothing runs while idle.             */
+.bloom-pop{
+  position:fixed;z-index:8500;
+  padding:12px;
+  background:rgba(255,255,255,.62);
+  border:0.5px solid rgba(10,22,40,.12);
+  border-radius:22px;
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
+  backdrop-filter:blur(12px) saturate(140%);
+  /* Raised-lip rim: inner top highlight + inner bottom shade (static) */
+  box-shadow:
+    0 12px 32px rgba(30,60,90,.18), 0 2px 8px rgba(30,60,90,.08),
+    inset 0 1px 0 rgba(255,255,255,.60),
+    inset 0 -1px 0 rgba(10,22,40,.05);
+}
+/* Fold shut — to-only keyframes start from the current pose, so even a
+   mid-open dismiss folds smoothly instead of snapping. */
+.bloom-pop.closing{
+  animation:bloomPopFold .22s ease-in forwards;
+  pointer-events:none;
+}
+@keyframes bloomPopFold{ to{ opacity:0; transform:scale(.95); } }
+
+/* Radial stage — centre disc + two petal rings, absolutely positioned
+   from the stage centre */
+.bloom-stage{ position:relative;width:232px;height:232px; }
+
+/* Inner plate — translucent dish sitting inside the rim. No
+   backdrop-filter of its own; the surface blur underneath does the
+   frosting. Encloses the outer petal ring with a few px margin. */
+.bloom-plate{
+  position:absolute;inset:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.50);
+  border:1px solid rgba(10,22,40,.07);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65), 0 1px 3px rgba(10,22,40,.06);
+}
+
+/* Glass-bead gloss — colour-honest: opaque fill below, a small static
+   upper-left highlight on top. Shared by centre disc and petals. */
+.bloom-center::after,
+.bloom-petal::after{
+  content:'';
+  position:absolute;inset:0;
+  border-radius:50%;
+  background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.28), transparent 55%);
+  pointer-events:none;
+}
+
+.bloom-center{
+  position:absolute;left:50%;top:50%;
+  width:44px;height:44px;margin:-22px 0 0 -22px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.85);
+  box-shadow:0 0 0 2px rgba(255,255,255,.95), 0 0 0 3.5px var(--acc),
+             0 2px 4px rgba(10,22,40,.25);
+  animation:bloomCenterIn .18s cubic-bezier(.34,1.56,.64,1) backwards;
+}
+@keyframes bloomCenterIn{ from{ opacity:0; transform:scale(.3); } to{ opacity:1; transform:scale(1); } }
+
+.bloom-petal{
+  position:absolute;left:50%;top:50%;
+  width:30px;height:30px;margin:-15px 0 0 -15px;padding:0;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.85);
+  /* Static contact shadow — the bead sits ON the plate */
+  box-shadow:0 1px 2px rgba(10,22,40,.20);
+  cursor:pointer;
+  transform:translate(var(--tx), var(--ty));
+  /* Unfold: the petal flies out from the centre and overshoots its
+     resting radius (~7%, from the rubbery bezier) before settling.
+     backwards fill hides it during the angular stagger delay; once the
+     animation ends the natural state takes over so hover stays live. */
+  animation:bloomPetalOut .22s cubic-bezier(.34,1.56,.64,1) backwards;
+  animation-delay:var(--d, 0ms);
+  transition:transform .15s cubic-bezier(.22,1,.36,1);
+}
+@keyframes bloomPetalOut{
+  from{ opacity:0; transform:translate(0,0) scale(.3); }
+  to  { opacity:1; transform:translate(var(--tx), var(--ty)) scale(1); }
+}
+.bloom-petal:hover{ transform:translate(var(--tx), var(--ty)) scale(1.15); }
+.bloom-petal.cur{
+  box-shadow:0 0 0 2px rgba(255,255,255,.95), 0 0 0 3.5px var(--acc),
+             0 1px 2px rgba(10,22,40,.20);
+}
+/* Confirm pulse on the picked petal — plays before the fold begins */
+.bloom-petal.picked{ animation:bloomPick .14s ease-out; animation-delay:0s; }
+@keyframes bloomPick{
+  0%  { transform:translate(var(--tx), var(--ty)) scale(1); }
+  50% { transform:translate(var(--tx), var(--ty)) scale(1.15); }
+  100%{ transform:translate(var(--tx), var(--ty)) scale(1); }
+}
+
+/* Fold choreography: outer ring first, inner next, centre last */
+.bloom-pop.closing .bloom-petal{ animation:bloomPetalFold .16s ease-in forwards; animation-delay:0s; }
+.bloom-pop.closing .bloom-petal.inner{ animation-delay:.04s; }
+@keyframes bloomPetalFold{ to{ opacity:0; transform:translate(0,0) scale(.5); } }
+.bloom-pop.closing .bloom-center{ animation:bloomCenterFold .14s ease-in forwards; animation-delay:.06s; }
+@keyframes bloomCenterFold{ to{ opacity:0; transform:scale(.5); } }
+
+.bloom-foot{ display:flex;gap:8px;margin-top:10px; }
+.bloom-auto,.bloom-custom{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:24px;padding:0 8px;
+  font-family:'Inter',system-ui,sans-serif;font-size:11px;font-weight:600;
+  color:var(--txt2);
+  background:rgba(255,255,255,.5);
+  border:1px solid rgba(10,22,40,.10);
+  border-radius:8px;cursor:pointer;
+  /* Same edge family as the dish — top highlight + soft contact */
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55), 0 1px 2px rgba(10,22,40,.08);
+  /* Pills fade + rise in last, after the bloom is mostly open */
+  animation:bloomFootIn .15s ease-out backwards;
+  animation-delay:.3s;
+  transition:background .15s, color .15s;
+}
+@keyframes bloomFootIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:translateY(0); } }
+.bloom-pop.closing .bloom-auto,
+.bloom-pop.closing .bloom-custom{ animation:bloomFootOut .12s ease-in forwards; animation-delay:0s; }
+@keyframes bloomFootOut{ to{ opacity:0; } }
+.bloom-auto:hover,.bloom-custom:hover{ background:rgba(255,255,255,.8);color:var(--txt); }
+.bloom-auto.cur,.bloom-custom.cur{
+  box-shadow:0 0 0 1.5px var(--acc), inset 0 1px 0 rgba(255,255,255,.55);
+  color:var(--txt);
+}
+.bloom-auto-dot{ width:10px;height:10px;border-radius:50%;border:1px solid rgba(10,22,40,.14); }
+.bloom-input{ position:absolute;width:0;height:0;opacity:0;pointer-events:none;border:0;padding:0; }
+
+[data-theme="dark"] .bloom-pop{
+  background:rgba(35,38,44,.62);
+  border-color:rgba(255,255,255,.14);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.35);
+}
+[data-theme="dark"] .bloom-plate{
+  background:rgba(255,255,255,.06);
+  border-color:rgba(255,255,255,.10);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 1px 3px rgba(0,0,0,.30);
+}
+[data-theme="dark"] .bloom-center::after,
+[data-theme="dark"] .bloom-petal::after{
+  background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.14), transparent 55%);
+}
+[data-theme="dark"] .bloom-petal,
+[data-theme="dark"] .bloom-center{ border-color:rgba(255,255,255,.25); }
+[data-theme="dark"] .bloom-petal{ box-shadow:0 1px 2px rgba(0,0,0,.35); }
+[data-theme="dark"] .bloom-center{
+  box-shadow:0 0 0 2px rgba(35,38,44,.95), 0 0 0 3.5px var(--acc),
+             0 2px 5px rgba(0,0,0,.45);
+}
+[data-theme="dark"] .bloom-petal.cur{
+  box-shadow:0 0 0 2px rgba(35,38,44,.95), 0 0 0 3.5px var(--acc),
+             0 1px 2px rgba(0,0,0,.35);
+}
+[data-theme="dark"] .bloom-auto,
+[data-theme="dark"] .bloom-custom{
+  background:rgba(255,255,255,.08);
+  border-color:rgba(255,255,255,.12);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.25);
+}
+[data-theme="dark"] .bloom-auto:hover,
+[data-theme="dark"] .bloom-custom:hover{ background:rgba(255,255,255,.15); }
+[data-theme="dark"] .bloom-auto-dot{ border-color:rgba(255,255,255,.18); }
+
+@media (prefers-reduced-motion: reduce){
+  /* No petal travel — everything rests in place; the surface gets a
+     plain 120ms fade in/out (JS skips the spring under this query). */
+  .bloom-center,.bloom-petal,.bloom-auto,.bloom-custom,
+  .bloom-pop.closing .bloom-center,.bloom-pop.closing .bloom-petal,
+  .bloom-pop.closing .bloom-auto,.bloom-pop.closing .bloom-custom{ animation:none; }
+  .bloom-petal{ transition:none; }
+  .bloom-pop{ animation:bloomFade .12s ease-out backwards; }
+  .bloom-pop.closing{ animation:bloomFadeOut .12s ease-in forwards; }
+}
+@keyframes bloomFade{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes bloomFadeOut{ to{ opacity:0; } }
+
 /* ── Status pill strip — illuminated glass capsules ─────────────────────
    Every pill is a uniform-size glass capsule. Colour (--op-color) is set
    INLINE from JS to the actual deck cargo colour for that location+status
