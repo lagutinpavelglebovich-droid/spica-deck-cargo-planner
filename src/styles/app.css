@@ -15799,3 +15799,197 @@ html[data-perf="reduced"] .rc-lifts .gst-val.tr{
 html[data-perf="reduced"]:not([data-theme="dark"]) .cp{
   background:rgba(255,255,255,.92) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Smart Tools — light-theme white glass
+   The base .st-panel rule ("The panel itself — floating inset
+   card") is authored as dark glass with UNSCOPED surface colors
+   and panel-local white-on-dark tokens (--txt-, --surf-, --sep,
+   --brd- families) that the dark-theme overrides depend on — they must
+   not change. Light theme has no attribute of its own, so every
+   rule below scopes to :root:not([data-theme="dark"]) and
+   out-specifies the unscoped values. Dark theme resolves none
+   of these and stays pixel-identical.
+
+   Recipe is the Cargo Library Stage B dialect, reused verbatim:
+   surface rgba(255,255,255,.62) (blur cascades from the base
+   rule — no new filters), hairline rgba(10,22,40,.08), ink
+   #0a1628 primary / rgba(10,22,40,.62) secondary / .38 disabled,
+   active = solid Premium Navy #1e3a5f + white, amber darkened to
+   #b45309. Hover = background/color tints only — no transforms,
+   no new persistent animation (Intel HD 630 target).
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Panel shell — white glass + light ink token re-point.
+   Accent/status tokens (--acc, --acc2, --s-*) stay deliberately
+   untouched, same decision as the base rule; explicit overrides
+   below handle the spots where the global accent diverges from
+   the Library's Premium Navy active state. ── */
+:root:not([data-theme="dark"]) .st-panel{
+  background:rgba(255,255,255,.62);
+  border:0.5px solid rgba(10,22,40,.08);
+  box-shadow:
+    0 4px 20px rgba(10,22,40,.10),
+    inset 0 1px 0 rgba(255,255,255,.55);
+  color:#0a1628;
+  --txt:  #0a1628;
+  --txt2: rgba(10,22,40,.70);
+  --txt3: rgba(10,22,40,.62);
+  --txt4: rgba(10,22,40,.38);
+  --surf:  #ffffff;
+  --surf2: rgba(10,22,40,.04);
+  --surf3: rgba(10,22,40,.07);
+  --surf4: rgba(10,22,40,.12);
+  --sep:  rgba(10,22,40,.06);
+  --brd:  rgba(10,22,40,.12);
+  --brd2: rgba(10,22,40,.18);
+}
+
+/* ── Header ── */
+:root:not([data-theme="dark"]) .st-head{
+  border-bottom-color:rgba(10,22,40,.08);
+}
+:root:not([data-theme="dark"]) .st-head-icon{
+  background:rgba(30,58,95,.10);
+  color:#1e3a5f;
+}
+:root:not([data-theme="dark"]) .st-title{ color:#0a1628; }
+:root:not([data-theme="dark"]) .st-subtitle{ color:rgba(10,22,40,.62); }
+:root:not([data-theme="dark"]) .st-close{ color:rgba(10,22,40,.55); }
+:root:not([data-theme="dark"]) .st-close:hover{
+  background:rgba(10,22,40,.07);
+  color:#0a1628;
+}
+
+/* ── Search ── */
+:root:not([data-theme="dark"]) .st-search{
+  background:rgba(255,255,255,.70);
+  border-color:rgba(10,22,40,.10);
+}
+:root:not([data-theme="dark"]) .st-search:focus{
+  background:rgba(255,255,255,.92);
+  border-color:rgba(30,58,95,.45);
+  box-shadow:0 0 0 3px rgba(30,58,95,.12);
+}
+
+/* ── Preset pills — Library .cp-pill treatment; Reset keeps its
+   amber identity but darkened to the dialect value. ── */
+:root:not([data-theme="dark"]) .st-preset{
+  background:transparent;
+  border-color:rgba(10,22,40,.18);
+  color:rgba(10,22,40,.62);
+}
+:root:not([data-theme="dark"]) .st-preset:hover{
+  background:rgba(10,22,40,.05);
+  border-color:rgba(10,22,40,.32);
+  color:#0a1628;
+}
+:root:not([data-theme="dark"]) .st-preset-reset{
+  color:#b45309;
+  border-color:rgba(180,83,9,.28);
+  background:rgba(180,83,9,.06);
+}
+:root:not([data-theme="dark"]) .st-preset-reset:hover{
+  background:rgba(180,83,9,.12);
+  border-color:rgba(180,83,9,.45);
+  color:#b45309;
+}
+
+/* ── Section cards — .cp-sec recipe. Existing blur cascades from
+   the base .st-section rule; no new filter layers. ── */
+:root:not([data-theme="dark"]) .st-section{
+  background:rgba(255,255,255,.78);
+  border:0.5px solid rgba(10,22,40,.08);
+}
+:root:not([data-theme="dark"]) .st-sec-hdr{ color:rgba(10,22,40,.70); }
+:root:not([data-theme="dark"]) .st-sec-hdr:hover{
+  color:#0a1628;
+  background:rgba(10,22,40,.04);
+}
+:root:not([data-theme="dark"]) .st-sec-count{ color:rgba(10,22,40,.62); }
+
+/* ── Rows — flat ink-tint hover, Library decision: no lift. ── */
+:root:not([data-theme="dark"]) .st-row:hover{
+  background:rgba(10,22,40,.06);
+}
+
+/* ── iOS toggles ──
+   OFF track = soft ink surface + hairline (lands via the
+   re-pointed --surf4/--brd2 on the base .st-track rule). Knob
+   goes white with a hairline ring — shadow ring instead of a
+   border so geometry is untouched. */
+:root:not([data-theme="dark"]) .st-thumb{
+  background:#fff;
+  box-shadow:
+    0 0 0 0.5px rgba(10,22,40,.18),
+    0 1px 3px rgba(10,22,40,.20);
+}
+/* ON = solid Premium Navy + white knob, Library active state
+   (the global --acc #3b6eb5 is a mid blue outside the dialect). */
+:root:not([data-theme="dark"]) .st-toggle input:checked ~ .st-track{
+  background:#1e3a5f;
+  border-color:#1e3a5f;
+}
+
+/* ── System block — token-driven; only the warn pill needs the
+   darkened dialect amber to survive white. ── */
+:root:not([data-theme="dark"]) .st-system-status.warn{
+  color:#b45309;
+  background:rgba(180,83,9,.10);
+}
+
+/* ── Feature badges — default green var(--s-L) (#1e8f4a) and
+   safety red hold AA-ish on white; the action blue is lifted to
+   the Library import blue. Tooltip inverts via the re-pointed
+   tokens (navy plate, white text) automatically. ── */
+:root:not([data-theme="dark"]) .st-panel .feat-badge[data-type="action"]{
+  color:#2c5f96;
+}
+
+/* ── Sound sub-panel — cat cards/text ride the tokens; badge
+   greens were authored for dark glass and wash out on white
+   (#3ea36a ≈ 2.4:1), so they drop to the app's deep green and
+   the dialect amber. ── */
+:root:not([data-theme="dark"]) .st-panel .snd-badge{
+  color:var(--s-L);
+}
+:root:not([data-theme="dark"]) .st-panel .snd-badge.some{
+  color:#b45309;
+  background:rgba(180,83,9,.10);
+}
+:root:not([data-theme="dark"]) .st-panel .snd-item:hover{
+  background:rgba(10,22,40,.05);
+}
+
+/* ── Weather form — surfaces are already white literals and the
+   text rides the tokens; the description sat on --txt4 (too
+   faint for body copy on white) and the focus rings used the
+   global accent instead of the dialect navy. ── */
+:root:not([data-theme="dark"]) .st-panel .wx-row-desc{
+  color:rgba(10,22,40,.62);
+}
+:root:not([data-theme="dark"]) .st-panel .wx-select:focus,
+:root:not([data-theme="dark"]) .st-panel .wx-search-input:focus{
+  border-color:rgba(30,58,95,.45);
+  box-shadow:0 0 0 3px rgba(30,58,95,.12);
+}
+
+/* ── Scrollbar thumb — Library #cpBody value. ── */
+:root:not([data-theme="dark"]) .st-body::-webkit-scrollbar-thumb{
+  background:rgba(10,22,40,.20);
+}
+
+/* ── Performance mode counterpart — Library .cp pattern: solid
+   white plate. No unscoped perf rule ever targeted .st-panel, so
+   blur removal must happen here too (light only; dark perf
+   behavior is untouched). ── */
+html[data-perf="reduced"]:not([data-theme="dark"]) .st-panel{
+  background:rgba(255,255,255,.92) !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+html[data-perf="reduced"]:not([data-theme="dark"]) .st-section{
+  background:#fff !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
