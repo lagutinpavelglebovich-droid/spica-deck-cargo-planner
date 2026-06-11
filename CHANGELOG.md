@@ -2,6 +2,17 @@
 
 All notable changes to SPICA TIDE Deck Cargo Planner will be documented in this file.
 
+## [3.8.0] - 2026-06-11
+
+### Added
+- Per-status location colors — click a status pill in Operator mode to pick a custom color via the new Bloom Picker; custom colors sync to Viewer.
+
+### Changed
+- Light theme redesign: the Cargo Library and Smart Tools panels now use the white glass treatment (dark theme unchanged).
+
+### Fixed
+- ASCO re-import no longer creates duplicates — entries are deduplicated against the Import Queue and cargo already on deck by CCU; a summary toast reports the added and skipped counts.
+
 ## 3.7.0
 
 - Streamlined the Smart Tools panel: removed unused, legacy, and redundant toggles (Animated Counter, Status Bar Icons, Manifest Matching, Bay Dashed Lines, Cargo Hover Glow, Smooth Colours, Deck Shadow, Drag & Resize Readouts, Custom Scrollbars, Corner Badges, Night Watch, Weight Gauge) and the Auto Align Deck action.

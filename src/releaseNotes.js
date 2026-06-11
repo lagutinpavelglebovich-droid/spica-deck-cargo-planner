@@ -11,6 +11,21 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.8.0',
+    date: '2026-06-11',
+    highlights: [
+      'ASCO re-import dedup by CCU',
+      'Per-status location colors with Bloom Picker',
+      'White glass light theme for Library and Smart Tools',
+    ],
+    changes: [
+      { type: 'fix',     text: 'ASCO re-import deduplicates against the Import Queue and cargo already on deck by CCU; summary toast shows added/skipped counts' },
+      { type: 'feature', text: 'Per-status location colors — click a status pill (Operator) to pick a custom color via the new Bloom Picker' },
+      { type: 'sync',    text: 'Custom status colors sync to Viewer' },
+      { type: 'ui',      text: 'Light theme: Cargo Library and Smart Tools panels redesigned in white glass' },
+    ],
+  },
+  {
     version: '2.2.1',
     date: '2026-04-15',
     highlights: [
