@@ -28,6 +28,11 @@ export const RELEASE_NOTES = [
       { type: 'improvement', text: 'PDF: taller deck plan, larger cargo labels on a light plate, location-type icons instead of colour dots' },
       { type: 'improvement', text: 'Updates are checked at every launch and every 12 hours while the app is open' },
       { type: 'fix',         text: 'Deck Used counts only the usable deck: Bays 12–2 without the tiger strip, both hose bays and the waste skip (Bay 1 excluded)' },
+      { type: 'fix',         text: 'Re-importing a load list adds only cargo not yet on deck or in Imported: CCUs match regardless of spaces or dashes, rows without a CCU match by description, weight and location, and cargo dropped from the new list leaves Imported' },
+      { type: 'improvement', text: 'Import window marks rows already On deck or In Imported and pre-selects only new cargo' },
+      { type: 'fix',         text: 'Rotated cargo keeps its true size (it was distorted by about 20%); plans saved with distorted blocks are corrected on load' },
+      { type: 'fix',         text: 'Imported sizes snap to a library type only when both sides match, not just the area' },
+      { type: 'fix',         text: 'Bloom Picker: clicking a colour petal now applies it' },
     ],
   },
   {
