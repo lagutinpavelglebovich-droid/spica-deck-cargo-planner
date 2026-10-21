@@ -1803,6 +1803,10 @@ function setupCanvas(){
     cv.appendChild(jo);
   }
 
+  /* v3.10 — deck lighting layer (night floodlights / wet sheen) */
+  const dl=document.createElement('div');dl.className='deck-light';dl.setAttribute('aria-hidden','true');
+  dl.innerHTML='<i class="dl-dark"></i><i class="dl-pools"></i><i class="dl-wet"></i>';cv.appendChild(dl);
+
   /* Centre line + PORT/STBD */
   const cl=document.createElement('div');cl.className='center-line';cl.style.top=(CVH/2)+'px';cv.appendChild(cl);
   [{txt:'PORT ▶',top:'8px'},{txt:'STBD ▶',bottom:'8px'}].forEach(o=>{
@@ -3123,6 +3127,8 @@ function renderBlock(cv,cargo){
           });
         } else if(bouncePos){
           triggerBounceAnim(cargo.id);
+        } else {
+          animateCargoLanding(cargo.id);   /* v3.10 — visual weight on drop */
         }
 
         updateStats();buildActiveLocStrip();
@@ -3228,8 +3234,11 @@ function animateCargoExit(ids){
                            'just-placed', 'st-bouncing');
     clone.classList.add('cb-leaving');
     clone.removeAttribute('data-id'); /* avoid duplicate data-id in DOM */
-    clone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;`
-                        + `width:${rect.width}px;height:${rect.height}px;`
+    /* Keep the block's own inline style (fill, border colour) — only
+       override geometry. Replacing cssText wholesale greyed the clone. */
+    const zl = zoomLevel || 1;   /* render at deck zoom so text/badges match 1:1 */
+    clone.style.cssText = el.style.cssText + `;position:fixed;left:${rect.left/zl}px;top:${rect.top/zl}px;`
+                        + `width:${el.offsetWidth}px;height:${el.offsetHeight}px;zoom:${zl};`
                         + `margin:0;z-index:9998;pointer-events:none;`;
     document.body.appendChild(clone);
     /* Force layout commit so the transition kicks in on class add. */
@@ -3240,6 +3249,86 @@ function animateCargoExit(ids){
     /* Safety net — guarantee removal even if transitionend misses. */
     setTimeout(cleanup, 500);
   });
+}
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — CARGO MOTION: crane lift-off + landing
+   Lift: a body-pinned clone takes the strain (slight rise, shadow
+   tightens), then climbs away on a crane wire, growing toward the
+   viewer while its shadow stays on the deck, spreads and fades.
+   Landing: the block settles (tiny squash, shadow compresses) and
+   leaves a short-lived footprint on the plating.
+   Both are visual only — S.cargo is already updated by the caller.
+════════════════════════════════════════════════════════════ */
+function _motionOK(){
+  try{ return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return true; }
+}
+function animateCargoLift(ids){
+  if(!ids) return;
+  const list = Array.isArray(ids) ? ids : [ids];
+  if(!_motionOK()){ animateCargoExit(list); return; }
+  list.forEach((id, i) => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(!el) return;
+    const r = el.getBoundingClientRect();
+    if(r.width === 0 || r.height === 0) return;
+    const shadow = document.createElement('div');
+    shadow.className = 'cb-lift-shadow';
+    shadow.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`
+                         + `border-radius:${getComputedStyle(el).borderRadius};animation-delay:${i*70}ms;`;
+    const clone = el.cloneNode(true);
+    clone.classList.remove('kb-sel','dg-violation','dg-violation-warn','dg-violation-1',
+                           'dg-violation-2','dg-violation-3','just-placed','st-bouncing','cp-hl','cb-landed');
+    clone.classList.add('cb-lifting');
+    clone.removeAttribute('data-id');
+    const zl = zoomLevel || 1;   /* render at deck zoom so text/badges match 1:1 */
+    clone.style.cssText = el.style.cssText + `;position:fixed;left:${r.left/zl}px;top:${r.top/zl}px;width:${el.offsetWidth}px;height:${el.offsetHeight}px;zoom:${zl};`
+                        + `margin:0;z-index:9998;pointer-events:none;animation-delay:${i*70}ms;`;
+    const wire = document.createElement('i');
+    wire.className = 'cb-lift-wire';
+    wire.style.animationDelay = (i*70) + 'ms';
+    clone.appendChild(wire);
+    document.body.appendChild(shadow);
+    document.body.appendChild(clone);
+    const cleanup = () => { clone.remove(); shadow.remove(); };
+    clone.addEventListener('animationend', e => { if(e.target === clone) cleanup(); });
+    setTimeout(cleanup, 1500 + i*70);
+  });
+}
+function animateCargoLanding(id){
+  const el = document.querySelector(`.cb[data-id="${id}"]`);
+  if(!el || !_motionOK()) return;
+  el.classList.remove('just-placed','cb-landed');
+  void el.offsetWidth;
+  el.classList.add('cb-landed');
+  el.addEventListener('animationend', () => el.classList.remove('cb-landed'), { once:true });
+  const c = S.cargo.find(x => String(x.id) === String(id));
+  const cv = document.getElementById('cvDECK');
+  if(!c || !cv) return;
+  const fp = document.createElement('div');
+  fp.className = 'cb-footprint';
+  fp.style.cssText = `left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px;`;
+  cv.appendChild(fp);
+  fp.addEventListener('animationend', () => fp.remove(), { once:true });
+  setTimeout(() => fp.remove(), 1200);
+}
+
+/* Mark cargo as lifted off the deck (discharged at the platform).
+   Removes it from the plan with the crane animation; Undo restores. */
+function markLifted(ids){
+  if(!isOperator()) return;
+  const list = (Array.isArray(ids) ? ids : [ids]).filter(id => S.cargo.some(c => c.id === id));
+  if(!list.length) return;
+  const names = list.map(id => { const c = S.cargo.find(x => x.id === id); return c && (c.ccu || c.desc) || ''; });
+  animateCargoLift(list);
+  S.cargo = S.cargo.filter(c => !list.includes(c.id));
+  list.forEach(id => dgEvictDeletedCargo(id));
+  if(typeof inspSelId !== 'undefined' && list.includes(inspSelId)) inspClose();
+  if(typeof kbDeselect === 'function') kbDeselect();
+  renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  playSound('redo');
+  const msg = list.length === 1 ? `${names[0] || 'Cargo'} lifted` : `${list.length} lifts lifted off`;
+  showUndoToast(msg, 'Undo', () => undo());
 }
 
 function startResize(e,cargo,block,dir){
@@ -3279,6 +3368,57 @@ function startResize(e,cargo,block,dir){
 /* ════════════════════════════════════
    STATS + DG
 ════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════
+   v3.10 — ODOMETER COUNTERS
+   Every character sits in its own fixed-height column; a changed digit
+   rolls through the intermediate digits (up when the number grows, down
+   when it shrinks), right-most digit first. At rest each column holds a
+   single glyph, so textContent stays the plain value.
+════════════════════════════════════════════════════════════ */
+function setOdometer(el, value){
+  if(!el) return;
+  const next = String(value);
+  const prev = el.dataset.odo;
+  if(prev === next) return;
+  el.dataset.odo = next;
+  el.setAttribute('aria-label', next);
+  clearTimeout(Number(el.dataset.odoT || 0));
+  const plain = () => {
+    el.classList.add('odo');
+    el.innerHTML = [...next].map(ch => `<span class="odo-col"><span class="odo-strip"><span>${ch === ' ' ? '&nbsp;' : _escHtml(ch)}</span></span></span>`).join('');
+  };
+  if(prev === undefined || !_motionOK()){ plain(); return; }
+  const up = (parseFloat(next.replace(/[^\d.]/g,'')) || 0) >= (parseFloat(prev.replace(/[^\d.]/g,'')) || 0);
+  const n = Math.max(next.length, prev.length);
+  const a = prev.padStart(n, ' '), b = next.padStart(n, ' ');
+  let longest = 0;
+  const cols = [...b].map((ch, i) => {
+    const o = a[i];
+    const isD = c => c >= '0' && c <= '9';
+    let seq = [ch];
+    if(isD(ch) && o !== ch){
+      const from = isD(o) ? +o : 0, to = +ch;
+      seq = [];
+      if(up){ for(let d = from;; d = (d + 1) % 10){ seq.push(d); if(d === to) break; } }
+      else  { for(let d = from;; d = (d + 9) % 10){ seq.push(d); if(d === to) break; } }
+    }
+    const steps = seq.length - 1;
+    const delay = (n - 1 - i) * 45;
+    const dur = steps ? 420 + steps * 35 : 0;
+    longest = Math.max(longest, delay + dur);
+    if(ch === ' ' && !steps) return '';
+    /* Up: strip old→new scrolls up (digits arrive from below).
+       Down: strip new→old scrolls down (digits arrive from above). */
+    const glyphs = (up ? seq : seq.slice().reverse()).map(d => `<span>${d === ' ' ? '&nbsp;' : _escHtml(String(d))}</span>`).join('');
+    return steps
+      ? `<span class="odo-col"><span class="odo-strip ${up ? 'odo-roll' : 'odo-roll-down'}" style="--odo-n:${steps};animation-duration:${dur}ms;animation-delay:${delay}ms">${glyphs}</span></span>`
+      : `<span class="odo-col"><span class="odo-strip"><span>${_escHtml(ch)}</span></span></span>`;
+  });
+  el.classList.add('odo');
+  el.innerHTML = cols.join('');
+  el.dataset.odoT = setTimeout(plain, longest + 60);
+}
+
 function updateStats(){
   let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;
   S.cargo.forEach(c=>{
@@ -3290,12 +3430,12 @@ function updateStats(){
     if(c.status==='TR')TR++;
   });
 
-  document.getElementById('sLifts').textContent=tot;
+  setOdometer(document.getElementById('sLifts'), tot);
   document.getElementById('sWT').textContent=wt.toFixed(1)+' T';
-  document.getElementById('sL').textContent=L;
-  document.getElementById('sBL').textContent=BL;
-  document.getElementById('sROB').textContent=ROB;
-  const trEl=document.getElementById('sTR');if(trEl)trEl.textContent=TR;
+  setOdometer(document.getElementById('sL'), L);
+  setOdometer(document.getElementById('sBL'), BL);
+  setOdometer(document.getElementById('sROB'), ROB);
+  setOdometer(document.getElementById('sTR'), TR);
   const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';
 
   /* Phase 3A — weight-as-hero capacity bar. Always visible in the ribbon;
@@ -4794,6 +4934,13 @@ function bindInspector(){
     }
     inspClose();
     renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  });
+
+  const liftBtn = document.getElementById('inspLift2');
+  if(liftBtn) liftBtn.addEventListener('click', () => {
+    if(!isOperator() || inspSelId == null) return;
+    const isMulti = (typeof KB_SEL_SET !== 'undefined' && KB_SEL_SET.size > 1);
+    markLifted(isMulti ? Array.from(KB_SEL_SET) : [inspSelId]);
   });
 
   const editDetailsBtn = document.getElementById('inspEditDetails');
@@ -6943,6 +7090,7 @@ function loadListProgress(){
   });
   return { total: ll.items.length, done, per };
 }
+let _llState = { key: null, complete: null };
 function updateLoadListProgress(){
   const el = document.getElementById('llProgress');
   if(!el) return;
@@ -6951,8 +7099,18 @@ function updateLoadListProgress(){
   if(!pr){ el.hidden = true; return; }
   el.hidden = false;
   const pct = Math.round(pr.done / pr.total * 100);
-  el.classList.toggle('complete', pr.done === pr.total);
-  el.querySelector('.ll-num').textContent = `${pr.done} / ${pr.total}`;
+  const complete = pr.done === pr.total;
+  /* "All loaded" moment — only on a live transition within the same list
+     (not on opening a project / a new import that is already complete). */
+  const key = S.loadList.importedAt;
+  if(_llState.key === key && _llState.complete === false && complete){
+    el.classList.remove('ll-celebrate'); void el.offsetWidth; el.classList.add('ll-celebrate');
+    setTimeout(() => el.classList.remove('ll-celebrate'), 1600);
+    playSound('export');
+  }
+  _llState = { key, complete };
+  el.classList.toggle('complete', complete);
+  setOdometer(el.querySelector('.ll-num'), `${pr.done} / ${pr.total}`);
   el.querySelector('.ll-bar > i').style.width = pct + '%';
   el.title = 'Load list on deck: ' + pr.done + ' of ' + pr.total + ' (' + pct + '%)\n' +
     Object.entries(pr.per).map(([id, v]) =>
@@ -7040,6 +7198,7 @@ function performAscoImport(){
   });
 
   updateLoadListProgress(); savePlan();   /* persist the load list */
+  _cpEnter = { ids: new Set(added.map(q => q.id)), until: Date.now() + 1400 };
   closeAscoModal();
   if(window._cpAfterImport) window._cpAfterImport();
   buildQueueList();
@@ -7601,11 +7760,11 @@ async function _renderReport(mode){
   /* ── Gather live data from DOM ── */
   const voyageNum = document.getElementById('voyIn').value.trim() || '\u2014';
   const dateStr   = document.getElementById('dateBtn').textContent.trim() || '\u2014';
-  const lifts     = parseInt(document.getElementById('sLifts').textContent) || 0;
+  const lifts     = S.cargo.length;   /* from state — header counters animate */
   const weightStr = document.getElementById('sWT').textContent.trim();
-  const loadCount = parseInt(document.getElementById('sL').textContent) || 0;
-  const blCount   = parseInt(document.getElementById('sBL').textContent) || 0;
-  const robCount  = parseInt(document.getElementById('sROB').textContent) || 0;
+  const loadCount = S.cargo.filter(c => c.status === 'L').length;
+  const blCount   = S.cargo.filter(c => c.status === 'BL').length;
+  const robCount  = S.cargo.filter(c => c.status === 'ROB').length;
   const trCount   = S.cargo.filter(c => c.status === 'TR').length;   /* v3.10 — was missing from the PDF */
 
   /* ── Active locations with per-status cargo counts ── */
@@ -8589,6 +8748,8 @@ function cpRender(){
 }
 
 /* ── Render: Imported Queue ── */
+/* v3.10 — freshly imported cards slide in one after another. */
+let _cpEnter = { ids: new Set(), until: 0 };
 function cpRenderQueue(){
   const body   = document.getElementById('cpSecBodyQueue');
   const hdr    = document.getElementById('cpSecHdrQueue');
@@ -8634,6 +8795,11 @@ function cpRenderQueue(){
 
     const card = document.createElement('div');
     card.className = 'cp-qi' + (isPlaced?' cp-qi-placed':'');
+    if(_cpEnter.ids.has(item.id) && Date.now() < _cpEnter.until){
+      const k = [..._cpEnter.ids].indexOf(item.id);
+      card.classList.add('cp-qi-enter');
+      card.style.animationDelay = (220 + Math.min(k, 18) * 45) + 'ms';
+    }
     /* Operation-colour accent: status (L/BL/ROB/TR) wins, else DG or HL */
     if(item.status)                             card.dataset.status = item.status;
     else if(item.dgClasses && item.dgClasses.length) card.dataset.status = 'DG';
@@ -8862,13 +9028,7 @@ function _libDragFromCard(e, pendingItem, displayName, pw, ph){
     /* Placement confirmation — tag the new cargo block for a 180ms
        scale-in. CSS handles the rest; class self-removes via animationend. */
     const placed = S.cargo[S.cargo.length - 1];
-    if(placed){
-      const el = document.querySelector(`.cb[data-id="${placed.id}"]`);
-      if(el){
-        el.classList.add('just-placed');
-        el.addEventListener('animationend', () => el.classList.remove('just-placed'), { once:true });
-      }
-    }
+    if(placed) animateCargoLanding(placed.id);   /* v3.10 — settle + footprint */
   };
 
   document.addEventListener('mousemove', onMove);
@@ -12256,6 +12416,11 @@ function bindMenuBar(){
     /* Same semantics as the Delete key: Operator only, honours multi-select,
        releases acknowledged DG pairs of the removed cargo. */
     liftOrderAuto: () => autoNumberLiftOrder(),
+    markLifted:    () => {
+      if(!isOperator() || !KB_SEL) return;
+      const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];
+      markLifted(ids.map(id => (S.cargo.find(c => String(c.id) === String(id)) || {}).id).filter(v => v != null));
+    },
     liftOrderClear:() => clearLiftOrder(),
     deleteSelected:() => {
       if(!isOperator() || !KB_SEL) return;
@@ -13252,6 +13417,38 @@ function _wxLoad(){
 function _wxSave(){
   try{ localStorage.setItem(_WX_KEY, JSON.stringify(_wxState)); } catch(e){}
 }
+/* ════════════════════════════════════════════════════════════
+   v3.10 — DECK LIGHTING (Atmosphere)
+   Ties the sky to the working surface: after dark the plating dims and
+   warm floodlight pools appear along both rails and from the
+   accommodation (bow); in rain / thunderstorm the deck gets a slow wet
+   sheen (and, at night, light reflections). Cargo stays above the layer
+   and fully legible. Never captured in the PDF (body.pdf-capture).
+════════════════════════════════════════════════════════════ */
+let _wxDeckCond = null;
+function _wxNightness(cond){
+  if(/-night$/.test(cond || '')) return 1;
+  if(/-day$/.test(cond || ''))   return 0;
+  if(cond === 'dusk')            return 0.55;
+  const d = new Date(), H = d.getHours() + d.getMinutes()/60;
+  /* Same sun window as the WebGL sky (sun up 05:30–20:30), softened. */
+  if(H >= 21.3 || H < 4.8) return 1;
+  if(H >= 19.8) return (H - 19.8) / 1.5;
+  if(H < 6.3)   return 1 - (H - 4.8) / 1.5;
+  return 0;
+}
+function _wxDeckLight(cond){
+  if(cond !== undefined) _wxDeckCond = cond;
+  const b = document.body;
+  const active = _wxState && _wxState.enabled && _wxDeckCond;
+  const night = active ? Math.max(0, Math.min(1, _wxNightness(_wxDeckCond))) : 0;
+  const wet = !!active && /^(rain|thunderstorm|storm)$/.test(_wxDeckCond);
+  b.style.setProperty('--deck-night', night.toFixed(3));
+  b.toggleAttribute('data-deck-night', night > 0.02);
+  b.toggleAttribute('data-deck-wet', wet);
+}
+setInterval(() => { try{ _wxDeckLight(); }catch(e){} }, 5 * 60 * 1000);
+
 function _wxApply(){
   /* Atmosphere VFX active flag — gates body[data-wx] only. The plate
      populates regardless (real weather data is useful even without
@@ -13296,6 +13493,7 @@ function _wxApply(){
     motion:    _wxState.motion,
     engine:    _wxState.engine,
   });
+  _wxDeckLight(active ? baseCondition : null);
   skyGL.set({
     condition: useGL ? baseCondition : 'off',
     intensity: _wxState.intensity,

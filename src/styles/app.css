@@ -16242,3 +16242,189 @@ body.deck-searching #cvDECK .cb:not(.cp-hl):not(.kb-sel){
   transition:opacity var(--dur-short) var(--ease), filter var(--dur-short) var(--ease);
 }
 @media (prefers-reduced-motion: reduce){ .cb.cp-hl{ animation:none; } }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — MOTION PACK
+   Crane lift-off · landing settle · odometer counters · load-list
+   completion · staggered import · deck lighting (night / wet).
+   Every loop and transform is disabled under prefers-reduced-motion.
+════════════════════════════════════════════════════════════ */
+
+/* ── Crane lift-off ─────────────────────────────────────────── */
+.cb-lifting{
+  animation: cbCraneLift 1.15s cubic-bezier(.45,0,.2,1) forwards;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity, filter;
+  overflow: visible !important;
+}
+.cb-lifting > *:not(.cb-lift-wire){ pointer-events:none; }
+.cb-lifting .cb-del,.cb-lifting .cb-rot,.cb-lifting .cb-dup,
+.cb-lifting [class*="cb-ctrl"],.cb-lifting .rh{ display:none !important; }
+@keyframes cbCraneLift{
+  0%   { transform: translateY(0)     scale(1);    filter: drop-shadow(0 1px 1px rgba(0,0,0,.18)); opacity:1; }
+  22%  { transform: translateY(-3px)  scale(1.025);filter: drop-shadow(0 5px 6px rgba(0,0,0,.28)); opacity:1; }   /* takes the strain */
+  30%  { transform: translateY(-2px)  scale(1.02); filter: drop-shadow(0 4px 5px rgba(0,0,0,.26)); opacity:1; }   /* slight sway back */
+  100% { transform: translateY(-86px) scale(1.22); filter: drop-shadow(0 26px 22px rgba(0,0,0,.10)) blur(.6px); opacity:0; }
+}
+/* Crane wire — drops in from above, then rises with the load. */
+.cb-lift-wire{
+  position:absolute; left:50%; bottom:100%;
+  width:1.5px; height:240px; margin-left:-.75px;
+  background: linear-gradient(to top, rgba(40,44,52,.85), rgba(40,44,52,.0));
+  transform-origin: 50% 100%;
+  animation: cbLiftWire 1.15s cubic-bezier(.45,0,.2,1) forwards;
+  pointer-events:none;
+}
+.cb-lift-wire::after{                       /* hook */
+  content:''; position:absolute; left:50%; bottom:-3px; width:7px; height:7px; margin-left:-3.5px;
+  border-radius:50%; background: rgba(40,44,52,.9); box-shadow: 0 0 0 1.5px rgba(255,255,255,.55);
+}
+@keyframes cbLiftWire{
+  0%   { transform: scaleY(0); opacity:0; }
+  18%  { transform: scaleY(1); opacity:1; }
+  100% { transform: scaleY(1); opacity:.0; }
+}
+[data-theme="dark"] .cb-lift-wire{ background: linear-gradient(to top, rgba(220,226,236,.8), rgba(220,226,236,0)); }
+[data-theme="dark"] .cb-lift-wire::after{ background: rgba(220,226,236,.9); box-shadow: 0 0 0 1.5px rgba(0,0,0,.45); }
+/* Shadow left on the deck: spreads, softens and fades as the load climbs. */
+.cb-lift-shadow{
+  position:fixed; z-index:9997; pointer-events:none;
+  background: rgba(10,16,28,.42);
+  animation: cbLiftShadow 1.15s cubic-bezier(.45,0,.2,1) forwards;
+}
+@keyframes cbLiftShadow{
+  0%   { opacity:0;   filter: blur(1px);  transform: translate(0,0) scale(1); }
+  22%  { opacity:.55; filter: blur(3px);  transform: translate(2px,3px) scale(1.01); }
+  100% { opacity:0;   filter: blur(18px); transform: translate(14px,18px) scale(1.18); }
+}
+
+/* ── Landing: settle + footprint ────────────────────────────── */
+.cb.cb-landed{ animation: cbLand .46s cubic-bezier(.3,.7,.2,1) both; }
+@keyframes cbLand{
+  0%   { transform: translateY(-4px) scale(1.035); filter: drop-shadow(0 9px 10px rgba(0,0,0,.30)); }
+  55%  { transform: translateY(.6px) scale(.988);  filter: drop-shadow(0 1px 1px rgba(0,0,0,.22)); }
+  80%  { transform: translateY(0)    scale(1.004); filter: drop-shadow(0 1px 2px rgba(0,0,0,.12)); }
+  100% { transform: none;                           filter: none; }
+}
+.cb-footprint{
+  position:absolute; z-index:9; pointer-events:none; border-radius:7px;
+  box-shadow: 0 0 0 2px rgba(20,28,40,.20), 0 0 14px 2px rgba(20,28,40,.16);
+  animation: cbFootprint .9s ease-out forwards;
+}
+@keyframes cbFootprint{
+  0%   { opacity:0;   transform: scale(1.06); }
+  25%  { opacity:1;   transform: scale(1.015); }
+  100% { opacity:0;   transform: scale(1); }
+}
+[data-theme="dark"] .cb-footprint{ box-shadow: 0 0 0 2px rgba(255,255,255,.14), 0 0 16px 2px rgba(0,0,0,.45); }
+
+/* ── Odometer counters ──────────────────────────────────────── */
+.odo{ display:inline-flex; align-items:flex-end; font-variant-numeric: tabular-nums; }
+.odo-col{ display:inline-block; height:1.15em; line-height:1.15em; overflow:hidden; vertical-align:bottom; }
+.odo-strip{ display:flex; flex-direction:column; }
+.odo-strip > span{ display:block; height:1.15em; line-height:1.15em; text-align:center; }
+.odo-roll{ animation-name: odoUp; animation-timing-function: cubic-bezier(.2,.75,.25,1); animation-fill-mode: both; }
+.odo-roll-down{ animation-name: odoDown; animation-timing-function: cubic-bezier(.2,.75,.25,1); animation-fill-mode: both; }
+@keyframes odoUp  { from{ transform: translateY(0); }                                to{ transform: translateY(calc(var(--odo-n) * -1.15em)); } }
+@keyframes odoDown{ from{ transform: translateY(calc(var(--odo-n) * -1.15em)); }     to{ transform: translateY(0); } }
+
+/* ── LOAD LIST complete moment ──────────────────────────────── */
+.ll-progress{ position:relative; overflow:hidden; }
+.ll-progress::after{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.75) 48%, rgba(255,255,255,.0) 62%);
+  transform: translateX(-120%); opacity:0;
+}
+.ll-progress.ll-celebrate::after{ animation: llShine 1.1s cubic-bezier(.4,0,.2,1) .15s 1 both; }
+.ll-progress.ll-celebrate{ animation: llPop .5s cubic-bezier(.3,1.4,.5,1) 1; }
+.ll-progress.ll-celebrate .ll-bar > i{ transition: width .35s cubic-bezier(.2,.8,.2,1), background-color .6s ease .2s; }
+@keyframes llShine{ 0%{ transform:translateX(-120%); opacity:1; } 100%{ transform:translateX(120%); opacity:1; } }
+@keyframes llPop{ 0%{ transform:scale(1); } 40%{ transform:scale(1.045); } 100%{ transform:scale(1); } }
+[data-theme="dark"] .ll-progress::after{ background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.28) 48%, rgba(255,255,255,0) 62%); }
+
+/* ── Imported cards arrive one by one ───────────────────────── */
+.cp-qi.cp-qi-enter{ animation: cpQiEnter .42s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes cpQiEnter{
+  from{ opacity:0; transform: translateX(26px); }
+  to  { opacity:1; transform: none; }
+}
+
+/* ── Deck lighting: night floodlights + wet sheen ───────────── */
+.deck-light{
+  /* z 0, appended after the bay stripes: lights the plating only — bay
+     joints / numbers (z1), zones (z2), DG marks and cargo stay on top. */
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  border-radius:inherit; overflow:hidden;
+  opacity:0; transition: opacity 2.4s ease;
+}
+body[data-deck-night] .deck-light,
+body[data-deck-wet]   .deck-light{ opacity:1; }
+body.pdf-capture .deck-light{ display:none !important; }
+.deck-light > i{ position:absolute; inset:0; display:block; }
+/* Plating dims after dark… */
+.dl-dark{
+  /* Multiply with a night-blue: the beige plating turns moonlit steel
+     instead of a muddy grey. */
+  background: rgb(104,120,162);
+  mix-blend-mode: multiply;
+  opacity: var(--deck-night, 0);
+  transition: opacity 2.4s ease;
+}
+/* Dark theme: the plating colour is painted by a parent outside the
+   .dcv stacking context (contain:layout), so blend modes would mix with
+   transparency. Use plain alpha layers instead. */
+[data-theme="dark"] .dl-dark{ mix-blend-mode: normal; background: rgba(0,5,18,.42); }
+[data-theme="dark"] .dl-pools{ mix-blend-mode: normal; opacity: calc(var(--deck-night, 0) * .38); }
+[data-theme="dark"] body[data-deck-wet][data-deck-night] .dl-wet::after{ mix-blend-mode: normal; opacity: calc(var(--deck-night, 0) * .45); }
+/* …and warm sodium-ish pools fall from the rail floodlights and the
+   accommodation front at the bow (right edge). */
+.dl-pools{
+  mix-blend-mode: screen;
+  opacity: calc(var(--deck-night, 0) * .95);
+  transition: opacity 2.4s ease;
+  background:
+    radial-gradient(ellipse 8.5% 46% at  9% 0%,   rgba(255,198,112,.80), rgba(255,180,92,.24) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 31% 0%,   rgba(255,198,112,.74), rgba(255,180,92,.22) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 53% 0%,   rgba(255,198,112,.74), rgba(255,180,92,.22) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 75% 0%,   rgba(255,198,112,.72), rgba(255,180,92,.21) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 20% 100%, rgba(255,198,112,.74), rgba(255,180,92,.22) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 42% 100%, rgba(255,198,112,.74), rgba(255,180,92,.22) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 64% 100%, rgba(255,198,112,.72), rgba(255,180,92,.21) 48%, transparent 72%),
+    radial-gradient(ellipse 8.5% 46% at 86% 100%, rgba(255,198,112,.70), rgba(255,180,92,.20) 48%, transparent 72%),
+    radial-gradient(ellipse 24% 90% at 104% 50%,  rgba(255,236,200,.85), rgba(255,214,160,.26) 52%, transparent 78%);
+}
+/* Rain: a slow specular sheen drifts across the wet plating. */
+.dl-wet{ opacity:0; transition: opacity 2.4s ease; }
+body[data-deck-wet] .dl-wet{
+  opacity:1;
+  background:
+    linear-gradient(104deg, transparent 32%, rgba(255,255,255,.07) 42%, rgba(255,255,255,.16) 50%, rgba(255,255,255,.07) 58%, transparent 68%),
+    linear-gradient(180deg, rgba(30,44,60,.10), rgba(30,44,60,.16));
+  background-size: 260% 100%, 100% 100%;
+  animation: dlSheen 18s linear infinite;
+}
+[data-theme="dark"] body[data-deck-wet] .dl-wet{ filter: brightness(.7); }
+/* Night + rain: the pools streak into reflections on the wet steel. */
+body[data-deck-wet][data-deck-night] .dl-wet::after{
+  content:''; position:absolute; inset:0; mix-blend-mode: screen;
+  opacity: calc(var(--deck-night, 0) * .7);
+  background:
+    radial-gradient(ellipse 1.6% 60% at  9% 20%, rgba(255,214,160,.35), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 31% 20%, rgba(255,214,160,.32), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 53% 20%, rgba(255,214,160,.32), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 75% 20%, rgba(255,214,160,.30), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 20% 80%, rgba(255,214,160,.32), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 42% 80%, rgba(255,214,160,.32), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 64% 80%, rgba(255,214,160,.30), transparent 70%),
+    radial-gradient(ellipse 1.6% 60% at 86% 80%, rgba(255,214,160,.28), transparent 70%);
+}
+@keyframes dlSheen{ from{ background-position: 130% 0, 0 0; } to{ background-position: -130% 0, 0 0; } }
+
+@media (prefers-reduced-motion: reduce){
+  .cb.cb-landed, .cb-footprint, .ll-progress.ll-celebrate, .ll-progress.ll-celebrate::after,
+  .cp-qi.cp-qi-enter, .odo-roll, .odo-roll-down{ animation:none !important; }
+  body[data-deck-wet] .dl-wet{ animation:none; }
+}
+
+/* Inspector — Lifted action */
+.insp-act-lift{ color: var(--s-L); }

@@ -14,11 +14,16 @@ export const RELEASE_NOTES = [
     version: '3.10.0',
     date: '2026-10-21',
     highlights: [
-      'Load list progress and lift order',
+      'Load list progress, lift order and crane lift-off',
+      'Night floodlights and wet deck in Atmosphere',
       'Deck fits the screen exactly at any zoom',
-      'Clearer location pills and DG on board',
     ],
     changes: [
+      { type: 'feature',     text: 'Lifted: mark cargo as lifted off at the platform (inspector or Edit menu); it rises away on a crane wire, Undo brings it back' },
+      { type: 'ui',          text: 'Atmosphere lights the deck: after dark the plating dims under warm floodlight pools; rain adds a wet sheen and light reflections' },
+      { type: 'ui',          text: 'Header counters roll like an odometer; LOAD LIST flashes green with a short chime when everything is on deck' },
+      { type: 'ui',          text: 'Dropped cargo settles with a brief footprint; newly imported cargo slides into Imported one by one' },
+      { type: 'fix',         text: 'Cargo kept its colour while being removed (it turned grey during the exit animation)' },
       { type: 'feature',     text: 'Load list progress: LOAD LIST n / m shows how much of the imported ASCO list is on deck (per location in the tooltip); click to open Imported' },
       { type: 'feature',     text: 'Lift order: Edit → Number Lift Order numbers Load and Transfer lifts per location (priority first, then aft to fore); edit any number in the inspector; shown on the deck, in the PDF and in Excel' },
       { type: 'feature',     text: 'Inspector: edit cargo size in metres (along / across the deck) and the lift number' },
