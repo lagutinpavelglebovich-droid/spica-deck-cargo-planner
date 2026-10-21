@@ -3669,12 +3669,27 @@ function updateStats(){
   if(typeof updateStatusBar==='function') updateStatusBar();
   updateLoadListProgress();
 }
+function _bindDGOnBoardClick(){
+  const line = document.getElementById('dgOnBoardLine');
+  if(!line || line.dataset.bound) return;
+  line.dataset.bound = '1';
+  line.setAttribute('role', 'button');
+  line.tabIndex = 0;
+  const go = () => {
+    checkSeg();
+    if(_lastDGViolations.length) _renderDGCheckModal(_lastDGViolations, true);
+    else showToast(S.cargo.some(c => (c.dgClasses||[]).length) ? 'No DG segregation conflicts on deck' : 'No dangerous goods on deck', 'ok');
+  };
+  line.addEventListener('click', go);
+  line.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
+}
 function updateDGSummary(){
   /* v3.10 — totals for the whole vessel (not per location), rendered as
      IMDG-coloured class chips + total DG lift count. Per-location split
      lives in the hover tooltip only. */
   const el = document.getElementById('dgOnBoardText');
   if(!el) return;
+  _bindDGOnBoardClick();
   const line = document.getElementById('dgOnBoardLine');
   const counts = {}, byLoc = {};
   let lifts = 0;
@@ -3839,6 +3854,7 @@ function bindDGAutoCheck(){
    check. When the current check finds any of them NOT in any violation
    anymore, they get the "resolved" pulse + sound fires once. */
 let _phase27PrevViolationIds = new Set();
+let _lastDGViolations = [];
 
 function checkSeg(){
   /* ── 1. Collect all DG blocks ── */
@@ -3870,6 +3886,7 @@ function checkSeg(){
     }
   }
 
+  _lastDGViolations = violations;   /* v3.10 — for DG ON BOARD click */
   /* ── 3. Split into acknowledged vs new ── */
   const newViolations = violations.filter(v => !DG_ACK_PAIRS.has(v.key));
   const ackViolations = violations.filter(v =>  DG_ACK_PAIRS.has(v.key));
@@ -3930,6 +3947,12 @@ function checkSeg(){
   if(newViolations.length > 0) playSound('warning');
 
   /* ── 9. Build and show modal for NEW violations only ── */
+  _renderDGCheckModal(newViolations, false);
+}
+
+/* v3.10 — shared renderer: new conflicts (auto) or every current conflict
+   (opened from DG ON BOARD). */
+function _renderDGCheckModal(list, all){
   const ov   = document.getElementById('dgCheckOv');
   const body = document.getElementById('dgCheckBody');
   const sub  = document.getElementById('dgCheckSub');
@@ -3937,9 +3960,11 @@ function checkSeg(){
 
   body.innerHTML = '';
 
-  const totalPairs = newViolations.length;
-  const maxLvl     = Math.max(...newViolations.map(v => v.level));
-  if(sub) sub.textContent = `${totalPairs} new violation${totalPairs!==1?'s':''} — IMDG Code`;
+  const totalPairs = list.length;
+  const maxLvl     = Math.max(...list.map(v => v.level));
+  if(sub) sub.textContent = all
+    ? `${totalPairs} segregation conflict${totalPairs!==1?'s':''} on deck — IMDG Code`
+    : `${totalPairs} new violation${totalPairs!==1?'s':''} — IMDG Code`;
 
   /* Summary banner */
   const sevLabel = maxLvl >= 3 ? 'CRITICAL' : maxLvl >= 2 ? 'HIGH' : 'CAUTION';
@@ -3949,13 +3974,13 @@ function checkSeg(){
   summDiv.innerHTML = `
     <div class="dg-check-summary-icon">${sevIcon}</div>
     <div class="dg-check-summary-text">
-      <b>${sevLabel}:</b> ${totalPairs} new DG segregation conflict${totalPairs!==1?'s':''}.
-      Acknowledge to confirm you have noted this. Acknowledged conflicts won't be repeated.
+      <b>${sevLabel}:</b> ${totalPairs} ${all ? '' : 'new '}DG segregation conflict${totalPairs!==1?'s':''}${all ? ' currently on deck' : ''}.
+      ${all ? 'Includes conflicts already acknowledged. Flagging aid only — not a compliance determination.'
+            : "Acknowledge to confirm you have noted this. Acknowledged conflicts won't be repeated."}
     </div>`;
   body.appendChild(summDiv);
 
-  /* Violation cards — only new pairs */
-  newViolations.forEach(v => {
+  list.forEach(v => {
     const { a, b, level, worstA, worstB, distM, requiredM } = v;
     const dgA = DG_DATA.find(d => d.cls === (worstA||a.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
     const dgB = DG_DATA.find(d => d.cls === (worstB||b.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
@@ -3984,10 +4009,10 @@ function checkSeg(){
     /* Locate: acknowledge this specific pair, flash blocks */
     card.querySelector('.dg-viol-locate').addEventListener('click', () => {
       acknowledgeDGCheck();
-      [a.id, b.id].forEach((id, idx) => {
+      if(typeof flyToCargo === 'function') flyToCargo(a.id, { select:false });   /* v3.10 */
+      [a.id, b.id].forEach(id => {
         const el = document.querySelector(`.cb[data-id="${id}"]`);
         if(!el) return;
-        if(idx === 0) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
         el.classList.add('cp-hl');
         setTimeout(() => el.classList.remove('cp-hl'), 4500);
       });
@@ -6351,6 +6376,9 @@ function applyZoom(z){
      ZOOM_MIN. Easing is quadratic ease-in on the normalized distance
      below FIT so the reveal starts gently, then strengthens. */
   updateVesselBgOpacity();
+  /* v3.10 — remember whether the deck is at FIT, so opening a side panel
+     can refit into the narrower area only when the user was at FIT. */
+  try{ _atFit = Math.abs(zoomLevel - computeFitScale()) < 0.012; }catch(e){}
   /* Phase 23 — keep the measurement label pinned to the line midpoint
      when the deck zooms. The label is position:fixed in <body>, so its
      client coordinates must be recomputed from the new cvRect. */
@@ -6382,6 +6410,61 @@ function updateVesselBgOpacity(){
   }
   document.documentElement.style.setProperty('--vessel-bg-opacity', op.toFixed(3));
 }
+/* ════════════════════════════════════════════════════════════
+   v3.10 — SIDE PANELS MAKE ROOM
+   The Library (380 px) and the inspector float over the right side and
+   used to cover Bays 3–1. While either is open, the deck area reserves
+   that width (body.side-panel-open → padding-right) and, if the deck was
+   at FIT, refits into what is left: the whole deck shifts left and stays
+   visible beside the panel. A custom zoom is left alone.
+════════════════════════════════════════════════════════════ */
+let _atFit = true;
+(function _watchSidePanels(){
+  let open = null;
+  const sync = () => {
+    const b = document.body;
+    const now = b.classList.contains('cp-panel-open') || b.classList.contains('insp-open');
+    if(now === open) return;
+    const first = open === null;
+    open = now;
+    const wasFit = _atFit;
+    b.classList.toggle('side-panel-open', now);
+    if(!first && wasFit && !b.classList.contains('view-3d')) requestAnimationFrame(() => fitToScreen());
+  };
+  new MutationObserver(sync).observe(document.body, { attributes:true, attributeFilter:['class'] });
+  sync();
+})();
+
+/* v3.10 — location cards centre on the page (same axis as the DG line,
+   the deck and the bottom bar): a right-hand spacer mirrors the width of
+   the zoom / add-location cluster on the left. */
+(function _mirrorLocCtrlWidth(){
+  const g = document.querySelector('.loc-ctrl-group');
+  if(!g || typeof ResizeObserver === 'undefined') return;
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--loc-ctrl-w', Math.round(g.getBoundingClientRect().width) + 'px');
+  }).observe(g);
+})();
+
+/* v3.10 — keep FIT true to the real area: the first fit at launch runs
+   before the ribbon/fonts settle (it landed at 93 % with the bow clipped),
+   and window resizes never refitted. When the deck is at FIT, any size
+   change of the deck area refits it (debounced). Custom zoom untouched. */
+(function _watchDeckAreaSize(){
+  const area = document.getElementById('deckArea');
+  if(!area || typeof ResizeObserver === 'undefined') return;
+  let t = 0, lastW = 0, lastH = 0;
+  new ResizeObserver(entries => {
+    const r = entries[0].contentRect;
+    if(Math.abs(r.width - lastW) < 2 && Math.abs(r.height - lastH) < 2) return;
+    lastW = r.width; lastH = r.height;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      if(_atFit && !document.body.classList.contains('view-3d')) fitToScreen();
+    }, 120);
+  }).observe(area);
+})();
+
 function fitToScreen(){
   const area  = document.getElementById('deckArea');
   const inner = document.querySelector('.deck-outer');
@@ -9737,6 +9820,9 @@ function kbShowZoomFlash(label){
 /* ── Cheatsheet open / close ────────────────────────────── */
 function openKbCheat(){
   const ov = document.getElementById('kbCheatOv');
+  /* The overlay is authored inside .deck-area, whose stacking context sits
+     below the header ribbon — re-home it to <body> so it covers everything. */
+  if(ov && ov.parentElement !== document.body) document.body.appendChild(ov);
   if(ov) ov.classList.add('open');
 }
 function closeKbCheat(){
@@ -10105,6 +10191,16 @@ function _cmdpActions(){
       run: () => { if(typeof applyZoom === 'function') applyZoom(1.0); } },
     { group:'View',      label:'Fit to screen',
       run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
+    { group:'View',      label:'3D deck view',            shortcut:'V',
+      run: () => toggle3D() },
+    { group:'Cargo',     label:'Number lift order',
+      guard: opFn, run: () => autoNumberLiftOrder() },
+    { group:'Cargo',     label:'Clear lift order',
+      guard: () => isOperator() && S.cargo.some(c => c.liftNo), run: () => clearLiftOrder() },
+    { group:'Cargo',     label:'Mark selected as lifted',
+      guard: () => isOperator() && !!KB_SEL, run: () => markLifted([...(KB_SEL_SET.size ? KB_SEL_SET : [KB_SEL])].map(id => (S.cargo.find(c => String(c.id) === String(id)) || {}).id).filter(v => v != null)) },
+    { group:'Cargo',     label:'Show DG segregation conflicts',
+      run: () => document.getElementById('dgOnBoardLine')?.click() },
     /* Phase 29 — Focus Deck mode. Dims the surrounding chrome so the
        deck alone is legible for final review. Never a permanent button:
        only reachable here or by re-running the action. Esc exits. */
@@ -14859,7 +14955,7 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
    reverts when user mutates during 'autosaved' hold. */
 const _LABELS = {
   saved:     'Saved',
-  unsaved:   'Unsaved',
+  unsaved:   'Not saved to file',   /* autosave keeps a local copy; this is the project file */
   saving:    'Saving…',
   autosaved: 'Autosaved',
 };

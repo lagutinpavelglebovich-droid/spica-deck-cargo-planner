@@ -16554,3 +16554,77 @@ body.view-3d-leaving:not(.pdf-capture) .cb{
 }
 .cp-qi.cp-qi-placed{ cursor:pointer; }
 @media (prefers-reduced-motion: reduce){ .cb.cb-flyto{ animation:none; outline:2px solid var(--acc); outline-offset:3px; } }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — READABLE MODALS
+   About, What's New and the ASCO import window were near-transparent
+   glass: deck cargo bled through the text. Same family look, but a
+   dense surface so every line reads cleanly in both themes.
+════════════════════════════════════════════════════════════ */
+.about-modal, .wn-modal, .asco-panel, .rh-panel{
+  background: rgba(250,250,248,.96) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border: 1px solid rgba(0,0,0,.08) !important;
+  box-shadow: 0 24px 64px rgba(20,30,45,.22), 0 2px 8px rgba(20,30,45,.08) !important;
+  color: var(--txt) !important;
+}
+[data-theme="dark"] .about-modal,
+[data-theme="dark"] .wn-modal,
+[data-theme="dark"] .asco-panel,
+[data-theme="dark"] .rh-panel{
+  background: rgba(28,31,37,.97) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: 0 24px 64px rgba(0,0,0,.55) !important;
+}
+/* secondary lines that were faded to near-invisible */
+.about-desc, .about-check-label, .about-footer, .about-copy,
+.wn-modal li, .wn-modal p, .wn-change, .wn-text, .rh-panel li, .rh-panel p{ color: var(--txt2) !important; }
+.about-subtitle{ color: var(--acc) !important; }
+
+/* v3.10 — side panels make room (see _watchSidePanels in app.js).
+   Supersedes the old "deck never shifts" rule for the Library: the deck
+   area ends just left of whichever right panel is open, with an 8 px gap. */
+body.side-panel-open.cp-panel-open .deck-area{ margin-right: 404px !important; }
+body.side-panel-open.insp-open .deck-area,
+body.side-panel-open.insp-open.cp-panel-open .deck-area{ margin-right: 384px !important; }
+
+/* v3.10 — DG ON BOARD is a button: opens all current segregation conflicts */
+.dg-onboard-line{ cursor:pointer; transition:box-shadow var(--dur-short) var(--ease), transform var(--dur-short) var(--ease); }
+.dg-onboard-line:hover{ box-shadow:0 4px 14px rgba(30,60,90,.12), inset 0 1px 0 rgba(255,255,255,.6) !important; }
+.dg-onboard-line:focus-visible{ outline:2px solid var(--acc); outline-offset:2px; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — ALIGNMENT PASS
+════════════════════════════════════════════════════════════ */
+/* Location cards centred on the page axis: mirror spacer on the right.
+   Strip basis = its content, so when many locations crowd the row the
+   spacer shrinks with it instead of stealing card room. */
+.locs-row .locs-content::after{
+  content:''; display:block; align-self:stretch;
+  flex:0 1 var(--loc-ctrl-w, 0px); min-width:0;
+}
+#activeLocStrip{ flex:1 1 auto !important; }
+
+/* Header: no trailing divider after the last control (language). */
+.lang-switch::after{ content:none !important; display:none !important; }
+
+/* Stat labels: one style for all six (was mixed caps / Title case). */
+.gst .gst-lbl{
+  text-transform:uppercase !important;
+  letter-spacing:.7px !important;
+  font-size:9.5px !important;
+  white-space:nowrap;
+}
+.gst{ min-width:60px; }
+#gstDeckUsage .gst-lbl{ position:relative; top:-1px; }
+
+/* Zoom pill: − / + glyphs read at the same visual size as 1:1 / Fit / 3D. */
+#zoomOut, #zoomIn{ font-size:15px !important; line-height:1 !important; font-weight:500 !important; }
+/* Header: the control cluster sits flush right with a constant inset
+   (it floated left inside its stretched cell, leaving 20–90 px of dead
+   space that changed with window width). */
+.shell-ribbon > .rc:last-child{ display:flex; justify-content:flex-end; align-items:center; padding-right:18px; }
+/* Info row: LOAD LIST chip matches the DG ON BOARD capsule height/radius. */
+.ll-progress{ height:32px; border-radius:12px; padding:0 14px; }
+.dg-onboard-line{ min-height:32px; box-sizing:border-box; display:inline-flex !important; align-items:center; gap:8px; }
