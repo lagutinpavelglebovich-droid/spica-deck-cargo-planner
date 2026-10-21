@@ -43,9 +43,15 @@ jobs:
           PKG_VER=$(node -p "require('./package.json').version")
           TAURI_VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
           CARGO_VER=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "Tag: $TAG | package.json: $PKG_VER | tauri.conf.json: $TAURI_VER | Cargo.toml: $CARGO_VER"
-          if [ "$TAG" != "$PKG_VER" ] || [ "$TAG" != "$TAURI_VER" ] || [ "$TAG" != "$CARGO_VER" ]; then
-            echo "::error::Version mismatch! Tag=$TAG package.json=$PKG_VER tauri.conf.json=$TAURI_VER Cargo.toml=$CARGO_VER"
+          APP_VER=$(grep -E "^const APP_VERSION *=" src/app.js | head -1 | sed -E "s/.*'([^']+)'.*/\1/")
+          BUILD_VER=$(grep -E "^const CURRENT_BUILD *=" src/app.js | head -1 | sed -E "s/.*'v?([^']+)'.*/\1/")
+          echo "Tag: $TAG | package.json: $PKG_VER | tauri.conf.json: $TAURI_VER | Cargo.toml: $CARGO_VER | APP_VERSION: $APP_VER | CURRENT_BUILD: v$BUILD_VER"
+          if [ "$TAG" != "$PKG_VER" ] || [ "$TAG" != "$TAURI_VER" ] || [ "$TAG" != "$CARGO_VER" ] || [ "$TAG" != "$APP_VER" ] || [ "$TAG" != "$BUILD_VER" ]; then
+            echo "::error::Version mismatch! Tag=$TAG package.json=$PKG_VER tauri.conf.json=$TAURI_VER Cargo.toml=$CARGO_VER APP_VERSION=$APP_VER CURRENT_BUILD=v$BUILD_VER"
+            exit 1
+          fi
+          if ! grep -q "v$TAG" index.html; then
+            echo "::error::index.html (Help menu / About modal) does not mention v$TAG"
             exit 1
           fi
           echo "Versions match: $TAG"

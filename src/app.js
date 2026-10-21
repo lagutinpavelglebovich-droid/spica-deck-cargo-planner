@@ -22,6 +22,7 @@ import { animate as motionAnimate } from 'motion';
    hoisted; placed here alongside the other top-level imports for
    convention. Used by the Phase W1 weather block (~line 12462). */
 import { wxScene, _FALLBACK_MAP as _WX_FALLBACK_MAP } from './weather/index.js';
+import { skyGL } from './weather/skyGL.js';
 import { DEFAULT_CONDITION } from './weather/presets.js';
 /* Phase W6 — Open-Meteo data layer (api.js, location.js, autoRefresh.js)
    plus the Meteocons icon URL map. Aliased on import to keep call sites
@@ -1385,7 +1386,9 @@ function _migrateDgClasses(cargoArr){
       c.dgClasses = (c.dgClass && c.dgClass !== '') ? [c.dgClass] : [];
     }
     delete c.dgClass;
-    /* Deduplicate & cap at 3 */
+    /* Canonicalise ("3.0"→"3", "1.4S"→"1.4"); keep unknown raw values
+       visible rather than silently dropping them. Deduplicate & cap at 3. */
+    c.dgClasses = c.dgClasses.map(v => canonDGClass(v) || String(v).trim()).filter(Boolean);
     c.dgClasses = [...new Set(c.dgClasses)].slice(0, 3);
   });
 }
@@ -1510,6 +1513,28 @@ const SEG_FULL = {
   },
 };
 
+/* ── DG class canonicalisation ──────────────────────────────────────
+   Load lists arrive in many shapes: "3.0", "Class 3", "1.4S", "2", "8 (3)".
+   canonDGClass() maps one token to a canonical IMDG class/division
+   ("3", "1.4", "2.1"...) or '' when it is not a class at all.
+   A bare class without division ("2", "4", "5", "6", "1") cannot be
+   looked up in SEG_FULL directly — getSeg() then takes the MOST
+   RESTRICTIVE division of that class (conservative, never silent 0). */
+const DG_VALID_CLASSES = new Set(['1','1.1','1.2','1.3','1.4','1.5','1.6',
+  '2','2.1','2.2','2.3','3','4','4.1','4.2','4.3','5','5.1','5.2',
+  '6','6.1','6.2','7','8','9']);
+const DG_BARE_DIVISIONS = {
+  '1':['1.1','1.3','1.4'], '2':['2.1','2.2','2.3'], '4':['4.1','4.2','4.3'],
+  '5':['5.1','5.2'],       '6':['6.1','6.2'],
+};
+function canonDGClass(raw){
+  const m = String(raw == null ? '' : raw).trim()
+    .match(/^(?:class\s*)?([1-9])(?:\.(\d))?\s*[a-s]?$/i);
+  if(!m) return '';
+  const c = m[1] + (m[2] && m[2] !== '0' ? '.' + m[2] : '');
+  return DG_VALID_CLASSES.has(c) ? c : '';
+}
+
 /* Normalise a DG class string for matrix lookup.
    "1.1","1.2","1.5" all map to "1.1" (same row).
    "1.3","1.6" → "1.3". "1.4" → "1.4".           */
@@ -1524,24 +1549,50 @@ function normDG(cls){
 /* Return segregation level (0–3) between two DG classes. */
 function getSeg(a,b){
   if(!a||!b)return 0;
+  a = canonDGClass(a) || String(a).trim();
+  b = canonDGClass(b) || String(b).trim();
+  const ea = DG_BARE_DIVISIONS[a], eb = DG_BARE_DIVISIONS[b];
+  if(ea || eb){
+    let worst = 0;
+    for(const x of (ea || [a])) for(const y of (eb || [b])) worst = Math.max(worst, getSeg(x, y));
+    return worst;
+  }
   const na=normDG(a),nb=normDG(b);
   if(na===nb)return 0;
   const[x,y]=[na,nb].sort();
   return(SEG_FULL[x]&&SEG_FULL[x][y]!=null)?SEG_FULL[x][y]:0;
 }
 
-/* MINI clearance in canvas px.
-   MINI = 6ft × 6ft = 1.83m × 1.83m (CCU_PRESETS key 'cont_mini_6').
-   Use the longer dimension (1.83m) as the unit distance.
-   A=1 MINI, B=2 MINI, C=3 MINI                           */
-function miniPx(){
+/* ── Segregation geometry (metres are the source of truth) ──────────
+   MINI = 6ft mini container length (CCU_PRESETS 'cont_mini_6', 1.83 m).
+   A=1 MINI, B=2 MINI, C=3 MINI.
+   Distances are measured in PHYSICAL METRES, not canvas px: the canvas
+   has two different scales (M=31 px/m along deck, YS=25.33 px/m across),
+   so one px pad cannot represent the same clearance on both axes.
+   Metric = true edge-to-edge distance (Euclidean between rectangles).
+   Overlays use per-axis px pads + elliptical corner radius so the drawn
+   zone is exactly the set of positions checkSeg() flags.              */
+const SEG_EPS_M = 0.05;   /* 5 cm tolerance for px rounding / joints */
+function miniM(){
   const mini=CCU_PRESETS.find(p=>p.key==='cont_mini_6');
-  return mini ? m2px_w(mini.length_m) : m2px_w(1.83);  // fallback 1.83m
+  return mini ? mini.length_m : 1.83;
 }
-
-function segClearancePx(level){
-  // level: 0=none, 1=1 MINI, 2=2 MINI, 3=3 MINI
-  return Math.round(miniPx() * Math.max(0, level));
+function segClearanceM(level){
+  return miniM() * Math.max(0, level);
+}
+/* Overlay pad in px, separate per axis. */
+function segPadPx(level){
+  const d = segClearanceM(level);
+  return { x: m2px_w(d), y: m2px_h(d) };
+}
+/* Edge-to-edge distance between two cargo rectangles, in metres.
+   0 when they touch or overlap. X walks real bays/joints. */
+function cargoEdgeDistM(a, b){
+  const ax1 = deckXToMeters(a.x), ax2 = deckXToMeters(a.x + a.w);
+  const bx1 = deckXToMeters(b.x), bx2 = deckXToMeters(b.x + b.w);
+  const gx = Math.max(0, Math.max(ax1, bx1) - Math.min(ax2, bx2));
+  const gy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h)) / YS;
+  return Math.hypot(gx, gy);
 }
 
 /* ── DG Drag Segregation Overlay ─────────────────────────
@@ -1551,12 +1602,31 @@ function segClearancePx(level){
    excludeId = id of dragged cargo (skip it in the placed list)
    ─────────────────────────────────────────────────────── */
 /* DG segregation preview during drag — refined visual.
-   Engine unchanged (getSeg + SEG_FULL + segClearancePx). Only the visual
+   Engine: getSeg + SEG_FULL + segPadPx (per-axis px pads). Only the visual
    presentation changed: class-based styling, muted palette, small corner
    badge, AND a soft halo on each infringed cargo block (via .dg-violation
    on its .cb element). Returns the count of violations so callers can
    react (e.g., visually "safe" when zero). */
-function showDragSegOverlay(dragCls, excludeId){
+/* Candidate drop rect (deck px) for a cargo being dragged — same formula
+   the mouse/touch drop handlers use (relative to #cvDECK, zoom-corrected,
+   clamped to the deck). Returns null when the pointer is off the deck.  */
+function dragCandidateRect(clientX, clientY, ox, oy, cargo){
+  const dcv = document.getElementById('cvDECK');
+  if(!dcv) return null;
+  const cr = dcv.getBoundingClientRect();
+  if(clientX < cr.left || clientX > cr.right || clientY < cr.top || clientY > cr.bottom) return null;
+  return {
+    x: Math.max(0, Math.min((clientX - cr.left) / zoomLevel - ox, TW  - cargo.w)),
+    y: Math.max(0, Math.min((clientY - cr.top)  / zoomLevel - oy, CVH - cargo.h)),
+    w: cargo.w,
+    h: cargo.h,
+  };
+}
+
+/* cand = candidate drop rect from dragCandidateRect(). Clearance zones are
+   drawn for every incompatible DG block (guide); the halo + count apply
+   only to blocks the candidate position actually infringes. */
+function showDragSegOverlay(dragCls, excludeId, cand){
   const ovl = document.getElementById('dgDragOverlay');
   if(!ovl) return 0;
   /* Clear previous zones + violation classes before redrawing */
@@ -1583,14 +1653,15 @@ function showDragSegOverlay(dragCls, excludeId){
       }
     }
     if(level < 1) return;
-    violationCount++;
+    const infringed = !!cand && cargoEdgeDistM(cand, placed) < segClearanceM(level) - SEG_EPS_M;
+    if(infringed) violationCount++;
 
     /* ── Clearance zone (dotted, muted) ─────────────────────────── */
-    const pad = segClearancePx(level);
-    const zx  = Math.max(0,   placed.x - pad);
-    const zy  = Math.max(0,   placed.y - pad);
-    const zx2 = Math.min(TW,  placed.x + placed.w + pad);
-    const zy2 = Math.min(CVH, placed.y + placed.h + pad);
+    const { x: padX, y: padY } = segPadPx(level);
+    const zx  = Math.max(0,   placed.x - padX);
+    const zy  = Math.max(0,   placed.y - padY);
+    const zx2 = Math.min(TW,  placed.x + placed.w + padX);
+    const zy2 = Math.min(CVH, placed.y + placed.h + padY);
 
     const z = document.createElement('div');
     z.className = 'dg-drag-zone dg-drag-zone-' + level;
@@ -1598,6 +1669,7 @@ function showDragSegOverlay(dragCls, excludeId){
     z.style.top    = zy  + 'px';
     z.style.width  = (zx2 - zx) + 'px';
     z.style.height = (zy2 - zy) + 'px';
+    z.style.borderRadius = padX + 'px / ' + padY + 'px';
 
     /* Small corner badge — replaces the old centered pill */
     const lbl = document.createElement('span');
@@ -1607,7 +1679,7 @@ function showDragSegOverlay(dragCls, excludeId){
     ovl.appendChild(z);
 
     /* ── Halo on the infringed cargo block itself ──────────────── */
-    const cbEl = document.querySelector(`.cb[data-id="${placed.id}"]`);
+    const cbEl = infringed ? document.querySelector(`.cb[data-id="${placed.id}"]`) : null;
     if(cbEl){
       cbEl.classList.add('dg-violation', 'dg-violation-' + level);
     }
@@ -2671,6 +2743,40 @@ function renderAll(){
    renderBlock and kbMove so nudging stays consistent with full renders. */
 function cbControlsFlipLeft(cargo){ return cargo.x + cargo.w > TW - 34; }
 
+/* Cargo label font size (px). Preferred size is the original heuristic
+   (12–18 px from the shorter side and name length). If that size cannot
+   fit inside the block (padding 3px 5px, line-height 1.2, word wrap), it
+   steps down 1 px at a time to a 6 px floor — the label shrinks with the
+   block and never disappears. Used by renderBlock and live resize.     */
+function cbLabelFontPx(cargo, maxPx){
+  maxPx = maxPx || 18;
+  const text   = String(cargo.ccu || '');
+  const words  = text.split(/\s+/).filter(Boolean);
+  const n      = Math.max(1, text.length);
+  const minDim = Math.min(cargo.w, cargo.h);
+  /* DG badge strip sits in the top-right corner (renderBlock gate: w >= 36). */
+  const hasDg  = (cargo.dgClasses || []).length > 0 && cargo.w >= 36;
+  const availW = Math.max(1, cargo.w - 10);
+  const availH = Math.max(1, cargo.h - 6 - (hasDg ? 12 : 0));
+  const fontByName = Math.floor(availW / (n * 0.54));
+  let fs = Math.max(12, Math.min(maxPx, Math.round(minDim * 0.30), fontByName));
+  /* Greedy word wrap, the way the browser breaks the label (Inter 700
+     ≈ 0.58 em per glyph); over-long words break mid-word. */
+  const lines = f => {
+    const cw = 0.58 * f; let ln = 1, cur = 0;
+    for(const w of words){
+      const ww = w.length * cw;
+      if(cur && cur + cw + ww > availW){ ln++; cur = 0; }
+      cur = cur ? cur + cw + ww : ww;
+      if(cur > availW){ ln += Math.ceil(cur / availW) - 1; cur = cur % availW; }
+    }
+    return ln;
+  };
+  const fits = f => lines(f) * f * 1.2 <= availH;
+  while(fs > 6 && !fits(fs)) fs--;
+  return fs;
+}
+
 function renderBlock(cv,cargo){
   const loc=locById(cargo.platform)||LOC_ALL[0];
   /* Cargo fill uses the SAME central operation palette as pills — one
@@ -2691,12 +2797,7 @@ function renderBlock(cv,cargo){
            badges. The label uses full block width (no 60% clamp now
            that the badge strip is corner-positioned, not edge-strip).
      Floor 7 px stays legible on retina. */
-  const labelText = String(cargo.ccu || '');
-  const nameLen   = Math.max(1, labelText.length);
-  const labelWidth = cargo.w - 10;                                    /* ~5 px padding each side */
-  const fontByName = Math.floor(labelWidth / (nameLen * 0.54));
-  const blockBased = Math.round(minDim * 0.30);
-  const textSz = Math.max(12, Math.min(18, blockBased, fontByName)) + 'px';
+  const textSz = cbLabelFontPx(cargo) + 'px';
   const badgeSz=Math.max(9,Math.min(14,Math.floor(minDim/6)))+'px';
 
   /* Make the cargo block itself a flex column so the label is truly centred
@@ -2759,12 +2860,9 @@ function renderBlock(cv,cargo){
   /* Premium label: slightly bolder, soft text-shadow for depth */
   const labelShadow = isDark(fill) ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.5)';
   idEl.style.cssText=`font-size:${textSz};color:${textCol};font-weight:700;text-shadow:0 1px 2px ${labelShadow};letter-spacing:0px;`;
-  /* Phase 26 — Tiny-cargo label fallback. Below ~0.9 m on shortest side
-     the text font clips to 8 px and becomes unreadable anyway. Suppress
-     the text entirely: block stays selectable, hover card and inspector
-     still show full info, but the deck stays clean instead of noisy. */
-  const _tinyCargo = minDim < 28;
-  idEl.textContent = _tinyCargo ? '' : (cargo.ccu||'');
+  /* Label is always rendered; cbLabelFontPx() shrinks it to fit
+     (6 px floor) instead of hiding it on small blocks. */
+  idEl.textContent = cargo.ccu||'';
   b.appendChild(idEl);
 
   /* DG badges — wrapped in a safe-area strip that owns layout.
@@ -2865,7 +2963,7 @@ function renderBlock(cv,cargo){
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
-      if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id);_dragSegTimer=0;});}
+      if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){const _cx=ev.clientX,_cy=ev.clientY;_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id,dragCandidateRect(_cx,_cy,ox,oy,cargo));_dragSegTimer=0;});}
     };
     const onUp=ev=>{
       document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
@@ -3019,7 +3117,7 @@ function renderBlock(cv,cargo){
       const t = ev.touches[0];
       if(Math.abs(t.clientX-sx)>4||Math.abs(t.clientY-sy)>4) moved=true;
       ghost.style.left=(t.clientX-ox*zoomLevel)+'px'; ghost.style.top=(t.clientY-oy*zoomLevel)+'px';
-      if(cargo.dgClasses&&cargo.dgClasses.length>0) showDragSegOverlay(cargo.dgClasses, cargo.id);
+      if(cargo.dgClasses&&cargo.dgClasses.length>0) showDragSegOverlay(cargo.dgClasses, cargo.id, dragCandidateRect(t.clientX, t.clientY, ox, oy, cargo));
     };
     const onTouchEnd = ev => {
       document.removeEventListener('touchmove',onTouchMove); document.removeEventListener('touchend',onTouchEnd);
@@ -3090,6 +3188,9 @@ function startResize(e,cargo,block,dir){
     if(dir.includes('n')){nh=Math.max(20,oh-dy);ny=oy+oh-nh;}
     cargo.x=nx;cargo.y=ny;cargo.w=nw;cargo.h=nh;
     block.style.cssText+=`left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
+    /* Live label refit so text shrinks with the block during the drag. */
+    const _lbl=block.querySelector('.cb-id');
+    if(_lbl) _lbl.style.fontSize=cbLabelFontPx(cargo)+'px';
   };
   const onUp=()=>{
     document.removeEventListener('mousemove',onMove);
@@ -3407,13 +3508,11 @@ function checkSeg(){
         }
       }
       if(level < 1) continue;
-      const required = segClearancePx(level);
-      const gapX = Math.max(0, Math.max(a.x,b.x) - Math.min(a.x+a.w, b.x+b.w));
-      const gapY = Math.max(0, Math.max(a.y,b.y) - Math.min(a.y+a.h, b.y+b.h));
-      const gap  = Math.min(gapX, gapY);
-      if(gap < required){
+      const requiredM = segClearanceM(level);
+      const distM     = cargoEdgeDistM(a, b);
+      if(distM < requiredM - SEG_EPS_M){
         legacyWarns.push(`DG${worstA}↔DG${worstB}: ${SEG_LEVEL_LABEL[level]||level+' MINI'}`);
-        violations.push({ a, b, level, worstA, worstB, key: dgPairKey(a.id, b.id) });
+        violations.push({ a, b, level, worstA, worstB, distM, requiredM, key: dgPairKey(a.id, b.id) });
       }
     }
   }
@@ -3504,7 +3603,7 @@ function checkSeg(){
 
   /* Violation cards — only new pairs */
   newViolations.forEach(v => {
-    const { a, b, level, worstA, worstB } = v;
+    const { a, b, level, worstA, worstB, distM, requiredM } = v;
     const dgA = DG_DATA.find(d => d.cls === (worstA||a.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
     const dgB = DG_DATA.find(d => d.cls === (worstB||b.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
     const clsLblA = worstA || a.dgClasses[0] || '?';
@@ -3522,7 +3621,7 @@ function checkSeg(){
           <span class="dg-viol-arrow">⟷</span>
           <span class="dg-viol-badge" style="background:${dgB.bg};color:${dgB.tc};border:1px solid ${dgB.bc};">◆ ${clsLblB}</span>
         </div>
-        <span class="dg-viol-req">${level} MINI req.</span>
+        <span class="dg-viol-req">${distM.toFixed(2)} m / ${requiredM.toFixed(2)} m req.</span>
       </div>
       <div class="dg-viol-body">
         <div class="dg-viol-desc">${descHtml}</div>
@@ -3555,13 +3654,13 @@ function updateDGZones(){
     let rule=0;
     cargo.dgClasses.forEach(cls=>{ rule=Math.max(rule,getSeg(pc,cls)); });
     if(rule<1)return;
-    const pad=segClearancePx(rule);
+    const {x:padX,y:padY}=segPadPx(rule);
     const bg={1:'rgba(251,146,60,.14)',2:'rgba(220,38,38,.18)',3:'rgba(139,0,0,.28)'}[rule]||'rgba(220,38,38,.18)';
     const bc={1:'#f97316',2:'#dc2626',3:'#7f1d1d'}[rule]||'#dc2626';
-    const zx=Math.max(0,cargo.x-pad),zy=Math.max(0,cargo.y-pad);
-    const zw=Math.min(TW,cargo.x+cargo.w+pad)-zx,zh=Math.min(CVH,cargo.y+cargo.h+pad)-zy;
+    const zx=Math.max(0,cargo.x-padX),zy=Math.max(0,cargo.y-padY);
+    const zw=Math.min(TW,cargo.x+cargo.w+padX)-zx,zh=Math.min(CVH,cargo.y+cargo.h+padY)-zy;
     const z=document.createElement('div');z.className='dg-excl-zone';
-    z.style.cssText=`left:${zx}px;top:${zy}px;width:${zw}px;height:${zh}px;background:${bg};border:1.5px dashed ${bc};`;
+    z.style.cssText=`left:${zx}px;top:${zy}px;width:${zw}px;height:${zh}px;background:${bg};border:1.5px dashed ${bc};border-radius:${padX}px / ${padY}px;`;
     z.innerHTML=`<span class="dg-excl-lbl" style="color:${bc};">${rule} MINI · DG${cargo.dgClasses.join(',')}</span>`;
     ovl.appendChild(z);
   });
@@ -6094,13 +6193,14 @@ function sizeToCanvasPx(length_m, width_m){
    Returns ARRAY of unique IMDG classes (max 3).                    */
 function extractDGClasses(hazardCell, description){
   const results = [];
-  const addCls = v => { const s = String(v).trim(); if(s && /^\d+(\.\d+)?$/.test(s) && !results.includes(s)) results.push(s); };
+  const addCls = v => { const s = canonDGClass(v); if(s && !results.includes(s)) results.push(s); };
 
   /* Parse hazard cell — may contain comma/ampersand-separated list */
   if(hazardCell){
     const s = String(hazardCell).trim();
     if(s && s.toUpperCase() !== 'LQ'){
-      for(const part of s.split(/[,&]/)){
+      /* Primary + subsidiary hazards: "3", "3.0", "8 (3)", "2.1/2.3", "1.4S" */
+      for(const part of s.split(/[^0-9a-z.]+/i)){
         addCls(part);
       }
     }
@@ -7052,6 +7152,68 @@ async function printDeckPlan(){
   }
 }
 
+/* ── PDF deck: vertical stretch for print legibility ───────────────────
+   On A4 landscape the deck at its true 54.92 × 15 m aspect is only ~62 mm
+   tall and leaves ~40 mm empty under it. _pdfDeckStretch() predicts the
+   free height with the same layout constants buildPDF uses and returns a
+   stretch factor k (1.0–1.5) that fills it without pushing out the DG card
+   or voyage notes. _stretchDeckClone() applies k to html2canvas's CLONED
+   document only (onclone) — the live deck is never touched. Geometry
+   (tops/heights) scales by k; text keeps natural proportions, and cargo
+   labels are re-sized for the taller blocks and put on a light plate so
+   they stay legible on any fill once printed. Horizontal geometry is
+   unchanged, so bay positions stay exact.                              */
+function _pdfDeckStretch(activeLocs){
+  const hasDest = (activeLocs || []).some(l => l && (l.L > 0 || l.BL > 0 || l.ROB > 0));
+  const deckTop = 45.5 + (hasDest ? 18 : 0) + 6.5;              /* header + KPI (+ destinations) + deck label */
+  const rem = (typeof S !== 'undefined' && S.voyRemarks) ? S.voyRemarks.trim() : '';
+  const remLines = rem ? rem.split('\n').reduce((n, ln) => n + Math.max(1, Math.ceil(ln.length / 150)), 0) : 0;
+  const notes = rem ? Math.min(24, 6 + remLines*4.2) + 2 : 0;
+  const below = 2 + 7 + 3 + 16 + notes + 8 + 3;                  /* gap, bay row, DG card, notes, footer, margin */
+  const avail = 210 - deckTop - below;
+  const natural = 277 * (CVH / TW);
+  return Math.max(1, Math.min(1.5, avail / natural));
+}
+function _stretchDeckClone(cdoc, k){
+  if(!(k > 1.001)) return;
+  const dcv = cdoc.querySelector('.dcv');
+  if(!dcv) return;
+  dcv.style.height = (CVH*k) + 'px';
+  Array.from(dcv.children).forEach(el => {
+    const st = el.style;
+    if(!st) return;
+    if(st.top && st.top.endsWith('px'))       st.top    = (parseFloat(st.top)*k) + 'px';
+    if(st.height && st.height.endsWith('px')) st.height = (parseFloat(st.height)*k) + 'px';
+  });
+  /* Methanol arc SVG: stretch the drawing, keep stroke width and label shape. */
+  Array.from(dcv.children).filter(el => el.tagName && el.tagName.toLowerCase() === 'svg').forEach(svg => {
+    const h = parseFloat(svg.getAttribute('height')), w = parseFloat(svg.getAttribute('width')) || TW;
+    if(!h) return;
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('height', String(h*k));
+    svg.querySelectorAll('path,line,polyline').forEach(p => p.setAttribute('vector-effect', 'non-scaling-stroke'));
+    svg.querySelectorAll('text').forEach(tx => {
+      const ty = parseFloat(tx.getAttribute('y')) || 0;
+      tx.setAttribute('y', String(ty*k));
+      tx.setAttribute('transform', 'scale(1 ' + (1/k) + ')');
+    });
+  });
+  /* Cargo labels: print size for the taller block + light plate. */
+  dcv.querySelectorAll('.cb').forEach(cb => {
+    const c = S.cargo.find(x => String(x.id) === cb.dataset.id);
+    const lbl = cb.querySelector('.cb-id');
+    if(!c || !lbl || !lbl.textContent) return;
+    lbl.style.fontSize     = cbLabelFontPx({ ccu: c.ccu, w: c.w, h: c.h*k - 4 }, 22) + 'px';
+    lbl.style.color        = '#0a0800';
+    lbl.style.fontWeight   = '800';
+    lbl.style.textShadow   = 'none';
+    lbl.style.background   = 'rgba(255,255,255,.88)';
+    lbl.style.borderRadius = '3px';
+    lbl.style.padding      = '1px 4px';
+  });
+}
+
 async function _renderReport(mode){
   if(_isReportRendering){ return; }
   _isReportRendering = true;
@@ -7083,7 +7245,7 @@ async function _renderReport(mode){
     if(L   > 0) pillColors.L   = opColor(id, 'L');
     if(BL  > 0) pillColors.BL  = opColor(id, 'BL');
     if(ROB > 0) pillColors.ROB = opColor(id, 'ROB');
-    return { id, name: loc.name, base, cols, L, BL, ROB, wt: wt.toFixed(1), pillColors };
+    return { id, name: loc.name, type: loc.type || 'platform', base, cols, L, BL, ROB, wt: wt.toFixed(1), pillColors };
   }).filter(Boolean);
 
   /* ── DG classes actually on deck ── */
@@ -7207,13 +7369,15 @@ async function _renderReport(mode){
         Double rAF ensures CSS repaint is committed before capture. */
   const _exportStash = _stripExportPollutants();
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const _deckK = _pdfDeckStretch(activeLocs);
 
   try {
     const deckCanvas = await html2canvas(dcv, {
       scale: 3, useCORS: true, backgroundColor: '#fbf9f4',
-      logging: false, width: TW, height: CVH,
-      windowWidth: TW, windowHeight: CVH,
+      logging: false, width: TW, height: Math.round(CVH*_deckK),
+      windowWidth: TW, windowHeight: Math.round(CVH*_deckK),
       x: 0, y: 0, scrollX: 0, scrollY: 0, removeContainer: true,
+      onclone: cdoc => _stretchDeckClone(cdoc, _deckK),
     });
     restore();
     buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
@@ -7230,6 +7394,26 @@ async function _renderReport(mode){
   } finally {
     _restoreExportPollutants(_exportStash);
   }
+}
+
+/* Location-type glyph drawn as vectors (16-unit grid of the app's SVG icons). */
+function _pdfLocIcon(doc, type, x, y, size, rgb){
+  const k = size/16;
+  const P = (px, py) => [x + px*k, y + py*k];
+  const seg = (a, b, c, d) => { const p1 = P(a, b), p2 = P(c, d); doc.line(p1[0], p1[1], p2[0], p2[1]); };
+  const box = (a, b, w, h) => { const p1 = P(a, b); doc.rect(p1[0], p1[1], w*k, h*k, 'S'); };
+  doc.setDrawColor(...rgb); doc.setLineWidth(Math.max(0.22, 1.5*k));
+  if(doc.setLineCap) doc.setLineCap('round');
+  if(doc.setLineJoin) doc.setLineJoin('round');
+  if(type === 'fpso'){
+    seg(1.5,10, 2.5,12.5); seg(2.5,12.5, 13.5,12.5); seg(13.5,12.5, 14.5,10); seg(14.5,10, 1.5,10);
+    box(5,7, 2,3); box(8,6, 2,4); seg(11,10, 11,7); seg(10.5,7.5, 11.5,7.5);
+  } else {
+    box(2.5,6, 11,2.5); seg(4,8.5, 4,14); seg(12,8.5, 12,14); seg(8,8.5, 8,14);
+    seg(6,6, 6,3); seg(6,3, 10,3); seg(10,3, 10,6); seg(8,3, 8,1.5);
+  }
+  if(doc.setLineCap) doc.setLineCap('butt');
+  if(doc.setLineJoin) doc.setLineJoin('miter');
 }
 
 async function buildPDF(deckCanvas, data, opts){
@@ -7433,9 +7617,12 @@ async function buildPDF(deckCanvas, data, opts){
     filledLocs.forEach((loc,i) => {
       const cx = ML + i*(cardW+DGAP), rgb = hex2rgb(loc.base);
       roundRect(cx, y, cardW, DEST_H, 2.5, C.white, cardBorder);
-      /* Row 1 — colour dot + location name */
-      doc.setFillColor(...rgb); doc.circle(cx+DPAD+dotR, y+5, dotR, 'F');
-      const nameX = cx+DPAD+2*dotR+2.5;
+      /* Row 1 — location-type icon (platform / FPSO, same glyphs as the app)
+         + name. Neutral ink, not the location colour: colour dots collided
+         with the status pill colours and read as statuses. */
+      const ICON = 4.2;
+      _pdfLocIcon(doc, loc.type, cx+DPAD, y+2.4, ICON, [74,82,96]);
+      const nameX = cx+DPAD+ICON+2;
       doc.setFont('Manrope','bold'); doc.setFontSize(10.5); doc.setTextColor(...ink);
       const maxChars = Math.max(4, Math.floor((cardW-(nameX-cx)-DPAD)/2.0));
       const nm = loc.name.length>maxChars ? loc.name.slice(0,maxChars-1)+'…' : loc.name;
@@ -7482,7 +7669,7 @@ async function buildPDF(deckCanvas, data, opts){
   /* 5. DECK IMAGE — the html2canvas capture */
   const FOOTER_H=8, BAY_LBL_H=7;
   const availH = PH-y-FOOTER_H-BAY_LBL_H-2;
-  const dw = CW, dh = Math.min(dw*(CVH/TW), availH);
+  const dw = CW, dh = Math.min(dw*(deckCanvas.height/deckCanvas.width), availH);
   roundRect(ML-0.4,y-0.4,dw+0.8,dh+0.8,1.5,C.ivory,C.brd);
 
   /* Convert canvas to PNG bytes via toBlob → ArrayBuffer → Uint8Array.
@@ -11410,8 +11597,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.8.0';
-const APP_VERSION   = '3.8.0';
+const CURRENT_BUILD = 'v3.9.0';
+const APP_VERSION   = '3.9.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -12370,7 +12557,9 @@ function _formatReleaseDate(dateStr){
 /* ══════════════════════════════════════════════════════════
    AUTO-UPDATE SYSTEM — checks every 5 days, shows banner
 ══════════════════════════════════════════════════════════ */
-const UPDATE_CHECK_INTERVAL = 5 * 24 * 60 * 60 * 1000; /* 5 days in ms */
+/* Silent re-check while the app stays open (bridge PCs run for days
+   without a restart). Launch check always runs; this is the repeat. */
+const UPDATE_CHECK_INTERVAL = 12 * 60 * 60 * 1000; /* 12 h in ms */
 let _updateAvailable = null;
 let _updateFallback   = null; /* set by Strategy 2 (GitHub API) when Tauri plugin unavailable */
 
@@ -12503,7 +12692,10 @@ async function _doUpdate(){
   }
   if(!_updateAvailable) return;
   try {
-    showToast('Downloading update...', 'ok');
+    /* Persist the current plan first: on Windows the NSIS installer
+       closes the app as soon as the download finishes. */
+    try { savePlan(); } catch(_e){}
+    showToast('Downloading update — the app will close and reopen when it installs', 'ok');
     await _updateAvailable.downloadAndInstall();
     /* Prompt restart */
     const { relaunch } = await import('@tauri-apps/plugin-process');
@@ -12527,19 +12719,25 @@ function _bindUpdateBanner(){
   document.getElementById('ubDismiss').addEventListener('click', () => {
     banner.classList.remove('show');
   });
-  document.getElementById('ubWhatsNew').addEventListener('click', () => {
-    window.open('https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases', '_blank');
+  document.getElementById('ubWhatsNew').addEventListener('click', async () => {
+    /* window.open() is blocked in the Tauri WebView — use the shell plugin. */
+    const url = 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases';
+    try {
+      const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
+      await shellOpen(url);
+    } catch(e){ window.open(url, '_blank'); }
   });
 }
 
 function _scheduleUpdateCheck(){
   if(!_isTauri()) return;
-  const lastCheck = parseInt(localStorage.getItem('spicaTide_lastUpdateCheck') || '0');
-  const elapsed = Date.now() - lastCheck;
-  if(elapsed >= UPDATE_CHECK_INTERVAL){
-    /* Delay 8 seconds so app loads first */
-    setTimeout(() => _checkForUpdates(false), 8000);
-  }
+  /* Always check on launch (8 s delay so the app loads first), then
+     repeat silently every UPDATE_CHECK_INTERVAL while it stays open.
+     The old 5-day gate meant a fresh release could go unseen for days,
+     and never at all on a PC that is never restarted. Offline at sea
+     the check fails silently (auto-checks never toast errors). */
+  setTimeout(() => _checkForUpdates(false), 8000);
+  setInterval(() => { if(!_updateAvailable) _checkForUpdates(false); }, UPDATE_CHECK_INTERVAL);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -12678,11 +12876,21 @@ function _wxApply(){
   }
   /* wxScene.set must run AFTER attribute stamping so CSS reflows in
      the same tick. Idempotent when condition is unchanged. */
+  /* engine = cinematic → WebGL volumetric sky (skyGL) renders the real,
+     un-mapped condition and the legacy CSS scene is parked at 'off'.
+     engine = simple, or no WebGL → legacy CSS scene exactly as before. */
+  const useGL = active && _wxState.engine === 'cinematic' && skyGL.supported();
+  document.body.toggleAttribute('data-wx-gl', useGL);
   wxScene.set({
-    condition: renderedCondition,
+    condition: useGL ? 'off' : renderedCondition,
     intensity: _wxState.intensity,
     motion:    _wxState.motion,
     engine:    _wxState.engine,
+  });
+  skyGL.set({
+    condition: useGL ? baseCondition : 'off',
+    intensity: _wxState.intensity,
+    motion:    _wxState.motion,
   });
   /* ── Plate render (W5 §13 v7) ─────────────────────────────────
      Plate is always visible — atmosphere toggle controls VFX only.
@@ -13759,6 +13967,7 @@ function init(){
   bindKeyboardNav();
   bindRulerTool();        /* Phase 23 — Measure ruler */
   wxScene.init();         /* Phase W5/W6 — A/B sky + canvas precip orchestrator */
+  skyGL.init(document.getElementById('wxScene'));   /* WebGL volumetric sky (engine = cinematic) */
   _wxBind();              /* Phase W1 — Weather widget + atmosphere shell */
   bindAdmin();
   buildQueueList();

@@ -2299,6 +2299,13 @@ body.pdf-capture::after{ display:none !important; }
 }
 body[data-wx]:not([data-wx="off"]) .wx-scene{ display:block; }
 body.pdf-capture .wx-scene{ display:none !important; }
+/* WebGL sky (engine = cinematic, src/weather/skyGL.js). When it is live the
+   legacy CSS layers are hidden; they remain for engine = simple and as the
+   fallback where WebGL is unavailable. Intensity is handled in the shader,
+   so the scene-wide opacity multiplier does not apply. */
+.wx-scene .wx-gl{ position:absolute; inset:0; width:100%; height:100%; display:none; }
+body[data-wx-gl] .wx-scene > :not(.wx-gl){ display:none !important; }
+body[data-wx-gl] .wx-scene{ opacity:1 !important; }
 @media print{ .wx-scene{ display:none !important; } }
 .wx-scene .wx-layer{
   position:absolute;
