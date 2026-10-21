@@ -1232,6 +1232,37 @@ const CCU_PRESETS = [
    aliases:['24ft transporter','transporter 24']},
 ];
 
+/* ── Rotate cargo 90° in place ──────────────────────────────────────────
+   Metres swap and pixels are RE-DERIVED from metres: the canvas has
+   different scales along (M = 31 px/m) and across (YS = 25.33 px/m) the
+   deck, so swapping pixel w/h distorted every rotated block by ~20%
+   (a 6.06 × 2.44 m container showed as 2.00 × 7.42 m).                 */
+function _rotateCargo(c){
+  const L = c.length_m || c.w / M, W = c.width_m || c.h / YS;
+  const cx = c.x + c.w/2, cy = c.y + c.h/2;
+  c.length_m = W; c.width_m = L;
+  c.w = m2px_w(W); c.h = m2px_h(L);
+  c.x = Math.max(0, Math.min(cx - c.w/2, TW  - c.w));
+  c.y = Math.max(0, Math.min(cy - c.h/2, CVH - c.h));
+  c.rot = ((c.rot || 0) + 1) % 4;
+}
+
+/* ── Heal geometry on load: metres are the source of truth ──────────────
+   Re-derives pixel size from length_m / width_m (fixes blocks saved after
+   the old pixel-swap rotation), backfills metres for legacy entries that
+   only have pixels, and keeps every block on the deck.                  */
+function _normalizeCargoGeometry(arr){
+  if(!Array.isArray(arr)) return;
+  arr.forEach(c => {
+    if(!c) return;
+    const L = parseFloat(c.length_m), W = parseFloat(c.width_m);
+    if(L > 0 && W > 0){ c.w = m2px_w(L); c.h = m2px_h(W); }
+    else if(c.w > 0 && c.h > 0){ c.length_m = +(c.w / M).toFixed(3); c.width_m = +(c.h / YS).toFixed(3); }
+    if(c.w > 0) c.x = Math.max(0, Math.min(+c.x || 0, TW  - c.w));
+    if(c.h > 0) c.y = Math.max(0, Math.min(+c.y || 0, CVH - c.h));
+  });
+}
+
 /* ── Convert metres to canvas pixels (using deck scale M=31 px/m) ── */
 function ccu2px(preset){
   return {
@@ -2844,17 +2875,7 @@ function renderBlock(cv,cargo){
   b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;animateCargoExit(_delId);S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
   b.appendChild(mkBtn('cb-rot','↻',e=>{
     e.stopPropagation();
-    const cx=cargo.x+cargo.w/2,cy=cargo.y+cargo.h/2;
-    /* Swap canvas dimensions */
-    const nw=cargo.h,nh=cargo.w;
-    cargo.w=nw;cargo.h=nh;
-    cargo.x=Math.max(0,Math.min(cx-nw/2,TW-nw));
-    cargo.y=Math.max(0,Math.min(cy-nh/2,CVH-nh));
-    /* Swap real-world metres so they stay consistent with canvas orientation */
-    const tmp=cargo.length_m;
-    cargo.length_m=cargo.width_m;
-    cargo.width_m=tmp;
-    cargo.rot=((cargo.rot||0)+1)%4;
+    _rotateCargo(cargo);
     const _rotId=cargo.id;
     renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
     playSound('rotate');
@@ -4588,13 +4609,7 @@ function bindInspector(){
     if(!isOperator() || inspSelId == null) return;
     const c = S.cargo.find(x => x.id === inspSelId);
     if(!c) return;
-    const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
-    const nw = c.h, nh = c.w;
-    c.w = nw; c.h = nh;
-    c.x = Math.max(0, Math.min(cx - nw / 2, TW  - nw));
-    c.y = Math.max(0, Math.min(cy - nh / 2, CVH - nh));
-    const tmp = c.length_m; c.length_m = c.width_m; c.width_m = tmp;
-    c.rot = ((c.rot || 0) + 1) % 4;
+    _rotateCargo(c);
     renderAll(); kbSelect(inspSelId); checkSeg(); save();
   });
 
@@ -4707,15 +4722,17 @@ function bindModal(){
     /* Auto-resize: if description changed, look up preset dimensions */
     if(newDesc && newDesc!==c.desc){
       /* Try CCU_PRESETS first, then custom library */
-      const sz=clibSize(newDesc)||(()=>{const ci=S.customLib.find(i=>i.name===newDesc);return ci?{w:ci.w,h:ci.h}:null;})();
+      /* Library metres are the source of truth; pixels derive from them. */
+      const _pr=findPreset(newDesc);
+      const _ci=_pr?null:S.customLib.find(i=>i.name===newDesc);
+      const sz=_pr?{L:_pr.length_m,W:_pr.width_m}
+              :(_ci?{L:_ci.length_m||_ci.w/M, W:_ci.width_m||_ci.h/YS}:null);
       if(sz){
         const cx=c.x+c.w/2,cy=c.y+c.h/2;
-        c.w=sz.w;c.h=sz.h;
+        c.length_m=sz.L; c.width_m=sz.W;
+        c.w=m2px_w(sz.L); c.h=m2px_h(sz.W);
         c.x=Math.max(0,Math.min(cx-c.w/2,TW-c.w));
         c.y=Math.max(0,Math.min(cy-c.h/2,CVH-c.h));
-        /* Sync real-world metres from new dimensions */
-        c.length_m=parseFloat((c.w/M).toFixed(3));
-        c.width_m =parseFloat((c.h/(CVH/15)).toFixed(3));
         c.rot=0;
       }
     }
@@ -5547,7 +5564,7 @@ async function openPlanFromFile() {
 
     /* Apply to app state (same logic as loadPlan) */
     const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -5590,7 +5607,7 @@ async function openRecentFile(path) {
       envelope = migratePlan(envelope);
     }
     const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -5712,7 +5729,7 @@ function _applyProjectData(jsonString, fileName) {
       envelope = migratePlan(envelope);
     }
     const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
+    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -5825,7 +5842,7 @@ function loadPlan(key) {
 
   /* Apply plan data to app state */
   const d = envelope.plan;
-  if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); }
+  if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
   if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
   if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
   if (d.voyage) document.getElementById('voyIn').value = d.voyage;
@@ -6043,8 +6060,9 @@ document.getElementById('deckArea').addEventListener('touchend',()=>{_pinchStart
    Uses a priority keyword table first, then normalised name matching.
    Auto-activates the matched location so cargo can be assigned to it.
    Returns the matched id, or S.selLoc as a last-resort fallback.        */
-function resolveImportedLocId(displayName){
-  if(!displayName) return S.selLoc || (S.activeLocs[0] || 'BLEO');
+/* Pure lookup (no side effects) — used by reconciliation previews. */
+function _matchImportedLocId(displayName){
+  if(!displayName) return null;
 
   /* Normalise: uppercase, collapse spaces, strip non-alphanumeric except space */
   const norm = s => String(s).toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
@@ -6092,6 +6110,14 @@ function resolveImportedLocId(displayName){
     const direct = [...LOC_ALL, ...S.customLocs].find(l => norm(l.name) === dn || dn.includes(norm(l.name)));
     if(direct) resolvedId = direct.id;
   }
+  return resolvedId || null;
+}
+
+/* Side-effecting resolver used at import time: falls back to the selected
+   location, creates unknown locations and activates the match. */
+function resolveImportedLocId(displayName){
+  if(!displayName) return S.selLoc || (S.activeLocs[0] || 'BLEO');
+  let resolvedId = _matchImportedLocId(displayName);
 
   /* 3. Unknown location — create it as a custom location rather than
      silently collapsing into an existing one                         */
@@ -6128,6 +6154,55 @@ let IMPORT_QUEUE = [];
 /* Currently selected items in ASCO modal (during import flow) */
 let ascoImportData = [];   // parsed sheets [{sheetName, location, loadlistId, items:[]}]
 let ascoSelected = new Set(); // indices of selected items (across all sheets, as "sheetIdx-itemIdx")
+let ascoStatus = {};          // key → 'deck' | 'queue' | 'new' (reconciliation, see classifyImport)
+
+/* ── Load-list ↔ deck reconciliation ──────────────────────────────────
+   ASCO re-sends the FULL load list each time. A row is already handled
+   when its cargo is on deck (any status) or already in the Imported queue.
+   Matching:
+     1. CCU normalised to letters + digits ("ABCU 123456-7" = "abcu1234567");
+        placeholders (N/A, TBA, TBC, NONE…) count as no CCU.
+     2. Fallback description + weight + location, count-aware, so rows and
+        deck cargo without a CCU still reconcile (two identical untagged
+        baskets with one on deck → one still to load). A row WITH a CCU only
+        falls back onto deck/queue cargo that has no CCU of its own.      */
+const _CCU_PLACEHOLDER = /^(NA|NIL|NONE|TBA|TBC|TBD|UNKNOWN|NOCCU)$/;
+function ccuKey(v){
+  const k = String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return (!k || _CCU_PLACEHOLDER.test(k)) ? '' : k;
+}
+function _descKey(desc, wt, locId){
+  const d = String(desc || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return d ? 'D:' + d + '|' + (parseFloat(wt) || 0).toFixed(1) + '|' + (locId || '') : '';
+}
+function _keyBag(){
+  const m = new Map();
+  return {
+    add(k){ if(k) m.set(k, (m.get(k) || 0) + 1); },
+    take(k){ const n = k ? (m.get(k) || 0) : 0; if(n > 0){ m.set(k, n - 1); return true; } return false; },
+  };
+}
+/* Consumable snapshot of cargo already on deck / already in the queue. */
+function _importLedger(){
+  const deck = _keyBag(), queue = _keyBag();
+  S.cargo.forEach(c => deck.add(ccuKey(c.ccu) || _descKey(c.desc, c.wt, c.platform)));
+  IMPORT_QUEUE.forEach(q => queue.add(ccuKey(q.ccu) || _descKey(q.name, q.wt, q.locId)));
+  return { deck, queue };
+}
+function _rowKeys(item, sheet){
+  return { k1: ccuKey(item.ccu), k2: _descKey(item.desc, item.wt, _matchImportedLocId(sheet.displayName || sheet.sheetName) || '') };
+}
+function _rowIn(bag, keys){ return (keys.k1 && bag.take(keys.k1)) || (keys.k2 && bag.take(keys.k2)); }
+/* Classify every parsed row: 'deck' | 'queue' | 'new'. */
+function classifyImport(sheets){
+  const { deck, queue } = _importLedger();
+  const out = {};
+  sheets.forEach((sheet, si) => sheet.items.forEach((item, ii) => {
+    const keys = _rowKeys(item, sheet);
+    out[`${si}-${ii}`] = _rowIn(deck, keys) ? 'deck' : _rowIn(queue, keys) ? 'queue' : 'new';
+  }));
+  return out;
+}
 
 /* ── Size detection from description text ────────────────────
    Handles real ASCO formats:
@@ -6177,16 +6252,18 @@ function sizeToCanvasPx(length_m, width_m){
     return { w: m2px_w(1.83), h: m2px_h(1.83), length_m: 1.83, width_m: 1.83, isDefault: true };
   }
 
-  /* Try to find close preset (within 20% area match) */
-  const targetArea = length_m * width_m;
+  /* Snap to a library preset only when its SHAPE matches: both sides
+     within 10% (orientation-agnostic). Area-only matching could swap a
+     3.05 × 2.44 m basket for a 6.10 × 1.22 m bundle (same 7.44 m²).    */
+  const tL = Math.max(length_m, width_m), tW = Math.min(length_m, width_m);
   let best = null, bestDiff = Infinity;
   CCU_PRESETS.forEach(p => {
-    const area = p.length_m * p.width_m;
-    const diff = Math.abs(area - targetArea) / targetArea;
+    const pL = Math.max(p.length_m, p.width_m), pW = Math.min(p.length_m, p.width_m);
+    const diff = Math.max(Math.abs(pL - tL) / tL, Math.abs(pW - tW) / tW);
     if(diff < bestDiff){ bestDiff = diff; best = p; }
   });
 
-  if(best && bestDiff < 0.25){
+  if(best && bestDiff <= 0.10){
     return {
       w: m2px_w(best.length_m), h: m2px_h(best.width_m),
       length_m: best.length_m, width_m: best.width_m, isDefault: false
@@ -6495,6 +6572,8 @@ function parseASCOWorkbook(arrayBuffer){
 function renderAscoContent(sheets, stats){
   ascoImportData = sheets;
   ascoSelected.clear();
+  ascoStatus = classifyImport(sheets);
+  Object.keys(ascoStatus).forEach(k => { if(ascoStatus[k] === 'new') ascoSelected.add(k); });
 
   const content = document.getElementById('ascoContent');
   content.innerHTML = '';
@@ -6558,11 +6637,13 @@ function renderAscoContent(sheets, stats){
       globalIdx++;
 
       const el = document.createElement('div');
-      el.className = 'asco-item';
+      el.className = 'asco-item' + (ascoStatus[key] !== 'new' ? ' asco-item-done' : '');
       el.dataset.key = key;
 
       /* Badges */
       let badges = '';
+      if(ascoStatus[key] === 'deck')  badges += `<span class="asco-badge on-deck">On deck</span>`;
+      if(ascoStatus[key] === 'queue') badges += `<span class="asco-badge in-queue">In Imported</span>`;
       if(item.dgClasses&&item.dgClasses.length>0) badges += `<span class="asco-badge dg">◆ DG ${escHtml(item.dgClasses.join(', '))}</span>`;
       if(item.heavyLift)      badges += `<span class="asco-badge hl">⬆ Heavy Lift</span>`;
       if(!item.sizeDetected)  badges += `<span class="asco-badge no-size">⚠ Size not detected</span>`;
@@ -6588,8 +6669,10 @@ function renderAscoContent(sheets, stats){
     /* Select all handler */
     hdr.querySelector('.asco-sheet-sel-all').addEventListener('click', e => {
       e.stopPropagation();
-      const sheetKeys = sheet.items.map((_, ii) => `${si}-${ii}`);
-      const allSel = sheetKeys.every(k => ascoSelected.has(k));
+      /* Select all = every row still to load; rows already on deck or
+         already imported stay unselected (they can still be ticked by hand). */
+      const sheetKeys = sheet.items.map((_, ii) => `${si}-${ii}`).filter(k => ascoStatus[k] === 'new');
+      const allSel = sheetKeys.length > 0 && sheetKeys.every(k => ascoSelected.has(k));
       if(allSel) sheetKeys.forEach(k => ascoSelected.delete(k));
       else sheetKeys.forEach(k => ascoSelected.add(k));
       updateAscoSelection();
@@ -6601,8 +6684,11 @@ function renderAscoContent(sheets, stats){
   content.style.display = 'block';
   document.getElementById('ascoFooter').style.display = 'flex';
 
+  const _st = Object.values(ascoStatus);
+  const _nDeck = _st.filter(v => v === 'deck').length, _nQueue = _st.filter(v => v === 'queue').length;
   document.getElementById('ascoSubtitle').textContent =
-    `${stats.validSheets} of ${stats.totalSheets} sheet${stats.totalSheets!==1?'s':''} · ${stats.totalItems} cargo items`;
+    `${stats.validSheets} of ${stats.totalSheets} sheet${stats.totalSheets!==1?'s':''} · ${stats.totalItems} cargo items`
+    + ((_nDeck || _nQueue) ? ` · ${_st.length - _nDeck - _nQueue} new · ${_nDeck} on deck · ${_nQueue} already imported` : '');
   document.getElementById('ascoBadgeCount').style.display = 'block';
   updateAscoSelection();
 }
@@ -6634,19 +6720,35 @@ function performAscoImport(){
   /* Dedup by CCU against existing queue entries and cargo already placed
      on deck. Same normalisation as runManifestMatch (trim + uppercase).
      Rows without a CCU are never dedup-matched — always imported. */
-  const normCcu = v => (v || '').trim().toUpperCase();
-  const queueKeys = new Set(IMPORT_QUEUE.map(q => normCcu(q.ccu)).filter(Boolean));
-  const deckKeys  = new Set(S.cargo.map(c => normCcu(c.ccu)).filter(Boolean));
+  /* The new load list is the truth for every location it covers: queue
+     items of those locations that no longer appear anywhere in the file
+     were dropped by ASCO and leave the Imported queue. */
+  const fileLocs = new Set(ascoImportData.map(sh => _matchImportedLocId(sh.displayName || sh.sheetName)).filter(Boolean));
+  const fileBag = _keyBag();
+  ascoImportData.forEach(sh => sh.items.forEach(it => { const k = _rowKeys(it, sh); fileBag.add(k.k1 || k.k2); }));
+  let removedStale = 0;
+  for(let i = IMPORT_QUEUE.length - 1; i >= 0; i--){
+    const q = IMPORT_QUEUE[i];
+    if(!fileLocs.has(q.locId)) continue;
+    const qk1 = ccuKey(q.ccu), qk2 = _descKey(q.name, q.wt, q.locId);
+    if(!(fileBag.take(qk1) || fileBag.take(qk2))){ IMPORT_QUEUE.splice(i, 1); removedStale++; }
+  }
+
+  /* Classify EVERY row in file order (same pass as the preview), so the
+     count-aware matching consumes deck/queue entries exactly as shown —
+     an unselected "on deck" row must still use up its deck counterpart. */
+  const status = classifyImport(ascoImportData);
+  const seenCcu = new Set();
   let skippedInQueue = 0, skippedOnDeck = 0, noCcuCount = 0;
   ascoImportData.forEach((sheet, si) => {
     sheet.items.forEach((item, ii) => {
       const key = `${si}-${ii}`;
       if(!ascoSelected.has(key)) return;
 
-      const ccuKey = normCcu(item.ccu);
-      if(ccuKey && deckKeys.has(ccuKey)){ skippedOnDeck++; return; }
-      if(ccuKey && queueKeys.has(ccuKey)){ skippedInQueue++; return; }
-      if(ccuKey) queueKeys.add(ccuKey); else noCcuCount++;
+      const keys = _rowKeys(item, sheet);
+      if(status[key] === 'deck'){ skippedOnDeck++; return; }
+      if(status[key] === 'queue' || (keys.k1 && seenCcu.has(keys.k1))){ skippedInQueue++; return; }
+      if(keys.k1) seenCcu.add(keys.k1); else noCcuCount++;
 
       const qItem = {
         id: Date.now() + Math.random(),
@@ -6692,9 +6794,9 @@ function performAscoImport(){
 
   /* Import summary: plain "N added" when nothing was skipped, otherwise
      full added / already-imported / already-on-deck / no-CCU breakdown. */
-  if(skippedInQueue + skippedOnDeck > 0){
+  if(skippedInQueue + skippedOnDeck + removedStale > 0){
     showToast(
-      t('toast_import_summary', added.length, skippedInQueue, skippedOnDeck, noCcuCount),
+      t('toast_import_summary', added.length, skippedInQueue, skippedOnDeck, noCcuCount, removedStale),
       added.length > 0 ? 'info' : 'warn'
     );
   } else if(added.length > 0){
@@ -6936,8 +7038,8 @@ function placeAt(cx, cy){
       x: Math.max(0, Math.min(cx - w/2, TW - w)),
       y: Math.max(0, Math.min(cy - h/2, CVH - h)),
       w, h,
-      length_m: item.length_m || 1.83,
-      width_m:  item.width_m  || 1.83,
+      length_m: item.length_m || +(w / M).toFixed(3),
+      width_m:  item.width_m  || +(h / YS).toFixed(3),
       rot: 0,
       ccu:       item.ccu      || '',
       desc:      item.name     || '',
@@ -9322,15 +9424,7 @@ function kbHandleKey(e){
     e.preventDefault();
     const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
     if(!cargo) return;
-    const cx = cargo.x + cargo.w / 2, cy = cargo.y + cargo.h / 2;
-    const nw = cargo.h, nh = cargo.w;
-    cargo.w = nw; cargo.h = nh;
-    cargo.x = Math.max(0, Math.min(cx - nw / 2, TW  - nw));
-    cargo.y = Math.max(0, Math.min(cy - nh / 2, CVH - nh));
-    const tmp = cargo.length_m;
-    cargo.length_m = cargo.width_m;
-    cargo.width_m  = tmp;
-    cargo.rot = ((cargo.rot || 0) + 1) % 4;
+    _rotateCargo(cargo);
     const _rotId = KB_SEL;
     renderAll();
     kbSelect(KB_SEL);  /* re-apply ring after renderAll */
@@ -9930,6 +10024,7 @@ function _restoreFromSnapshot(){
   if(!raw) return false;
   const snap = JSON.parse(raw);
   S.cargo = snap.cargo || [];
+  _normalizeCargoGeometry(S.cargo);
   S.activeLocs = snap.activeLocs || ['BLEO','TART'];
   S.selLoc = snap.selLoc || S.activeLocs[0];
   S.customLib = snap.customLib || [];
@@ -11305,7 +11400,7 @@ const LANG = {
 
     /* Toast messages */
     toast_queue_added:  (n) => `${n} item${n!==1?'s':''} added to Import Queue`,
-    toast_import_summary: (a, sq, sd, nc) => `Import: ${a} added · ${sq} skipped (already imported) · ${sd} skipped (already on deck)` + (nc ? ` · ${nc} without CCU imported` : ''),
+    toast_import_summary: (a, sq, sd, nc, rm) => `Import: ${a} added · ${sq} skipped (already imported) · ${sd} skipped (already on deck)` + (nc ? ` · ${nc} without CCU` : '') + (rm ? ` · ${rm} removed (no longer on the load list)` : ''),
     toast_no_cargo:     'No recognisable cargo data found in this file.',
     toast_read_err:     (msg) => 'Could not read Excel file: ' + msg,
     toast_preparing:    'Preparing export…',
@@ -11380,7 +11475,7 @@ const LANG = {
     match_refresh:    'Обновить сравнение',
 
     toast_queue_added:  (n) => `${n} позиц${n===1?'ия':n<5?'ии':'ий'} добавлено в Import Queue`,
-    toast_import_summary: (a, sq, sd, nc) => `Импорт: ${a} добавлено · ${sq} пропущено (уже импортировано) · ${sd} пропущено (уже на палубе)` + (nc ? ` · ${nc} без CCU импортировано` : ''),
+    toast_import_summary: (a, sq, sd, nc, rm) => `Импорт: ${a} добавлено · ${sq} пропущено (уже импортировано) · ${sd} пропущено (уже на палубе)` + (nc ? ` · ${nc} без CCU` : '') + (rm ? ` · ${rm} убрано (нет в новом списке)` : ''),
     toast_no_cargo:     'Данные о грузе в файле не распознаны.',
     toast_read_err:     (msg) => 'Ошибка чтения файла: ' + msg,
     toast_preparing:    'Подготовка экспорта…',
@@ -11453,7 +11548,7 @@ const LANG = {
     match_refresh:    'Оновити порівняння',
 
     toast_queue_added:  (n) => `${n} позиц${n===1?'ію':n<5?'ії':'ій'} додано до Import Queue`,
-    toast_import_summary: (a, sq, sd, nc) => `Імпорт: ${a} додано · ${sq} пропущено (вже імпортовано) · ${sd} пропущено (вже на палубі)` + (nc ? ` · ${nc} без CCU імпортовано` : ''),
+    toast_import_summary: (a, sq, sd, nc, rm) => `Імпорт: ${a} додано · ${sq} пропущено (вже імпортовано) · ${sd} пропущено (вже на палубі)` + (nc ? ` · ${nc} без CCU` : '') + (rm ? ` · ${rm} прибрано (немає в новому списку)` : ''),
     toast_no_cargo:     'Дані про вантаж у файлі не розпізнані.',
     toast_read_err:     (msg) => 'Помилка читання файлу: ' + msg,
     toast_preparing:    'Підготовка експорту…',
@@ -12318,13 +12413,8 @@ function bindContextMenu(){
     if(action === 'edit'){
       openModal(cargo.id);
     } else if(action === 'rotate'){
-      const cx=cargo.x+cargo.w/2, cy=cargo.y+cargo.h/2;
-      const nw=cargo.h, nh=cargo.w;
-      cargo.w=nw; cargo.h=nh;
-      cargo.x=Math.max(0,Math.min(cx-nw/2,TW-nw));
-      cargo.y=Math.max(0,Math.min(cy-nh/2,CVH-nh));
-      const tmp=cargo.length_m; cargo.length_m=cargo.width_m; cargo.width_m=tmp;
-      renderAll(); updateStats(); save();
+      _rotateCargo(cargo);
+      renderAll(); updateStats(); checkSeg(); save();
     } else if(action === 'duplicate'){
       const _spot=findFreeSpot(cargo.x+cargo.w+5,cargo.y,cargo.w,cargo.h);const nc={...cargo, id:Date.now()+Math.random(), x:_spot.x, y:_spot.y};
       S.cargo.push(nc);
@@ -13640,7 +13730,7 @@ function _syncUpdateUI(status){
 
 function _syncApplyRemote(remoteState){
   if(!remoteState) return;
-  if(remoteState.cargo) S.cargo = remoteState.cargo;
+  if(remoteState.cargo){ S.cargo = remoteState.cargo; _normalizeCargoGeometry(S.cargo); }
   if(remoteState.customLib) S.customLib = remoteState.customLib;
   if(remoteState.customLocs && Array.isArray(remoteState.customLocs)) S.customLocs = remoteState.customLocs;
   if(remoteState.activeLocs && remoteState.activeLocs.length) S.activeLocs = remoteState.activeLocs;

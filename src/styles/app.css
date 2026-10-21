@@ -1040,6 +1040,7 @@ body.is-viewer .bp-viewer-indicator{
   to  { opacity:1; transform:translate(var(--tx), var(--ty)) scale(1); }
 }
 .bloom-petal:hover{ transform:translate(var(--tx), var(--ty)) scale(1.15); }
+.bloom-petal:active{ transform:translate(var(--tx), var(--ty)) scale(1.05); }
 .bloom-petal.cur{
   box-shadow:0 0 0 2px rgba(255,255,255,.95), 0 0 0 3.5px var(--acc),
              0 1px 2px rgba(10,22,40,.20);
@@ -1824,6 +1825,10 @@ body.is-viewer .bp-viewer-indicator{
 .asco-badge.platform{background:rgba(72,96,131,.08);color:var(--acc);border:1px solid rgba(72,96,131,.20);}
 .asco-badge.no-size{background:rgba(251,209,133,.18);color:#785a1a;border:1px solid rgba(120,90,26,.20);}
 .asco-badge.auto-assign{background:rgba(76,175,80,.12);color:#2e6b31;border:1px solid rgba(76,175,80,.25);}
+/* Reconciliation: rows already on deck / already in the Imported queue */
+.asco-badge.on-deck{background:rgba(72,96,131,.14);color:var(--txt);border:1px solid rgba(72,96,131,.30);font-weight:700;}
+.asco-badge.in-queue{background:var(--surf2);color:var(--txt2);border:1px dashed var(--brd);}
+.asco-item.asco-item-done:not(.selected) .asco-item-main{opacity:.5;}
 
 /* Footer action bar */
 .asco-footer{
@@ -8197,8 +8202,12 @@ body.hdr-tight .save-state-text{ display:none; }
   animation:nameShimmer 4s linear infinite;
 }
 
-/* 11. Button micro-interactions */
-button:active:not(:disabled),
+/* 11. Button micro-interactions.
+   Bloom Picker petals are excluded: they are POSITIONED by transform
+   (translate(--tx,--ty)), so this !important override snapped a pressed
+   petal back to the centre, out from under the cursor — mouseup landed
+   on the plate and the click (colour pick) never fired. */
+button:active:not(:disabled):not(.bloom-petal),
 .menu-action:active,
 .sb:active{
   transform:translateY(1px) !important;
