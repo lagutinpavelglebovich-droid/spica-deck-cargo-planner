@@ -4028,7 +4028,6 @@ body:not(.focus-deck) .rcrow,
 body:not(.focus-deck) .rc,
 body:not(.focus-deck) .menubar,
 body:not(.focus-deck) .bottom-panel,
-body:not(.focus-deck) .cp,
 body:not(.focus-deck) .loc-strip,
 body:not(.focus-deck) .ctrl-strip,
 body:not(.focus-deck) .locs-row,
@@ -4359,7 +4358,6 @@ body.dragging-cargo *{
    Selection handles (del/rot/copy/resize) live on .cb.kb-sel, not hover. */
 .cb:hover{
   z-index:20;
-  transform:translateY(-1px);
   box-shadow:
     var(--sh-cargo),
     0 4px 14px rgba(0,0,0,.08);
@@ -8203,14 +8201,16 @@ body.hdr-tight .save-state-text{ display:none; }
 }
 
 /* 11. Button micro-interactions.
-   Bloom Picker petals are excluded: they are POSITIONED by transform
-   (translate(--tx,--ty)), so this !important override snapped a pressed
-   petal back to the centre, out from under the cursor — mouseup landed
-   on the plate and the click (colour pick) never fired. */
-button:active:not(:disabled):not(.bloom-petal),
+   Uses the individual `translate` property, which ADDS to an element's
+   transform instead of replacing it. The old `transform:translateY(1px)
+   !important` clobbered every control positioned by transform (Bloom
+   Picker petals, the brand pencil, the Smart Tools search clear ×):
+   a press moved the control out from under the cursor, mouseup landed
+   elsewhere and the click was lost. */
+button:active:not(:disabled),
 .menu-action:active,
 .sb:active{
-  transform:translateY(1px) !important;
+  translate:0 1px;
   box-shadow:none !important;
 }
 
@@ -11050,7 +11050,7 @@ body.zoom-minimum .dcv{ --deck-grain-alpha: .030; }
 
 /* Cargo blocks — premium hover */
 .cb{ transition:box-shadow .22s cubic-bezier(.4,0,.2,1), transform .18s cubic-bezier(.4,0,.2,1), opacity .20s, filter .20s !important; }
-.cb:hover{ box-shadow:0 8px 28px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08), 0 0 20px rgba(59,130,246,.06) !important;transform:translateY(-2px) !important; }
+.cb:hover{ box-shadow:0 8px 28px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08), 0 0 20px rgba(59,130,246,.06) !important;translate:0 -2px; }
 .cb:hover .cb-del{ box-shadow:0 2px 10px rgba(217,53,53,.40), 0 0 14px var(--glow-red) !important; }
 .cb-del:hover{ box-shadow:0 4px 16px rgba(217,53,53,.50), 0 0 20px var(--glow-red) !important;transform:translateY(calc(-50% - 26px)) scale(1.06) !important; }
 .cb:hover .cb-rot{ box-shadow:0 2px 10px rgba(59,110,181,.40), 0 0 14px var(--glow-blue) !important; }
@@ -13481,7 +13481,7 @@ body.is-viewer .insp-btn-edit-details{
   display:none;
   position:fixed;
   inset:0;
-  z-index:700;              /* above modal (600) + inspector (580) */
+  z-index:8600;             /* above every panel, incl. Smart Tools (6000) and popovers (8500) */
   align-items:flex-start;
   justify-content:center;
   padding-top:14vh;
@@ -16009,3 +16009,236 @@ html[data-perf="reduced"]:not([data-theme="dark"]) .st-section{
   backdrop-filter:none !important;
   -webkit-backdrop-filter:none !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.10 — UNIFIED SIDE PANELS
+   Library (.cp) and the cargo inspector (.insp) are one family: floating
+   cards on the right that start BELOW the header row, so Upload / Library
+   / Smart Tools / Theme / Language stay visible and clickable while a
+   panel is open. --ribbon-bottom is measured live from .shell-ribbon in
+   app.js (falls back to the old offset). The inspector keeps a denser
+   fill than the Library for legibility of form text.
+   ═══════════════════════════════════════════════════════════════════════ */
+.cp,
+.insp{
+  top:calc(var(--ribbon-bottom, calc(30px + var(--shell-m))) + 8px);
+}
+.insp{
+  right:var(--shell-m);
+  bottom:calc(38px + var(--shell-m) + var(--shell-gap));
+  width:360px;
+  border-radius:16px;
+  border:0.5px solid rgba(10,22,40,.08);
+  background:rgba(255,255,255,.80);
+  box-shadow:0 4px 20px rgba(10,22,40,.12), inset 0 1px 0 rgba(255,255,255,.55);
+  transform:translateX(calc(100% + 40px));
+  opacity:0;
+  transition:transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s cubic-bezier(.2,.8,.2,1);
+}
+.insp.open{
+  transform:translateX(0);
+  opacity:1;
+  backdrop-filter:blur(12px) saturate(140%);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
+}
+[data-theme="dark"] .insp{
+  border:0.5px solid rgba(255,255,255,.12);
+  background:rgba(30,33,39,.86);
+  box-shadow:0 4px 20px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.insp-head{ border-bottom-color:rgba(10,22,40,.08); }
+[data-theme="dark"] .insp-head{ border-bottom-color:rgba(255,255,255,.08); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.10 — CONTRAST FIXES
+   Light-only literals that went light-on-light or dark-on-dark in the dark
+   theme, plus the bottom panel labels that sat below 2.2:1 in both themes.
+   ═══════════════════════════════════════════════════════════════════════ */
+[data-theme="dark"] .admin-modal-input,
+[data-theme="dark"] .admin-modal-input:focus{ background:rgba(255,255,255,.06); color:var(--txt); border-color:rgba(255,255,255,.18); }
+[data-theme="dark"] .dg-excl-lbl{ background:rgba(20,24,32,.88); }
+[data-theme="dark"] .asco-qitem{ background:rgba(255,255,255,.05); }
+[data-theme="dark"] .asco-qitem:hover{ background:rgba(255,255,255,.09); }
+[data-theme="dark"] .dg-check-summary-text{ color:#fca5a5; }
+[data-theme="dark"] .dg-viol-sev.sev-3{ background:rgba(248,113,113,.16); color:#fecaca; border-color:rgba(248,113,113,.35); }
+[data-theme="dark"] .dg-viol-sev.sev-2{ background:rgba(248,113,113,.12); color:#fca5a5; border-color:rgba(248,113,113,.28); }
+[data-theme="dark"] .loc-del-info,
+[data-theme="dark"] .loc-del-msg.blocked-msg{ color:#fcd34d; }
+[data-theme="dark"] .loc-del-info{ background:rgba(251,209,133,.08); border-color:rgba(251,209,133,.22); }
+[data-theme="dark"] .cp-tag-dg{ color:#fcd34d; background:rgba(251,209,133,.14); border-color:rgba(251,209,133,.30); }
+[data-theme="dark"] .cp-tag-hl{ color:#fde68a; background:rgba(251,209,133,.08); border-color:rgba(251,209,133,.22); }
+[data-theme="dark"] .brand-block.mode-viewer .brand-role{ color:#7fb2e8; }
+.bottom-panel .bp-label{ color:var(--txt3) !important; }
+/* No-DG bow zone: readable on the dark deck */
+[data-theme="dark"] .nodg-lbl{ color:rgba(248,113,113,.46) !important; }
+[data-theme="dark"] .nodg-zone{
+  background:repeating-linear-gradient(45deg,rgba(248,113,113,.10) 0 6px,transparent 6px 12px) !important;
+  border-left-color:rgba(248,113,113,.60) !important;
+}
+[data-theme="dark"] .dg-limit-lbl{ color:#fca5a5 !important; opacity:1 !important; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — LOCATION PILL LEGIBILITY
+   Status letters (L / BL / ROB / TR) were 9.5px (down to 7.5px in
+   narrow cards) next to a blurred LED that read as a smudge. Status
+   is operational information: letters now ≥10.5px, value ≥15px, and
+   the LED is a crisp dot. Same progressive container steps, shifted up.
+════════════════════════════════════════════════════════════ */
+.loc-pill{ height: 36px; }
+.loc-pill-lbl{
+  font-size: 12px;
+  letter-spacing: .6px;
+  font-weight: 800;
+  gap: 5px;
+  transform: none;
+}
+.loc-pill-lbl::after{ display:none; }   /* LED read as a letter "O" ("LO1") — colour of the pill already carries status */
+.loc-pill{ column-gap: 7px; }
+.loc-pill-val{ font-size: 18px; }
+
+.loc-card-pills:has(> .loc-pill:nth-child(4)) .loc-pill-lbl{ font-size: 10.5px; letter-spacing: .2px; gap: 3px; }
+.loc-card-pills:has(> .loc-pill:nth-child(4)) .loc-pill-lbl::after{ width: 5px; height: 5px; filter: none; }
+.loc-card-pills:has(> .loc-pill:nth-child(4)) .loc-pill-val{ font-size: 15px; }
+
+@container loccard (max-width: 240px){
+  .loc-pill-lbl{ font-size: 11.5px; letter-spacing: .4px; }
+}
+@container loccard (max-width: 210px){
+  .loc-pill-lbl{ font-size: 11px; letter-spacing: .3px; }
+  .loc-pill-lbl::after{ width: 5px; height: 5px; filter: none; }
+}
+@container loccard (max-width: 185px){
+  .loc-pill{ height: 36px; }
+  .loc-pill-lbl{ font-size: 10.5px; letter-spacing: .2px; }
+  .loc-pill-val{ font-size: 16px; }
+  .loc-pill-lbl::after{ width: 5px; height: 5px; filter: none; }
+}
+@container loccard (max-width: 170px){
+  .loc-pill-lbl{ font-size: 10.5px; letter-spacing: 0; }
+  .loc-pill-val{ font-size: 15px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — DG ON BOARD: vessel totals as IMDG-coloured class chips
+   Swatch colours come from DG_DATA (same as the on-deck badges).
+════════════════════════════════════════════════════════════ */
+.dg-onboard-line #dgOnBoardText{ display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap; vertical-align:middle; }
+.dg-onboard-line.has-dg{ font-size:10px !important; padding:4px 10px 4px 14px !important; }
+.dg-ob-total{ font-weight:800; color:var(--txt); margin-right:2px; letter-spacing:.2px; }
+.dg-ob-chip{
+  display:inline-flex; align-items:center; gap:3px;
+  font-family:'JetBrains Mono', ui-monospace, monospace;
+  font-size:10.5px; font-weight:600; color:var(--txt);
+  padding:2px 7px 2px 3px; border-radius:999px;
+  background:var(--glass-sub, rgba(255,255,255,.5));
+  border:1px solid var(--brd);
+}
+.dg-ob-chip b{
+  display:inline-grid; place-items:center;
+  min-width:20px; height:16px; padding:0 4px; border-radius:999px;
+  font-weight:800; font-size:10px;
+  border:1px solid transparent;          /* colours come from DG_DATA inline */
+}
+[data-theme="dark"] .dg-ob-chip{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.14); color:var(--txt); }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — MOTION & FOCUS HYGIENE
+════════════════════════════════════════════════════════════ */
+/* Hidden empty-deck hint must not keep its float loop running. */
+.empty-deck-hint.hidden .edh-art{ animation:none; }
+
+/* Reduced motion — stop decorative infinite loops that the earlier
+   guard blocks missed. Status remains visible via colour/outline. */
+@media (prefers-reduced-motion: reduce){
+  .cb.dg-violation, .cb.dg-violation::before, .cb.dg-violation::after,
+  .feature-badge, .viewer-banner-dot, .admin-mode-bar-dot, .sync-dot,
+  .skel-card, .htc-shimmer, .wx-cloud-d,
+  .empty-deck-hint .edh-art{
+    animation:none !important;
+  }
+}
+
+/* Keyboard focus ring for header glass pills and zoom buttons. */
+.gp:focus-visible,
+.zbtn:focus-visible{
+  outline:2px solid var(--acc);
+  outline-offset:2px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — SMALL CARGO: DG badges ride on the edge, not on the name
+   On Minis / baskets (< 2.6 m) the corner badges covered the CCU label.
+   Lift them half out of the block (tabs on the top edge; 3rd on the
+   bottom edge) so the centred label stays clear. .cb is overflow:visible.
+════════════════════════════════════════════════════════════ */
+.cb-dg-strip-small > .cb-dg-badge:nth-child(1){ top:-7px; right:2px; }
+.cb-dg-strip-small > .cb-dg-badge:nth-child(2){ top:-7px; left:2px; }
+.cb-dg-strip-small > .cb-dg-badge:nth-child(3){ bottom:-7px; right:2px; }
+.cb-dg-strip-small > .cb-dg-badge{ max-width:none; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — RIBBON INFO ROW: DG ON BOARD + LOAD LIST progress
+════════════════════════════════════════════════════════════ */
+.ribbon-info-row{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  align-self:center; flex-wrap:wrap;
+  pointer-events:none;
+}
+.ribbon-info-row > *{ pointer-events:auto; }
+.ll-progress{
+  display:inline-flex; align-items:center; gap:8px;
+  height:24px; padding:0 12px;
+  border-radius:12px;
+  font:inherit; font-family:'JetBrains Mono', ui-monospace, monospace;
+  font-size:10px; color:var(--txt2);
+  background:var(--glass-sub);
+  border:1px solid rgba(255,255,255,.48);
+  box-shadow:0 2px 6px rgba(30,60,90,.05), inset 0 1px 0 rgba(255,255,255,.60);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  cursor:pointer;
+}
+.ll-progress[hidden]{ display:none; }
+.ll-lbl{ letter-spacing:1px; }
+.ll-bar{
+  position:relative; width:72px; height:6px; border-radius:3px; overflow:hidden;
+  background:color-mix(in srgb, var(--txt) 12%, transparent);
+}
+.ll-bar > i{
+  position:absolute; inset:0 auto 0 0; width:0;
+  border-radius:inherit; background:var(--acc);
+  transition:width .35s cubic-bezier(.2,.8,.2,1);
+}
+.ll-num{ font-weight:800; color:var(--txt); }
+.ll-progress.complete .ll-bar > i{ background:var(--s-L); }
+.ll-progress.complete .ll-num{ color:var(--s-L); }
+[data-theme="dark"] .ll-progress{
+  border-color:rgba(255,255,255,.08);
+  box-shadow:0 2px 6px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.06);
+}
+@media (prefers-reduced-motion: reduce){ .ll-bar > i{ transition:none; } }
+
+/* v3.10 — inspector two-up field rows (Weight + Lift #, Along + Across) */
+.insp-field-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.insp-field-row > .insp-field{ min-width:0; }
+.insp-field-row input{ width:100%; max-width:none; }
+
+/* v3.10 — lift order badge (bottom-centre; edge tab on short blocks) */
+.cb-lift-badge{
+  position:absolute; left:50%; bottom:3px; transform:translateX(-50%);
+  min-width:15px; height:15px; padding:0 4px; box-sizing:border-box;
+  display:grid; place-items:center;
+  border-radius:999px;
+  background:var(--txt); color:var(--surf);
+  font-family:'Manrope','Inter',system-ui,sans-serif; font-size:10px; font-weight:900; line-height:1;
+  box-shadow:0 1px 3px rgba(0,0,0,.25), 0 0 0 1.5px var(--surf);
+  z-index:6; pointer-events:none; user-select:none;
+}
+.cb-lift-badge.cb-lift-edge{ bottom:-7px; }
+
+/* v3.10 — live library search: matches ringed, the rest of the deck dims */
+.cb.cp-hl{ animation:cpPulse 1.5s ease-out 1; }
+body.deck-searching #cvDECK .cb:not(.cp-hl):not(.kb-sel){
+  opacity:.22; filter:saturate(.4);
+  transition:opacity var(--dur-short) var(--ease), filter var(--dur-short) var(--ease);
+}
+@media (prefers-reduced-motion: reduce){ .cb.cp-hl{ animation:none; } }

@@ -67,9 +67,11 @@ window.__spicaIsViewer = () => !isOperator();
 const SPICA_CONFIG = {
 
   /* ── Admin ────────────────────────────────────────────────
-     Admin password for header edit mode.
-     Change this value to update the password — nowhere else. */
-  ADMIN_PASSWORD: 'Pavel7114413',
+     SHA-256 of ('spica-tide-admin:' + password) for header edit mode.
+     The plain password is not shipped in the bundle. To change it, run
+     node -e "console.log(require('crypto').createHash('sha256').update('spica-tide-admin:'+'NEW').digest('hex'))"
+     and paste the hex here. */
+  ADMIN_PASSWORD_SHA256: '3da0959fb45b08934b44828ebc6dc80362a0e7c8cb367145fbb0095edbe557f3',
 
   /* ── Brand / Header labels ─────────────────────────────────
      These are the default values. Once edited in admin mode
@@ -114,6 +116,9 @@ function applyModeUI(){
   /* Body class drives subtle viewer indicator in the bottom status bar
      (see .bp-viewer-indicator CSS). Replaces the old fixed banner. */
   document.body.classList.toggle('is-viewer', !op);
+  /* Voyage number is plan data: read-only for Viewer (saves are blocked). */
+  const _voy = document.getElementById('voyIn');
+  if(_voy) _voy.readOnly = !op;
   if(btn){
     btn.classList.toggle('mode-operator', op);
     btn.classList.toggle('mode-viewer', !op);
@@ -218,11 +223,32 @@ function adminCloseModal(){
   if(ov) ov.classList.remove('open');
 }
 
-function adminValidate(){
+/* Publishes the header row's bottom edge as --ribbon-bottom so the side
+   panels (Library, inspector) open below it instead of covering it. */
+function _trackRibbonBottom(){
+  const rib = document.querySelector('.shell-ribbon');
+  if(!rib) return;
+  const apply = () => {
+    const b = Math.round(rib.getBoundingClientRect().bottom);
+    if(b > 0) document.documentElement.style.setProperty('--ribbon-bottom', b + 'px');
+  };
+  apply();
+  if(window.ResizeObserver) new ResizeObserver(apply).observe(rib);
+  window.addEventListener('resize', apply);
+}
+
+async function _adminHash(pw){
+  if(!(window.crypto && crypto.subtle)) return '';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('spica-tide-admin:' + pw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function adminValidate(){
   const inp = document.getElementById('adminPwInput');
   const err = document.getElementById('adminPwErr');
   if(!inp) return;
-  if(inp.value === SPICA_CONFIG.ADMIN_PASSWORD){
+  const ok = (await _adminHash(inp.value)) === SPICA_CONFIG.ADMIN_PASSWORD_SHA256;
+  if(ok){
     adminCloseModal();
     adminEnterEditMode();
   } else {
@@ -1801,7 +1827,7 @@ function setupCanvas(){
 
   /* No DG zone — large elegant label */
   const noDGw=TW-DGX;
-  const nodg=document.createElement('div');
+  const nodg=document.createElement('div');nodg.className='nodg-zone';
   nodg.style.cssText=`position:absolute;left:${DGX}px;top:0;width:${noDGw}px;height:100%;pointer-events:none;z-index:2;
     background:repeating-linear-gradient(45deg,rgba(220,38,38,.055),rgba(220,38,38,.055) 6px,transparent 6px,transparent 12px);
     border-left:2px dashed rgba(220,38,38,.45);`;
@@ -1812,7 +1838,7 @@ function setupCanvas(){
   noDGlbl.style.cssText=`position:absolute;pointer-events:none;z-index:5;
     left:${DGX}px;width:${noDGw}px;top:0;height:${CVH}px;
     display:flex;align-items:center;justify-content:center;`;
-  noDGlbl.innerHTML=`<span style="font-family:'Manrope',sans-serif;font-size:22px;font-weight:900;
+  noDGlbl.innerHTML=`<span class="nodg-lbl" style="font-family:'Manrope',sans-serif;font-size:22px;font-weight:900;
     letter-spacing:3px;text-transform:uppercase;color:rgba(180,30,30,.22);
     transform:rotate(-90deg);white-space:nowrap;">No DG Cargo</span>`;
   cv.appendChild(noDGlbl);
@@ -2772,6 +2798,7 @@ function renderAll(){
     if(el){ el.classList.add('kb-sel'); }
     else   { if(typeof kbDeselect==='function') kbDeselect(); }
   }
+  if(typeof cpReapplyHl==='function') cpReapplyHl();
 }
 
 /* Edge-aware side for the selection action buttons (×/↻/+). They live in a
@@ -2949,6 +2976,17 @@ function renderBlock(cv,cargo){
     if(cargo.w < 82) pri.classList.add('cb-pri-badge-small');
     if(cargo.w < 48) pri.classList.add('cb-pri-badge-xs');
     pri.style.fontSize=badgeSz;pri.textContent='⚡';b.appendChild(pri);
+  }
+  /* v3.10 — lift order number. Bottom-centre (the only free slot: corners
+     belong to DG / priority / HL / TR). On blocks < ~2.8 m across
+     it rides on the bottom edge so it never covers the CCU label.
+     Captured by html2canvas, so it also appears in the PDF. */
+  if(cargo.liftNo){
+    const lb=document.createElement('div');
+    lb.className='cb-lift-badge'+(cargo.h<70?' cb-lift-edge':'');
+    lb.textContent=cargo.liftNo;
+    lb.title='Lift order #'+cargo.liftNo;
+    b.appendChild(lb);
   }
   /* Transfer — destination badge. Inherits cb-id's bg-adaptive textCol
      so it stays readable on every dynamic fill (olive, brown, pastel,
@@ -3214,6 +3252,11 @@ function startResize(e,cargo,block,dir){
     if(dir.includes('s'))nh=Math.max(20,oh+dy);
     if(dir.includes('w')){nw=Math.max(24,ow-dx);nx=ox+ow-nw;}
     if(dir.includes('n')){nh=Math.max(20,oh-dy);ny=oy+oh-nh;}
+    /* Keep the block on the deck: never past the aft/bow or PORT/STBD edges. */
+    if(nx<0){nw+=nx;nx=0;}
+    if(ny<0){nh+=ny;ny=0;}
+    nw=Math.max(24,Math.min(nw,TW-nx));
+    nh=Math.max(20,Math.min(nh,CVH-ny));
     cargo.x=nx;cargo.y=ny;cargo.w=nw;cargo.h=nh;
     block.style.cssText+=`left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
     /* Live label refit so text shrinks with the block during the drag. */
@@ -3373,20 +3416,46 @@ function updateStats(){
 
   /* V9: Status bar update */
   if(typeof updateStatusBar==='function') updateStatusBar();
+  updateLoadListProgress();
 }
 function updateDGSummary(){
+  /* v3.10 — totals for the whole vessel (not per location), rendered as
+     IMDG-coloured class chips + total DG lift count. Per-location split
+     lives in the hover tooltip only. */
   const el = document.getElementById('dgOnBoardText');
   if(!el) return;
-  const counts = {};
+  const line = document.getElementById('dgOnBoardLine');
+  const counts = {}, byLoc = {};
+  let lifts = 0;
   S.cargo.forEach(c => {
-    (c.dgClasses||[]).forEach(cls => { counts[cls] = (counts[cls]||0) + 1; });
+    const cls = c.dgClasses || [];
+    if(!cls.length) return;
+    lifts++;
+    cls.forEach(k => {
+      counts[k] = (counts[k]||0) + 1;
+      const ln = (locById(c.platform)?.name) || c.platform || '—';
+      (byLoc[k] = byLoc[k] || {})[ln] = (byLoc[k][ln]||0) + 1;
+    });
   });
   const entries = Object.keys(counts).sort((a,b) => parseFloat(a)-parseFloat(b));
+  if(line) line.classList.toggle('has-dg', entries.length > 0);
   if(entries.length === 0){
     el.textContent = 'none';
-  } else {
-    el.textContent = entries.map(cls => 'Class ' + cls + ' (' + counts[cls] + ')').join(', ');
+    if(line) line.title = 'No dangerous goods on deck';
+    return;
   }
+  el.innerHTML =
+    `<span class="dg-ob-total">${lifts} lift${lifts===1?'':'s'}</span>` +
+    entries.map(k => {
+      /* Same placard colours as the on-deck DG badges (DG_DATA). */
+      const dd = DG_DATA.find(d => d.cls === k);
+      const sw = dd ? ` style="background:${dd.bg};color:${dd.tc};border-color:${dd.bc}"` : '';
+      return `<span class="dg-ob-chip" data-cls="${k}" title="${(DG_CLASS_NAMES[k]||'Class '+k).replace(/"/g,'&quot;')}"><b${sw}>${k}</b>×${counts[k]}</span>`;
+    }).join('');
+  if(line) line.title = entries.map(k =>
+    `Class ${k} — ${DG_CLASS_NAMES[k]||''}: ${counts[k]}  (` +
+    Object.entries(byLoc[k]).map(([n,v]) => `${n} ${v}`).join(', ') + ')'
+  ).join('\n');
 }
 /* ════════════════════════════════════════════════════════════
    DG AUTO-SEGREGATION CHECK ENGINE  v38.8
@@ -3703,7 +3772,7 @@ function updateDGZones(){
    MODAL
 ════════════════════════════════════ */
 let editId=null,modalSt=null;
-function openModal(id){editId=id;const c=S.cargo.find(x=>x.id===id);if(!c)return;buildModalDescSelect();document.getElementById('mCCU').value=c.ccu||'';document.getElementById('mDesc').value=c.desc||'';document.getElementById('mWT').value=c.wt||'';_dgMultiSelected=Array.isArray(c.dgClasses)?[...c.dgClasses]:[];_dgMultiRenderTags();modalSt=c.status||'L';buildModalLocs(c.platform);document.querySelectorAll('.mdl-st').forEach(b=>b.classList.toggle('sel',b.dataset.s===modalSt));
+function openModal(id){editId=id;const c=S.cargo.find(x=>x.id===id);if(!c)return;buildModalDescSelect();document.getElementById('mCCU').value=c.ccu||'';_selectWithFreeText(document.getElementById('mDesc'),c.desc);document.getElementById('mWT').value=c.wt||'';_dgMultiSelected=Array.isArray(c.dgClasses)?[...c.dgClasses]:[];_dgMultiRenderTags();modalSt=c.status||'L';buildModalLocs(c.platform);document.querySelectorAll('.mdl-st').forEach(b=>b.classList.toggle('sel',b.dataset.s===modalSt));
 /* Heavy Lift toggle */
 const hlBtn=document.getElementById('mHL');
 const hlLbl=document.getElementById('mHLlbl');
@@ -4233,6 +4302,24 @@ function restoreDeckHome(){
   if(area) _inspAnimateScrollLeft(area, home);
 }
 
+/* Set a description <select> to `value`. Imported / free-text descriptions
+   are not library entries, so they get their own option at the top
+   instead of leaving the field blank. */
+function _selectWithFreeText(sel, value){
+  if(!sel) return;
+  sel.querySelectorAll('option[data-freetext]').forEach(o => o.remove());
+  const d = value || '';
+  if(d && ![...sel.options].some(o => o.value === d)){
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d; o.dataset.freetext = '1';
+    /* Options may live inside <optgroup>s — insert at the top level, right
+       after the leading placeholder, never relative to a nested option. */
+    const first = sel.firstElementChild;
+    if(first && first.tagName === 'OPTION') first.after(o); else sel.prepend(o);
+  }
+  sel.value = d;
+}
+
 function inspBuildDescSelect(){
   /* Mirrors buildModalDescSelect but targets #inspDesc. Uses the same
      CCU_PRESETS + custom library so description choices stay consistent. */
@@ -4327,8 +4414,13 @@ function inspPopulate(cargo){
 
   inspBuildDescSelect();
   if(ccu)  ccu.value  = cargo.ccu || '';
-  if(desc) desc.value = cargo.desc || '';
+  if(desc) _selectWithFreeText(desc, cargo.desc);
   if(wt)   wt.value   = (cargo.wt != null ? cargo.wt : '');
+  const lenI = document.getElementById('inspLen'), widI = document.getElementById('inspWid');
+  const liftI = document.getElementById('inspLift');
+  if(lenI)  lenI.value  = (+(cargo.length_m || cargo.w / M)).toFixed(2);
+  if(widI)  widI.value  = (+(cargo.width_m  || cargo.h / YS)).toFixed(2);
+  if(liftI) liftI.value = cargo.liftNo ? cargo.liftNo : '';
 
   inspBuildLocs(cargo.platform);
   inspSetStatusSeg(cargo.status || 'L');
@@ -4554,12 +4646,16 @@ function bindInspector(){
     const preset = CCU_PRESETS.find(p => p.label === desc.value)
               || S.customLib.find(p => p.name === desc.value);
     if(preset){
+      const cx = c.x + c.w/2, cy = c.y + c.h/2;
       if(preset.length_m){ c.length_m = preset.length_m; c.w = m2px_w(preset.length_m); }
       if(preset.width_m) { c.width_m  = preset.width_m;  c.h = m2px_h(preset.width_m); }
+      c.x = Math.max(0, Math.min(cx - c.w/2, TW  - c.w));
+      c.y = Math.max(0, Math.min(cy - c.h/2, CVH - c.h));
+      c.rot = 0;
     }
     /* Description may change dimensions — a full renderAll is necessary here */
     renderAll(); kbSelect(inspSelId);
-    updateStats(); buildActiveLocStrip(); save();
+    updateStats(); buildActiveLocStrip(); checkSeg(); save();
   });
 
   const wt = document.getElementById('inspWT');
@@ -4579,6 +4675,52 @@ function bindInspector(){
     wt.addEventListener('input', commitWTDebounced);
     wt.addEventListener('blur',  () => commitWTDebounced.flush());
     wt.addEventListener('keydown', e => { if(e.key === 'Enter') commitWTDebounced.flush(); });
+  }
+
+  /* v3.10 — size in metres (metres are the source of truth; px derived).
+     Keeps the block centred on its old centre and inside the deck. */
+  const commitSize = () => {
+    if(!isOperator() || inspSelId == null) return;
+    const c = S.cargo.find(x => x.id === inspSelId);
+    if(!c) return;
+    const lenI = document.getElementById('inspLen'), widI = document.getElementById('inspWid');
+    let L = parseFloat(lenI.value), W = parseFloat(widI.value);
+    if(!(L > 0) || !(W > 0)){ inspPopulate(c); return; }
+    L = Math.min(DECK_LENGTH_M, Math.max(0.3, L));
+    W = Math.min(15, Math.max(0.3, W));
+    if(Math.abs(L - (c.length_m || 0)) < 0.005 && Math.abs(W - (c.width_m || 0)) < 0.005) return;
+    const cx = c.x + c.w/2, cy = c.y + c.h/2;
+    c.length_m = +L.toFixed(3); c.width_m = +W.toFixed(3);
+    c.w = m2px_w(c.length_m);   c.h = m2px_h(c.width_m);
+    c.x = Math.max(0, Math.min(cx - c.w/2, TW  - c.w));
+    c.y = Math.max(0, Math.min(cy - c.h/2, CVH - c.h));
+    lenI.value = c.length_m.toFixed(2); widI.value = c.width_m.toFixed(2);
+    renderAll(); kbSelect(inspSelId);
+    updateStats(); checkSeg(); save();
+  };
+  ['inspLen','inspWid'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', commitSize);
+    el.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitSize(); } });
+  });
+
+  /* v3.10 — manual lift number */
+  const liftI = document.getElementById('inspLift');
+  if(liftI){
+    const commitLift = () => {
+      if(!isOperator() || inspSelId == null) return;
+      const c = S.cargo.find(x => x.id === inspSelId);
+      if(!c) return;
+      const v = parseInt(liftI.value, 10);
+      const nv = (v > 0 && v < 1000) ? v : null;
+      if((c.liftNo || null) === nv) return;
+      if(nv) c.liftNo = nv; else delete c.liftNo;
+      liftI.value = nv || '';
+      renderAll(); kbSelect(inspSelId); save();
+    };
+    liftI.addEventListener('change', commitLift);
+    liftI.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitLift(); } });
   }
 
   /* Status segmented control */
@@ -4618,18 +4760,19 @@ function bindInspector(){
     if(!isOperator() || inspSelId == null) return;
     const c = S.cargo.find(x => x.id === inspSelId);
     if(!c) return;
+    const spot = findFreeSpot(c.x + c.w + 6, c.y, c.w, c.h);
     const newC = {
       ...c,
       id: Date.now() + Math.random(),
-      x: Math.min(c.x + c.w + 6, TW  - c.w),
-      y: Math.min(c.y + 0,       CVH - c.h),
+      x: spot.x,
+      y: spot.y,
       ccu: c.ccu ? c.ccu + ' (copy)' : '',
     };
     S.cargo.push(newC);
     renderAll();
     kbSelect(newC.id);
     inspOpen(newC.id);
-    updateStats(); buildActiveLocStrip(); save();
+    updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
   });
 
   const delBtn = document.getElementById('inspDel');
@@ -5269,6 +5412,7 @@ function _diffCargoIds(beforeIds, afterIds){
 }
 
 function undo(){
+  if(!isOperator()) return;              /* Viewer is read-only */
   if(!_undoStack.length) return;
   /* Current (post-action) state becomes the redo target. */
   _redoStack.push(_takeSnapshot());
@@ -5292,6 +5436,7 @@ function undo(){
 }
 
 function redo(){
+  if(!isOperator()) return;              /* Viewer is read-only */
   if(!_redoStack.length) return;
   /* Current state goes back to undo as a restore point. */
   _undoStack.push(_takeSnapshot());
@@ -5575,6 +5720,7 @@ async function openPlanFromFile() {
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
+    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
     _currentFilePath = filePath;
@@ -5590,6 +5736,9 @@ async function openPlanFromFile() {
 
     /* Also store in localStorage as backup */
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+    /* A freshly opened plan starts a new history: without this, Ctrl+Z
+       restored the PREVIOUS plan and wrote it into the newly opened file. */
+    seedHistoryBaseline(); checkSeg();
 
     showToast('Plan opened', 'ok');
   } catch (e) {
@@ -5618,6 +5767,7 @@ async function openRecentFile(path) {
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
+    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
     _currentFilePath = path;
@@ -5627,6 +5777,7 @@ async function openRecentFile(path) {
     buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
     renderAll(); updateStats(); updateDGSummary();
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+    seedHistoryBaseline(); checkSeg();   /* new file = new history */
     showToast('Plan opened', 'ok');
   } catch (e) {
     showToast('Could not open file', 'warn');
@@ -5740,12 +5891,14 @@ function _applyProjectData(jsonString, fileName) {
     if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
     if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
     if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
+    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
     if (d.zoomLevel) applyZoom(d.zoomLevel);
 
     initDynColors(); setDateDisplay(); loadLibPrefs();
     buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
     renderAll(); updateStats(); updateDGSummary();
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+    seedHistoryBaseline(); checkSeg();   /* new project = new history */
     showToast('Project loaded \u2014 ' + fileName, 'ok');
   } catch (err) {
     console.error('[Project] Load error:', err);
@@ -5796,7 +5949,8 @@ function savePlan(key) {
       dynColors:  DYN_COLORS,
       cargoColors: CARGO_COLORS,
       locColors:  S.locColors,
-      voyRemarks: S.voyRemarks || ''
+      voyRemarks: S.voyRemarks || '',
+      loadList:   S.loadList || null
     }
   };
   _planAdapter.save(key, envelope);
@@ -5853,6 +6007,7 @@ function loadPlan(key) {
   if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
   if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
   if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
+    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
   if (d.zoomLevel) applyZoom(d.zoomLevel);
 
   /* Legacy scale warning for data imported from scaleVer < 2 */
@@ -5875,6 +6030,12 @@ function listPlans() {
 function save() {
   _pushUndo();
   savePlan();
+  /* v3.10 — keep inspector fields (size, lift #, status…) in step with
+     edits made elsewhere (corner resize, R-rotate, drag, menu). Skipped
+     while the user is typing inside the inspector or in aggregate view. */
+  const _rail = document.getElementById('inspRail');
+  if(_rail && _rail.classList.contains('open') && !_rail.contains(document.activeElement)
+     && !document.body.classList.contains('insp-multi')) inspRefreshIfOpen();
   _dirty = true;
   _updateSaveIndicator();
   _syncPushDebounced();
@@ -5908,13 +6069,14 @@ function applyZoom(z){
     const naturalH = inner.offsetHeight;
     wrap.style.width  = (naturalW * zoomLevel) + 'px';
     wrap.style.height = (naturalH * zoomLevel) + 'px';
-    /* Compensate for the center-origin pivot:
-         when wrap layout = N*S and origin = N*S/2, the scaled content
-         naturally spans origin*(1-S) to origin+N*(1-S/2)S, which drifts
-         off-box. Pre-translate by -N*(1-S)/2 to re-seat the top-left
-         at (0,0) so the content fills the layout rect exactly.        */
-    const tx = -naturalW * (1 - zoomLevel) / 2;
-    const ty = -naturalH * (1 - zoomLevel) / 2;
+    /* Compensate for the center-origin pivot. The wrap's layout box is
+       N*S wide and transform-origin 50% sits at N*S/2, so after scale(S)
+       the content's left edge lands at N*S*(1-S)/2. Translate back by
+       exactly that to seat the scaled deck on the layout rect.
+       (Pre-v3.10 used -N*(1-S)/2 — missing the ×S — so at FIT the deck
+       drifted left/up by N(1-S)²/2 and the stern was clipped.)        */
+    const tx = -naturalW * zoomLevel * (1 - zoomLevel) / 2;
+    const ty = -naturalH * zoomLevel * (1 - zoomLevel) / 2;
     wrap.style.transform = `translate(${tx}px, ${ty}px) scale(${zoomLevel})`;
   }
   document.getElementById('zoomLbl').textContent = Math.round(zoomLevel * 100) + '%';
@@ -5941,10 +6103,11 @@ function computeFitScale(){
   const area  = document.getElementById('deckArea');
   const inner = document.querySelector('.deck-outer');
   if(!area || !inner) return 1;
-  const padX = 16, padY = 8;
-  const sx = (area.clientWidth  - padX) / inner.offsetWidth;
-  const sy = (area.clientHeight - padY) / inner.offsetHeight;
-  return Math.min(sx, sy);
+  /* Content box, not clientWidth — the area has 28px side padding. */
+  const cs = getComputedStyle(area);
+  const availW = area.clientWidth  - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)  - 8;
+  const availH = area.clientHeight - parseFloat(cs.paddingTop)  - parseFloat(cs.paddingBottom) - 8;
+  return Math.min(availW / inner.offsetWidth, availH / inner.offsetHeight);
 }
 
 function updateVesselBgOpacity(){
@@ -5972,10 +6135,7 @@ function fitToScreen(){
      the current zoom or pan. Reset scroll so the deck centers cleanly. */
   area.scrollLeft = 0;
   area.scrollTop  = 0;
-  const padX = 16, padY = 8;
-  const sx = (area.clientWidth  - padX) / inner.offsetWidth;
-  const sy = (area.clientHeight - padY) / inner.offsetHeight;
-  applyZoom(Math.min(sx, sy));
+  applyZoom(computeFitScale());
 }
 function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);
 /* Pinch-to-zoom on touch devices */
@@ -6714,9 +6874,112 @@ function updateAscoSelection(){
     : 'Select items to import into the cargo queue';
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3.10 — LIFT ORDER
+   cargo.liftNo — 1-based crane lift sequence at the cargo's location.
+   Auto-numbering covers cargo that LEAVES the deck at the location
+   (Load + Transfer); Backload / ROB are not lifted off there. Per
+   location, in voyage (active-location) order: priority lifts first,
+   then aft → fore, port → stbd. Any number can be edited by hand in the
+   inspector; re-running auto-number replaces all numbers.
+════════════════════════════════════════════════════════════ */
+function autoNumberLiftOrder(){
+  if(!isOperator()) return;
+  const locs = [...S.activeLocs, ...S.cargo.map(c => c.platform)]
+    .filter((v, i, a) => v && a.indexOf(v) === i);
+  S.cargo.forEach(c => { delete c.liftNo; });
+  let n = 0;
+  locs.forEach(loc => {
+    const list = S.cargo.filter(c => c.platform === loc && (c.status === 'L' || c.status === 'TR'));
+    list.sort((a, b) => ((b.priority ? 1 : 0) - (a.priority ? 1 : 0)) || (a.x - b.x) || (a.y - b.y));
+    list.forEach((c, i) => { c.liftNo = i + 1; });
+    n += list.length;
+  });
+  renderAll(); if(KB_SEL) kbSelect(KB_SEL); save();
+  showToast(n ? `Lift order numbered: ${n} lift${n === 1 ? '' : 's'}` : 'No Load / Transfer cargo to number', n ? 'ok' : 'warn');
+}
+function clearLiftOrder(){
+  if(!isOperator()) return;
+  if(!S.cargo.some(c => c.liftNo)) return;
+  S.cargo.forEach(c => { delete c.liftNo; });
+  renderAll(); if(KB_SEL) kbSelect(KB_SEL); save();
+  showToast('Lift order cleared');
+}
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — LOAD LIST PROGRESS
+   S.loadList = { importedAt, items:[{k1,k2,locId,ccu,desc}] } — every row
+   of the latest ASCO import(s). A new import replaces the rows of the
+   locations it covers and keeps the others. Progress counts how many
+   load-list rows have a matching cargo on deck, using the SAME count-
+   aware key bag as the import reconciliation (CCU first, else desc+wt+
+   location), so "on deck" here always agrees with the import preview.
+════════════════════════════════════════════════════════════ */
+function _loadListRecord(sheets){
+  if(!Array.isArray(sheets) || !sheets.length) return;
+  const items = [], locs = new Set();
+  sheets.forEach(sheet => {
+    const locId = _matchImportedLocId(sheet.displayName || sheet.sheetName) || '';
+    locs.add(locId);
+    sheet.items.forEach(item => {
+      const k = _rowKeys(item, sheet);
+      items.push({ k1: k.k1 || '', k2: k.k2 || '', locId, ccu: item.ccu || '', desc: item.desc || '' });
+    });
+  });
+  const keep = (S.loadList && Array.isArray(S.loadList.items))
+    ? S.loadList.items.filter(i => !locs.has(i.locId)) : [];
+  S.loadList = { importedAt: new Date().toISOString(), items: keep.concat(items) };
+}
+function loadListProgress(){
+  const ll = S.loadList;
+  if(!ll || !Array.isArray(ll.items) || !ll.items.length) return null;
+  const { deck } = _importLedger();
+  const per = {};
+  let done = 0;
+  ll.items.forEach(it => {
+    const p = per[it.locId] = per[it.locId] || { total: 0, done: 0 };
+    p.total++;
+    if(_rowIn(deck, { k1: it.k1, k2: it.k2 })){ p.done++; done++; }
+  });
+  return { total: ll.items.length, done, per };
+}
+function updateLoadListProgress(){
+  const el = document.getElementById('llProgress');
+  if(!el) return;
+  _bindLoadListChip();
+  const pr = loadListProgress();
+  if(!pr){ el.hidden = true; return; }
+  el.hidden = false;
+  const pct = Math.round(pr.done / pr.total * 100);
+  el.classList.toggle('complete', pr.done === pr.total);
+  el.querySelector('.ll-num').textContent = `${pr.done} / ${pr.total}`;
+  el.querySelector('.ll-bar > i').style.width = pct + '%';
+  el.title = 'Load list on deck: ' + pr.done + ' of ' + pr.total + ' (' + pct + '%)\n' +
+    Object.entries(pr.per).map(([id, v]) =>
+      `${(locById(id)?.name) || id || 'Unassigned'}: ${v.done} / ${v.total}`).join('\n');
+}
+function _bindLoadListChip(){
+  const el = document.getElementById('llProgress');
+  if(!el || el.dataset.bound) return;
+  el.dataset.bound = '1';
+  el.addEventListener('click', () => {
+    /* Open the Library on the Imported queue — what is still to load. */
+    const ov = document.querySelector('.cp-overlay');
+    if(ov && !ov.classList.contains('open')) document.getElementById('btnLibOpen')?.click();
+    document.querySelector('.stab[data-tab="queue"]')?.click();
+  });
+}
+function clearLoadList(){
+  if(!isOperator()) return;
+  S.loadList = null; updateLoadListProgress(); save();
+}
+
 /* ── Perform import: move selected items to IMPORT_QUEUE ── */
 function performAscoImport(){
   const added = [];
+  /* v3.10 — the whole file (every row, selected or not) is the load list
+     for the locations it covers; progress = how much of it is on deck. */
+  _loadListRecord(ascoImportData);
   /* Dedup by CCU against existing queue entries and cargo already placed
      on deck. Same normalisation as runManifestMatch (trim + uppercase).
      Rows without a CCU are never dedup-matched — always imported. */
@@ -6776,6 +7039,7 @@ function performAscoImport(){
     });
   });
 
+  updateLoadListProgress(); savePlan();   /* persist the load list */
   closeAscoModal();
   if(window._cpAfterImport) window._cpAfterImport();
   buildQueueList();
@@ -7278,7 +7542,7 @@ async function printDeckPlan(){
    they stay legible on any fill once printed. Horizontal geometry is
    unchanged, so bay positions stay exact.                              */
 function _pdfDeckStretch(activeLocs){
-  const hasDest = (activeLocs || []).some(l => l && (l.L > 0 || l.BL > 0 || l.ROB > 0));
+  const hasDest = (activeLocs || []).some(l => l && (l.L > 0 || l.BL > 0 || l.ROB > 0 || l.TR > 0));
   const deckTop = 45.5 + (hasDest ? 18 : 0) + 6.5;              /* header + KPI (+ destinations) + deck label */
   const rem = (typeof S !== 'undefined' && S.voyRemarks) ? S.voyRemarks.trim() : '';
   const remLines = rem ? rem.split('\n').reduce((n, ln) => n + Math.max(1, Math.ceil(ln.length / 150)), 0) : 0;
@@ -7342,6 +7606,7 @@ async function _renderReport(mode){
   const loadCount = parseInt(document.getElementById('sL').textContent) || 0;
   const blCount   = parseInt(document.getElementById('sBL').textContent) || 0;
   const robCount  = parseInt(document.getElementById('sROB').textContent) || 0;
+  const trCount   = S.cargo.filter(c => c.status === 'TR').length;   /* v3.10 — was missing from the PDF */
 
   /* ── Active locations with per-status cargo counts ── */
   const activeLocs = S.activeLocs.map(id => {
@@ -7353,13 +7618,15 @@ async function _renderReport(mode){
     const L   = cargos.filter(c => c.status === 'L').length;
     const BL  = cargos.filter(c => c.status === 'BL').length;
     const ROB = cargos.filter(c => c.status === 'ROB').length;
+    const TR  = cargos.filter(c => c.status === 'TR').length;
     const wt  = cargos.reduce((a,c) => a + (parseFloat(c.wt)||0), 0);
     /* Per-(loc,status) opColor() so PDF pills match the deck blocks (DESIGN_RULES §1, §3, §8). */
     const pillColors = {};
     if(L   > 0) pillColors.L   = opColor(id, 'L');
     if(BL  > 0) pillColors.BL  = opColor(id, 'BL');
     if(ROB > 0) pillColors.ROB = opColor(id, 'ROB');
-    return { id, name: loc.name, type: loc.type || 'platform', base, cols, L, BL, ROB, wt: wt.toFixed(1), pillColors };
+    if(TR  > 0) pillColors.TR  = opColor(id, 'TR');
+    return { id, name: loc.name, type: loc.type || 'platform', base, cols, L, BL, ROB, TR, wt: wt.toFixed(1), pillColors };
   }).filter(Boolean);
 
   /* ── DG classes actually on deck ── */
@@ -7494,7 +7761,7 @@ async function _renderReport(mode){
       onclone: cdoc => _stretchDeckClone(cdoc, _deckK),
     });
     restore();
-    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs }, { mode })
+    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, trCount, dgEntries, activeLocs }, { mode })
       .catch(err => {
         console.error('[PDF] buildPDF error:', err);
         showToast('PDF build error: ' + (err && err.message || err), 'warn');
@@ -7532,7 +7799,7 @@ function _pdfLocIcon(doc, type, x, y, size, rgb){
 
 async function buildPDF(deckCanvas, data, opts){
   const _mode = (opts && opts.mode) || 'save';
-  const { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, dgEntries, activeLocs } = data;
+  const { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, trCount = 0, dgEntries, activeLocs } = data;
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
 
   /* Register Inter TTF — embedded at build time via inter-fonts.js.
@@ -7690,7 +7957,8 @@ async function buildPDF(deckCanvas, data, opts){
         Tinted fills, no borders, Manrope numerics right-aligned. */
   const kpiY  = y + HB_H + 4.5;           /* clears the amber bar (ends at +2.3) */
   const KPI_H = 17, KPI_GAP = 2;
-  const kUnit = (CW - 3*KPI_GAP) / 4.5;   /* base pill; Total Lifts is 1.5× */
+  const _kpiN = trCount > 0 ? 4 : 3;      /* supporting pills (Transfer only when present) */
+  const kUnit = (CW - _kpiN*KPI_GAP) / (_kpiN + 1.5);   /* base pill; Total Lifts is 1.5× */
   const kBL   = kpiY + 11.5;              /* baseline centring the 26pt value */
   let kx = ML;
   [
@@ -7698,6 +7966,7 @@ async function buildPDF(deckCanvas, data, opts){
     { w:kUnit,     fill:tintGreen,  lbl:'LOAD',        lblCol:green,         val:String(loadCount), valCol:green,           valSize:20 },
     { w:kUnit,     fill:tintAmber,  lbl:'BACKLOAD',    lblCol:amberStatus,   val:String(blCount),   valCol:amberStatus,     valSize:20 },
     { w:kUnit,     fill:tintNavy,   lbl:'ROB',         lblCol:inkMute,       val:String(robCount),  valCol:[70,80,100],     valSize:20 },
+    ...(trCount > 0 ? [{ w:kUnit, fill:[230,243,246], lbl:'TRANSFER', lblCol:[14,116,144], val:String(trCount), valCol:[14,116,144], valSize:20 }] : []),
   ].forEach(p => {
     roundRect(kx, kpiY, p.w, KPI_H, 2.5, p.fill, null);
     doc.setFont('Inter','normal'); doc.setFontSize(9); doc.setTextColor(...p.lblCol); doc.setCharSpace(0.3);
@@ -7715,7 +7984,7 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* 2. DESTINATIONS — soft cards with dot indicators (Variant A).
         Active locations only; equal-width row; no tonnage. */
-  const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0);
+  const filledLocs = activeLocs.filter(loc => loc.L>0 || loc.BL>0 || loc.ROB>0 || loc.TR>0);
   if(filledLocs.length > 0){
     const DEST_H = 16, DGAP = 2, DPAD = 4, dotR = 1.4;
     const cardW = (CW - (filledLocs.length-1)*DGAP) / filledLocs.length;
@@ -7724,7 +7993,7 @@ async function buildPDF(deckCanvas, data, opts){
     doc.setFont('Inter','bold'); doc.setFontSize(7.5);
     let uniPillW = 12;
     filledLocs.forEach(loc => {
-      [['L',loc.L],['BL',loc.BL],['ROB',loc.ROB]].forEach(([lbl,val]) => {
+      [['L',loc.L],['BL',loc.BL],['ROB',loc.ROB],['TR',loc.TR]].forEach(([lbl,val]) => {
         if(val>0) uniPillW = Math.max(uniPillW, doc.getTextWidth(`${lbl} ${val}`) + 6);
       });
     });
@@ -7748,7 +8017,8 @@ async function buildPDF(deckCanvas, data, opts){
       let px = cx+DPAD; const pillY = y+9, pillH = 5.5, pillR = pillH/2;
       [{lbl:'L',  val:loc.L,   hex: (loc.pillColors && loc.pillColors.L)   || loc.base},
        {lbl:'BL', val:loc.BL,  hex: (loc.pillColors && loc.pillColors.BL)  || loc.base},
-       {lbl:'ROB',val:loc.ROB, hex: (loc.pillColors && loc.pillColors.ROB) || loc.base}]
+       {lbl:'ROB',val:loc.ROB, hex: (loc.pillColors && loc.pillColors.ROB) || loc.base},
+       {lbl:'TR', val:loc.TR,  hex: (loc.pillColors && loc.pillColors.TR)  || loc.base}]
         .filter(p=>p.val>0).forEach(p => {
           const txt = `${p.lbl} ${p.val}`;
           const rgbFill = hex2rgb(p.hex);
@@ -8254,22 +8524,33 @@ function cpBindSearch(){
   });
 }
 
-/* ── Deck highlight ── */
+/* ── Deck highlight ──
+   v3.10 — persistent while the query is active (was a 5.5 s flash that a
+   renderAll wiped): matches get the accent ring, everything else dims.
+   Matches CCU, description, location id AND display name, DG class. */
 function cpHighlightDeck(query){
   cpClearHl();
-  document.querySelectorAll('.cb').forEach(el=>{
-    const id = el.dataset.id;
-    const cargo = S.cargo.find(c=>String(c.id)===String(id));
+  if(!query) return;
+  let hits = 0;
+  document.querySelectorAll('#cvDECK .cb').forEach(el=>{
+    const cargo = S.cargo.find(c=>String(c.id)===String(el.dataset.id));
     if(!cargo) return;
-    const txt = [cargo.ccu||'', cargo.desc||'', cargo.platform||''].join(' ').toLowerCase();
-    if(txt.includes(query)){
-      el.classList.add('cp-hl');
-      setTimeout(()=>el.classList.remove('cp-hl'), 5500);
-    }
+    const txt = [cargo.ccu||'', cargo.desc||'', cargo.platform||'',
+                 (locById(cargo.platform)?.name)||'', (cargo.dgClasses||[]).join(' ')].join(' ').toLowerCase();
+    if(txt.includes(query)){ el.classList.add('cp-hl'); hits++; }
   });
+  document.body.classList.toggle('deck-searching', true);
+  document.body.dataset.searchHits = hits;
 }
 function cpClearHl(){
   document.querySelectorAll('.cb.cp-hl').forEach(el=>el.classList.remove('cp-hl'));
+  document.body.classList.remove('deck-searching');
+}
+/* Re-apply after any deck rebuild while a search is live. */
+function cpReapplyHl(){
+  /* try: CP_OPEN / CP_Q are `let` bindings declared later in the module —
+     typeof does not guard the temporal dead zone during early boot. */
+  try{ if(CP_OPEN && CP_Q.length >= 2) cpHighlightDeck(CP_Q); }catch(e){}
 }
 
 /* ── Text match helper ── */
@@ -8792,6 +9073,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
     rmBtn.addEventListener('mousedown', e => e.stopPropagation());
     rmBtn.addEventListener('click', e => {
       e.stopPropagation();
+      if(!isOperator()) return;            /* Viewer is read-only */
       if(typeof options.onRemove === 'function'){
         options.onRemove(item, card);
         return;
@@ -9216,8 +9498,11 @@ function kbHandleKey(e){
     let dx = 0, dy = 0;
     if(e.key === 'ArrowLeft')  dx = -step;
     if(e.key === 'ArrowRight') dx = +step;
-    if(e.key === 'ArrowUp')    dy = -step;
-    if(e.key === 'ArrowDown')  dy = +step;
+    /* Across the deck the scale is YS (25.33 px/m), not M (31 px/m):
+       Shift+Up/Down must move 1 m = YS px, not 31 px (1.22 m). */
+    const vstep = e.shiftKey ? YS : step;
+    if(e.key === 'ArrowUp')    dy = -vstep;
+    if(e.key === 'ArrowDown')  dy = +vstep;
     kbMove(dx, dy);
     return;
   }
@@ -9940,6 +10225,7 @@ function bindClearDeck(){
   /* Confirm — animate out, then clear */
   confirm.addEventListener('click', () => {
     closeModal();
+    if(!isOperator()) return;            /* Viewer is read-only */
     /* Subtle fade-out of all cargo blocks AND location cards before removing.
        Both fade in parallel over the same 180ms window so the destructive
        setTimeout (190ms) clears them simultaneously and the user perceives
@@ -9993,6 +10279,7 @@ function bindClearDeck(){
 let _newDeckHtcCleanup = null;
 
 function _execNewDeck(){
+  if(!isOperator()) return;
   /* ── Block 1: snapshot current state before clearing ── */
   const snap = {
     cargo: JSON.parse(JSON.stringify(S.cargo)),
@@ -10001,12 +10288,14 @@ function _execNewDeck(){
     customLib: JSON.parse(JSON.stringify(S.customLib)),
     customLocs: JSON.parse(JSON.stringify(S.customLocs)),
     voyRemarks: S.voyRemarks,
+    loadList: S.loadList || null,
     dynColors: JSON.parse(JSON.stringify(DYN_COLORS)),
     timestamp: Date.now()
   };
   try { localStorage.setItem('spicaTide_lastSnapshot_v1', JSON.stringify(snap)); } catch(e){}
 
   S.cargo=[];
+  S.loadList=null;          /* new voyage — previous load list no longer applies */
   _currentFilePath=null;
   _updateWindowTitle(null);
   renderAll();
@@ -10019,10 +10308,12 @@ function _execNewDeck(){
 
 /* ── Restore deck from snapshot ── */
 function _restoreFromSnapshot(){
+  if(!isOperator()) return false;
   let raw;
   try { raw = localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
   if(!raw) return false;
-  const snap = JSON.parse(raw);
+  let snap;
+  try { snap = JSON.parse(raw); } catch(e){ showToast('Saved snapshot is damaged and cannot be restored', 'warn'); return false; }
   S.cargo = snap.cargo || [];
   _normalizeCargoGeometry(S.cargo);
   S.activeLocs = snap.activeLocs || ['BLEO','TART'];
@@ -10030,6 +10321,7 @@ function _restoreFromSnapshot(){
   S.customLib = snap.customLib || [];
   S.customLocs = snap.customLocs || [];
   S.voyRemarks = snap.voyRemarks || '';
+  S.loadList = snap.loadList || null;
   if(snap.dynColors){ Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, snap.dynColors); }
   renderAll(); updateStats(); buildActiveLocStrip(); updateDGSummary(); save();
   return true;
@@ -10156,6 +10448,7 @@ function bindVoyageRemarks(){
   };
   const close = () => ov.classList.remove('open');
   const saveRmk = () => {
+    if(!isOperator()){ close(); return; }   /* Viewer is read-only */
     S.voyRemarks = ta.value.trim();
     save();
     /* Update button visual state */
@@ -10229,7 +10522,7 @@ async function exportExcel(){
   /* Header row */
   rows.push([
     'CCU / ID','Description','Length (m)','Width (m)','Weight (T)',
-    'Status','Location','DG Class','Heavy Lift','Priority Lift',
+    'Status','Location','Lift #','DG Class','Heavy Lift','Priority Lift',
     'Transfer To','Bay (approx)','Remarks'
   ]);
   /* Data rows */
@@ -10248,6 +10541,7 @@ async function exportExcel(){
       parseFloat(c.wt)||0,
       c.status==='L'?'Load':c.status==='BL'?'Backload':c.status==='ROB'?'ROB':c.status==='TR'?'Transfer':'',
       loc?loc.name:(c.platform||''),
+      c.liftNo||'',
       (c.dgClasses||[]).join(', ')||'',
       c.heavyLift?'YES':'',
       c.priority?'YES':'',
@@ -10262,7 +10556,7 @@ async function exportExcel(){
   /* Column widths */
   ws['!cols'] = [
     {wch:16},{wch:28},{wch:11},{wch:11},{wch:11},
-    {wch:10},{wch:20},{wch:10},{wch:11},{wch:12},
+    {wch:10},{wch:20},{wch:7},{wch:10},{wch:11},{wch:12},
     {wch:20},{wch:10},{wch:25}
   ];
 
@@ -11704,8 +11998,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.9.0';
-const APP_VERSION   = '3.9.0';
+const CURRENT_BUILD = 'v3.10.0';
+const APP_VERSION   = '3.10.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -11943,12 +12237,12 @@ function bindMenuBar(){
 
   /* Action dispatch — uses module-level menu* functions */
   const actions = {
-    newDeck:       () => openNewDeckModal(),
+    newDeck:       () => { if(isOperator()) openNewDeckModal(); },
     restoreDeck:   () => { if(_restoreFromSnapshot()) showToast(t('restore_menu'),'ok'); },
     /* Clear Deck moved out of the main ribbon into the File menu.
        Delegates to the existing #btnClrDeck handler which opens the
        confirmation modal — destructive action path unchanged. */
-    clearDeck:     () => { const b = document.getElementById('btnClrDeck'); if(b) b.click(); },
+    clearDeck:     () => { if(!isOperator()) return; const b = document.getElementById('btnClrDeck'); if(b) b.click(); },
     openProject:   () => menuOpen(),
     saveProject:   () => menuSave(),
     saveProjectAs: () => menuSaveAs(),
@@ -11959,7 +12253,18 @@ function bindMenuBar(){
     exit:          () => { try{ window.close(); }catch(e){} },
     undo:          () => undo(),
     redo:          () => redo(),
-    deleteSelected:() => { if(typeof KB_SEL!=='undefined' && KB_SEL){ const idx=S.cargo.findIndex(c=>c.id===KB_SEL); if(idx>=0){animateCargoExit(KB_SEL);S.cargo.splice(idx,1);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();} } },
+    /* Same semantics as the Delete key: Operator only, honours multi-select,
+       releases acknowledged DG pairs of the removed cargo. */
+    liftOrderAuto: () => autoNumberLiftOrder(),
+    liftOrderClear:() => clearLiftOrder(),
+    deleteSelected:() => {
+      if(!isOperator() || !KB_SEL) return;
+      const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET).map(String) : [String(KB_SEL)];
+      ids.forEach(id => { animateCargoExit(id); dgEvictDeletedCargo(id); });
+      S.cargo = S.cargo.filter(c => !ids.includes(String(c.id)));
+      kbDeselect();
+      renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+    },
     zoomIn:        () => applyZoom(zoomLevel+0.1),
     zoomOut:       () => applyZoom(zoomLevel-0.1),
     zoomReset:     () => applyZoom(1.0),
@@ -12468,17 +12773,19 @@ function openModeModal(){
     </div>`;
   document.getElementById('modeConfirmBtn').onclick = () => { setMode('operator'); closeModeModal(); };
   document.getElementById('modeCancelBtn').onclick = closeModeModal;
-  ov.addEventListener('click', e => { if(e.target === ov) closeModeModal(); });
-  const onKey = (e) => {
-    if(e.key === 'Escape'){ closeModeModal(); document.removeEventListener('keydown', onKey); }
-  };
-  document.addEventListener('keydown', onKey);
+  /* Assigned handlers (not addEventListener) so repeated opens never stack
+     listeners; the Escape listener is removed on every close path. */
+  ov.onclick = e => { if(e.target === ov) closeModeModal(); };
+  document.removeEventListener('keydown', _modeModalKey);
+  document.addEventListener('keydown', _modeModalKey);
   ov.classList.add('open');
 }
+function _modeModalKey(e){ if(e.key === 'Escape') closeModeModal(); }
 
 function closeModeModal(){
   const ov = document.getElementById('modeOverlay');
   if(ov) ov.classList.remove('open');
+  document.removeEventListener('keydown', _modeModalKey);
 }
 
 function bindModeButton(){
@@ -13095,7 +13402,10 @@ function _wxRenderSearchResults(results){
 let _wxSearchLastQueryAt = 0;
 let _wxSearchDebounce    = null;
 
-function _wxOpenSearch(){
+function _wxOpenSearch(opts){
+  /* Boot-time auto-open must not steal keyboard focus from the deck
+     (arrow nudges / shortcuts would silently go into the city field). */
+  const wantFocus = !(opts && opts.focus === false);
   const panel = document.getElementById('wxSearch');
   const input = document.getElementById('wxSearchInput');
   const state = document.getElementById('wxSearchState');
@@ -13108,7 +13418,7 @@ function _wxOpenSearch(){
       if(list) list.innerHTML = '';
       if(state){ state.textContent = 'Type to search'; state.hidden = false; }
     }
-    setTimeout(() => input.focus(), 0);
+    if(wantFocus) setTimeout(() => input.focus(), 0);
   }
 }
 
@@ -13183,7 +13493,7 @@ function _wxBind(){
   });
 
   /* ── Location strip handlers ─────────────────────────────────── */
-  document.getElementById('wxLocChange')?.addEventListener('click', _wxOpenSearch);
+  document.getElementById('wxLocChange')?.addEventListener('click', () => _wxOpenSearch());
 /* ── Search input: debounced (300ms), min 2 chars ──────────── */
   const searchInput   = document.getElementById('wxSearchInput');
   const searchResults = document.getElementById('wxSearchResults');
@@ -13256,7 +13566,7 @@ function _wxBind(){
   if(!_wxState.location){
     _wxResolveInitialLocation().then((loc) => {
       if(loc) _wxSetLocation(loc);
-      else    _wxOpenSearch();
+      else    _wxOpenSearch({ focus: false });
     });
   }
 }
@@ -13614,6 +13924,7 @@ function _syncPushDebounced(){
   if(Sync.getSyncStatus() === 'disabled') return;
   clearTimeout(_syncPushTimer);
   _syncPushTimer = setTimeout(() => {
+    _syncPushTimer = null;             /* nothing pending once the push is out */
     const envelope = _buildEnvelope();
     Sync.pushState(envelope.plan);
   }, 3000); // debounce 3s — don't push on every keystroke
@@ -13741,9 +14052,13 @@ function _syncApplyRemote(remoteState){
   if(remoteState.cargoColors){ Object.keys(CARGO_COLORS).forEach(k=>delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, remoteState.cargoColors); }
   if(remoteState.locColors){ Object.keys(S.locColors).forEach(k=>delete S.locColors[k]); Object.assign(S.locColors, remoteState.locColors); }
   if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
+  if('loadList' in remoteState) S.loadList = remoteState.loadList || null;
   initDynColors(); setDateDisplay();
   buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
   renderAll(); updateStats(); updateDGSummary();
+  /* Remote state is the new baseline; undo must not revert (and re-sync)
+     another device's change. */
+  seedHistoryBaseline(); checkSeg();
   showToast('Plan updated from another device', 'ok');
 }
 
@@ -13841,7 +14156,16 @@ function _syncUpdateConnectedTime(){
 
 function _syncWireCallbacks(){
   Sync.onStatusChange(s => { _syncUpdateUI(s); _syncLog('status', s); });
-  Sync.onRemoteUpdate(state => { _syncApplyRemote(state); _syncLog('pull', 'Remote state applied'); });
+  Sync.onRemoteUpdate(state => {
+    /* Local edits still waiting in the 3 s push debounce must not be wiped
+       silently: ask the operator which version wins instead. */
+    if(_syncPushTimer && isOperator()){
+      clearTimeout(_syncPushTimer); _syncPushTimer = null;
+      _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, resolve: plan => Sync.pushState(plan) });
+      return;
+    }
+    _syncApplyRemote(state); _syncLog('pull', 'Remote state applied');
+  });
   Sync.onActivity((dir, detail) => { _syncShowActivity(dir, detail); _syncLog(dir, detail); });
   Sync.onConflict(_syncHandleConflict);
 }
@@ -14068,6 +14392,7 @@ function init(){
   cpBind();
   bindKeyboardNav();
   bindRulerTool();        /* Phase 23 — Measure ruler */
+  _trackRibbonBottom();   /* side panels start below the header row */
   wxScene.init();         /* Phase W5/W6 — A/B sky + canvas precip orchestrator */
   skyGL.init(document.getElementById('wxScene'));   /* WebGL volumetric sky (engine = cinematic) */
   _wxBind();              /* Phase W1 — Weather widget + atmosphere shell */
@@ -14078,7 +14403,7 @@ function init(){
   /* csearch is now a hidden stub — search lives in cp panel */
 const _csearchEl = document.getElementById('csearch');
 if(_csearchEl) _csearchEl.oninput = ()=>{};
-  document.getElementById('voyIn').oninput=save;
+  document.getElementById('voyIn').oninput=()=>{ if(isOperator()) save(); };
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
       /* Phase 29 — Esc also exits Focus Deck. Takes priority over other

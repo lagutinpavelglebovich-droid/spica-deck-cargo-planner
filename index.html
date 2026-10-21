@@ -152,6 +152,9 @@
       <div class="menu-action" data-action="redo">Redo<span class="menu-shortcut">Ctrl+Y</span></div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="deleteSelected">Delete Selected<span class="menu-shortcut">Del</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="liftOrderAuto">Number Lift Order</div>
+      <div class="menu-action" data-action="liftOrderClear">Clear Lift Order</div>
     </div>
   </div>
   <div class="menu-item" data-menu="view">
@@ -181,7 +184,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.9.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.10.0</div>
     </div>
   </div>
 </div>
@@ -203,7 +206,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.9.0<br>
+      Version 3.10.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -347,9 +350,25 @@
 
     <section class="insp-sec">
       <div class="insp-sec-title">Deck &amp; Physical</div>
-      <div class="insp-field insp-field-short">
-        <label for="inspWT">Weight (T)</label>
-        <input type="number" id="inspWT" step="0.1" min="0">
+      <div class="insp-field-row">
+        <div class="insp-field">
+          <label for="inspWT">Weight (T)</label>
+          <input type="number" id="inspWT" step="0.1" min="0">
+        </div>
+        <div class="insp-field">
+          <label for="inspLift" title="Lift order at the location (blank = none)">Lift #</label>
+          <input type="number" id="inspLift" step="1" min="1" max="999" placeholder="—">
+        </div>
+      </div>
+      <div class="insp-field-row">
+        <div class="insp-field">
+          <label for="inspLen" title="Size along the deck, aft → bow">Along deck (m)</label>
+          <input type="number" id="inspLen" step="0.01" min="0.3" max="54.92">
+        </div>
+        <div class="insp-field">
+          <label for="inspWid" title="Size across the deck, port → stbd">Across (m)</label>
+          <input type="number" id="inspWid" step="0.01" min="0.3" max="15">
+        </div>
       </div>
       <div class="insp-field">
         <label>Location</label>
@@ -584,9 +603,11 @@
 
       <!-- 3. Smart Tools -->
       <button class="gp gp-smart" id="btnSmartTools" aria-label="Smart tools">
+        <!-- Sliders glyph: the old sun-like gear was indistinguishable from the theme toggle -->
         <span class="gp-ico"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M3 5h7M14 5h1M3 13h1M8 13h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="6" cy="13" r="2" stroke="currentColor" stroke-width="1.5"/>
         </svg></span>
         <span class="gp-lbl">Smart Tools</span>
       </button>
@@ -902,7 +923,15 @@
 </div>
 
 <!-- DG ON BOARD summary line -->
-<div class="dg-onboard-line" id="dgOnBoardLine">DG ON BOARD: <span id="dgOnBoardText">none</span></div>
+<div class="ribbon-info-row">
+  <div class="dg-onboard-line" id="dgOnBoardLine">DG ON BOARD: <span id="dgOnBoardText">none</span></div>
+  <!-- v3.10 — load list progress (hidden until an ASCO list is imported) -->
+  <button type="button" class="ll-progress" id="llProgress" hidden aria-label="Load list progress">
+    <span class="ll-lbl">LOAD LIST</span>
+    <span class="ll-bar"><i></i></span>
+    <span class="ll-num">0 / 0</span>
+  </button>
+</div>
 
 </div><!-- /shell-sub -->
 
