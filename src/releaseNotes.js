@@ -11,6 +11,35 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.10.0',
+    date: '2026-10-21',
+    highlights: [
+      'Load list progress and lift order',
+      'Deck fits the screen exactly at any zoom',
+      'Clearer location pills and DG on board',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Load list progress: LOAD LIST n / m shows how much of the imported ASCO list is on deck (per location in the tooltip); click to open Imported' },
+      { type: 'feature',     text: 'Lift order: Edit → Number Lift Order numbers Load and Transfer lifts per location (priority first, then aft to fore); edit any number in the inspector; shown on the deck, in the PDF and in Excel' },
+      { type: 'feature',     text: 'Inspector: edit cargo size in metres (along / across the deck) and the lift number' },
+      { type: 'improvement', text: 'Library search highlights matching cargo on deck and dims the rest for as long as the search is active' },
+      { type: 'improvement', text: 'DG ON BOARD shows vessel totals as coloured IMDG class chips with the number of DG lifts' },
+      { type: 'fix',         text: 'Zoom and Fit: the deck drifted left and up at any zoom other than 100% and the bow was clipped at Fit; it is now centred and fully visible' },
+      { type: 'fix',         text: 'Location pills: larger status letters; the status light no longer reads as the letter O' },
+      { type: 'fix',         text: 'DG badges on small cargo sit on the block edge and no longer cover the CCU' },
+      { type: 'fix',         text: 'PDF includes Transfer cargo (KPI card and location pills)' },
+      { type: 'fix',         text: 'Undo after opening a project no longer brings back the previous plan' },
+      { type: 'fix',         text: 'Viewer mode cannot delete, undo, clear the deck or edit the voyage number' },
+      { type: 'fix',         text: 'Shift + Up / Down moves exactly 1 m across the deck' },
+      { type: 'fix',         text: 'Inspector shows descriptions that are not in the library list instead of a blank field' },
+      { type: 'fix',         text: 'Inspector and Library open below the header instead of covering its buttons' },
+      { type: 'fix',         text: 'Arrow keys and shortcuts work right after launch (the city search no longer takes keyboard focus)' },
+      { type: 'fix',         text: 'Resizing by a corner keeps cargo on the deck; Duplicate places the copy in free space' },
+      { type: 'fix',         text: 'Two-device sync: an unsaved local change is no longer overwritten silently by a remote update' },
+      { type: 'ui',          text: 'Distinct Smart Tools icon (it duplicated the theme sun); better contrast for NO DG CARGO and small labels in dark mode; smoother Library close' },
+    ],
+  },
+  {
     version: '3.9.0',
     date: '2026-10-21',
     highlights: [
