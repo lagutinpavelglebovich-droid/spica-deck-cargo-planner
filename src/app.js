@@ -544,14 +544,21 @@ function deckYToMeters(yPx){
 
 const CVH = 380, YS = CVH / 15;
 
-/* Deck usable area in px² — total canvas minus permanent exclusion zones.
-   Zone pixel sizes are from the actual rendered geometry. */
-const DECK_USABLE_AREA_PX = TW * CVH
-  - (124 * 95)    /* Store PORT bow */
-  - (157 * 55)    /* Hose Bay PORT */
-  - (258 * 55)    /* Hose Bay STBD */
-  - (90 * 60)     /* Ship's Waste Skip */
-  - (20 * CVH);   /* Bay 12 stern tiger zone */
+/* Permanent no-cargo zones, px. Single source of truth: setupCanvas()
+   draws these exact rectangles and the Deck Used gauge subtracts them, so
+   the drawing and the calculation can never drift apart again. */
+const HOSE_BAY_H     = Math.round(2.16 * YS);
+const ZONE_TIGER     = { x: 0, y: 0, w: Math.round(1.0 * M), h: CVH };                 /* Bay 12 aft tiger strip, 1.00 m */
+const ZONE_HOSE_PORT = { x: Math.round(BL_[2] + BW[2]*0.4), y: 0,
+                         w: Math.round(BW[2]*0.6 + BW[3]*0.55), h: HOSE_BAY_H };        /* Bays 10–9 PORT */
+const ZONE_HOSE_STBD = { x: BL_[2], y: CVH - HOSE_BAY_H,
+                         w: Math.round(BW[2] + BW[3]*0.88), h: HOSE_BAY_H };            /* Bays 10–9 STBD */
+const ZONE_SKIP      = { x: BL_[10] + 8, y: 5, w: 82, h: 50 };                          /* Ship's waste skip, Bay 2 */
+/* Usable deck = Bays 12 → 2 (Bay 1 excluded entirely: store + no-DG bow
+   bay), minus tiger strip, both hose bays and the waste skip. */
+const USABLE_X_END   = BL_[10] + BW[10];                                                /* fore edge of Bay 2 */
+const DECK_USABLE_AREA_PX = USABLE_X_END * CVH
+  - [ZONE_TIGER, ZONE_HOSE_PORT, ZONE_HOSE_STBD, ZONE_SKIP].reduce((a, z) => a + z.w * z.h, 0);
 
 /* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
 const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
@@ -1703,7 +1710,7 @@ function clearDragSegOverlay(){
 function setupCanvas(){
   const cv=document.getElementById('cvDECK');
   cv.style.width=TW+'px';
-  const HB_H=Math.round(2.16*YS);
+  const HB_H=HOSE_BAY_H;
 
   /* Bay stripes + ghost bay-number watermarks.
      Positions come from BL_/BW which already account for the 0.15 m
@@ -1751,9 +1758,9 @@ function setupCanvas(){
      positioned INSIDE Bay 12 at its aft (stern) edge. Does NOT add to
      total deck length — Bay 12 still spans 4.15 m in total. Scaled via
      m2px_w so it uses the same metre→pixel system as cargo and bays. */
-  addZone(cv, 0, 0, m2px_w(1.0), CVH, 'tiger', '');
-  addZone(cv,Math.round(BL_[2]+BW[2]*0.4),0,Math.round(BW[2]*0.6+BW[3]*0.55),HB_H,'hose','HOSE BAY');
-  addZone(cv,BL_[2],CVH-HB_H,Math.round(BW[2]+BW[3]*0.88),HB_H,'hose','HOSE BAY');
+  addZone(cv, ZONE_TIGER.x, ZONE_TIGER.y, ZONE_TIGER.w, ZONE_TIGER.h, 'tiger', '');
+  addZone(cv, ZONE_HOSE_PORT.x, ZONE_HOSE_PORT.y, ZONE_HOSE_PORT.w, ZONE_HOSE_PORT.h, 'hose', 'HOSE BAY');
+  addZone(cv, ZONE_HOSE_STBD.x, ZONE_HOSE_STBD.y, ZONE_HOSE_STBD.w, ZONE_HOSE_STBD.h, 'hose', 'HOSE BAY');
   addZone(cv,TW-Math.round(4*M),0,Math.round(4*M),Math.round(3.75*YS),'store','STORE');
 
   /* DG limit */
@@ -1843,7 +1850,7 @@ function setupCanvas(){
 
   /* Skip */
   const skip=document.createElement('div');skip.className='ships-skip';
-  skip.style.cssText=`left:${BL_[10]+8}px;top:5px;width:82px;height:50px;`;
+  skip.style.cssText=`left:${ZONE_SKIP.x}px;top:${ZONE_SKIP.y}px;width:${ZONE_SKIP.w}px;height:${ZONE_SKIP.h}px;`;
   skip.innerHTML="Ship's<br>Waste<br>Skip";cv.appendChild(skip);
 
   /* DG exclusion overlay (pending placement) */
@@ -3245,8 +3252,13 @@ function updateStats(){
   /* ── Deck Usage indicator (equal-mode full-circle gauge + Motion One) ── */
   const duCard = document.getElementById('gstDeckUsage');
   if(duCard){
+    /* Only the part of each cargo inside the usable deck counts — cargo
+       standing in Bay 1 does not consume usable area. */
     let occupiedPx = 0;
-    S.cargo.forEach(c => { occupiedPx += (c.w || 0) * (c.h || 0); });
+    S.cargo.forEach(c => {
+      const wIn = Math.max(0, Math.min((c.x || 0) + (c.w || 0), USABLE_X_END) - (c.x || 0));
+      occupiedPx += wIn * (c.h || 0);
+    });
     const usedPct = Math.min(100, Math.round((occupiedPx / DECK_USABLE_AREA_PX) * 100));
 
     /* Threshold class — same scale as legacy bar (do not redefine) */
