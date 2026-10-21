@@ -11,6 +11,25 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.9.0',
+    date: '2026-10-21',
+    highlights: [
+      'Live volumetric sky for Atmosphere mode',
+      'Accurate DG segregation distances',
+      'Larger, clearer printed deck plan',
+    ],
+    changes: [
+      { type: 'fix',         text: 'DG segregation measures true edge-to-edge distance in metres; no more alarms for units far apart in the same row or bays' },
+      { type: 'fix',         text: 'Across-deck MINI clearances were 22% too large; zones on deck now match the check exactly' },
+      { type: 'fix',         text: 'Drag preview only highlights DG units the new position actually infringes' },
+      { type: 'fix',         text: 'ASCO hazard classes such as "3.0", "1.4S" and "8 (3)" are recognised; a class without division uses its strictest division' },
+      { type: 'fix',         text: 'Cargo labels shrink with small blocks instead of disappearing, including while resizing' },
+      { type: 'feature',     text: 'Atmosphere (Cinematic): real-time volumetric clouds, sun and moon by local time, rain on glass, snow, fog and lightning' },
+      { type: 'improvement', text: 'PDF: taller deck plan, larger cargo labels on a light plate, location-type icons instead of colour dots' },
+      { type: 'improvement', text: 'Updates are checked at every launch and every 12 hours while the app is open' },
+    ],
+  },
+  {
     version: '3.8.0',
     date: '2026-06-11',
     highlights: [
