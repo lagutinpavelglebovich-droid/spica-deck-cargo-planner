@@ -27,6 +27,7 @@ export const RELEASE_NOTES = [
       { type: 'feature',     text: 'Atmosphere (Cinematic): real-time volumetric clouds, sun and moon by local time, rain on glass, snow, fog and lightning' },
       { type: 'improvement', text: 'PDF: taller deck plan, larger cargo labels on a light plate, location-type icons instead of colour dots' },
       { type: 'improvement', text: 'Updates are checked at every launch and every 12 hours while the app is open' },
+      { type: 'fix',         text: 'Deck Used counts only the usable deck: Bays 12–2 without the tiger strip, both hose bays and the waste skip (Bay 1 excluded)' },
     ],
   },
   {
