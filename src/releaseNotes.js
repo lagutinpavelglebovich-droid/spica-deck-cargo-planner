@@ -14,11 +14,13 @@ export const RELEASE_NOTES = [
     version: '3.10.0',
     date: '2026-10-21',
     highlights: [
+      '3D deck view and fly-to-cargo',
       'Load list progress, lift order and crane lift-off',
       'Night floodlights and wet deck in Atmosphere',
-      'Deck fits the screen exactly at any zoom',
     ],
     changes: [
+      { type: 'feature',     text: '3D deck view (V or the 3D button): the deck tilts into perspective and cargo rises as boxes at typical unit heights, with shadows, night floodlights and rain; V or Esc returns to the plan' },
+      { type: 'feature',     text: 'Fly to cargo: F, the command palette (Ctrl+K), Enter in the Library search or a click on an On-deck Imported card glides the view to the cargo and selects it' },
       { type: 'feature',     text: 'Lifted: mark cargo as lifted off at the platform (inspector or Edit menu); it rises away on a crane wire, Undo brings it back' },
       { type: 'ui',          text: 'Atmosphere lights the deck: after dark the plating dims under warm floodlight pools; rain adds a wet sheen and light reflections' },
       { type: 'ui',          text: 'Header counters roll like an odometer; LOAD LIST flashes green with a short chime when everything is on deck' },

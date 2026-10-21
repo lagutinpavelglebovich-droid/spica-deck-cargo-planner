@@ -16428,3 +16428,129 @@ body[data-deck-wet][data-deck-night] .dl-wet::after{
 
 /* Inspector — Lifted action */
 .insp-act-lift{ color: var(--s-L); }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — 3D DECK VIEW
+   body.view-3d (never during PDF capture). The zoom wrap supplies the
+   perspective; the deck frame tilts; .cb blocks rise by --lift (an
+   animatable registered length) and four side faces + a deck shadow
+   fill the gap. Faces take the block's own fill (background:inherit)
+   and are shaded with brightness so every location colour works.
+════════════════════════════════════════════════════════════ */
+@property --lift{ syntax:'<length>'; inherits:true; initial-value:0px; }
+
+.cb{ --lift:0px; }
+.cb3{ display:none; }
+
+.view3d-chip{
+  position:fixed; left:50%; bottom:calc(38px + var(--shell-m, 12px) + 14px);
+  transform:translate(-50%, 8px); opacity:0; pointer-events:none; z-index:120;
+  padding:6px 14px; border-radius:999px;
+  font:600 10.5px/1 'Inter', system-ui, sans-serif; letter-spacing:.8px; color:var(--txt2);
+  background:var(--glass-sub, var(--surf)); border:1px solid var(--brd);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  transition:opacity .3s var(--ease), transform .3s var(--ease);
+}
+.view3d-chip b{ color:var(--txt); font-weight:800; }
+body.view-3d:not(.pdf-capture) .view3d-chip{ opacity:1; transform:translate(-50%, 0); }
+.zbtn-3d[aria-pressed="true"]{ background:var(--acc); color:var(--surf); }
+
+/* Perspective camera + tilt */
+.deck-zoom-wrap{ perspective:1900px; perspective-origin:50% 35%; }
+.deck-outer{
+  transform-origin:50% 60%;
+  transition:transform .95s cubic-bezier(.2,.75,.2,1);
+}
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .deck-outer{
+  transform-style:preserve-3d;
+  transform:rotateX(48deg) rotateZ(-4deg) scale(.84);
+  box-shadow:0 40px 60px rgba(20,30,40,.30) !important;
+}
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .dcv{
+  transform-style:preserve-3d;
+  contain:none;                              /* containment would flatten the 3D boxes */
+  pointer-events:none;                       /* presentation view — editing paused */
+}
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .ruler-click-layer,
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .empty-deck-hint{ pointer-events:none; }
+
+/* Cargo: the block is the top face; it rises by --lift with an aft→fore wave. */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb{
+  --lift:var(--h3d, 40px);
+  transition:--lift .8s cubic-bezier(.25,.8,.25,1) calc(.35s + var(--d3d, 0s));
+  transform-style:preserve-3d;
+  contain:none;
+  translate:0 0 var(--lift) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35) !important;
+  filter:none !important;
+}
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3{
+  display:block; position:absolute; pointer-events:none;
+  background:inherit; border-radius:2px;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+}
+/* front (STBD) face — hangs from the bottom edge down to the deck */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-f{ left:0; top:100%; width:100%; height:var(--lift);
+  transform-origin:50% 0; transform:rotateX(-90deg); filter:brightness(.74); }
+/* back (PORT) face */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-b{ left:0; bottom:100%; width:100%; height:var(--lift);
+  transform-origin:50% 100%; transform:rotateX(90deg); filter:brightness(.86); }
+/* left (aft) face */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-l{ right:100%; top:0; height:100%; width:var(--lift);
+  transform-origin:100% 50%; transform:rotateY(-90deg); filter:brightness(.62); }
+/* right (fore) face */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-r{ left:100%; top:0; height:100%; width:var(--lift);
+  transform-origin:0 50%; transform:rotateY(90deg); filter:brightness(.66); }
+/* shadow on the plating (just above the deck plane to avoid z-fighting) */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-sh{
+  inset:0; background:rgba(10,16,28,.38); border-radius:6px;
+  transform:translateZ(calc(1px - var(--lift))) translate(calc(var(--lift) * .18), calc(var(--lift) * .30));
+  filter:blur(5px); backface-visibility:visible;
+}
+[data-theme="dark"] body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb3-sh{ background:rgba(0,0,0,.55); }
+/* Deck edge — the STBD side plate gives the deck slab real thickness. */
+.deck-outer::after{ content:none; }
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .deck-outer::after{
+  content:''; position:absolute; left:0; top:100%; width:100%; height:22px;
+  transform-origin:50% 0; transform:rotateX(-90deg);
+  background:linear-gradient(180deg, var(--deck-edge-top, rgb(120,112,96)), var(--deck-edge-bot, rgb(70,64,54)));
+  border-radius:0 0 6px 6px; pointer-events:none;
+}
+[data-theme="dark"] body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .deck-outer::after{
+  background:linear-gradient(180deg, rgb(52,48,40), rgb(22,20,16));
+}
+/* Any blend mode inside .dcv forces it to isolate, and isolation
+   flattens the 3D boxes. The grain texture (::before, multiply) is
+   switched off in 3D; the night layer falls back to plain alpha. */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .dcv::before{ display:none; }
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .bay-num{ mix-blend-mode:normal; }
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .dl-dark{ mix-blend-mode:normal; background:rgba(8,16,40,.40); }
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .dl-pools{ mix-blend-mode:normal; opacity:calc(var(--deck-night, 0) * .42); }
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .dl-wet::after{ mix-blend-mode:normal !important; }
+/* Corner controls / resize handles never show in 3D */
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb .cb-ctrl,
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb [class^="cb-del"],
+body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb .rh{ display:none !important; }
+
+/* Leaving 3D: boxes sink first (deck still tilted), then JS drops the
+   classes and the deck untilts. */
+body.view-3d-leaving:not(.pdf-capture) .cb{
+  --lift:0px;
+  transition:--lift .45s cubic-bezier(.4,0,.6,1) calc(var(--d3d, 0s) * .4);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .deck-outer, body:is(.view-3d,.view-3d-leaving) .cb{ transition:none !important; }
+}
+
+/* v3.10 — fly-to: camera frames update every frame, so the zoom wrap's
+   own transition is suspended during the flight; arrival pulse ring. */
+.deck-zoom-wrap.zoom-instant{ transition:none !important; }
+.cb.cb-flyto{ animation: cbFlyTo .85s cubic-bezier(.2,.8,.2,1) 2; z-index:60 !important; }
+@keyframes cbFlyTo{
+  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--acc) 70%, transparent), var(--cb-sh, 0 0 0 transparent); }
+  100% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--acc) 0%, transparent),  var(--cb-sh, 0 0 0 transparent); }
+}
+.cp-qi.cp-qi-placed{ cursor:pointer; }
+@media (prefers-reduced-motion: reduce){ .cb.cb-flyto{ animation:none; outline:2px solid var(--acc); outline-offset:3px; } }

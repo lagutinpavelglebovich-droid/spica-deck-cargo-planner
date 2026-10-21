@@ -165,6 +165,7 @@
       <div class="menu-action" data-action="zoomOut">Zoom Out<span class="menu-shortcut">Ctrl+-</span></div>
       <div class="menu-action" data-action="zoomReset">Reset Zoom</div>
       <div class="menu-action" data-action="zoomFit">Fit to Screen</div>
+      <div class="menu-action" data-action="view3D">3D Deck View<span class="menu-shortcut">V</span></div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="toggleLibrary">Toggle Library<span class="menu-shortcut">L</span></div>
     </div>
@@ -883,6 +884,7 @@
           <div class="zdiv"></div>
           <button class="zbtn" id="zoomReset" title="Reset to 100%">1:1</button>
           <button class="zbtn" id="zoomFit"   title="Fit to screen">Fit</button>
+          <button class="zbtn zbtn-3d" id="btn3D" title="3D deck view (V)" aria-pressed="false">3D</button>
           <span class="zlbl" id="zoomLbl">100%</span>
           <!-- Measure tool — moved into the shared zoom-bar pill so the
                row reads as a single "view controls" cluster (zoom + tool)
@@ -1025,7 +1027,11 @@
       <div class="kb-cheat-sec">Zoom</div>
       <div class="kb-row">
         <div class="kb-keys"><span class="kb-key">F</span></div>
-        <div class="kb-desc"><b>Fit selected cargo</b> to viewport (zoom in on selection)</div>
+        <div class="kb-desc"><b>Fly to selected cargo</b> (camera zooms in and centres it)</div>
+      </div>
+      <div class="kb-row">
+        <div class="kb-keys"><span class="kb-key">V</span></div>
+        <div class="kb-desc"><b>3D deck view</b> on / off (Esc returns to the plan)</div>
       </div>
       <div class="kb-row">
         <div class="kb-keys"><span class="kb-key">0</span></div>
@@ -1059,6 +1065,7 @@
 
 <!-- Zoom level flash indicator -->
 <div id="kb-zoom-flash"></div>
+  <div class="view3d-chip" id="view3dChip" aria-hidden="true">3D VIEW · <b>V</b> or <b>Esc</b> to edit</div>
   <div class="deck-zoom-wrap" id="deckZoomWrap">
     <div class="deck-outer">
       <!-- Real vessel drawing — Main Deck GA, placed behind the cargo deck

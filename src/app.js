@@ -3208,8 +3208,119 @@ function renderBlock(cv,cargo){
     document.addEventListener('touchmove',onTouchMove,{passive:false}); document.addEventListener('touchend',onTouchEnd);
   }, {passive:false});
 
+  /* v3.10 — 3D view: four side faces + a deck shadow. Hidden in 2D; in
+     3D the block (top face) rises by --h3d and the faces span the gap. */
+  b.style.setProperty('--h3d', (cargoHeightM(cargo) * M * CARGO_3D_SCALE).toFixed(1) + 'px');
+  b.style.setProperty('--d3d', ((cargo.x + cargo.w/2) / TW * 0.45).toFixed(3) + 's');
+  b.insertAdjacentHTML('beforeend',
+    '<i class="cb3 cb3-sh" aria-hidden="true"></i><i class="cb3 cb3-f" aria-hidden="true"></i>' +
+    '<i class="cb3 cb3-b" aria-hidden="true"></i><i class="cb3 cb3-l" aria-hidden="true"></i>' +
+    '<i class="cb3 cb3-r" aria-hidden="true"></i>');
+
   cv.appendChild(b);
 }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — 3D DECK VIEW (presentation)
+   V toggles. The deck tilts into perspective and every cargo rises to
+   its typical unit height (from description keywords), with shaded
+   sides and a shadow on the plating; Atmosphere night lights and rain
+   stay on the deck plane. Read-only: editing is paused while in 3D
+   (pointer input off the deck); V / Esc returns to the plan. Never
+   captured in the PDF (body.pdf-capture forces 2D).
+   Heights are visual approximations of the unit type, not data.
+════════════════════════════════════════════════════════════ */
+const CARGO_3D_SCALE = 0.9;            /* slight vertical understatement keeps labels readable */
+function cargoHeightM(c){
+  const t = ((c.desc || '') + ' ' + (c.ccu || '')).toLowerCase();
+  if(/half[\s-]?height|open[\s-]?top|\bhh\b/.test(t))        return 1.3;
+  if(/basket|rack|flat|bundle|pipe|frame|skid|pallet|tray/.test(t)) return 1.1;
+  if(/skip|bin|waste/.test(t))                                return 1.5;
+  if(/tote|tank|ibc|chemical|cylinder|quad|gas/.test(t))      return 2.1;
+  if(/mini|6\s?ft|6'/.test(t))                                return 1.9;
+  if(/container|cont\b|box|reefer|cabin|module|10\s?ft|20\s?ft|10'|20'/.test(t)) return 2.45;
+  return 1.6;
+}
+/* ════════════════════════════════════════════════════════════
+   v3.10 — FLY TO CARGO
+   A short camera flight: zoom eases out a touch, travels, and settles on
+   the cargo centred in the deck area; the block then pulses and is
+   selected. Used by F, the command palette, Enter in the Library search
+   and clicks on "On deck" Imported cards. Reduced motion = instant.
+════════════════════════════════════════════════════════════ */
+let _flyRaf = 0;
+function flyToCargo(id, opts){
+  opts = opts || {};
+  const c = S.cargo.find(x => String(x.id) === String(id));
+  const area = document.getElementById('deckArea');
+  const wrap = document.getElementById('deckZoomWrap');
+  if(!c || !area || !wrap) return;
+  if(document.body.classList.contains('view-3d')) toggle3D(false);
+  cancelAnimationFrame(_flyRaf);
+  const elOf = () => document.querySelector(`.cb[data-id="${c.id}"]`);
+  const centre = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2 }; };
+  const z0 = zoomLevel;
+  const fitZ = Math.min(area.clientWidth * 0.30 / c.w, area.clientHeight * 0.42 / c.h);
+  const z1 = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.max(z0, Math.min(fitZ, 1.6))));
+  const finish = () => {
+    wrap.classList.remove('zoom-instant');
+    const el = elOf();
+    if(el){
+      el.classList.remove('cb-flyto'); void el.offsetWidth; el.classList.add('cb-flyto');
+      setTimeout(() => el.classList.remove('cb-flyto'), 1700);
+    }
+    if(opts.select !== false && typeof kbSelect === 'function') kbSelect(c.id);
+    if(opts.inspect && typeof inspOpen === 'function') inspOpen(c.id);
+    if(typeof playSound === 'function') playSound('select');
+  };
+  const ar0 = area.getBoundingClientRect();
+  const target = { x: ar0.left + area.clientWidth/2, y: ar0.top + area.clientHeight/2 };
+  const el0 = elOf(); if(!el0){ finish(); return; }
+  const s0 = centre(el0);
+  const dist = Math.hypot(s0.x - target.x, s0.y - target.y);
+  const motion = typeof _motionOK === 'function' ? _motionOK() : true;
+  const T = motion ? Math.min(1100, 560 + dist * 0.45) : 0;
+  const bump = motion ? Math.min(0.22, dist / 4000) * Math.max(z0, z1) : 0;   /* ease out, then in */
+  wrap.classList.add('zoom-instant');
+  const t0 = performance.now();
+  const step = now => {
+    const t = T ? Math.min(1, (now - t0) / T) : 1;
+    const e = t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;            /* easeInOutCubic */
+    applyZoom(z0 + (z1 - z0) * e - bump * Math.sin(Math.PI * t));
+    const el = elOf(); if(!el){ finish(); return; }
+    const cur = centre(el);
+    const want = { x: s0.x + (target.x - s0.x) * e, y: s0.y + (target.y - s0.y) * e };
+    area.scrollLeft += cur.x - want.x;
+    area.scrollTop  += cur.y - want.y;
+    if(t < 1) _flyRaf = requestAnimationFrame(step); else finish();
+  };
+  _flyRaf = requestAnimationFrame(step);
+}
+
+let _view3dT = 0;
+function toggle3D(force){
+  const b = document.body;
+  const on = force !== undefined ? !!force : !b.classList.contains('view-3d');
+  if(on === b.classList.contains('view-3d')) return;
+  if(on){
+    if(typeof kbDeselect === 'function') kbDeselect();
+    if(typeof inspClose === 'function' && b.classList.contains('insp-open')) inspClose();
+  }
+  clearTimeout(_view3dT);
+  if(on){
+    b.classList.remove('view-3d-leaving');
+    b.classList.add('view-3d');
+  } else {
+    /* two-step exit: boxes sink (deck still tilted), then the deck untilts */
+    const motion = typeof _motionOK === 'function' ? _motionOK() : true;
+    b.classList.add('view-3d-leaving');
+    b.classList.remove('view-3d');
+    _view3dT = setTimeout(() => b.classList.remove('view-3d-leaving'), motion ? 650 : 0);
+  }
+  document.getElementById('btn3D')?.setAttribute('aria-pressed', on ? 'true' : 'false');
+  if(typeof playSound === 'function') playSound(on ? 'redo' : 'undo');
+}
+
 
 /* ════════════════════════════════════════════════════════════
    PHASE 12 — CARGO EXIT ANIMATION
@@ -6284,7 +6395,7 @@ function fitToScreen(){
   area.scrollTop  = 0;
   applyZoom(computeFitScale());
 }
-function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);
+function initZoom(){document.getElementById('zoomIn').onclick=()=>applyZoom(zoomLevel+ZOOM_STEP);document.getElementById('zoomOut').onclick=()=>applyZoom(zoomLevel-ZOOM_STEP);document.getElementById('zoomReset').onclick=()=>applyZoom(1.0);document.getElementById('zoomFit').onclick=fitToScreen;document.getElementById('btn3D')?.addEventListener('click',()=>toggle3D());document.getElementById('deckArea').addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();applyZoom(zoomLevel+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP));},{passive:false});setTimeout(()=>{const area=document.getElementById('deckArea'),inner=document.querySelector('.deck-outer');if(inner&&inner.offsetWidth>area.clientWidth-24)fitToScreen();},60);
 /* Pinch-to-zoom on touch devices */
 let _pinchStartDist=0, _pinchStartZoom=1;
 document.getElementById('deckArea').addEventListener('touchstart',e=>{if(e.touches.length===2){e.preventDefault();const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;_pinchStartDist=Math.sqrt(dx*dx+dy*dy);_pinchStartZoom=zoomLevel;}},{passive:false});
@@ -8667,6 +8778,12 @@ function cpBindSearch(){
   const inp = document.getElementById('cpSearch');
   const clr = document.getElementById('cpSearchClear');
   if(!inp) return;
+  /* v3.10 — Enter flies to the first matching cargo on deck. */
+  inp.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' || CP_Q.length < 2) return;
+    const hit = document.querySelector('#cvDECK .cb.cp-hl');
+    if(hit){ e.preventDefault(); flyToCargo(hit.dataset.id); }
+  });
   inp.addEventListener('input', ()=>{
     CP_Q = inp.value.trim().toLowerCase();
     clr.classList.toggle('vis', CP_Q.length > 0);
@@ -8860,6 +8977,13 @@ function cpRenderQueue(){
        manifest CCU / DG / heavy-lift / platform and splices from IMPORT_QUEUE.
        A plain click (no 5px drag) is a no-op here and falls through to the
        click handler below, preserving click-to-place. */
+    if(isPlaced){
+      card.title = 'On deck — click to fly to it';
+      card.addEventListener('click', () => {
+        const onDeck = S.cargo.find(c => (item.ccu && c.ccu && c.ccu === item.ccu) || (item.id && c._queueId === item.id));
+        if(onDeck) flyToCargo(onDeck.id);
+      });
+    }
     card.addEventListener('mousedown', e => {
       if(isPlaced) return;                       /* placed cards aren't re-placeable */
       if(e.target.closest('.cp-qi-rm')) return;  /* don't drag from the × button */
@@ -9710,34 +9834,20 @@ function kbHandleKey(e){
     if(typeof fitToScreen === 'function') fitToScreen();
     return;
   }
+  /* v3.10 — V: 3D deck view on/off; Esc leaves 3D. */
+  if((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey){
+    e.preventDefault(); toggle3D(); return;
+  }
+  if(e.key === 'Escape' && document.body.classList.contains('view-3d')){
+    e.preventDefault(); toggle3D(false); return;
+  }
   if((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey){
     e.preventDefault();
     if(!KB_SEL){
       if(typeof showToast === 'function') showToast('Select a cargo first','info');
       return;
     }
-    const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
-    if(!cargo) return;
-    const area  = document.getElementById('deckArea');
-    const inner = document.querySelector('.deck-outer');
-    if(!area || !inner) return;
-    /* Target: cargo fills ~45% of the viewport's smaller axis, clamped to
-       the global zoom bounds (applyZoom clamps internally too). */
-    const targetFrac = 0.45;
-    const naturalW = inner.offsetWidth  || TW;
-    const naturalH = inner.offsetHeight || CVH;
-    const zX = (area.clientWidth  * targetFrac) / cargo.w;
-    const zY = (area.clientHeight * targetFrac) / cargo.h;
-    const z  = Math.min(zX, zY);
-    applyZoom(z);
-    /* After zoom, the wrap resizes. Wait one frame for layout to commit
-       before scrolling the cargo into the viewport center. */
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`.cb[data-id="${cargo.id}"]`);
-      if(el && typeof el.scrollIntoView === 'function'){
-        el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'});
-      }
-    });
+    flyToCargo(KB_SEL);   /* v3.10 — animated camera flight (was an instant jump) */
     return;
   }
 
@@ -10116,10 +10226,7 @@ function _cmdpCargoResults(query){
         group:'Cargo',
         label: c.ccu || c.desc || 'Unnamed',
         sub:   bits.join(' · '),
-        run: () => {
-          if(typeof kbSelect === 'function') kbSelect(c.id);
-          if(typeof inspOpen  === 'function') inspOpen(c.id);
-        },
+        run: () => flyToCargo(c.id, { inspect: true }),
       };
     });
 }
@@ -12416,6 +12523,7 @@ function bindMenuBar(){
     /* Same semantics as the Delete key: Operator only, honours multi-select,
        releases acknowledged DG pairs of the removed cargo. */
     liftOrderAuto: () => autoNumberLiftOrder(),
+    view3D:        () => toggle3D(),
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];
