@@ -3006,7 +3006,8 @@ function renderBlock(cv,cargo){
     b.appendChild(trd);
   }
 
-  ['se','sw','ne','nw'].forEach(dir=>{const rh=document.createElement('div');rh.className=`rh rh-${dir}`;rh.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();startResize(e,cargo,b,dir);});b.appendChild(rh);});
+  /* v3.10 — corners resize both sides; the mid-edge grips (n/s/e/w) resize one side only. */
+  ['se','sw','ne','nw','n','s','e','w'].forEach(dir=>{const rh=document.createElement('div');rh.className=`rh rh-${dir}`+(dir.length===1?' rh-edge':'');rh.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();startResize(e,cargo,b,dir);});b.appendChild(rh);});
 
   b.addEventListener('mousedown',e=>{
     if(e.target.classList.contains('cb-del')||e.target.classList.contains('rh')||e.target.classList.contains('cb-id')||e.target.classList.contains('cb-rot'))return;
@@ -3210,6 +3211,7 @@ function renderBlock(cv,cargo){
 
   /* v3.10 — 3D view: four side faces + a deck shadow. Hidden in 2D; in
      3D the block (top face) rises by --h3d and the faces span the gap. */
+  b.style.setProperty('--cbw', cargo.w + 'px'); b.style.setProperty('--cbh', cargo.h + 'px');
   b.style.setProperty('--h3d', (cargoHeightM(cargo) * M * CARGO_3D_SCALE).toFixed(1) + 'px');
   b.style.setProperty('--d3d', ((cargo.x + cargo.w/2) / TW * 0.45).toFixed(3) + 's');
   b.insertAdjacentHTML('beforeend',
@@ -3442,34 +3444,98 @@ function markLifted(ids){
   showUndoToast(msg, 'Undo', () => undo());
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3.10 — RESIZE
+   Corners change length and width; mid-edge grips change one side only
+   (left/right = length along the deck, top/bottom = width across).
+   While dragging: a live metre tag (the dimension being changed in bold),
+   a magnet to standard unit sizes from the library (±0.05 m, tick when it
+   locks; hold Alt to resize freely) and Shift to resize symmetrically
+   about the centre. Metres stay the source of truth (length_m/width_m).
+════════════════════════════════════════════════════════════ */
+const _RS_SNAP_M = 0.05;
+let _rsSizes = null;
+function _rsStdSizes(){
+  if(_rsSizes) return _rsSizes;
+  const set = new Set();
+  CCU_PRESETS.forEach(p => { if(p.length_m) set.add(+p.length_m.toFixed(2)); if(p.width_m) set.add(+p.width_m.toFixed(2)); });
+  return (_rsSizes = [...set].filter(v => v > 0.3).sort((a,b) => a - b));
+}
+function _rsSnap(m){
+  let best = null, d = Infinity;
+  _rsStdSizes().forEach(v => { const k = Math.abs(v - m); if(k < d){ d = k; best = v; } });
+  return (best !== null && d <= _RS_SNAP_M) ? best : null;
+}
 function startResize(e,cargo,block,dir){
   const sx=e.clientX,sy=e.clientY,ox=cargo.x,oy=cargo.y,ow=cargo.w,oh=cargo.h;
-  block.style.opacity='.55';
+  const horiz = dir.includes('e') || dir.includes('w');
+  const vert  = dir.includes('n') || dir.includes('s');
+  let L = cargo.length_m || ow / M, W = cargo.width_m || oh / YS;
+  let lastSnapKey = '';
+  block.classList.add('cb-resizing');
+  document.body.classList.add('resizing-cargo');
+  const tag = document.createElement('div');
+  tag.className = 'rs-tag';
+  document.body.appendChild(tag);
+  const paintTag = (snapL, snapW) => {
+    const f = v => v.toFixed(2);
+    tag.innerHTML =
+      `<span class="${horiz?'rs-on':''}${snapL!=null?' rs-snap':''}">${f(L)}</span>` +
+      `<span class="rs-x">×</span>` +
+      `<span class="${vert?'rs-on':''}${snapW!=null?' rs-snap':''}">${f(W)}</span><span class="rs-u">m</span>`;
+    const r = block.getBoundingClientRect();
+    tag.style.left = (r.left + r.width/2) + 'px';
+    tag.style.top  = (r.bottom + 10) + 'px';
+  };
+  paintTag(null, null);
   const onMove=ev=>{
     const dx=(ev.clientX-sx)/zoomLevel,dy=(ev.clientY-sy)/zoomLevel;
+    const sym = ev.shiftKey, free = ev.altKey;
     let nx=ox,ny=oy,nw=ow,nh=oh;
-    if(dir.includes('e'))nw=Math.max(24,ow+dx);
-    if(dir.includes('s'))nh=Math.max(20,oh+dy);
-    if(dir.includes('w')){nw=Math.max(24,ow-dx);nx=ox+ow-nw;}
-    if(dir.includes('n')){nh=Math.max(20,oh-dy);ny=oy+oh-nh;}
+    if(horiz){
+      const grow = dir.includes('e') ? dx : -dx;
+      nw = Math.max(24, ow + (sym ? 2*grow : grow));
+    }
+    if(vert){
+      const grow = dir.includes('s') ? dy : -dy;
+      nh = Math.max(20, oh + (sym ? 2*grow : grow));
+    }
+    /* metres + magnet to standard unit sizes */
+    let snapL = null, snapW = null;
+    if(horiz){ L = nw / M;  if(!free && (snapL = _rsSnap(L)) != null){ L = snapL; nw = L * M; } }
+    if(vert) { W = nh / YS; if(!free && (snapW = _rsSnap(W)) != null){ W = snapW; nh = W * YS; } }
+    /* anchor: opposite side fixed, or the centre with Shift */
+    if(horiz) nx = sym ? ox + (ow - nw)/2 : (dir.includes('w') ? ox + ow - nw : ox);
+    if(vert)  ny = sym ? oy + (oh - nh)/2 : (dir.includes('n') ? oy + oh - nh : oy);
     /* Keep the block on the deck: never past the aft/bow or PORT/STBD edges. */
     if(nx<0){nw+=nx;nx=0;}
     if(ny<0){nh+=ny;ny=0;}
     nw=Math.max(24,Math.min(nw,TW-nx));
     nh=Math.max(20,Math.min(nh,CVH-ny));
+    if(horiz) L = (snapL != null && Math.abs(nw - snapL*M) < 0.5) ? snapL : nw / M;
+    if(vert)  W = (snapW != null && Math.abs(nh - snapW*YS) < 0.5) ? snapW : nh / YS;
     cargo.x=nx;cargo.y=ny;cargo.w=nw;cargo.h=nh;
     block.style.cssText+=`left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
     /* Live label refit so text shrinks with the block during the drag. */
     const _lbl=block.querySelector('.cb-id');
     if(_lbl) _lbl.style.fontSize=cbLabelFontPx(cargo)+'px';
+    paintTag(snapL, snapW);
+    const key = `${snapL}|${snapW}`;
+    if(key !== lastSnapKey && (snapL != null || snapW != null)) playSound('snap');
+    lastSnapKey = key;
   };
   const onUp=()=>{
     document.removeEventListener('mousemove',onMove);
     document.removeEventListener('mouseup',onUp);
-    block.style.opacity='';
-    /* Sync real-world metres from new canvas px dimensions */
-    cargo.length_m = parseFloat((cargo.w / M).toFixed(3));
-    cargo.width_m  = parseFloat((cargo.h / (CVH/15)).toFixed(3));
+    block.classList.remove('cb-resizing');
+    document.body.classList.remove('resizing-cargo');
+    tag.remove();
+    /* Metres are the source of truth — store what the operator saw. */
+    cargo.length_m = parseFloat(L.toFixed(3));
+    cargo.width_m  = parseFloat(W.toFixed(3));
+    cargo.w = m2px_w(cargo.length_m); cargo.h = m2px_h(cargo.width_m);
+    cargo.x = Math.max(0, Math.min(cargo.x, TW - cargo.w));
+    cargo.y = Math.max(0, Math.min(cargo.y, CVH - cargo.h));
     renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
   };
   document.addEventListener('mousemove',onMove);

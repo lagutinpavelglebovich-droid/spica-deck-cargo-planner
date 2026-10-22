@@ -16628,3 +16628,50 @@ body.side-panel-open.insp-open.cp-panel-open .deck-area{ margin-right: 384px !im
 /* Info row: LOAD LIST chip matches the DG ON BOARD capsule height/radius. */
 .ll-progress{ height:32px; border-radius:12px; padding:0 14px; }
 .dg-onboard-line{ min-height:32px; box-sizing:border-box; display:inline-flex !important; align-items:center; gap:8px; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.10 — ONE-SIDE RESIZE GRIPS + LIVE SIZE TAG
+   Pill grips centred on each side (corners stay square). Each grip has a
+   generous invisible hit area; hovering it lights the whole side so it is
+   obvious which dimension will change.
+════════════════════════════════════════════════════════════ */
+.rh.rh-edge{
+  width:auto; height:auto; border-radius:999px;
+  border-width:2px;
+}
+.rh-n, .rh-s{ left:50%; width:20px !important; height:7px !important; transform:translateX(-50%); cursor:ns-resize; }
+.rh-e, .rh-w{ top:50%;  width:7px !important;  height:20px !important; transform:translateY(-50%); cursor:ew-resize; }
+.rh-n{ top:-4px; } .rh-s{ bottom:-4px; }
+.rh-e{ right:-4px; } .rh-w{ left:-4px; }
+/* invisible, larger hit area */
+.rh.rh-edge::before{ content:''; position:absolute; inset:-7px -6px; }
+/* side highlight while hovering a grip */
+.rh.rh-edge::after{
+  content:''; position:absolute; pointer-events:none; opacity:0;
+  background:var(--acc); border-radius:2px;
+  transition:opacity var(--dur-short) var(--ease);
+}
+.rh-n::after, .rh-s::after{ height:2px; width:calc(var(--cbw, 60px) - 8px); left:50%; top:50%; transform:translate(-50%,-50%); }
+.rh-e::after, .rh-w::after{ width:2px; height:calc(var(--cbh, 40px) - 8px); left:50%; top:50%; transform:translate(-50%,-50%); }
+.rh.rh-edge:hover::after{ opacity:.55; }
+
+/* lift number moves aside while the bottom grip is showing */
+.cb.kb-sel .cb-lift-badge{ transform:translateX(calc(-50% - 22px)); }
+
+/* while resizing */
+.cb.cb-resizing{ opacity:.82; outline:1.5px dashed var(--acc); outline-offset:2px; }
+body.resizing-cargo, body.resizing-cargo *{ user-select:none !important; }
+.rs-tag{
+  position:fixed; z-index:9990; pointer-events:none;
+  transform:translateX(-50%);
+  display:flex; align-items:baseline; gap:4px;
+  padding:5px 10px; border-radius:8px;
+  font:600 12px/1 'JetBrains Mono', ui-monospace, monospace;
+  color:var(--txt2); background:var(--surf);
+  border:1px solid var(--brd); box-shadow:0 6px 18px rgba(0,0,0,.16);
+}
+.rs-tag .rs-on{ color:var(--txt); font-weight:800; }
+.rs-tag .rs-snap{ color:var(--acc); }
+.rs-tag .rs-snap::after{ content:' ◆'; font-size:8px; vertical-align:2px; }
+.rs-tag .rs-x, .rs-tag .rs-u{ color:var(--txt3); font-weight:500; }
+[data-theme="dark"] .rs-tag{ background:var(--surf2); border-color:rgba(255,255,255,.12); box-shadow:0 6px 18px rgba(0,0,0,.45); }
