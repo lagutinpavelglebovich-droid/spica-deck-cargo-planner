@@ -1434,8 +1434,18 @@ const DG_DATA=[
   {cls:'7',nm:'Radioactive',sub:'Radioactive',bg:'#eab308',tc:'#111',bc:'#713f12',half:'#f0f0f0'},
   {cls:'8',nm:'Corrosive',sub:'Acids/alkalis',bg:'#e5e5e5',tc:'#111',bc:'#171717',half:'#171717'},
   {cls:'9',nm:'Misc.',sub:'Other hazardous',bg:'#e5e5e5',tc:'#111',bc:'#404040',stripe:'#404040'},
+  /* Limited Quantity (IMDG 3.4) — diamond mark, black top & bottom, white
+     centre, no class number. LQ packages need no segregation (getSeg → 0). */
+  {cls:'LQ',nm:'Limited Qty',sub:'No segregation',bg:'#ffffff',tc:'#111',bc:'#111',lq:true},
 ];
+/* LQ mark fills: chip = horizontal bands; diamond (.ddia is rotated 45°,
+   so 135deg in its own frame reads as top/bottom bands on screen). */
+const DG_LQ_CHIP = 'linear-gradient(180deg,#111 0 2px,#fff 2px calc(100% - 2px),#111 calc(100% - 2px) 100%)';
+const DG_LQ_DIAMOND = 'linear-gradient(135deg,#111 0 26%,#fff 26% 74%,#111 74% 100%)';
+function dgChipBg(d){ return d && d.lq ? DG_LQ_CHIP : (d ? d.bg : '#888'); }
+function dgLabel(cls){ return cls === 'LQ' ? 'Limited Quantity' : 'Class ' + cls; }
 function dgBg(d){
+  if(d.lq)return DG_LQ_DIAMOND;
   if(d.stripe)return`repeating-linear-gradient(45deg,${d.bg},${d.bg} 4px,${d.stripe} 4px,${d.stripe} 8px)`;
   if(d.half)return`linear-gradient(180deg,${d.bg} 50%,${d.half} 50%)`;
   return d.bg;
@@ -1591,7 +1601,9 @@ const DG_BARE_DIVISIONS = {
   '1':['1.1','1.3','1.4'], '2':['2.1','2.2','2.3'], '4':['4.1','4.2','4.3'],
   '5':['5.1','5.2'],       '6':['6.1','6.2'],
 };
+const DG_LQ_RE = /^(?:LQ|L\.Q\.?|LTD\.?\s*QTY\.?|LIMITED\s*QUANTIT(?:Y|IES))$/i;
 function canonDGClass(raw){
+  if(DG_LQ_RE.test(String(raw == null ? '' : raw).trim())) return 'LQ';
   const m = String(raw == null ? '' : raw).trim()
     .match(/^(?:class\s*)?([1-9])(?:\.(\d))?\s*[a-s]?$/i);
   if(!m) return '';
@@ -1615,6 +1627,7 @@ function getSeg(a,b){
   if(!a||!b)return 0;
   a = canonDGClass(a) || String(a).trim();
   b = canonDGClass(b) || String(b).trim();
+  if(a === 'LQ' || b === 'LQ') return 0;   /* IMDG 3.4: LQ needs no segregation */
   const ea = DG_BARE_DIVISIONS[a], eb = DG_BARE_DIVISIONS[b];
   if(ea || eb){
     let worst = 0;
@@ -3004,7 +3017,7 @@ function renderBlock(cv,cargo){
       const dd = DG_DATA.find(d => d.cls === cls);
       if(!dd) return;
       const badge = document.createElement('div');
-      badge.className = 'cb-dg-badge';
+      badge.className = 'cb-dg-badge' + (dd.lq ? ' cb-dg-badge-lq' : '');
       badge.style.cssText = `background:${dd.bg};color:${dd.tc};border-color:${dd.bc};font-family:'Inter',system-ui,sans-serif;font-weight:800;letter-spacing:.2px;`;
       badge.textContent = cls;
       strip.appendChild(badge);
@@ -3028,17 +3041,6 @@ function renderBlock(cv,cargo){
     if(cargo.w < 48) pri.classList.add('cb-pri-badge-xs');
     pri.style.fontSize=badgeSz;pri.textContent='⚡';b.appendChild(pri);
   }
-  /* v3.10 — lift order number. Bottom-centre (the only free slot: corners
-     belong to DG / priority / HL / TR). On blocks < ~2.8 m across
-     it rides on the bottom edge so it never covers the CCU label.
-     Captured by html2canvas, so it also appears in the PDF. */
-  if(cargo.liftNo){
-    const lb=document.createElement('div');
-    lb.className='cb-lift-badge'+(cargo.h<70?' cb-lift-edge':'');
-    lb.textContent=cargo.liftNo;
-    lb.title='Lift order #'+cargo.liftNo;
-    b.appendChild(lb);
-  }
   /* Transfer — destination badge. Inherits cb-id's bg-adaptive textCol
      so it stays readable on every dynamic fill (olive, brown, pastel,
      saturated). Lower opacity + lighter weight + smaller size + corner
@@ -3051,6 +3053,16 @@ function renderBlock(cv,cargo){
     trd.style.cssText = `font-size:${Math.max(7,parseInt(badgeSz)-1)}px;color:${textCol};opacity:.78;font-weight:500;background:${trdBg};border-color:${trdBd};`;
     trd.textContent='→'+(destLoc?destLoc.name.slice(0,8):cargo.trDest.slice(0,8));
     b.appendChild(trd);
+  }
+
+  /* v3.11 — re-import diff marker (changed / dropped vs the new load list) */
+  if(cargo.importDiff){
+    const kd = cargo.importDiff.kind === 'dropped' ? 'dropped' : 'changed';
+    b.classList.add('cb-diff-' + kd);
+    const mk = document.createElement('div');
+    mk.className = 'cb-diff-mark';
+    mk.textContent = kd === 'dropped' ? '✕ off list' : 'Δ changed';
+    b.appendChild(mk);
   }
 
   /* v3.10 — corners resize both sides; the mid-edge grips (n/s/e/w) resize one side only. */
@@ -3823,7 +3835,8 @@ function updateDGSummary(){
       (byLoc[k] = byLoc[k] || {})[ln] = (byLoc[k][ln]||0) + 1;
     });
   });
-  const entries = Object.keys(counts).sort((a,b) => parseFloat(a)-parseFloat(b));
+  const _dgOrd = k => k === 'LQ' ? 99 : (parseFloat(k) || 0);
+  const entries = Object.keys(counts).sort((a,b) => _dgOrd(a)-_dgOrd(b));
   if(line) line.classList.toggle('has-dg', entries.length > 0);
   if(entries.length === 0){
     el.textContent = 'none';
@@ -3835,11 +3848,11 @@ function updateDGSummary(){
     entries.map(k => {
       /* Same placard colours as the on-deck DG badges (DG_DATA). */
       const dd = DG_DATA.find(d => d.cls === k);
-      const sw = dd ? ` style="background:${dd.bg};color:${dd.tc};border-color:${dd.bc}"` : '';
-      return `<span class="dg-ob-chip" data-cls="${k}" title="${(DG_CLASS_NAMES[k]||'Class '+k).replace(/"/g,'&quot;')}"><b${sw}>${k}</b>×${counts[k]}</span>`;
+      const sw = dd ? ` style="background:${dgChipBg(dd)};color:${dd.tc};border-color:${dd.bc}"` : '';
+      return `<span class="dg-ob-chip" data-cls="${k}" title="${(DG_CLASS_NAMES[k]||dgLabel(k)).replace(/"/g,'&quot;')}"><b${sw}>${k}</b>×${counts[k]}</span>`;
     }).join('');
   if(line) line.title = entries.map(k =>
-    `Class ${k} — ${DG_CLASS_NAMES[k]||''}: ${counts[k]}  (` +
+    `${k === 'LQ' ? 'LQ' : 'Class ' + k} — ${DG_CLASS_NAMES[k]||''}: ${counts[k]}  (` +
     Object.entries(byLoc[k]).map(([n,v]) => `${n} ${v}`).join(', ') + ')'
   ).join('\n');
 }
@@ -3880,6 +3893,7 @@ const DG_CLASS_NAMES = {
   '7':  'Radioactive',
   '8':  'Corrosive',
   '9':  'Misc. Dangerous Goods',
+  'LQ': 'Limited Quantity',
 };
 
 const SEG_LEVEL_LABEL = {
@@ -4241,7 +4255,7 @@ function buildModalDescSelect(){
 function dgPickerOptions(){
   const opts = [{ value:'', label:'— Not DG —', bg:null, tc:null, bc:null }];
   DG_DATA.forEach(d => {
-    opts.push({ value:d.cls, label:`${d.cls} — ${d.nm}`, bg:d.bg, tc:d.tc, bc:d.bc });
+    opts.push({ value:d.cls, label:`${d.cls} — ${d.nm}`, bg:d.bg, tc:d.tc, bc:d.bc, lq:!!d.lq });
   });
   return opts;
 }
@@ -4261,7 +4275,7 @@ function dgPickerSetValue(val){
   } else {
     const dg = DG_DATA.find(d => d.cls === val);
     dot.classList.add('visible');
-    dot.style.background = dg ? dg.bg : '#888';
+    dot.style.background = dg ? dgChipBg(dg) : '#888';
     dot.style.boxShadow  = dg ? `0 0 0 1px ${dg.bc}` : '';
     label.textContent    = dg ? `${dg.cls} — ${dg.nm}` : val;
     if(hiddenSel) hiddenSel.value = val;
@@ -4299,7 +4313,7 @@ function bindDGPicker(){
 
       if(opt.bg){
         row.innerHTML = `
-          <span class="dg-picker-opt-badge" style="background:${opt.bg};color:${opt.tc};border:1px solid ${opt.bc};">◆${opt.value}</span>
+          <span class="dg-picker-opt-badge" style="background:${opt.lq ? DG_LQ_CHIP : opt.bg};color:${opt.tc};border:1px solid ${opt.bc};">◆${opt.value}</span>
           <span class="dg-picker-opt-name">${opt.label.replace(/^[\d.]+ — /,'')}</span>
           <span class="dg-picker-opt-check">✓</span>`;
       } else {
@@ -4384,7 +4398,7 @@ function _dgMultiRenderTags(){
     const dg = DG_DATA.find(d => d.cls === cls);
     const tag = document.createElement('span');
     tag.className = 'dg-multi-tag';
-    tag.style.cssText = dg ? `background:${dg.bg};color:${dg.tc};border:1px solid ${dg.bc};` : '';
+    tag.style.cssText = dg ? `background:${dgChipBg(dg)};color:${dg.tc};border:1px solid ${dg.bc};` : '';
     tag.innerHTML = `<span class="dg-multi-tag-label">${cls}</span><span class="dg-multi-tag-rm">&times;</span>`;
     tag.querySelector('.dg-multi-tag-rm').addEventListener('click', e => {
       e.stopPropagation();
@@ -4426,7 +4440,7 @@ function _dgMultiOpenDropdown(){
       row.type = 'button';
       row.className = 'dg-picker-opt';
       row.innerHTML = `
-        <span class="dg-picker-opt-badge" style="background:${d.bg};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
+        <span class="dg-picker-opt-badge" style="background:${dgChipBg(d)};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
         <span class="dg-picker-opt-name">${d.nm}</span>`;
       row.addEventListener('click', () => {
         _dgMultiSelectClass(d.cls);
@@ -4509,7 +4523,7 @@ function bindDGMultiPicker(){
         row.type = 'button';
         row.className = 'dg-picker-opt';
         row.innerHTML = `
-          <span class="dg-picker-opt-badge" style="background:${d.bg};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
+          <span class="dg-picker-opt-badge" style="background:${dgChipBg(d)};color:${d.tc};border:1px solid ${d.bc};">◆${d.cls}</span>
           <span class="dg-picker-opt-name">${d.nm}</span>`;
         row.addEventListener('click', () => {
           _dgMultiSelectClass(d.cls);
@@ -4813,10 +4827,8 @@ function inspPopulate(cargo){
   if(desc) _selectWithFreeText(desc, cargo.desc);
   if(wt)   wt.value   = (cargo.wt != null ? cargo.wt : '');
   const lenI = document.getElementById('inspLen'), widI = document.getElementById('inspWid');
-  const liftI = document.getElementById('inspLift');
   if(lenI)  lenI.value  = (+(cargo.length_m || cargo.w / M)).toFixed(2);
   if(widI)  widI.value  = (+(cargo.width_m  || cargo.h / YS)).toFixed(2);
-  if(liftI) liftI.value = cargo.liftNo ? cargo.liftNo : '';
 
   inspBuildLocs(cargo.platform);
   inspSetStatusSeg(cargo.status || 'L');
@@ -4828,6 +4840,21 @@ function inspPopulate(cargo){
   if(dg)  dg.textContent  = (cargo.dgClasses && cargo.dgClasses.length) ? cargo.dgClasses.join(', ') : '—';
   if(hl)  hl.textContent  = cargo.heavyLift ? 'on' : 'off';
   if(pri) pri.textContent = cargo.priority  ? 'on' : 'off';
+
+  /* v3.11 — load-list change note */
+  const dsec = document.getElementById('inspDiffSec');
+  if(dsec){
+    const d = cargo.importDiff;
+    dsec.hidden = !d;
+    if(d){
+      dsec.dataset.kind = d.kind;
+      document.getElementById('inspDiffTitle').textContent =
+        d.kind === 'dropped' ? 'Dropped from the load list' : 'Changed in the new load list';
+      document.getElementById('inspDiffList').innerHTML =
+        d.notes.map(t => `<li>${escHtml(t)}</li>`).join('') +
+        (d.kind === 'changed' && d.applied ? '<li class="muted">Weight &amp; DG already updated</li>' : '');
+    }
+  }
 }
 
 function inspOpen(id){
@@ -4943,6 +4970,44 @@ function inspPopulateMulti(){
       }
     });
   }
+  /* Bulk status control: highlight the status only when ALL share it */
+  const mseg = document.getElementById('inspMultiStatusSeg');
+  if(mseg){
+    const uni = cargos.every(c => c.status === cargos[0].status) ? cargos[0].status : null;
+    mseg.querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.s === uni));
+  }
+}
+
+/* Bulk status change — one undo step for the whole selection. Keeps the
+   multi-selection alive across renderAll() and pulses every changed block. */
+const STATUS_LABEL = { L:'Load', BL:'Backload', ROB:'ROB', TR:'Transfer' };
+function bulkSetStatus(ids, status){
+  if(!isOperator() || !STATUS_LABEL[status]) return 0;
+  const want = new Set(ids.map(String));
+  const targets = S.cargo.filter(c => want.has(String(c.id)));
+  let changed = 0;
+  targets.forEach(c => {
+    if(c.status !== status){ c.status = status; changed++; }
+    if(status !== 'TR') c.trDest = '';
+  });
+  if(!changed) return 0;
+  renderAll();
+  KB_SEL_SET.forEach(id => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(el) el.classList.add('kb-sel');
+  });
+  updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  targets.forEach(c => {
+    const el = document.querySelector(`.cb[data-id="${c.id}"]`);
+    if(!el) return;
+    el.classList.remove('cb-status-pulse'); void el.offsetWidth;
+    el.classList.add('cb-status-pulse');
+    el.addEventListener('animationend', () => el.classList.remove('cb-status-pulse'), { once:true });
+  });
+  if(document.body.classList.contains('insp-multi')) inspPopulateMulti();
+  if(typeof showToast === 'function')
+    showToast(`Status → ${STATUS_LABEL[status]} — ${targets.length} cargo`, 'ok');
+  return changed;
 }
 
 function inspClose(){
@@ -5101,23 +5166,16 @@ function bindInspector(){
     el.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitSize(); } });
   });
 
-  /* v3.10 — manual lift number */
-  const liftI = document.getElementById('inspLift');
-  if(liftI){
-    const commitLift = () => {
-      if(!isOperator() || inspSelId == null) return;
-      const c = S.cargo.find(x => x.id === inspSelId);
-      if(!c) return;
-      const v = parseInt(liftI.value, 10);
-      const nv = (v > 0 && v < 1000) ? v : null;
-      if((c.liftNo || null) === nv) return;
-      if(nv) c.liftNo = nv; else delete c.liftNo;
-      liftI.value = nv || '';
-      renderAll(); kbSelect(inspSelId); save();
-    };
-    liftI.addEventListener('change', commitLift);
-    liftI.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitLift(); } });
-  }
+  const diffOk = document.getElementById('inspDiffDismiss');
+  if(diffOk) diffOk.addEventListener('click', () => { if(inspSelId != null) clearImportDiff(inspSelId); });
+
+  /* Bulk status segmented control (multi-select) */
+  const mseg = document.getElementById('inspMultiStatusSeg');
+  if(mseg) mseg.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      if(KB_SEL_SET.size > 1) bulkSetStatus(Array.from(KB_SEL_SET), b.dataset.s);
+    });
+  });
 
   /* Status segmented control */
   const seg = document.getElementById('inspStatusSeg');
@@ -5529,7 +5587,7 @@ function buildCargoList(){
   }
   nonFavItems.forEach(i => list.appendChild(makeLibCard(i, sorted, list)));
 }
-function buildDGList(){const list=document.getElementById('dglist');list.innerHTML=DG_DATA.map(dg=>`<div class="dgc" data-cls="${dg.cls}" style="background:${dg.bg}14;border-color:${dg.bc};"><div class="ddia" style="background:${dgBg(dg)};border-color:${dg.bc};"><span style="color:${dg.tc};">${dg.cls}</span></div><div class="dg-cl" style="color:${dg.bc};">Class ${dg.cls}</div><div class="dg-nm">${dg.nm}</div><div class="dg-sb">${dg.sub}</div></div>`).join('');list.onclick=e=>{const card=e.target.closest('.dgc');if(!card)return;const dg=DG_DATA.find(d=>d.cls===card.dataset.cls);if(!dg)return;document.querySelectorAll('.lc,.dgc').forEach(c=>c.classList.remove('sel'));card.classList.add('sel');S.pending={type:'dg',item:dg};document.getElementById('hint').innerHTML=`<b>◆ DG ${dg.cls} · ${dg.nm}</b> — click deck to place`;updateDGZones();};}
+function buildDGList(){const list=document.getElementById('dglist');list.innerHTML=DG_DATA.map(dg=>`<div class="dgc" data-cls="${dg.cls}" style="background:${dg.lq?'#11111108':dg.bg+'14'};border-color:${dg.bc};"><div class="ddia" style="background:${dgBg(dg)};border-color:${dg.bc};"><span style="color:${dg.tc};">${dg.cls}</span></div><div class="dg-cl" style="color:${dg.bc};">${dgLabel(dg.cls)}</div><div class="dg-nm">${dg.nm}</div><div class="dg-sb">${dg.sub}</div></div>`).join('');list.onclick=e=>{const card=e.target.closest('.dgc');if(!card)return;const dg=DG_DATA.find(d=>d.cls===card.dataset.cls);if(!dg)return;document.querySelectorAll('.lc,.dgc').forEach(c=>c.classList.remove('sel'));card.classList.add('sel');S.pending={type:'dg',item:dg};document.getElementById('hint').innerHTML=`<b>◆ DG ${dg.cls} · ${dg.nm}</b> — click deck to place`;updateDGZones();};}
 function buildCustList(){
   const list=document.getElementById('custList');list.innerHTML='';
   S.customLib.forEach((item,i)=>{
@@ -6825,6 +6883,100 @@ function classifyImport(sheets){
   return out;
 }
 
+/* ── v3.11 — RE-IMPORT DIFF ───────────────────────────────────────
+   Compares the new ASCO file with cargo already on deck:
+   • changed — same CCU, but weight / size / DG / location differ
+   • dropped — Load cargo that WAS on the previous load list for a location
+               this file covers, and is no longer on it.
+   Matching is by CCU only for "changed" (desc keys include the weight, so
+   they cannot detect a weight change). "Dropped" uses the same count-aware
+   key bags as the progress chip.                                        */
+let ascoDiff = { changed: [], dropped: [], byRow: {} };
+function _fmtM(a, b){ return (+a).toFixed(2) + '×' + (+b).toFixed(2) + ' m'; }
+function computeImportDiff(sheets){
+  const out = { changed: [], dropped: [], byRow: {} };
+  if(!Array.isArray(sheets) || !sheets.length) return out;
+  const fileLocs = new Set(), byCcu = new Map(), fileBag = _keyBag();
+  sheets.forEach((sh, si) => {
+    const locId = _matchImportedLocId(sh.displayName || sh.sheetName) || '';
+    if(locId) fileLocs.add(locId);
+    sh.items.forEach((it, ii) => {
+      const k = _rowKeys(it, sh);
+      fileBag.add(k.k1 || k.k2);
+      if(k.k1 && !byCcu.has(k.k1)) byCcu.set(k.k1, { it, locId, key: `${si}-${ii}` });
+    });
+  });
+  let prevBag = null;
+  if(S.loadList && Array.isArray(S.loadList.items)){
+    prevBag = _keyBag();
+    S.loadList.items.forEach(i => { if(fileLocs.has(i.locId)) prevBag.add(i.k1 || i.k2); });
+  }
+  S.cargo.forEach(c => {
+    const k1 = ccuKey(c.ccu);
+    const hit = k1 && byCcu.get(k1);
+    if(hit){
+      const { it, locId } = hit, notes = [];
+      const w0 = parseFloat(c.wt) || 0, w1 = parseFloat(it.wt) || 0;
+      if(Math.abs(w1 - w0) >= 0.05) notes.push({ f:'wt', to:w1, txt:`Weight ${w0.toFixed(1)} → ${w1.toFixed(1)} t` });
+      const d0 = [...(c.dgClasses || [])].sort().join(', '), d1 = [...(it.dgClasses || [])].sort().join(', ');
+      if(d0 !== d1) notes.push({ f:'dg', to:[...(it.dgClasses || [])], txt:`DG ${d0 || 'none'} → ${d1 || 'none'}` });
+      if(it.sizeDetected && it.dims){
+        const a = [+(c.length_m || c.w / M), +(c.width_m || c.h / YS)].sort((x,y) => y-x);
+        const b = [+it.dims.length_m, +it.dims.width_m].sort((x,y) => y-x);
+        if(Math.abs(a[0]-b[0]) > 0.1 || Math.abs(a[1]-b[1]) > 0.1)
+          notes.push({ f:'size', txt:`Size ${_fmtM(a[0],a[1])} → ${_fmtM(b[0],b[1])}` });
+      }
+      if(locId && c.platform && locId !== c.platform){
+        const n0 = (locById(c.platform) || {}).name || c.platform, n1 = (locById(locId) || {}).name || locId;
+        notes.push({ f:'loc', txt:`Location ${n0} → ${n1}` });
+      }
+      if(notes.length){
+        const rec = { id: c.id, ccu: c.ccu || '', desc: c.desc || '', notes };
+        out.changed.push(rec);
+        out.byRow[hit.key] = rec;
+      }
+      return;
+    }
+    if(prevBag && c.status === 'L' && fileLocs.has(c.platform)){
+      const k2 = _descKey(c.desc, c.wt, c.platform);
+      const wasListed = (k1 && prevBag.take(k1)) || (k2 && prevBag.take(k2));
+      if(wasListed && !((k1 && fileBag.take(k1)) || (k2 && fileBag.take(k2))))
+        out.dropped.push({ id: c.id, ccu: c.ccu || '', desc: c.desc || '',
+          loc: (locById(c.platform) || {}).name || c.platform || '' });
+    }
+  });
+  return out;
+}
+/* Flag on-deck cargo with the diff (persisted on the cargo, shown as a
+   marker on the block and a note in the inspector). Optionally applies the
+   new weight + DG straight away; size/location are only flagged. */
+function applyImportDiff(diff, applyValues){
+  const fileLocs = new Set(ascoImportData.map(sh => _matchImportedLocId(sh.displayName || sh.sheetName)).filter(Boolean));
+  const touched = new Set([...diff.changed, ...diff.dropped].map(r => String(r.id)));
+  S.cargo.forEach(c => { if(c.importDiff && (fileLocs.has(c.platform) || touched.has(String(c.id)))) delete c.importDiff; });
+  const at = new Date().toISOString();
+  diff.changed.forEach(r => {
+    const c = S.cargo.find(x => String(x.id) === String(r.id)); if(!c) return;
+    if(applyValues) r.notes.forEach(n => {
+      if(n.f === 'wt') c.wt = n.to;
+      if(n.f === 'dg') c.dgClasses = n.to.map(v => canonDGClass(v) || v).slice(0, 3);
+    });
+    c.importDiff = { kind: 'changed', notes: r.notes.map(n => n.txt), applied: !!applyValues, at };
+  });
+  diff.dropped.forEach(r => {
+    const c = S.cargo.find(x => String(x.id) === String(r.id)); if(!c) return;
+    c.importDiff = { kind: 'dropped', notes: ['No longer on the load list'], at };
+  });
+}
+function clearImportDiff(id){
+  const c = S.cargo.find(x => String(x.id) === String(id));
+  if(!c || !c.importDiff) return;
+  delete c.importDiff;
+  renderAll(); if(typeof kbSelect === 'function') kbSelect(c.id);
+  if(typeof inspPopulate === 'function' && inspSelId != null) inspPopulate(c);
+  save();
+}
+
 /* ── Size detection from description text ────────────────────
    Handles real ASCO formats:
      "10' X 8'", "7'X7'", "20' x 8'", "7 X 7",
@@ -6906,9 +7058,15 @@ function extractDGClasses(hazardCell, description){
   const addCls = v => { const s = canonDGClass(v); if(s && !results.includes(s)) results.push(s); };
 
   /* Parse hazard cell — may contain comma/ampersand-separated list */
+  /* Limited Quantity anywhere in the hazard cell or description → the unit
+     carries the LQ mark, not a class placard: record LQ only. */
+  const lqTxt = /\b(?:LQ|LTD\.?\s*QTY|LIMITED\s+QUANTIT(?:Y|IES))\b/i;
+  if((hazardCell && lqTxt.test(String(hazardCell))) || (description && /\b(?:LTD\.?\s*QTY|LIMITED\s+QUANTIT(?:Y|IES))\b/i.test(String(description)))){
+    return ['LQ'];
+  }
   if(hazardCell){
     const s = String(hazardCell).trim();
-    if(s && s.toUpperCase() !== 'LQ'){
+    if(s){
       /* Primary + subsidiary hazards: "3", "3.0", "8 (3)", "2.1/2.3", "1.4S" */
       for(const part of s.split(/[^0-9a-z.]+/i)){
         addCls(part);
@@ -7195,6 +7353,7 @@ function renderAscoContent(sheets, stats){
   ascoSelected.clear();
   ascoStatus = classifyImport(sheets);
   Object.keys(ascoStatus).forEach(k => { if(ascoStatus[k] === 'new') ascoSelected.add(k); });
+  ascoDiff = computeImportDiff(sheets);
 
   const content = document.getElementById('ascoContent');
   content.innerHTML = '';
@@ -7228,6 +7387,30 @@ function renderAscoContent(sheets, stats){
       </div>
     </div>`;
   content.appendChild(summary);
+
+  /* v3.11 — changes vs cargo already on deck */
+  if(ascoDiff.changed.length || ascoDiff.dropped.length){
+    const box = document.createElement('div');
+    box.className = 'asco-diff';
+    const row = (cls, r, lines) => `<div class="asco-diff-row ${cls}">
+        <span class="asco-diff-id">${escHtml(r.ccu || r.desc || '—')}</span>
+        <span class="asco-diff-txt">${lines.map(escHtml).join(' · ')}</span></div>`;
+    box.innerHTML = `
+      <div class="asco-diff-head">
+        <span class="asco-diff-title">Changes vs deck</span>
+        ${ascoDiff.changed.length ? `<span class="asco-diff-pill ch">${ascoDiff.changed.length} changed</span>` : ''}
+        ${ascoDiff.dropped.length ? `<span class="asco-diff-pill dr">${ascoDiff.dropped.length} dropped</span>` : ''}
+      </div>
+      <div class="asco-diff-list">
+        ${ascoDiff.changed.map(r => row('ch', r, r.notes.map(n => n.txt))).join('')}
+        ${ascoDiff.dropped.map(r => row('dr', r, ['Not on the new list' + (r.loc ? ' · ' + r.loc : '')])).join('')}
+      </div>
+      ${ascoDiff.changed.some(r => r.notes.some(n => n.f === 'wt' || n.f === 'dg')) ? `
+      <label class="asco-diff-apply"><input type="checkbox" id="ascoDiffApply" checked>
+        Update weight &amp; DG of deck cargo to the new list</label>` : ''}
+      <div class="asco-diff-note">Changed and dropped cargo get a marker on deck until dismissed in the inspector.</div>`;
+    content.appendChild(box);
+  }
 
   let globalIdx = 0;
 
@@ -7264,6 +7447,7 @@ function renderAscoContent(sheets, stats){
       /* Badges */
       let badges = '';
       if(ascoStatus[key] === 'deck')  badges += `<span class="asco-badge on-deck">On deck</span>`;
+      if(ascoDiff.byRow[key]) badges += `<span class="asco-badge changed" title="${escHtml(ascoDiff.byRow[key].notes.map(n => n.txt).join('\n'))}">Δ ${escHtml(ascoDiff.byRow[key].notes.map(n => n.f === 'wt' ? 'weight' : n.f === 'dg' ? 'DG' : n.f === 'size' ? 'size' : 'location').join(', '))} changed</span>`;
       if(ascoStatus[key] === 'queue') badges += `<span class="asco-badge in-queue">In Imported</span>`;
       if(item.dgClasses&&item.dgClasses.length>0) badges += `<span class="asco-badge dg">◆ DG ${escHtml(item.dgClasses.join(', '))}</span>`;
       if(item.heavyLift)      badges += `<span class="asco-badge hl">⬆ Heavy Lift</span>`;
@@ -7329,42 +7513,15 @@ function updateAscoSelection(){
 
   const n = ascoSelected.size;
   document.getElementById('ascoBadgeCount').textContent = `${n} selected`;
-  document.getElementById('ascoImportBtn').disabled = n === 0;
+  const nd = (ascoDiff.changed.length + ascoDiff.dropped.length);
+  const btn = document.getElementById('ascoImportBtn');
+  btn.disabled = n === 0 && nd === 0;
+  btn.textContent = n === 0 && nd > 0 ? 'Mark changes on deck' : 'Add to Queue';
   document.getElementById('ascoFootInfo').innerHTML = n > 0
     ? `<b>${n}</b> item${n!==1?'s':''} selected — will be added to the Imported queue`
+      + (nd ? ` · <b>${nd}</b> change${nd!==1?'s':''} marked on deck` : '')
+    : nd ? `No new items · <b>${nd}</b> change${nd!==1?'s':''} will be marked on deck`
     : 'Select items to import into the cargo queue';
-}
-
-/* ════════════════════════════════════════════════════════════
-   v3.10 — LIFT ORDER
-   cargo.liftNo — 1-based crane lift sequence at the cargo's location.
-   Auto-numbering covers cargo that LEAVES the deck at the location
-   (Load + Transfer); Backload / ROB are not lifted off there. Per
-   location, in voyage (active-location) order: priority lifts first,
-   then aft → fore, port → stbd. Any number can be edited by hand in the
-   inspector; re-running auto-number replaces all numbers.
-════════════════════════════════════════════════════════════ */
-function autoNumberLiftOrder(){
-  if(!isOperator()) return;
-  const locs = [...S.activeLocs, ...S.cargo.map(c => c.platform)]
-    .filter((v, i, a) => v && a.indexOf(v) === i);
-  S.cargo.forEach(c => { delete c.liftNo; });
-  let n = 0;
-  locs.forEach(loc => {
-    const list = S.cargo.filter(c => c.platform === loc && (c.status === 'L' || c.status === 'TR'));
-    list.sort((a, b) => ((b.priority ? 1 : 0) - (a.priority ? 1 : 0)) || (a.x - b.x) || (a.y - b.y));
-    list.forEach((c, i) => { c.liftNo = i + 1; });
-    n += list.length;
-  });
-  renderAll(); if(KB_SEL) kbSelect(KB_SEL); save();
-  showToast(n ? `Lift order numbered: ${n} lift${n === 1 ? '' : 's'}` : 'No Load / Transfer cargo to number', n ? 'ok' : 'warn');
-}
-function clearLiftOrder(){
-  if(!isOperator()) return;
-  if(!S.cargo.some(c => c.liftNo)) return;
-  S.cargo.forEach(c => { delete c.liftNo; });
-  renderAll(); if(KB_SEL) kbSelect(KB_SEL); save();
-  showToast('Lift order cleared');
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -7449,6 +7606,13 @@ function clearLoadList(){
 /* ── Perform import: move selected items to IMPORT_QUEUE ── */
 function performAscoImport(){
   const added = [];
+  /* v3.11 — diff against deck BEFORE the load list is replaced (dropped
+     detection needs the previous list). */
+  const _diff = computeImportDiff(ascoImportData);
+  const _applyEl = document.getElementById('ascoDiffApply');
+  applyImportDiff(_diff, _applyEl ? _applyEl.checked : false);
+  const _nDiff = _diff.changed.length + _diff.dropped.length;
+  if(_nDiff){ renderAll(); updateStats(); checkSeg(); updateDGSummary(); }
   /* v3.10 — the whole file (every row, selected or not) is the load list
      for the locations it covers; progress = how much of it is on deck. */
   _loadListRecord(ascoImportData);
@@ -7512,6 +7676,7 @@ function performAscoImport(){
   });
 
   updateLoadListProgress(); savePlan();   /* persist the load list */
+  ascoDiff = { changed: [], dropped: [], byRow: {} };
   _cpEnter = { ids: new Set(added.map(q => q.id)), until: Date.now() + 1400 };
   closeAscoModal();
   if(window._cpAfterImport) window._cpAfterImport();
@@ -7531,7 +7696,10 @@ function performAscoImport(){
 
   /* Import summary: plain "N added" when nothing was skipped, otherwise
      full added / already-imported / already-on-deck / no-CCU breakdown. */
-  if(skippedInQueue + skippedOnDeck + removedStale > 0){
+  if(_nDiff){
+    showToast(`Load list: ${_diff.changed.length} changed · ${_diff.dropped.length} dropped — marked on deck`
+      + (added.length ? ` · ${added.length} added` : ''), 'warn');
+  } else if(skippedInQueue + skippedOnDeck + removedStale > 0){
     showToast(
       t('toast_import_summary', added.length, skippedInQueue, skippedOnDeck, noCcuCount, removedStale),
       added.length > 0 ? 'info' : 'warn'
@@ -8587,6 +8755,13 @@ async function buildPDF(deckCanvas, data, opts){
     let dgx = ML + dgPad;
     dgEntries.forEach(e => {
       const chipBg = hex2rgb(e.bg);
+      if(e.cls === 'LQ'){
+        /* LQ mark: white chip, black top & bottom bands, dark outline */
+        roundRect(dgx, chipY, chipW, chipH, 1.5, [255,255,255], [17,17,17]);
+        doc.setFillColor(17,17,17);
+        doc.rect(dgx+0.6, chipY+0.15, chipW-1.2, 1.0, 'F');
+        doc.rect(dgx+0.6, chipY+chipH-1.15, chipW-1.2, 1.0, 'F');
+      } else
       roundRect(dgx, chipY, chipW, chipH, 1.5, chipBg, null);
       /* PDF override (DESIGN_RULES §8): class glyph is always near-black
          [17,17,17] regardless of chip bg — print legibility on this report
@@ -10143,6 +10318,13 @@ function kbHandleKey(e){
     const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
     if(!cargo) return;
     e.preventDefault();
+    if(KB_SEL_SET.size > 1){
+      /* Whole selection jumps to the status after the primary's */
+      const cyc = ['L','BL','ROB','TR'];
+      const nx = cyc[(cyc.indexOf(cargo.status) + 1) % cyc.length];
+      bulkSetStatus(Array.from(KB_SEL_SET), nx);
+      return;
+    }
     const cycle = ['L','BL','ROB','TR'];
     const idx = cycle.indexOf(cargo.status);
     cargo.status = cycle[(idx + 1 + cycle.length) % cycle.length];
@@ -10313,10 +10495,6 @@ function _cmdpActions(){
       run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
     { group:'View',      label:'3D deck view',            shortcut:'V',
       run: () => toggle3D() },
-    { group:'Cargo',     label:'Number lift order',
-      guard: opFn, run: () => autoNumberLiftOrder() },
-    { group:'Cargo',     label:'Clear lift order',
-      guard: () => isOperator() && S.cargo.some(c => c.liftNo), run: () => clearLiftOrder() },
     { group:'Cargo',     label:'Mark selected as lifted',
       guard: () => isOperator() && !!KB_SEL, run: () => markLifted([...(KB_SEL_SET.size ? KB_SEL_SET : [KB_SEL])].map(id => (S.cargo.find(c => String(c.id) === String(id)) || {}).id).filter(v => v != null)) },
     { group:'Cargo',     label:'Show DG segregation conflicts',
@@ -11005,7 +11183,7 @@ async function exportExcel(){
   /* Header row */
   rows.push([
     'CCU / ID','Description','Length (m)','Width (m)','Weight (T)',
-    'Status','Location','Lift #','DG Class','Heavy Lift','Priority Lift',
+    'Status','Location','DG Class','Heavy Lift','Priority Lift',
     'Transfer To','Bay (approx)','Remarks'
   ]);
   /* Data rows */
@@ -11024,7 +11202,6 @@ async function exportExcel(){
       parseFloat(c.wt)||0,
       c.status==='L'?'Load':c.status==='BL'?'Backload':c.status==='ROB'?'ROB':c.status==='TR'?'Transfer':'',
       loc?loc.name:(c.platform||''),
-      c.liftNo||'',
       (c.dgClasses||[]).join(', ')||'',
       c.heavyLift?'YES':'',
       c.priority?'YES':'',
@@ -11039,7 +11216,7 @@ async function exportExcel(){
   /* Column widths */
   ws['!cols'] = [
     {wch:16},{wch:28},{wch:11},{wch:11},{wch:11},
-    {wch:10},{wch:20},{wch:7},{wch:10},{wch:11},{wch:12},
+    {wch:10},{wch:20},{wch:10},{wch:11},{wch:12},
     {wch:20},{wch:10},{wch:25}
   ];
 
@@ -11360,6 +11537,9 @@ const SMART_DEFAULTS = {
      full glass + motion return when toggled OFF. Implemented via
      html[data-perf="reduced"] (see app.css block at end of file). */
   perfMode:      true,
+  /* v3.11 — panel glass material: 'solid' (opaque cards, the classic
+     look) | 'frosted' (matte, heavy blur) | 'clear' (see-through). */
+  glass:         'solid',
 };
 
 let SMART = { ...SMART_DEFAULTS };
@@ -11393,6 +11573,18 @@ function applyDgFade(){
 function applyPerfMode(){
   if(SMART.perfMode) document.documentElement.setAttribute('data-perf', 'reduced');
   else               document.documentElement.removeAttribute('data-perf');
+}
+
+/* v3.11 — Glass material: html[data-glass] drives the CSS block
+   "GLASS MATERIAL" at the end of app.css. Solid = no attribute. */
+function applyGlass(){
+  const g = SMART.glass === 'frosted' || SMART.glass === 'clear' ? SMART.glass : 'solid';
+  if(g === 'solid') document.documentElement.removeAttribute('data-glass');
+  else document.documentElement.setAttribute('data-glass', g);
+  document.querySelectorAll('#stGlassSeg button').forEach(b => {
+    const on = b.dataset.g === g;
+    b.classList.toggle('sel', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
 }
 
 /* Update the gear button dot (shows if any smart feature is active) */
@@ -11677,6 +11869,7 @@ function bindSmartTools(){
   loadSmartSettings();
   applyDgFade();
   applyPerfMode();
+  applyGlass();
   /* S3: Apply DG-only mode from persisted settings */
   const _dcvInit = document.getElementById('cvDECK');
   if(_dcvInit && SMART.dgOnly) _dcvInit.classList.add('deck-dg-only');
@@ -11752,6 +11945,10 @@ function bindSmartTools(){
     }
   });
 
+  document.querySelectorAll('#stGlassSeg button').forEach(b => b.addEventListener('click', () => {
+    SMART.glass = b.dataset.g; applyGlass(); saveSmartSettings();
+    if(typeof playSound === 'function') playSound('select');
+  }));
   if(perfModeChk) perfModeChk.addEventListener('change', () => {
     SMART.perfMode = perfModeChk.checked;
     saveSmartSettings();
@@ -12083,6 +12280,7 @@ function _stApplyReset(){
   _stUpdateAllSectionCounters();
   if(typeof updateSmartDot === 'function') updateSmartDot();
   if(typeof applyDgFade === 'function') applyDgFade();
+  applyPerfMode(); applyGlass();
   if(typeof showToast === 'function'){
     showToast('Reset to Recommended', 'ok');
   }
@@ -12738,14 +12936,12 @@ function bindMenuBar(){
     redo:          () => redo(),
     /* Same semantics as the Delete key: Operator only, honours multi-select,
        releases acknowledged DG pairs of the removed cargo. */
-    liftOrderAuto: () => autoNumberLiftOrder(),
     view3D:        () => toggle3D(),
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];
       markLifted(ids.map(id => (S.cargo.find(c => String(c.id) === String(id)) || {}).id).filter(v => v != null));
     },
-    liftOrderClear:() => clearLiftOrder(),
     deleteSelected:() => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET).map(String) : [String(KB_SEL)];

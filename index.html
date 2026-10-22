@@ -153,8 +153,6 @@
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="deleteSelected">Delete Selected<span class="menu-shortcut">Del</span></div>
       <div class="menu-sep"></div>
-      <div class="menu-action" data-action="liftOrderAuto">Number Lift Order</div>
-      <div class="menu-action" data-action="liftOrderClear">Clear Lift Order</div>
       <div class="menu-action" data-action="markLifted">Mark Selected as Lifted</div>
     </div>
   </div>
@@ -332,10 +330,25 @@
         </div>
       </div>
       <div class="insp-multi-breakdown" id="inspMultiBreakdown"></div>
-      <div class="insp-multi-hint">
-        Shift-click to add or remove cargo from the selection.
-        <br>Single cargo edits are disabled while multiple are selected.
+      <div class="insp-sec-title insp-multi-status-title">Set status for all</div>
+      <div class="insp-status-seg insp-multi-status" id="inspMultiStatusSeg" role="group" aria-label="Status for all selected cargo">
+        <button type="button" data-s="L">Load</button>
+        <button type="button" data-s="BL">Backload</button>
+        <button type="button" data-s="ROB">ROB</button>
+        <button type="button" data-s="TR">Transfer</button>
       </div>
+      <div class="insp-multi-hint">
+        Drag on empty deck to box-select.
+        <br>Shift-click adds or removes · S cycles status.
+      </div>
+    </section>
+
+    <section class="insp-sec insp-diff-sec" id="inspDiffSec" hidden>
+      <div class="insp-diff-head">
+        <span class="insp-diff-title" id="inspDiffTitle">Changed in the new load list</span>
+        <button type="button" class="insp-diff-ok" id="inspDiffDismiss" title="Remove the marker">Dismiss</button>
+      </div>
+      <ul class="insp-diff-list" id="inspDiffList"></ul>
     </section>
 
     <section class="insp-sec">
@@ -352,15 +365,9 @@
 
     <section class="insp-sec">
       <div class="insp-sec-title">Deck &amp; Physical</div>
-      <div class="insp-field-row">
-        <div class="insp-field">
-          <label for="inspWT">Weight (T)</label>
-          <input type="number" id="inspWT" step="0.1" min="0">
-        </div>
-        <div class="insp-field">
-          <label for="inspLift" title="Lift order at the location (blank = none)">Lift #</label>
-          <input type="number" id="inspLift" step="1" min="1" max="999" placeholder="—">
-        </div>
+      <div class="insp-field insp-field-short">
+        <label for="inspWT">Weight (T)</label>
+        <input type="number" id="inspWT" step="0.1" min="0">
       </div>
       <div class="insp-field-row">
         <div class="insp-field">
@@ -1739,9 +1746,27 @@
         </label>
       </div>
 
+      <!-- v3.11 — Glass material: how see-through the panels are -->
+      <div class="st-row st-row-glass">
+        <div class="st-row-icon" style="background:rgba(72,96,131,.08);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="3" width="12" height="10" rx="2.5" stroke="var(--acc)" stroke-width="1.3"/>
+            <path d="M4.5 10.5l3-5M7.5 10.5l3-5" stroke="var(--acc)" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>
+          </svg>
+        </div>
+        <div class="st-row-body">
+          <div class="st-row-title">Glass</div>
+          <div class="st-row-desc">How see-through the panels are</div>
+        </div>
+        <div class="st-glass-seg" id="stGlassSeg" role="radiogroup" aria-label="Glass material">
+          <button type="button" data-g="solid" role="radio">Solid</button>
+          <button type="button" data-g="frosted" role="radio">Frosted</button>
+          <button type="button" data-g="clear" role="radio">Clear</button>
+        </div>
+      </div>
+
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">PORT / STBD Labels</div><div class="st-row-desc">Nautical side labels on deck edges</div></div><label class="st-toggle"><input type="checkbox" id="stPortStbd"><div class="st-track"><div class="st-thumb"></div></div></label></div>
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Section Watermarks</div><div class="st-row-desc">Large semi-transparent bay numbers as background</div></div><label class="st-toggle"><input type="checkbox" id="stSecWatermark"><div class="st-track"><div class="st-thumb"></div></div></label></div>
-      <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Drag Ghost Trail</div><div class="st-row-desc">Shadow remains at original position during drag</div></div><label class="st-toggle"><input type="checkbox" id="stDragGhost"><div class="st-track"><div class="st-thumb"></div></div></label></div>
       <div class="st-row st-row-mini"><div class="st-row-body"><div class="st-row-title">Name Shimmer</div><div class="st-row-desc">Subtle shine on vessel name in header</div></div><label class="st-toggle"><input type="checkbox" id="stNameShimmer"><div class="st-track"><div class="st-thumb"></div></div></label></div>
 
       </div><!-- /st-sec-body --></div><!-- /st-section appearance -->

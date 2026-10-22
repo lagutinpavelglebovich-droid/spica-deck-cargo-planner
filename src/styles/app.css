@@ -16222,18 +16222,6 @@ html[data-perf="reduced"]:not([data-theme="dark"]) .st-section{
 .insp-field-row > .insp-field{ min-width:0; }
 .insp-field-row input{ width:100%; max-width:none; }
 
-/* v3.10 — lift order badge (bottom-centre; edge tab on short blocks) */
-.cb-lift-badge{
-  position:absolute; left:50%; bottom:3px; transform:translateX(-50%);
-  min-width:15px; height:15px; padding:0 4px; box-sizing:border-box;
-  display:grid; place-items:center;
-  border-radius:999px;
-  background:var(--txt); color:var(--surf);
-  font-family:'Manrope','Inter',system-ui,sans-serif; font-size:10px; font-weight:900; line-height:1;
-  box-shadow:0 1px 3px rgba(0,0,0,.25), 0 0 0 1.5px var(--surf);
-  z-index:6; pointer-events:none; user-select:none;
-}
-.cb-lift-badge.cb-lift-edge{ bottom:-7px; }
 
 /* v3.10 — live library search: matches ringed, the rest of the deck dims */
 .cb.cp-hl{ animation:cpPulse 1.5s ease-out 1; }
@@ -16655,8 +16643,6 @@ body.side-panel-open.insp-open.cp-panel-open .deck-area{ margin-right: 384px !im
 .rh-e::after, .rh-w::after{ width:2px; height:calc(var(--cbh, 40px) - 8px); left:50%; top:50%; transform:translate(-50%,-50%); }
 .rh.rh-edge:hover::after{ opacity:.55; }
 
-/* lift number moves aside while the bottom grip is showing */
-.cb.kb-sel .cb-lift-badge{ transform:translateX(calc(-50% - 22px)); }
 
 /* while resizing */
 .cb.cb-resizing{ opacity:.82; outline:1.5px dashed var(--acc); outline-offset:2px; }
@@ -16697,3 +16683,151 @@ body.resizing-cargo, body.resizing-cargo *{ user-select:none !important; }
 }
 @keyframes dgtEcho{ from{ opacity:.45; transform:scale(1); } to{ opacity:0; transform:scale(.96); } }
 @media (prefers-reduced-motion: reduce){ .dgt-echo{ animation:none !important; } }
+
+/* ── v3.11 · bulk status for multi-selection ───────────────────── */
+.insp-multi-status-title{ margin-top:14px; }
+.insp-multi-status{ margin-top:6px; }
+
+/* ── v3.11 · re-import diff ───────────────────────────────────── */
+:root{ --diff-ch:#d97706; --diff-dr:#dc2626; }
+[data-theme="dark"]{ --diff-ch:#f59e0b; --diff-dr:#f87171; }
+.cb.cb-diff-changed{ outline:2px dashed var(--diff-ch); outline-offset:2px; }
+.cb.cb-diff-dropped{ outline:2px dashed var(--diff-dr); outline-offset:2px; }
+.cb.cb-diff-dropped > .cb-id{ text-decoration:line-through; text-decoration-thickness:1.5px; }
+.cb-diff-mark{
+  position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+  z-index:6; pointer-events:none; white-space:nowrap;
+  font:800 8px/1 'Inter',system-ui,sans-serif; letter-spacing:.3px;
+  padding:2px 5px; border-radius:4px; color:#fff;
+  background:var(--diff-ch); box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+.cb.cb-diff-dropped .cb-diff-mark{ background:var(--diff-dr); }
+.cb.kb-sel .cb-diff-mark{ opacity:.35; }
+body.pdf-capture .cb-diff-mark{ display:none !important; }
+body.pdf-capture .cb.cb-diff-changed,
+body.pdf-capture .cb.cb-diff-dropped{ outline:none !important; }
+body.pdf-capture .cb.cb-diff-dropped > .cb-id{ text-decoration:none; }
+
+.asco-diff{
+  margin:10px 0 14px; padding:10px 12px; border-radius:10px;
+  border:1px solid color-mix(in srgb, var(--diff-ch) 45%, transparent);
+  background:color-mix(in srgb, var(--diff-ch) 8%, var(--surf, transparent));
+}
+.asco-diff-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.asco-diff-title{ font-weight:800; font-size:12px; color:var(--txt); }
+.asco-diff-pill{ font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; color:#fff; }
+.asco-diff-pill.ch{ background:var(--diff-ch); }
+.asco-diff-pill.dr{ background:var(--diff-dr); }
+.asco-diff-list{ display:flex; flex-direction:column; gap:3px; max-height:160px; overflow:auto; }
+.asco-diff-row{ display:flex; gap:10px; font-size:11.5px; line-height:1.35; padding:3px 0;
+  border-top:1px solid color-mix(in srgb, var(--txt) 8%, transparent); }
+.asco-diff-row:first-child{ border-top:0; }
+.asco-diff-id{ font-weight:700; min-width:96px; color:var(--txt); font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; }
+.asco-diff-row.ch .asco-diff-txt{ color:var(--diff-ch); }
+.asco-diff-row.dr .asco-diff-txt{ color:var(--diff-dr); }
+.asco-diff-apply{ display:flex; align-items:center; gap:7px; margin-top:8px; font-size:11.5px; color:var(--txt); cursor:pointer; }
+.asco-diff-note{ margin-top:6px; font-size:10.5px; color:var(--txt3, var(--txt)); opacity:.75; }
+.asco-badge.changed{ background:color-mix(in srgb, var(--diff-ch) 16%, transparent); color:var(--diff-ch);
+  border:1px solid color-mix(in srgb, var(--diff-ch) 45%, transparent); }
+
+.insp-diff-sec{ border-left:3px solid var(--diff-ch); padding-left:10px; }
+.insp-diff-sec[data-kind="dropped"]{ border-left-color:var(--diff-dr); }
+.insp-diff-sec[hidden]{ display:none !important; }
+.insp-diff-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.insp-diff-title{ font-size:11.5px; font-weight:800; color:var(--diff-ch); }
+.insp-diff-sec[data-kind="dropped"] .insp-diff-title{ color:var(--diff-dr); }
+.insp-diff-ok{ font:600 11px/1 'Inter',system-ui,sans-serif; padding:4px 8px; border-radius:6px;
+  border:1px solid var(--brd); background:transparent; color:var(--txt); cursor:pointer; }
+.insp-diff-ok:hover{ background:color-mix(in srgb, var(--txt) 7%, transparent); }
+.insp-diff-list{ margin:6px 0 0; padding-left:16px; font-size:11.5px; line-height:1.45; color:var(--txt); }
+.insp-diff-list li.muted{ opacity:.6; list-style:none; margin-left:-16px; }
+body.insp-multi .insp-diff-sec{ display:none !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.11 — GLASS MATERIAL  (Smart Tools → Appearance → Glass)
+   html[data-glass] = frosted | clear ; no attribute = Solid (classic).
+   Frosted = matte iOS material: half-transparent, heavy blur.
+   Clear   = see-through: low fill, light blur, a touch more saturation.
+   `body:not(#_g)` lifts specificity above the weather / perf / theme
+   layers so one block owns every floating surface in both themes.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root[data-glass="frosted"]{ --gl-a:.56; --gl-hi:.30; --gl-blur:22px; --gl-sat:1.18; --gl-panel:.74; }
+:root[data-glass="clear"]  { --gl-a:.22; --gl-hi:.22; --gl-blur:9px;  --gl-sat:1.45; --gl-panel:.55; }
+:root[data-glass="frosted"][data-theme="dark"]{ --gl-a:.60; --gl-hi:.07; }
+:root[data-glass="clear"][data-theme="dark"]  { --gl-a:.30; --gl-hi:.05; }
+
+:root[data-glass] body:not(#_g) .rc-lifts,
+:root[data-glass] body:not(#_g) .rc-ops,
+:root[data-glass] body:not(#_g) .rct-group,
+:root[data-glass] body:not(#_g) .loc-card,
+:root[data-glass] body:not(#_g) .bottom-panel,
+:root[data-glass] body:not(#_g) .zoom-bar,
+:root[data-glass] body:not(#_g) .dg-onboard-line,
+:root[data-glass] body:not(#_g) .ll-progress,
+:root[data-glass] body:not(#_g) .menubar,
+:root[data-glass] body:not(#_g) .insp.open{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,var(--gl-hi)) 0%, rgba(255,255,255,0) 60%),
+    rgba(255,255,255,var(--gl-a)) !important;
+  backdrop-filter:blur(var(--gl-blur)) saturate(var(--gl-sat)) !important;
+  -webkit-backdrop-filter:blur(var(--gl-blur)) saturate(var(--gl-sat)) !important;
+}
+:root[data-glass][data-theme="dark"] body:not(#_g) .rc-lifts,
+:root[data-glass][data-theme="dark"] body:not(#_g) .rc-ops,
+:root[data-glass][data-theme="dark"] body:not(#_g) .rct-group,
+:root[data-glass][data-theme="dark"] body:not(#_g) .loc-card,
+:root[data-glass][data-theme="dark"] body:not(#_g) .bottom-panel,
+:root[data-glass][data-theme="dark"] body:not(#_g) .zoom-bar,
+:root[data-glass][data-theme="dark"] body:not(#_g) .dg-onboard-line,
+:root[data-glass][data-theme="dark"] body:not(#_g) .ll-progress,
+:root[data-glass][data-theme="dark"] body:not(#_g) .menubar,
+:root[data-glass][data-theme="dark"] body:not(#_g) .insp.open{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,var(--gl-hi)) 0%, rgba(255,255,255,0) 60%),
+    rgba(18,26,42,var(--gl-a)) !important;
+}
+/* Library panel is a dark navy surface in both themes */
+:root[data-glass] body:not(#_g) .cp{
+  background:rgba(32,36,44,var(--gl-panel)) !important;
+  backdrop-filter:blur(var(--gl-blur)) saturate(var(--gl-sat)) !important;
+  -webkit-backdrop-filter:blur(var(--gl-blur)) saturate(var(--gl-sat)) !important;
+}
+/* Clear glass keeps a crisp edge so panels don't dissolve into the map */
+:root[data-glass="clear"] body:not(#_g) .rc-lifts,
+:root[data-glass="clear"] body:not(#_g) .rc-ops,
+:root[data-glass="clear"] body:not(#_g) .rct-group,
+:root[data-glass="clear"] body:not(#_g) .loc-card,
+:root[data-glass="clear"] body:not(#_g) .insp.open{
+  border-color:rgba(255,255,255,.55) !important;
+}
+:root[data-glass="clear"][data-theme="dark"] body:not(#_g) .rc-lifts,
+:root[data-glass="clear"][data-theme="dark"] body:not(#_g) .rc-ops,
+:root[data-glass="clear"][data-theme="dark"] body:not(#_g) .rct-group,
+:root[data-glass="clear"][data-theme="dark"] body:not(#_g) .loc-card,
+:root[data-glass="clear"][data-theme="dark"] body:not(#_g) .insp.open{
+  border-color:rgba(255,255,255,.14) !important;
+}
+
+/* Smart Tools control */
+.st-row-glass{ flex-wrap:wrap; }
+.st-glass-seg{
+  display:inline-flex; gap:2px; padding:2px; border-radius:9px; flex-shrink:0;
+  background:rgba(10,22,40,.06); border:0.5px solid rgba(10,22,40,.08);
+}
+.st-glass-seg button{
+  font:600 11px/1 'Inter',system-ui,sans-serif; color:var(--txt2);
+  padding:6px 9px; border:0; border-radius:7px; background:transparent; cursor:pointer;
+  transition:background-color .15s, color .15s, box-shadow .15s;
+}
+.st-glass-seg button:hover{ color:var(--txt); }
+.st-glass-seg button.sel{ background:var(--surf); color:var(--acc); box-shadow:0 1px 3px rgba(10,22,40,.14); }
+[data-theme="dark"] .st-glass-seg{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.08); }
+[data-theme="dark"] .st-glass-seg button.sel{ background:rgba(255,255,255,.12); color:var(--txt); box-shadow:none; }
+
+/* LQ badge on cargo: white chip with heavy black top/bottom edges — the
+   Limited Quantity mark. Borders (not a gradient) so html2canvas prints it. */
+.cb-dg-badge.cb-dg-badge-lq{
+  background:#fff !important; color:#111 !important;
+  border-style:solid !important; border-color:#111 !important;
+  border-width:2.5px 1px !important;
+}
