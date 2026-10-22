@@ -16675,3 +16675,26 @@ body.resizing-cargo, body.resizing-cargo *{ user-select:none !important; }
 .rs-tag .rs-snap::after{ content:' ◆'; font-size:8px; vertical-align:2px; }
 .rs-tag .rs-x, .rs-tag .rs-u{ color:var(--txt3); font-weight:500; }
 [data-theme="dark"] .rs-tag{ background:var(--surf2); border-color:rgba(255,255,255,.12); box-shadow:0 6px 18px rgba(0,0,0,.45); }
+
+/* ════════════════════════════════════════════════════════════
+   v3.11 — DRAG GHOST TRAIL
+   The block fades to a ghost at its origin + dashed lead line
+   from origin to candidate + fading echoes + move tag (reuses .rs-tag).
+════════════════════════════════════════════════════════════ */
+.cb.cb-drag-origin{
+  opacity:.38; filter:saturate(.55);
+  outline:1.5px dashed color-mix(in srgb, var(--txt) 45%, transparent); outline-offset:2px;
+  transition:opacity .16s var(--ease), filter .16s var(--ease);
+}
+.cb.cb-drag-origin .rh, .cb.cb-drag-origin [class^="cb-del"], .cb.cb-drag-origin .cb-rot, .cb.cb-drag-origin .cb-copy{ opacity:0 !important; }
+.dgt-line{ position:absolute; left:0; top:0; z-index:9; pointer-events:none; overflow:visible; }
+.dgt-line line{ stroke:var(--acc); stroke-width:1.5; stroke-dasharray:5 5; opacity:.7; }
+.dgt-line circle{ fill:var(--acc); opacity:.8; }
+.dgt-echo{
+  position:fixed; z-index:9997; pointer-events:none; border-radius:8px;
+  border:1.5px solid color-mix(in srgb, var(--acc) 55%, transparent);
+  animation:dgtEcho .42s ease-out forwards;
+}
+@keyframes dgtEcho{ from{ opacity:.45; transform:scale(1); } to{ opacity:0; transform:scale(.96); } }
+.dgt-tag{ transition:opacity .15s ease; }
+@media (prefers-reduced-motion: reduce){ .dgt-echo{ animation:none !important; } }

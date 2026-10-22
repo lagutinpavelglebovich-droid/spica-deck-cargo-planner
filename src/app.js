@@ -1674,6 +1674,67 @@ function cargoEdgeDistM(a, b){
 /* Candidate drop rect (deck px) for a cargo being dragged — same formula
    the mouse/touch drop handlers use (relative to #cvDECK, zoom-corrected,
    clamped to the deck). Returns null when the pointer is off the deck.  */
+/* ════════════════════════════════════════════════════════════
+   v3.11 — DRAG GHOST TRAIL
+════════════════════════════════════════════════════════════ */
+function dragTrailStart(cargo, block){
+  const cv = document.getElementById('cvDECK');
+  const motion = typeof _motionOK === 'function' ? _motionOK() : true;
+  let line = null, tag = null, lastEcho = 0, shown = false;
+  const show = () => {
+    if(shown || !cv) return; shown = true;
+    /* the block itself becomes the origin ghost (it stays put until drop) */
+    block.classList.add('cb-drag-origin');
+    line = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    line.setAttribute('class', 'dgt-line');
+    line.setAttribute('width', TW); line.setAttribute('height', CVH);
+    line.innerHTML = '<line x1="0" y1="0" x2="0" y2="0"/><circle r="3"/>';
+    cv.appendChild(line);
+    tag = document.createElement('div');
+    tag.className = 'rs-tag dgt-tag';
+    document.body.appendChild(tag);
+  };
+  const ocx = cargo.x + cargo.w/2, ocy = cargo.y + cargo.h/2;
+  return {
+    update(ghostEl, cand){
+      show();
+      if(!cand){ if(tag) tag.style.opacity = '0'; return; }
+      const ncx = cand.x + cand.w/2, ncy = cand.y + cand.h/2;
+      const l = line.querySelector('line'), c = line.querySelector('circle');
+      l.setAttribute('x1', ocx); l.setAttribute('y1', ocy); l.setAttribute('x2', ncx); l.setAttribute('y2', ncy);
+      c.setAttribute('cx', ocx); c.setAttribute('cy', ocy);
+      /* Position readouts walk the real bay/joint segments (deckXToMeters). */
+      const dxm = deckXToMeters(cand.x) - deckXToMeters(cargo.x);
+      const dym = deckYToMeters(cand.y) - deckYToMeters(cargo.y);
+      const part = (v, pos, neg) => Math.abs(v) < 0.005 ? '' :
+        `<span class="rs-on">${Math.abs(v).toFixed(2)}</span><span class="rs-u">m ${v > 0 ? pos : neg}</span>`;
+      const a = part(dxm, 'fwd', 'aft'), b2 = part(dym, 'stbd', 'port');
+      tag.innerHTML = (a || b2) ? [a, b2].filter(Boolean).join('<span class="rs-x">·</span>') : '<span class="rs-u">no move</span>';
+      tag.style.opacity = '1';
+      const r = ghostEl.getBoundingClientRect();
+      tag.style.left = (r.left + r.width/2) + 'px';
+      tag.style.top  = (r.bottom + 10) + 'px';
+      /* fading echoes behind the moving ghost */
+      const now = performance.now();
+      if(motion && now - lastEcho > 45){
+        lastEcho = now;
+        const e = document.createElement('div');
+        e.className = 'dgt-echo';
+        e.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`;
+        document.body.appendChild(e);
+        e.addEventListener('animationend', () => e.remove(), { once:true });
+        setTimeout(() => e.remove(), 600);
+      }
+    },
+    end(){
+      if(tag) tag.remove();
+      if(line) line.remove();
+      block.classList.remove('cb-drag-origin');
+      document.querySelectorAll('.dgt-echo').forEach(e => e.remove());
+    },
+  };
+}
+
 function dragCandidateRect(clientX, clientY, ox, oy, cargo){
   const dcv = document.getElementById('cvDECK');
   if(!dcv) return null;
@@ -3020,24 +3081,31 @@ function renderBlock(cv,cargo){
     const ghost=document.createElement('div');ghost.className='ghost';
     ghost.style.cssText=`width:${cargo.w*zoomLevel}px;height:${cargo.h*zoomLevel}px;left:${e.clientX-ox*zoomLevel}px;top:${e.clientY-oy*zoomLevel}px;`;
     document.body.appendChild(ghost);
-    /* Drag ghost trail (#7) — shadow at original position */
-    let _ghostTrail=null;
-    if(SMART.dragGhost){
-      _ghostTrail=document.createElement('div');
-      _ghostTrail.className='drag-ghost-trail';
-      _ghostTrail.style.cssText=`left:${cargo.x}px;top:${cargo.y}px;width:${cargo.w}px;height:${cargo.h}px;`;
-      const cv=document.getElementById('cvDECK');if(cv)cv.appendChild(_ghostTrail);
-    }
+    /* v3.11 — Drag Ghost Trail (always on; replaces the dormant SMART.dragGhost
+       toggle): an outline of the block stays at its origin, a dashed lead line
+       joins origin and candidate, fading echoes trail the moving ghost, and a
+       tag shows the move in metres. Esc during the drag puts it back. */
+    const _gt = dragTrailStart(cargo, b);
     let _dragSegTimer=0;
     const onMove=ev=>{
       if(Math.abs(ev.clientX-sx)>4||Math.abs(ev.clientY-sy)>4)moved=true;
       ghost.style.left=(ev.clientX-ox*zoomLevel)+'px';
       ghost.style.top=(ev.clientY-oy*zoomLevel)+'px';
+      if(moved) _gt.update(ghost, dragCandidateRect(ev.clientX, ev.clientY, ox, oy, cargo));
       /* Throttled DG segregation overlay — prevents fullscreen flicker */
       if(cargo.dgClasses&&cargo.dgClasses.length>0&&!_dragSegTimer){const _cx=ev.clientX,_cy=ev.clientY;_dragSegTimer=1;requestAnimationFrame(()=>{showDragSegOverlay(cargo.dgClasses,cargo.id,dragCandidateRect(_cx,_cy,ox,oy,cargo));_dragSegTimer=0;});}
     };
+    const onKey=ev=>{
+      if(ev.key!=='Escape') return;
+      ev.preventDefault(); ev.stopPropagation();
+      document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+      document.removeEventListener('keydown',onKey,true);
+      ghost.remove(); clearDragSegOverlay(); _gt.end(true);
+    };
+    document.addEventListener('keydown',onKey,true);
     const onUp=ev=>{
       document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+      document.removeEventListener('keydown',onKey,true);
       /* Phase 27 — ghost landing dissolve. Instead of pop-off, the ghost
          fades + micro-scales for 120ms so the drag's phantom "arrives"
          before disappearing. Purely cosmetic; state flow is unchanged.
@@ -3053,7 +3121,7 @@ function renderBlock(cv,cargo){
       } else {
         ghost.remove();
       }
-      if(_ghostTrail) _ghostTrail.remove();
+      _gt.end(false);
       clearDragSegOverlay();
       if(moved){
         /* Phase 4 — Group drag detection. If the cargo being dragged is
