@@ -11,6 +11,25 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.11.0',
+    date: '2026-10-22',
+    highlights: [
+      'Status for many cargo at once',
+      'Re-import shows what changed in the load list',
+      'Limited Quantity DG mark and Glass setting',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Multi-select: box-select cargo on the deck and set Load / Backload / ROB / Transfer for all of them in the inspector, or press S; one Undo puts them back' },
+      { type: 'feature',     text: 'Re-import: the ASCO window lists cargo on deck whose weight, size, DG or location changed in the new list, and Load cargo that was dropped from it; they get a marker on the deck until you dismiss it in the inspector' },
+      { type: 'feature',     text: 'Re-import can update the weight and DG of the cargo on deck to the new list in one go' },
+      { type: 'feature',     text: 'DG: Limited Quantity (LQ) — the black-and-white diamond without a class number; read from ASCO ("LQ", "LTD QTY"); no segregation applied' },
+      { type: 'ui',          text: 'Smart Tools → Glass: Solid, Frosted or Clear panels, in light and dark theme' },
+      { type: 'feature',     text: 'Resize from any side: grips on the edge centres change one side only, with a live size in metres; sizes snap to standard units, Shift resizes both sides, Alt turns snapping off' },
+      { type: 'ui',          text: 'Drag Ghost Trail: while moving cargo its old place stays as a ghost with a lead line to the new spot; Esc puts it back' },
+      { type: 'improvement', text: 'Lift-order numbering removed (the order is decided on the platform)' },
+    ],
+  },
+  {
     version: '3.10.0',
     date: '2026-10-21',
     highlights: [
