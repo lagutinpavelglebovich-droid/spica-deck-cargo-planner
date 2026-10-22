@@ -1680,7 +1680,7 @@ function cargoEdgeDistM(a, b){
 function dragTrailStart(cargo, block){
   const cv = document.getElementById('cvDECK');
   const motion = typeof _motionOK === 'function' ? _motionOK() : true;
-  let line = null, tag = null, lastEcho = 0, shown = false;
+  let line = null, lastEcho = 0, shown = false;
   const show = () => {
     if(shown || !cv) return; shown = true;
     /* the block itself becomes the origin ghost (it stays put until drop) */
@@ -1690,30 +1690,17 @@ function dragTrailStart(cargo, block){
     line.setAttribute('width', TW); line.setAttribute('height', CVH);
     line.innerHTML = '<line x1="0" y1="0" x2="0" y2="0"/><circle r="3"/>';
     cv.appendChild(line);
-    tag = document.createElement('div');
-    tag.className = 'rs-tag dgt-tag';
-    document.body.appendChild(tag);
   };
   const ocx = cargo.x + cargo.w/2, ocy = cargo.y + cargo.h/2;
   return {
     update(ghostEl, cand){
       show();
-      if(!cand){ if(tag) tag.style.opacity = '0'; return; }
+      if(!cand) return;
       const ncx = cand.x + cand.w/2, ncy = cand.y + cand.h/2;
       const l = line.querySelector('line'), c = line.querySelector('circle');
       l.setAttribute('x1', ocx); l.setAttribute('y1', ocy); l.setAttribute('x2', ncx); l.setAttribute('y2', ncy);
       c.setAttribute('cx', ocx); c.setAttribute('cy', ocy);
-      /* Position readouts walk the real bay/joint segments (deckXToMeters). */
-      const dxm = deckXToMeters(cand.x) - deckXToMeters(cargo.x);
-      const dym = deckYToMeters(cand.y) - deckYToMeters(cargo.y);
-      const part = (v, pos, neg) => Math.abs(v) < 0.005 ? '' :
-        `<span class="rs-on">${Math.abs(v).toFixed(2)}</span><span class="rs-u">m ${v > 0 ? pos : neg}</span>`;
-      const a = part(dxm, 'fwd', 'aft'), b2 = part(dym, 'stbd', 'port');
-      tag.innerHTML = (a || b2) ? [a, b2].filter(Boolean).join('<span class="rs-x">·</span>') : '<span class="rs-u">no move</span>';
-      tag.style.opacity = '1';
       const r = ghostEl.getBoundingClientRect();
-      tag.style.left = (r.left + r.width/2) + 'px';
-      tag.style.top  = (r.bottom + 10) + 'px';
       /* fading echoes behind the moving ghost */
       const now = performance.now();
       if(motion && now - lastEcho > 45){
@@ -1727,7 +1714,6 @@ function dragTrailStart(cargo, block){
       }
     },
     end(){
-      if(tag) tag.remove();
       if(line) line.remove();
       block.classList.remove('cb-drag-origin');
       document.querySelectorAll('.dgt-echo').forEach(e => e.remove());
@@ -3082,9 +3068,9 @@ function renderBlock(cv,cargo){
     ghost.style.cssText=`width:${cargo.w*zoomLevel}px;height:${cargo.h*zoomLevel}px;left:${e.clientX-ox*zoomLevel}px;top:${e.clientY-oy*zoomLevel}px;`;
     document.body.appendChild(ghost);
     /* v3.11 — Drag Ghost Trail (always on; replaces the dormant SMART.dragGhost
-       toggle): an outline of the block stays at its origin, a dashed lead line
-       joins origin and candidate, fading echoes trail the moving ghost, and a
-       tag shows the move in metres. Esc during the drag puts it back. */
+       toggle): the block fades to a ghost at its origin, a dashed lead line
+       joins origin and candidate, and fading echoes trail the moving ghost.
+       Esc during the drag puts it back. */
     const _gt = dragTrailStart(cargo, b);
     let _dragSegTimer=0;
     const onMove=ev=>{

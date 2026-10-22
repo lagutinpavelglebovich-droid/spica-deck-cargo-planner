@@ -16679,7 +16679,7 @@ body.resizing-cargo, body.resizing-cargo *{ user-select:none !important; }
 /* ════════════════════════════════════════════════════════════
    v3.11 — DRAG GHOST TRAIL
    The block fades to a ghost at its origin + dashed lead line
-   from origin to candidate + fading echoes + move tag (reuses .rs-tag).
+   from origin to candidate + fading echoes.
 ════════════════════════════════════════════════════════════ */
 .cb.cb-drag-origin{
   opacity:.38; filter:saturate(.55);
@@ -16696,5 +16696,4 @@ body.resizing-cargo, body.resizing-cargo *{ user-select:none !important; }
   animation:dgtEcho .42s ease-out forwards;
 }
 @keyframes dgtEcho{ from{ opacity:.45; transform:scale(1); } to{ opacity:0; transform:scale(.96); } }
-.dgt-tag{ transition:opacity .15s ease; }
 @media (prefers-reduced-motion: reduce){ .dgt-echo{ animation:none !important; } }
