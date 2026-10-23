@@ -435,11 +435,37 @@
     <button type="button" class="vs-x" id="vsClose" title="Cancel (Esc)">✕</button>
   </div>
   <div class="vs-body" id="vsBody">
+    <section class="vs-sec vs-vessel-bar">
+      <div class="vs-sec-title">Vessel in use</div>
+      <div class="vs-vessel-row">
+        <select class="vs-select" id="vsVesselSel" aria-label="Vessel"></select>
+        <button type="button" class="vs-btn" id="vsNewVessel">+ New vessel</button>
+      </div>
+      <div class="vs-hint" id="vsDirtyHint" hidden>Save or cancel your changes before switching vessel.</div>
+    </section>
+
+    <section class="vs-sec vs-new" id="vsNewSec" hidden>
+      <div class="vs-sec-title">New vessel</div>
+      <div class="vs-note">Name the vessel first — its deck, zones, locations, charterer and PDF settings are kept under this name.</div>
+      <label class="vs-field vs-field-wide"><span>Vessel name</span><input type="text" id="vsNewName" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. SPICA TIDE"></label>
+      <div class="vs-field"><span>Start from</span>
+        <div class="vs-seg" id="vsNewFrom" role="radiogroup"><button type="button" data-v="copy" class="sel">Copy of current</button><button type="button" data-v="blank">Empty deck</button></div>
+      </div>
+      <div class="vs-btnrow">
+        <button type="button" class="vs-btn vs-btn-quiet" id="vsNewCancel">Back</button>
+        <button type="button" class="vs-btn vs-btn-primary" id="vsNewCreate">Create vessel</button>
+      </div>
+    </section>
+
+    <div class="vs-edit" id="vsEditSecs">
     <div class="vs-note">The deck updates live. Drag zones on the deck to move them, pull the handles to resize. Nothing is kept until you press Save.</div>
 
     <section class="vs-sec">
       <div class="vs-sec-title">Vessel</div>
-      <label class="vs-field vs-field-wide"><span>Name</span><input type="text" id="vsName" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="vs-row2">
+        <label class="vs-field"><span>Name</span><input type="text" id="vsName" maxlength="40" autocomplete="off" spellcheck="false"></label>
+        <label class="vs-field"><span>Charterer (PDF)</span><input type="text" id="vsCharterer" maxlength="28" autocomplete="off" spellcheck="false" placeholder="none"></label>
+      </div>
       <div class="vs-row2">
         <label class="vs-field"><span>Deck width (m)</span><input type="number" id="vsWidth" step="0.01" min="4" max="40"></label>
         <label class="vs-field"><span>Joint between bays (m)</span><input type="number" id="vsJoint" step="0.01" min="0" max="1"></label>
@@ -475,17 +501,29 @@
       </div>
     </section>
 
+    <section class="vs-sec">
+      <div class="vs-sec-title">Locations <span class="vs-sec-meta" id="vsLocsMeta"></span></div>
+      <div class="vs-note vs-note-sm">ASCO names: words in the load-list sheet name that mean this location, comma-separated. The longest match wins.</div>
+      <div class="vs-loc-head"><span>Name</span><span>Type</span><span title="Always grey, like Bleo Holm">Grey</span><span></span></div>
+      <div class="vs-locs" id="vsLocs"></div>
+      <div class="vs-btnrow">
+        <button type="button" class="vs-btn" id="vsAddLoc">+ Add location</button>
+      </div>
+    </section>
+
     <section class="vs-sec vs-sec-files">
       <div class="vs-sec-title">Profile</div>
       <div class="vs-btnrow">
         <button type="button" class="vs-btn" id="vsExport">Export…</button>
         <button type="button" class="vs-btn" id="vsImport">Import…</button>
-        <button type="button" class="vs-btn vs-btn-quiet" id="vsReset">Reset to SPICA TIDE</button>
+        <button type="button" class="vs-btn vs-btn-quiet" id="vsReset">Restore measured layout</button>
+        <button type="button" class="vs-btn vs-btn-danger" id="vsDelete">Delete vessel</button>
       </div>
       <input type="file" id="vsImportFile" accept=".json,application/json" hidden>
     </section>
+    </div>
   </div>
-  <div class="vs-foot">
+  <div class="vs-foot" id="vsFoot">
     <button type="button" class="vs-cancel" id="vsCancel">Cancel</button>
     <button type="button" class="vs-save" id="vsSave">Save</button>
   </div>

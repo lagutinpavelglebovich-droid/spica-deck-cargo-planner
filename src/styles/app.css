@@ -16965,3 +16965,33 @@ body.vessel-setup .cb *{ pointer-events:none !important; }
 .vs-h-ne{ right:-6px; top:-6px; cursor:nesw-resize; } .vs-h-sw{ left:-6px; bottom:-6px; cursor:nesw-resize; }
 .vs-h-n{ left:calc(50% - 5px); top:-6px; cursor:ns-resize; } .vs-h-s{ left:calc(50% - 5px); bottom:-6px; cursor:ns-resize; }
 .vs-h-w{ left:-6px; top:calc(50% - 5px); cursor:ew-resize; } .vs-h-e{ right:-6px; top:calc(50% - 5px); cursor:ew-resize; }
+
+/* ── v3.13 · Vessel Setup: vessel picker, new vessel, locations ───── */
+.vs-panel [hidden]{ display:none !important; }
+.vs-edit{ display:flex; flex-direction:column; gap:16px; }
+.vs-vessel-bar{ padding-bottom:12px; border-bottom:1px solid var(--vs-line); }
+.vs-vessel-row{ display:flex; gap:6px; }
+.vs-vessel-row .vs-select{ flex:1; min-width:0; height:32px; font-weight:700; }
+.vs-hint{ font-size:11px; color:var(--diff-ch, #d97706); font-weight:600; }
+.vs-new{ padding:12px; border-radius:12px; border:1px solid var(--vs-line); background:var(--vs-field); }
+.vs-new .vs-field input{ height:34px; font-size:14px; }
+.vs-btn-primary{ background:var(--acc); border-color:var(--acc); color:#fff; flex:1; }
+.vs-btn-primary:hover{ color:#fff; filter:brightness(1.08); }
+.vs-btn-danger{ color:#dc2626; }
+.vs-btn-danger:hover{ border-color:#dc2626; color:#dc2626; }
+.vs-btn-danger.armed{ background:#dc2626; border-color:#dc2626; color:#fff; }
+.vs-btn:disabled{ opacity:.45; cursor:default; }
+.vs-note-sm{ font-size:10.5px; margin-top:-4px; }
+.vs-locs{ display:flex; flex-direction:column; gap:6px; }
+.vs-loc{ display:flex; flex-direction:column; gap:4px; padding:6px; border-radius:9px; background:var(--vs-field); border:1px solid var(--vs-line); }
+.vs-loc-top{ display:grid; grid-template-columns:1fr 112px 26px 26px; gap:6px; align-items:center; }
+.vs-loc input[type="text"], .vs-loc select{
+  height:28px; box-sizing:border-box; width:100%; min-width:0; padding:0 8px; border-radius:7px;
+  border:1px solid var(--vs-line); background:var(--surf); color:var(--txt);
+  font:600 12px/1 'Inter',system-ui,sans-serif; outline:none;
+}
+[data-theme="dark"] .vs-loc input[type="text"], [data-theme="dark"] .vs-loc select{ background:rgba(255,255,255,.04); }
+.vs-loc input:focus, .vs-loc select:focus{ border-color:var(--acc); }
+.vs-loc-alias{ font-family:'JetBrains Mono',ui-monospace,monospace !important; font-size:11px !important; color:var(--txt2) !important; }
+.vs-loc-head{ display:grid; grid-template-columns:1fr 112px 26px 26px; gap:6px; padding:0 7px; font-size:10px; font-weight:700; color:var(--txt3); letter-spacing:.3px; }
+.vs-loc-head span:nth-child(3){ text-align:center; }

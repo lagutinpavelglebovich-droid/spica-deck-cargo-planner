@@ -212,16 +212,26 @@ let ADMIN_ACTIVE = false;
    Printed on the PDF header brand mark and the footer. Empty = none. */
 const CHARTERER_KEY = 'spicaTide_charterer';
 const CHARTERER_DEFAULT = 'NeoNext';
+/* v3.13 — the charterer belongs to the vessel profile. */
 function getCharterer(){
-  try{
-    const v = localStorage.getItem(CHARTERER_KEY);
-    return v === null ? CHARTERER_DEFAULT : v;
-  }catch(e){ return CHARTERER_DEFAULT; }
+  return (typeof VESSEL !== 'undefined' && VESSEL) ? (VESSEL.charterer || '') : CHARTERER_DEFAULT;
 }
 function setCharterer(name){
   const v = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 28);
-  try{ localStorage.setItem(CHARTERER_KEY, v); }catch(e){}
+  VESSEL.charterer = v;
+  vesselPut(VESSEL);
   return v;
+}
+/* v3.11.1 kept the charterer per installation — move it into SPICA TIDE. */
+function _syncChartererMigration(){
+  let old = null;
+  try{ old = localStorage.getItem(CHARTERER_KEY); }catch(e){}
+  if(old === null) return;
+  const sp = vesselGet('spica-tide');
+  sp.charterer = old;
+  vesselPut(normaliseVesselProfile(sp));
+  if(VESSEL && VESSEL.id === 'spica-tide') VESSEL.charterer = old;
+  try{ localStorage.removeItem(CHARTERER_KEY); }catch(e){}
 }
 function charterOpenModal(){
   if(!isOperator()){ if(typeof showToast === 'function') showToast('Switch to Operator mode to change the charterer', 'warn'); return; }
@@ -726,6 +736,8 @@ function spicaTideProfile(){
     /* Bay 1 is excluded from Deck Used (store + no-DG bow bay). */
     bays: SPICA_TIDE_BAYS_M.map((l, i) => ({ l, usable: i < 11 })),
     maxLoadT: 2500, maxPressureT: 10, deckAreaM2: 752,
+    charterer: 'NeoNext',
+    locations: spicaTideLocations(),
     zones,
     lashing: { dollies:[0,2,3,6,9,10,12], drings:[1,4,7,11] },
   };
@@ -752,6 +764,8 @@ function normaliseVesselProfile(p){
     maxLoadT: Math.round(num(p.maxLoadT, 1, 20000, 2500)),
     maxPressureT: _r4(num(p.maxPressureT, 0.5, 100, 10)),
     deckAreaM2: Math.round(num(p.deckAreaM2, 0, 5000, 0)),
+    charterer: p.charterer == null ? '' : String(p.charterer).replace(/\s+/g, ' ').trim().slice(0, 28),
+    locations: _normaliseLocations(p.locations),
     zones: [],
     lashing: { dollies:[], drings:[] },
   };
@@ -775,11 +789,35 @@ function normaliseVesselProfile(p){
   return out;
 }
 
+/* Locations: {id, name, type:'platform'|'fpso', fixed (always grey),
+   aliases:[ASCO sheet names], c, grp}. Missing list → SPICA TIDE's. */
+const LOC_COLOR_CYCLE = ['#1d4ed8','#c0392b','#1e8449','#be185d','#0e7490','#c27b00','#7c3aed','#6b7a00','#d35400','#148f6e'];
+function _normaliseLocations(list){
+  if(!Array.isArray(list)) return spicaTideLocations();
+  const seen = new Set(), out = [];
+  list.slice(0, 80).forEach((l, k) => {
+    if(!l || !String(l.name || '').trim()) return;
+    let id = String(l.id || '').toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 16) || ('LOC' + k);
+    while(seen.has(id)) id += '_';
+    seen.add(id);
+    const o = { id, name: String(l.name).replace(/\s+/g, ' ').trim().slice(0, 32),
+      type: l.type === 'fpso' ? 'fpso' : 'platform',
+      c: /^#[0-9a-f]{6}$/i.test(l.c || '') ? l.c : LOC_COLOR_CYCLE[k % LOC_COLOR_CYCLE.length],
+      aliases: (Array.isArray(l.aliases) ? l.aliases : String(l.aliases || '').split(','))
+        .map(a => String(a).replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean).slice(0, 12) };
+    if(l.fixed) o.fixed = true;
+    if(l.grp) o.grp = String(l.grp).slice(0, 16);
+    out.push(o);
+  });
+  return out.length ? out : spicaTideLocations();
+}
+
 /* Make a profile the active geometry. Does NOT redraw — callers that
    change the profile at runtime call redrawDeck() afterwards. */
 function applyVesselGeometry(profile){
   const p = normaliseVesselProfile(profile) || spicaTideProfile();
   VESSEL = p;
+  LOC_ALL = p.locations.map(l => Object.assign({}, l, { aliases: l.aliases.slice() }));
   _computeGeometry(p.bays.map(b => b.l), p.jointM, p.deckWidthM);
   ZONES_PX = p.zones.map(z => Object.assign({ id:z.id, type:z.type, label:z.label }, _zoneMToPx(z),
     z.r != null ? { r: Math.round(z.r * M) } : {}));
@@ -802,13 +840,45 @@ function applyVesselGeometry(profile){
 function usableWidthPx(x, w){
   return USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + Math.max(0, Math.min(x + w, u1) - Math.max(x, u0)), 0);
 }
+/* ── v3.13 — several vessels per installation ────────────────────────
+   spicaTide_vessels      = { [id]: profile }   (SPICA TIDE built in)
+   spicaTide_vesselActive = id of the vessel in use
+   (v3.12 stored a single profile under spicaTide_vessel — migrated.) */
+const VESSELS_STORE_KEY = 'spicaTide_vessels';
+const VESSEL_ACTIVE_KEY = 'spicaTide_vesselActive';
+function _vesselStore(){
+  let st = {};
+  try{ st = JSON.parse(localStorage.getItem(VESSELS_STORE_KEY) || '{}') || {}; }catch(e){}
+  return (st && typeof st === 'object') ? st : {};
+}
+function _vesselStoreWrite(st){ try{ localStorage.setItem(VESSELS_STORE_KEY, JSON.stringify(st)); }catch(e){} }
+function vesselGet(id){
+  const st = _vesselStore();
+  if(st[id]) return st[id];
+  return id === 'spica-tide' ? spicaTideProfile() : null;
+}
+function vesselPut(p){ const st = _vesselStore(); st[p.id] = p; _vesselStoreWrite(st); }
+function vesselRemove(id){ const st = _vesselStore(); delete st[id]; _vesselStoreWrite(st); }
+function vesselList(){
+  const st = _vesselStore();
+  if(!st['spica-tide']) st['spica-tide'] = { id:'spica-tide', name:'SPICA TIDE' };
+  return Object.values(st).map(p => ({ id:p.id, name:p.name || p.id }))
+    .sort((a, b) => (a.id === 'spica-tide' ? -1 : b.id === 'spica-tide' ? 1 : a.name.localeCompare(b.name)));
+}
+function _activeVesselId(){ try{ return localStorage.getItem(VESSEL_ACTIVE_KEY) || 'spica-tide'; }catch(e){ return 'spica-tide'; } }
+function _setActiveVesselId(id){ try{ localStorage.setItem(VESSEL_ACTIVE_KEY, id); }catch(e){} }
 /* Saved profile → active at module load (before the first canvas draw). */
 function loadVesselProfile(){
-  let saved = null;
-  try{ saved = JSON.parse(localStorage.getItem(VESSEL_STORE_KEY) || 'null'); }catch(e){}
-  return applyVesselGeometry(saved || spicaTideProfile());
+  try{
+    const legacy = JSON.parse(localStorage.getItem(VESSEL_STORE_KEY) || 'null');
+    if(legacy && legacy.bays){
+      const p = normaliseVesselProfile(legacy);
+      if(p){ if(String(p.id).indexOf('custom-') === 0 && p.name === 'SPICA TIDE') p.id = 'spica-tide'; vesselPut(p); _setActiveVesselId(p.id); }
+      localStorage.removeItem(VESSEL_STORE_KEY);
+    }
+  }catch(e){}
+  return applyVesselGeometry(vesselGet(_activeVesselId()) || spicaTideProfile());
 }
-loadVesselProfile();
 
 /* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
 const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
@@ -838,6 +908,17 @@ function isDark(hex){const[r,g,b]=h2r(hex);return(r*299+g*587+b*114)/1000<155;}
 function darken(hex,t){return mixHex(hex,'#000000',t);}
 function lighten(hex,t){return mixHex(hex,'#ffffff',t);}
 function locById(id){return LOC_ALL.find(l=>l.id===id) || S.customLocs.find(l=>l.id===id);}
+/* Location with the fixed grey family (Bleo Holm on SPICA TIDE). */
+function _isGreyLoc(id){ const l = LOC_ALL.find(x => x.id === id); return !!(l && l.fixed); }
+/* First location of the vessel — fallback for new cargo / imports. */
+function _defaultLocId(){ return (LOC_ALL[0] && LOC_ALL[0].id) || 'BLEO'; }
+/* Keep the plan's active locations valid for the active vessel. */
+function _syncLocsToVessel(){
+  const ok = id => !!locById(id);
+  S.activeLocs = (S.activeLocs || []).filter(ok);
+  if(!S.activeLocs.length && LOC_ALL.length) S.activeLocs = LOC_ALL.slice(0, Math.min(2, LOC_ALL.length)).map(l => l.id);
+  if(!ok(S.selLoc)) S.selLoc = S.activeLocs[0] || _defaultLocId();
+}
 
 /* ── Premium Palette Pool ────────────────────────────────────
    30 high-quality, strongly distinct base colours.
@@ -904,7 +985,7 @@ function palDist(p1, p2){
    so they stay related but still separated from each other.
    The 'pool' field = ordered list of PALETTE_POOL indices to prefer,
    tried in order until the best-contrast one is found at runtime.     */
-const LOC_ALL=[
+const SPICA_TIDE_LOCS=[
   /* Bleo Holm — ALWAYS grey, operational rule, no dynamic assignment */
   {id:'BLEO',      name:'Bleo Holm',      c:'#9aa0a8', fixed:true, type:'fpso'},
   /* Claymore group — violet/purple/indigo family */
@@ -927,6 +1008,24 @@ const LOC_ALL=[
   {id:'ARBR',      name:'Arbroath',       c:'#148f6e', type:'platform'},  // teal-green
   {id:'GP3',       name:'GP3',            c:'#e67e22', type:'fpso'},  // warm orange
 ];
+/* ASCO sheet-name aliases for the built-in locations (was the ordered
+   KEYWORD_MAP; matching now takes the LONGEST alias that fits, which
+   reproduces the old "specific before generic" order). */
+const SPICA_TIDE_LOC_ALIASES = {
+  CLAY_WOP:['CLAYMORE WOPS','CLAY WOPS'], CLAY_CPP:['CLAYMORE CPP','CLAY CPP'],
+  CLAY_CAP:['CLAYMORE CAP','CLAY CAP','CLAYMORE'], CLAY_DRL:['CLAYMORE DRILL','CLAY DRILL','CLAYMORE DRILLING'],
+  PIPER_WOP:['PIPER WOPS','PIPER WOP'], PIPER_DR:['PIPER DRILL','PIPER DR'], PIPER:['PIPER'],
+  SALT:['SALTIRE','SALT'], TART:['TARTAN','TART'], BEAT:['BEATRICE','BEAT'], CLYDE:['CLYDE'],
+  FULMAR:['FULMAR'], ARBR:['ARBROATH','ARBR'], MONTR:['MONTROSE','MONTR'], BLEO:['BLEO'], GP3:['GP3'], AUK:['AUK'],
+};
+function spicaTideLocations(){
+  return SPICA_TIDE_LOCS.map(l => Object.assign({}, l, { aliases: (SPICA_TIDE_LOC_ALIASES[l.id] || []).slice() }));
+}
+/* Locations of the active vessel (set by applyVesselGeometry). */
+let LOC_ALL = spicaTideLocations();
+/* The vessel profile can only be applied once the location list exists. */
+loadVesselProfile();
+_syncChartererMigration();
 
 /* ── Dynamic colour assignment ───────────────────────────────
    Holds runtime-assigned palette entries per location.
@@ -945,7 +1044,7 @@ function getLocBase(locId){
    Picks the palette entry with maximum distance from all already-
    active locations' assigned entries.                           */
 function assignLocColor(locId){
-  if(locId === 'BLEO') return;               // always fixed grey
+  if(_isGreyLoc(locId)) return;              // always fixed grey
   if(DYN_COLORS[locId]) return;              // already assigned
   const loc = locById(locId);
   if(!loc) return;
@@ -1085,7 +1184,7 @@ function _assignCargoColor(locId, status){
 /* Business rule: Bleo Holm LOAD is ALWAYS grey. Everything else is
    assigned uniquely per (location, status) from the shared pool. */
 function opColor(locId, status){
-  if(locId === 'BLEO' && status === 'L') return '#b8bcc2';
+  if(_isGreyLoc(locId) && status === 'L') return '#b8bcc2';
   /* Manual per-(location, status) override from the Bloom Picker.
      Pills and deck blocks both resolve through here, so they always
      match. Absent override → existing auto pool assignment. */
@@ -1096,7 +1195,7 @@ function opColor(locId, status){
 
 function locColors(base, locId){
   /* Bleo Holm: operational fixed grey family */
-  if(locId === 'BLEO') return {
+  if(_isGreyLoc(locId)) return {
     L:   '#b8bcc2',   // light cool grey → Load
     BL:  '#4a7fa5',   // steel blue      → Backload (strongly different)
     ROB: '#b8935a',   // warm sandy gold → ROB (strongly different)
@@ -2256,7 +2355,8 @@ function vesselSetupOpen(){
   if(typeof inspClose === 'function') inspClose();
   if(typeof CP_OPEN !== 'undefined' && CP_OPEN && typeof cpClose === 'function') cpClose();
   if(typeof kbDeselect === 'function') kbDeselect();
-  VS = { draft: _vsClone(VESSEL), orig: JSON.stringify(VESSEL), sel: null };
+  VS = { draft: _vsClone(VESSEL), orig: JSON.stringify(VESSEL), loaded: null, sel: null, mode: 'edit', delArm: false };
+  VS.loaded = JSON.stringify(VS.draft);
   _vsBind();
   document.body.classList.add('vessel-setup');
   const panel = document.getElementById('vsPanel');
@@ -2278,27 +2378,26 @@ function vesselSetupCancel(){
   if(!VS) return;
   applyVesselGeometry(JSON.parse(VS.orig));
   _vsClose();
+  _refreshLocUI();
   redrawDeck();
 }
+function _vsDirty(){ return !!VS && JSON.stringify(VS.draft) !== VS.loaded; }
 
 function vesselSetupSave(){
-  if(!VS) return;
-  const prevName = JSON.parse(VS.orig).name;
-  const p = applyVesselGeometry(VS.draft);
-  if(p.builtin && JSON.stringify(_vsComparable(p)) !== JSON.stringify(_vsComparable(spicaTideProfile()))){
-    p.builtin = false; p.id = 'custom-' + Date.now().toString(36);
+  if(!VS || VS.mode !== 'edit') return;
+  const p = normaliseVesselProfile(VS.draft);
+  /* Never orphan cargo: every location used on deck must still exist. */
+  const ids = new Set([...p.locations.map(l => l.id), ...S.customLocs.map(l => l.id)]);
+  const orphan = S.cargo.filter(c => c.platform && !ids.has(c.platform));
+  if(orphan.length){
+    showToast(`${orphan.length} cargo on deck belong to a deleted location — put it back or move the cargo first`, 'warn');
+    return;
   }
-  try{ localStorage.setItem(VESSEL_STORE_KEY, JSON.stringify(p)); }catch(e){}
-  /* Header wordmark follows the vessel name when it was showing the old one. */
-  if(SPICA_CONFIG.BRAND.name === prevName && p.name !== prevName){
-    SPICA_CONFIG.BRAND.name = p.name;
-    try{ localStorage.setItem('spicaTide_brand', JSON.stringify(SPICA_CONFIG.BRAND)); }catch(e){}
-    if(typeof applyBrandLabels === 'function') applyBrandLabels();
-  }
+  vesselPut(p);
   _vsClose();
-  redrawDeck();
+  activateVessel(p.id, { quiet:true });
   const out = S.cargo.filter(c => c.x + c.w > TW + 1 || c.y + c.h > CVH + 1).length;
-  showToast(out ? `Vessel saved — ${out} cargo now outside the deck, move them in` : `Vessel saved — ${p.name}`, out ? 'warn' : 'ok');
+  showToast(out ? `${p.name} saved — ${out} cargo now outside the deck, move them in` : `${p.name} saved and in use`, out ? 'warn' : 'ok');
 }
 function _vsComparable(p){ const c = _vsClone(p); delete c.id; delete c.builtin; delete c.name; return c; }
 
@@ -2324,7 +2423,8 @@ function _vsApply(opts = {}){
   }
   if(typeof updateStats === 'function') updateStats();
   _vsDrawLayer();
-  if(!opts.keepPanel) _vsRenderPanel(); else _vsRenderMeta();
+  VS.delArm = false;
+  if(!opts.keepPanel) _vsRenderPanel(); else { _vsRenderMeta(); _vsRenderVesselBar(); }
 }
 
 /* ── Panel ─────────────────────────────────────────────────────────── */
@@ -2335,11 +2435,106 @@ function _vsRenderMeta(){
   document.getElementById('vsBaysMeta').textContent = `${d.bays.length} bays · ${_fmtM2(DECK_LENGTH_M)} m`;
   document.getElementById('vsZonesMeta').textContent = d.zones.length ? String(d.zones.length) : '';
 }
+function _vsRenderVesselBar(){
+  const sel = document.getElementById('vsVesselSel');
+  const list = vesselList();
+  if(VS.draft && !list.some(v => v.id === VS.draft.id)) list.push({ id: VS.draft.id, name: VS.draft.name + ' (new)' });
+  sel.innerHTML = list.map(v => `<option value="${escHtml(v.id)}">${escHtml(v.name)}${v.id === _activeVesselId() ? '  ·  in use' : ''}</option>`).join('');
+  sel.value = VS.draft.id;
+  const newMode = VS.mode === 'new';
+  document.getElementById('vsNewSec').hidden = !newMode;
+  document.getElementById('vsEditSecs').hidden = newMode;
+  document.getElementById('vsFoot').hidden = newMode;
+  document.getElementById('vsNewVessel').disabled = newMode;
+  sel.disabled = newMode;
+  const save = document.getElementById('vsSave');
+  if(save) save.textContent = VS.draft.id === _activeVesselId() && VS.loaded !== null ? 'Save' : 'Save & use this vessel';
+  const del = document.getElementById('vsDelete');
+  if(del){
+    del.hidden = VS.draft.id === 'spica-tide';
+    del.textContent = VS.delArm ? 'Click again to delete' : 'Delete vessel';
+    del.classList.toggle('armed', !!VS.delArm);
+  }
+  const rs = document.getElementById('vsReset');
+  if(rs) rs.hidden = VS.draft.id !== 'spica-tide';
+}
+function _vsRenderLocs(){
+  const d = VS.draft;
+  const box = document.getElementById('vsLocs');
+  box.innerHTML = '';
+  d.locations.forEach((l, i) => {
+    const used = S.cargo.filter(c => c.platform === l.id).length;
+    const row = document.createElement('div');
+    row.className = 'vs-loc';
+    row.innerHTML = `<div class="vs-loc-top">
+        <input type="text" class="vs-loc-name" maxlength="32" aria-label="Location name">
+        <select class="vs-loc-type" aria-label="Type"><option value="platform">Platform</option><option value="fpso">FPSO</option></select>
+        <label class="vs-chk" title="Always grey (like Bleo Holm)"><input type="checkbox" class="vs-loc-grey" ${l.fixed ? 'checked' : ''}><i></i></label>
+        <button type="button" class="vs-del" title="${used ? used + ' cargo on deck — cannot delete' : 'Delete location'}" ${used ? 'disabled' : ''}>×</button>
+      </div>
+      <input type="text" class="vs-loc-alias" placeholder="ASCO names, e.g. ${escHtml((l.name || 'NAME').toUpperCase())}" aria-label="ASCO names">`;
+    const nm = row.querySelector('.vs-loc-name'), ty = row.querySelector('.vs-loc-type'),
+          gr = row.querySelector('.vs-loc-grey'), al = row.querySelector('.vs-loc-alias');
+    nm.value = l.name; ty.value = l.type; al.value = (l.aliases || []).join(', ');
+    const loc = () => VS && VS.draft.locations[i];
+    nm.addEventListener('change', () => { const L = loc(); if(L && nm.value.trim()){ L.name = nm.value.trim(); _vsApply({ keepPanel:true }); } else nm.value = L ? L.name : ''; });
+    ty.addEventListener('change', () => { const L = loc(); if(L){ L.type = ty.value; _vsApply({ keepPanel:true }); } });
+    gr.addEventListener('change', () => { const L = loc(); if(L){ if(gr.checked) L.fixed = true; else delete L.fixed; _vsApply({ keepPanel:true }); } });
+    al.addEventListener('change', () => { const L = loc(); if(L){ L.aliases = al.value.split(',').map(a => a.trim().toUpperCase()).filter(Boolean); _vsApply({ keepPanel:true }); } });
+    row.querySelector('.vs-del').addEventListener('click', () => {
+      if(VS.draft.locations.length < 2) return showToast('A vessel needs at least one location', 'warn');
+      VS.draft.locations.splice(i, 1); _vsApply();
+    });
+    box.appendChild(row);
+  });
+  document.getElementById('vsLocsMeta').textContent = String(d.locations.length);
+}
+function _vsAddLocation(){
+  const d = VS.draft;
+  const taken = new Set([...d.locations.map(l => l.id), ...S.customLocs.map(l => l.id)]);
+  let n = d.locations.length + 1, id;
+  do { id = 'LOC' + (n++); } while(taken.has(id));
+  d.locations.push({ id, name: 'New location', type: 'platform', aliases: [], c: LOC_COLOR_CYCLE[d.locations.length % LOC_COLOR_CYCLE.length] });
+  _vsApply();
+  const rows = document.querySelectorAll('#vsLocs .vs-loc-name');
+  const last = rows[rows.length - 1];
+  if(last){ last.scrollIntoView({ block:'nearest', behavior:'smooth' }); last.focus(); last.select(); }
+}
+function _vsStartNew(){
+  if(_vsDirty()){ document.getElementById('vsDirtyHint').hidden = false; return; }
+  VS.mode = 'new';
+  _vsRenderVesselBar();
+  const n = document.getElementById('vsNewName'); n.value = ''; setTimeout(() => n.focus(), 50);
+}
+function _vsCreateVessel(){
+  const name = document.getElementById('vsNewName').value.replace(/\s+/g, ' ').trim();
+  if(!name){ document.getElementById('vsNewName').focus(); return showToast('Enter the vessel name first', 'warn'); }
+  if(vesselList().some(v => v.name.toUpperCase() === name.toUpperCase())) return showToast(`${name} is already set up — pick it from the list`, 'warn');
+  const from = document.querySelector('#vsNewFrom button.sel')?.dataset.v || 'copy';
+  const base = VS.draft;
+  const id = 'v-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) + '-' + Date.now().toString(36);
+  let p;
+  if(from === 'blank'){
+    p = { id, name, deckWidthM: 15, jointM: 0, bay1At: 'bow', bays: Array.from({ length: 10 }, () => ({ l: 5, usable: true })),
+          maxLoadT: 1000, maxPressureT: 5, deckAreaM2: 0, charterer: '', zones: [], lashing: { dollies: [], drings: [] },
+          locations: _vsClone(base.locations) };
+  } else {
+    p = Object.assign(_vsClone(base), { id, name, builtin: false });
+  }
+  VS.draft = normaliseVesselProfile(p);
+  VS.loaded = null;          /* new — unsaved */
+  VS.mode = 'edit'; VS.sel = null; VS.delArm = false;
+  _vsApply();
+  showToast(`${name} created — set it up, then Save`, 'ok');
+}
+
 function _vsRenderPanel(){
   if(!VS) return;
+  _vsRenderVesselBar();
+  if(VS.mode === 'new') return;
   const d = VS.draft;
   const set = (id, v) => { const el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
-  set('vsName', d.name); set('vsWidth', _vsF(d.deckWidthM)); set('vsJoint', _vsF(d.jointM));
+  set('vsName', d.name); set('vsCharterer', d.charterer || ''); set('vsWidth', _vsF(d.deckWidthM)); set('vsJoint', _vsF(d.jointM));
   set('vsMaxLoad', d.maxLoadT); set('vsMaxP', +(+d.maxPressureT).toFixed(2)); set('vsArea', d.deckAreaM2 || 0);
   document.querySelectorAll('#vsBay1At button').forEach(b => b.classList.toggle('sel', b.dataset.v === d.bay1At));
 
@@ -2409,6 +2604,7 @@ function _vsRenderPanel(){
   });
   const ts = document.getElementById('vsZoneType');
   if(ts && !ts.options.length) ts.innerHTML = Object.entries(ZONE_TYPES).map(([k,t]) => `<option value="${k}">${t.name}</option>`).join('');
+  _vsRenderLocs();
   _vsRenderMeta();
 }
 
@@ -2611,7 +2807,7 @@ function _vsLoadText(txt, name){
   let p = null;
   try{ p = normaliseVesselProfile(JSON.parse(txt)); }catch(e){}
   if(!p) return showToast('Not a vessel profile' + (name ? ': ' + name : ''), 'warn');
-  VS.draft = p; VS.sel = null;
+  VS.draft = p; VS.sel = null; VS.loaded = null;
   _vsApply();
   showToast(`Loaded ${p.name} — press Save to keep it`, 'ok');
 }
@@ -2669,8 +2865,37 @@ function _vsBind(){
     e.target.value = '';
   });
   on('vsReset', 'click', () => {
-    VS.draft = spicaTideProfile(); VS.sel = null; _vsApply();
-    showToast('SPICA TIDE layout restored — press Save to keep it', 'ok');
+    const keep = { name: VS.draft.name, charterer: VS.draft.charterer, locations: VS.draft.locations };
+    VS.draft = Object.assign(spicaTideProfile(), keep); VS.sel = null; _vsApply();
+    showToast('Measured SPICA TIDE deck restored — press Save to keep it', 'ok');
+  });
+  on('vsCharterer', 'change', e => { VS.draft.charterer = e.target.value.replace(/\s+/g, ' ').trim(); _vsApply({ keepPanel:true }); });
+  on('vsAddLoc', 'click', _vsAddLocation);
+  on('vsVesselSel', 'change', e => {
+    const id = e.target.value;
+    if(id === VS.draft.id) return;
+    if(_vsDirty()){ e.target.value = VS.draft.id; document.getElementById('vsDirtyHint').hidden = false; return; }
+    const p = vesselGet(id); if(!p) return;
+    document.getElementById('vsDirtyHint').hidden = true;
+    VS.draft = normaliseVesselProfile(p); VS.loaded = JSON.stringify(VS.draft); VS.sel = null;
+    _vsApply();
+  });
+  on('vsNewVessel', 'click', _vsStartNew);
+  on('vsNewCancel', 'click', () => { VS.mode = 'edit'; _vsRenderPanel(); });
+  on('vsNewCreate', 'click', _vsCreateVessel);
+  on('vsNewName', 'keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); _vsCreateVessel(); } });
+  document.querySelectorAll('#vsNewFrom button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#vsNewFrom button').forEach(x => x.classList.toggle('sel', x === b));
+  }));
+  on('vsDelete', 'click', () => {
+    if(!VS || VS.draft.id === 'spica-tide') return;
+    if(!VS.delArm){ VS.delArm = true; _vsRenderVesselBar(); return; }
+    const gone = VS.draft.name, wasActive = VS.draft.id === _activeVesselId();
+    vesselRemove(VS.draft.id);
+    if(wasActive){ _setActiveVesselId('spica-tide'); VS.orig = JSON.stringify(normaliseVesselProfile(vesselGet('spica-tide'))); }
+    VS.draft = normaliseVesselProfile(JSON.parse(VS.orig)); VS.loaded = JSON.stringify(VS.draft); VS.sel = null;
+    _vsApply();
+    showToast(`${gone} deleted`, 'ok');
   });
   /* Keyboard: Delete removes the selected zone, Esc deselects / cancels;
      every other deck shortcut is held off while the mode is open. */
@@ -3031,6 +3256,7 @@ function clearLocFilter(){
 }
 
 function buildActiveLocStrip(){
+  _syncLocsToVessel();   /* v3.13 — drop locations the vessel no longer has */
   const strip=document.getElementById('activeLocStrip');
   const cnt=document.getElementById('locsCount');
   cnt.textContent=S.activeLocs.length;
@@ -3114,7 +3340,7 @@ function buildActiveLocStrip(){
              keeps bubbling to the card's location-filter toggle
              (pre-existing behaviour, unchanged). BLEO Load is excluded:
              fixed grey is an operational rule, not overridable. */
-          if(!(id === 'BLEO' && s.key === 'L')){
+          if(!(_isGreyLoc(id) && s.key === 'L')){
             pill.addEventListener('click', e => {
               if(!isOperator()) return;
               e.stopPropagation();
@@ -3542,7 +3768,7 @@ function _placeAtCore(cx,cy){
     rot:0,               /* 0=original, 1=90°, 2=180°, 3=270° */
     ccu:'',desc:it.name||it.nm||'',
     wt:isC?it.wt:0,
-    platform:S.selLoc||(S.activeLocs[0]||'BLEO'),
+    platform:S.selLoc||(S.activeLocs[0]||_defaultLocId()),
     status:'L',
     dgClasses:p.type==='dg'?[it.cls]:[],
     priority:false,
@@ -6055,7 +6281,7 @@ function bindModal(){
     c.desc=newDesc;
     c.wt=parseFloat(document.getElementById('mWT').value)||0;
     const sl=document.getElementById('mLocGrid').querySelector('.mdl-loc.sel');
-    c.platform=sl?sl.dataset.lid:(S.selLoc||S.activeLocs[0]||'BLEO');
+    c.platform=sl?sl.dataset.lid:(S.selLoc||S.activeLocs[0]||_defaultLocId());
     ensureLocActive(c.platform);   /* keep a location chosen in the editor in the active strip */
     c.status=modalSt||'L';
     c.dgClasses=[..._dgMultiSelected];
@@ -6785,7 +7011,8 @@ function _buildEnvelope() {
       cargoColors: CARGO_COLORS,
       locColors:  S.locColors,
       voyRemarks: S.voyRemarks || '',
-      zoomLevel:  zoomLevel
+      zoomLevel:  zoomLevel,
+      vessel:     VESSEL ? { id: VESSEL.id, name: VESSEL.name } : null
     }
   };
 }
@@ -6884,6 +7111,7 @@ async function openPlanFromFile() {
     const d = envelope.plan;
     if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
+    _vesselForPlan(d);
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
     if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
@@ -6931,6 +7159,7 @@ async function openRecentFile(path) {
     const d = envelope.plan;
     if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
+    _vesselForPlan(d);
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
     if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
@@ -7055,6 +7284,7 @@ function _applyProjectData(jsonString, fileName) {
     const d = envelope.plan;
     if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
+    _vesselForPlan(d);
     if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
     if (d.voyage) document.getElementById('voyIn').value = d.voyage;
     if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
@@ -7104,6 +7334,43 @@ function _showScaleWarning() {
 
 /* ── Public API ────────────────────────────────────────── */
 
+/* v3.13 — a plan opened from a file belongs to a vessel: switch to that
+   vessel when it is set up here, warn when it is not. */
+function _vesselForPlan(d){
+  const v = d && d.vessel;
+  if(!v || !v.id || !VESSEL || v.id === VESSEL.id) return;
+  const p = vesselGet(v.id);
+  if(p){
+    activateVessel(v.id, { quiet:true });
+    showToast(`Switched to ${p.name} — this plan was made for it`, 'info');
+  } else {
+    showToast(`This plan was made for ${v.name || v.id}, which is not set up on this computer`, 'warn');
+  }
+}
+/* Make a saved vessel the one in use: geometry, locations, charterer,
+   header name; redraw the deck and the location UI. */
+function activateVessel(id, opts = {}){
+  const p = vesselGet(id);
+  if(!p) return false;
+  applyVesselGeometry(p);
+  _setActiveVesselId(VESSEL.id);
+  if(SPICA_CONFIG.BRAND.name !== VESSEL.name){
+    SPICA_CONFIG.BRAND.name = VESSEL.name;
+    try{ localStorage.setItem('spicaTide_brand', JSON.stringify(SPICA_CONFIG.BRAND)); }catch(e){}
+    if(typeof applyBrandLabels === 'function') applyBrandLabels();
+  }
+  _refreshLocUI();
+  redrawDeck();
+  if(!opts.quiet) showToast(`Vessel: ${VESSEL.name}`, 'ok');
+  return true;
+}
+function _refreshLocUI(){
+  _syncLocsToVessel();
+  if(typeof initDynColors === 'function') initDynColors();
+  if(typeof buildLocGrid === 'function') buildLocGrid();
+  if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip();
+}
+
 function savePlan(key) {
   key = key || PLAN_DEFAULT_KEY;
   const envelope = {
@@ -7123,7 +7390,8 @@ function savePlan(key) {
       cargoColors: CARGO_COLORS,
       locColors:  S.locColors,
       voyRemarks: S.voyRemarks || '',
-      loadList:   S.loadList || null
+      loadList:   S.loadList || null,
+      vessel:     VESSEL ? { id: VESSEL.id, name: VESSEL.name } : null
     }
   };
   _planAdapter.save(key, envelope);
@@ -7459,55 +7727,24 @@ function _matchImportedLocId(displayName){
   const norm = s => String(s).toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
   const dn = norm(displayName);
 
-  /* ── Priority keyword table ─────────────────────────────────────────────
-     Entries are checked in order; first substring match wins.
-     More specific entries must come before broader ones.                  */
-  const KEYWORD_MAP = [
-    /* Claymore sub-locations */
-    { keys:['CLAYMORE WOPS','CLAY WOPS'],              id:'CLAY_WOP' },
-    { keys:['CLAYMORE CPP','CLAY CPP'],                id:'CLAY_CPP' },
-    { keys:['CLAYMORE CAP','CLAY CAP'],                id:'CLAY_CAP' },
-    { keys:['CLAYMORE DRILL','CLAY DRILL','CLAYMORE DRILLING'], id:'CLAY_DRL' },
-    { keys:['CLAYMORE'],                               id:'CLAY_CAP' }, // generic Claymore → CAP
-    /* Piper sub-locations */
-    { keys:['PIPER WOPS','PIPER WOP'],                 id:'PIPER_WOP' },
-    { keys:['PIPER DRILL','PIPER DR'],                 id:'PIPER_DR'  },
-    { keys:['PIPER'],                                  id:'PIPER'     },
-    /* Individuals */
-    { keys:['SALTIRE','SALT'],                         id:'SALT'  },
-    { keys:['TARTAN','TART'],                          id:'TART'  },
-    { keys:['BEATRICE','BEAT'],                        id:'BEAT'  },
-    { keys:['CLYDE'],                                  id:'CLYDE' },
-    { keys:['FULMAR'],                                 id:'FULMAR'},
-    { keys:['ARBROATH','ARBR'],                        id:'ARBR'  },
-    { keys:['MONTROSE','MONTR'],                       id:'MONTR' },
-    { keys:['BLEO'],                                   id:'BLEO'  },
-    { keys:['GP3'],                                    id:'GP3'   },
-    { keys:['AUK'],                                    id:'AUK'   },
-  ];
-
-  let resolvedId = null;
-
-  /* 1. Keyword table — substring check against normalised displayName */
-  for(const entry of KEYWORD_MAP){
-    if(entry.keys.some(k => dn.includes(norm(k)))){
-      resolvedId = entry.id;
-      break;
-    }
-  }
-
-  /* 2. Fallback: direct LOC_ALL or customLocs name match */
-  if(!resolvedId){
-    const direct = [...LOC_ALL, ...S.customLocs].find(l => norm(l.name) === dn || dn.includes(norm(l.name)));
-    if(direct) resolvedId = direct.id;
-  }
+  /* v3.13 — aliases live on each location (vessel profile). The LONGEST
+     alias / name contained in the sheet name wins, so "CLAYMORE WOPS"
+     beats "CLAYMORE" exactly as the old ordered keyword table did. */
+  let resolvedId = null, bestLen = 0;
+  [...LOC_ALL, ...S.customLocs].forEach(l => {
+    const keys = [...(l.aliases || []), l.name];
+    keys.forEach(k => {
+      const nk = norm(k);
+      if(nk && nk.length > bestLen && (dn === nk || dn.includes(nk))){ bestLen = nk.length; resolvedId = l.id; }
+    });
+  });
   return resolvedId || null;
 }
 
 /* Side-effecting resolver used at import time: falls back to the selected
    location, creates unknown locations and activates the match. */
 function resolveImportedLocId(displayName){
-  if(!displayName) return S.selLoc || (S.activeLocs[0] || 'BLEO');
+  if(!displayName) return S.selLoc || (S.activeLocs[0] || _defaultLocId());
   let resolvedId = _matchImportedLocId(displayName);
 
   /* 3. Unknown location — create it as a custom location rather than
