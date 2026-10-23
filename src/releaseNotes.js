@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.11.1',
+    date: '2026-10-23',
+    highlights: [
+      'Charterer name is editable',
+    ],
+    changes: [
+      { type: 'feature', text: 'Edit → Charterer… sets the charter name printed on the PDF deck plan (header and footer); leave it empty to print none' },
+    ],
+  },
+  {
     version: '3.11.0',
     date: '2026-10-22',
     highlights: [
