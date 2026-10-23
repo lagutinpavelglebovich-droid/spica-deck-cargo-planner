@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.13.1',
+    date: '2026-10-23',
+    highlights: [
+      'Workshop zones and zones on both sides',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Vessel Setup: Workshop zone type — not counted as usable deck, like the store' },
+      { type: 'feature',     text: 'Copy any zone to the other side of the deck (PORT ↔ STBD) or duplicate it' },
+      { type: 'improvement', text: 'Adding a bay at the bow moves the bow zones (store, No DG area) with it' },
+    ],
+  },
+  {
     version: '3.13.0',
     date: '2026-10-23',
     highlights: [
