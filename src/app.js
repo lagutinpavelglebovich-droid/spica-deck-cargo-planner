@@ -8491,8 +8491,10 @@ function renderAscoContent(sheets, stats){
       el.innerHTML = `
         <div class="asco-cb" data-key="${key}"></div>
         <div class="asco-item-main">
-          <div class="asco-item-name">${escHtml(item.desc)}</div>
-          ${item.ccu ? `<div class="asco-item-id">${escHtml(item.ccu)}</div>` : ''}
+          <div class="asco-item-top">
+            ${item.ccu ? `<span class="asco-item-id">${escHtml(item.ccu)}</span>` : `<span class="asco-item-id none">no CCU</span>`}
+            <span class="asco-item-name">${escHtml(item.desc)}</span>
+          </div>
           <div class="asco-item-badges">${badges}</div>
         </div>`;
 
@@ -13840,8 +13842,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.14.2';
-const APP_VERSION   = '3.14.2';
+const CURRENT_BUILD = 'v3.14.3';
+const APP_VERSION   = '3.14.3';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

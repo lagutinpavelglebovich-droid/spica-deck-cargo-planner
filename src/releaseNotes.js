@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.14.3',
+    date: '2026-10-23',
+    highlights: [
+      'Unit numbers stand out in the import list',
+    ],
+    changes: [
+      { type: 'ui', text: 'Import list: the unit number (CCU) leads each row in large bold type; the description follows. Rows without a number say "no CCU"' },
+      { type: 'ui', text: 'Dark theme: DG, Heavy Lift, "Size not detected" and Auto badges in the import list are readable' },
+    ],
+  },
+  {
     version: '3.14.2',
     date: '2026-10-23',
     highlights: [
