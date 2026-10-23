@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.14.0',
+    date: '2026-10-23',
+    highlights: [
+      'Import platform backloads and manifests — Excel, Word, PDF, even scanned',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Import window reads backloads and manifests from any platform: Excel in any layout, Word tables, PDF — and scanned PDFs, recognised on this computer' },
+      { type: 'feature',     text: 'Each section shows Backload / Load and the location (found from the title, "Platform:" or the file name); change either before adding to Imported' },
+      { type: 'feature',     text: 'Backload items keep their direction: placed on deck they come in as Backload' },
+      { type: 'improvement', text: 'Scanned files are marked "check numbers"; a code one character off a unit already known is corrected to it' },
+      { type: 'improvement', text: 'Files with both a backload and an offload tick the backload rows only; units already on deck or in Imported are skipped as before' },
+    ],
+  },
+  {
     version: '3.13.1',
     date: '2026-10-23',
     highlights: [
