@@ -251,11 +251,17 @@ function bindCharterModal(){
   });
 }
 
-function adminOpenModal(){
+let _adminUnlockTarget = null;   /* v3.12 — callback instead of header edit */
+function adminOpenModal(target, title, hint){
   const ov = document.getElementById('adminModalOv');
   const inp = document.getElementById('adminPwInput');
   const err = document.getElementById('adminPwErr');
   if(!ov) return;
+  _adminUnlockTarget = typeof target === 'function' ? target : null;
+  const tEl = ov.querySelector('.admin-modal-title'), lEl = ov.querySelector('.admin-modal-lbl'), bEl = document.getElementById('adminModalUnlock');
+  if(tEl) tEl.textContent = _adminUnlockTarget ? (title || 'Admin Access') : 'Admin Access';
+  if(lEl) lEl.textContent = _adminUnlockTarget ? (hint || 'Enter admin password') : 'Enter admin password to unlock editing';
+  if(bEl) bEl.textContent = _adminUnlockTarget ? 'Unlock' : 'Unlock Editing';
   inp.value = '';
   err.classList.remove('show');
   ov.classList.add('open');
@@ -293,8 +299,9 @@ async function adminValidate(){
   if(!inp) return;
   const ok = (await _adminHash(inp.value)) === SPICA_CONFIG.ADMIN_PASSWORD_SHA256;
   if(ok){
+    const target = _adminUnlockTarget; _adminUnlockTarget = null;
     adminCloseModal();
-    adminEnterEditMode();
+    if(target) target(); else adminEnterEditMode();
   } else {
     err.classList.add('show');
     inp.value = '';
@@ -467,8 +474,13 @@ function bindAdmin(){
 ═══════════════════════════════════════════════════════════════════════ */
 const M = 31;                                    /* px per metre */
 const ft = f => Math.round(f * 0.3048 * M);      /* feet → px helper (legacy) */
-const JOINT_WIDTH_M = 0.15;                      /* structural joint between bays */
-const BAY_LENGTHS_M = [
+/* Vertical scale — fixed SPICA TIDE calibration (380 px for 15 m across).
+   v3.12: a constant, NOT CVH/15, so a vessel profile with another deck
+   width keeps the same px/m and simply gets a taller or shorter canvas. */
+const YS = 380 / 15;
+
+/* SPICA TIDE measured bays — authoritative values (see block above). */
+const SPICA_TIDE_BAYS_M = [
   4.15, // [0]  Bay 12  (aft / stern / left)
   4.04, // [1]  Bay 11
   4.75, // [2]  Bay 10
@@ -482,32 +494,71 @@ const BAY_LENGTHS_M = [
   4.76, // [10] Bay 2
   4.47, // [11] Bay 1  (bow / fore / right)
 ];
-const BAY_COUNT  = BAY_LENGTHS_M.length;
-const JOINT_PX   = Math.round(JOINT_WIDTH_M * M); /* ≈ 5 px at M=31 */
 
-/* Pixel-width array, same indexing as BAY_LENGTHS_M. */
-const BW = BAY_LENGTHS_M.map(m => Math.round(m * M));
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.12 — VESSEL PROFILE
+   Everything vessel-specific (bays, joints, deck width, zones, lashing
+   points, load limits, bay numbering) lives in ONE profile object. The
+   geometry bindings below (BAY_LENGTHS_M, BW, BL_, TW, CVH, …) are `let`
+   and are recomputed from the active profile by applyVesselGeometry();
+   every consumer reads them at call time. The built-in profile reproduces
+   the measured SPICA TIDE deck pixel-for-pixel.
 
-/* Cumulative bay-left-edge positions in px. Each bay starts after the
-   previous bay's pixel width PLUS one joint width. Joint lives in the
-   gap between BL_[i]+BW[i] and BL_[i+1]. */
-const BL_ = (() => {
-  const out = [];
+   Profile shape (all distances in metres; x along deck from the aft edge
+   including joints, y across deck from the PORT edge):
+     { schema, id, name, deckWidthM, jointM, bay1At:'bow'|'stern',
+       bays:[{l, usable}]  (aft → fore),
+       maxLoadT, maxPressureT, deckAreaM2,
+       zones:[{id, type, label, x, y, w, h, r?}],
+       lashing:{ dollies:[boundary idx], drings:[bay idx] } }
+   Zone types: tiger · hose · store · skip · restricted (excluded from
+   Deck Used) · nodg (DG limit + hatch) · methanol (arc line in its box).
+═══════════════════════════════════════════════════════════════════════ */
+const VESSEL_SCHEMA = 1;
+const VESSEL_STORE_KEY = 'spicaTide_vessel';
+const ZONE_BLOCKING = new Set(['tiger','hose','store','skip','restricted']);
+const ZONE_TYPES = {
+  hose:       { name:'Hose bay',        label:'HOSE BAY' },
+  restricted: { name:'No cargo area',   label:'NO CARGO' },
+  nodg:       { name:'No DG area',      label:'NO DG CARGO' },
+  store:      { name:'Store',           label:'STORE' },
+  skip:       { name:'Waste skip',      label:"SHIP'S WASTE SKIP" },
+  tiger:      { name:'Tiger strip',     label:'' },
+  methanol:   { name:'Methanol line',   label:'METHANOL ZONE' },
+};
+
+let BAY_LENGTHS_M = SPICA_TIDE_BAYS_M.slice();
+let JOINT_WIDTH_M = 0.15;                        /* structural joint between bays */
+let BAY_COUNT, JOINT_PX, BW, BL_, TW, DECK_LENGTH_M, CVH;
+let VESSEL = null;                               /* active profile */
+let ZONES_PX = [];                               /* active zones in px */
+let USABLE_RANGES_PX = [];                       /* [x0,x1] spans counted in Deck Used */
+let DECK_USABLE_AREA_PX = 1;
+
+/* Recompute every geometry binding from a bays/joint/width triple. */
+function _computeGeometry(baysM, jointM, widthM){
+  BAY_LENGTHS_M = baysM.slice();
+  JOINT_WIDTH_M = jointM;
+  BAY_COUNT = BAY_LENGTHS_M.length;
+  JOINT_PX  = Math.round(JOINT_WIDTH_M * M);     /* ≈ 5 px at M=31 */
+  /* Pixel-width array, same indexing as BAY_LENGTHS_M. */
+  BW = BAY_LENGTHS_M.map(m => Math.round(m * M));
+  /* Cumulative bay-left-edge positions in px. Each bay starts after the
+     previous bay's pixel width PLUS one joint width. */
+  BL_ = [];
   let x = 0;
   for(let i = 0; i < BAY_COUNT; i++){
-    out.push(x);
+    BL_.push(x);
     x += BW[i];
     if(i < BAY_COUNT - 1) x += JOINT_PX;
   }
-  return out;
-})();
-
-/* Total deck canvas width in px — includes every bay and every joint. */
-const TW = BL_[BAY_COUNT - 1] + BW[BAY_COUNT - 1];
-
-/* Total measured deck length in metres (for readouts / exports). */
-const DECK_LENGTH_M = BAY_LENGTHS_M.reduce((a,b) => a + b, 0)
-                    + (BAY_COUNT - 1) * JOINT_WIDTH_M;
+  /* Total deck canvas width in px — includes every bay and every joint. */
+  TW = BL_[BAY_COUNT - 1] + BW[BAY_COUNT - 1];
+  /* Total measured deck length in metres (for readouts / exports). */
+  DECK_LENGTH_M = BAY_LENGTHS_M.reduce((a,b) => a + b, 0) + (BAY_COUNT - 1) * JOINT_WIDTH_M;
+  CVH = Math.round(widthM * YS);                 /* 380 px for 15 m */
+}
+_computeGeometry(SPICA_TIDE_BAYS_M, 0.15, 15);
 
 /* Bay index lookup — returns the index into BW/BL_/BAY_LENGTHS_M for a
    given x coordinate in pixels. Accounts for joint gaps: an x that
@@ -609,26 +660,155 @@ function deckXToMeters(xPx){
    the ruler and any future consumer can use symmetric naming with
    deckXToMeters and never compute coordinates inline. */
 function deckYToMeters(yPx){
-  return Math.max(0, Math.min(CVH, yPx)) / (CVH / 15);
+  return Math.max(0, Math.min(CVH, yPx)) / YS;
 }
 
-const CVH = 380, YS = CVH / 15;
+/* Physical metres along the deck → canvas px (inverse of deckXToMeters). */
+function metersToDeckX(m){
+  if(m <= 0) return 0;
+  if(m >= DECK_LENGTH_M) return TW;
+  let px = 0, mc = 0;
+  for(let i = 0; i < BAY_COUNT; i++){
+    const bm = BAY_LENGTHS_M[i];
+    if(m <= mc + bm) return Math.round(px + (bm > 0 ? (m - mc) / bm : 0) * BW[i]);
+    px += BW[i]; mc += bm;
+    if(i < BAY_COUNT - 1){
+      if(m <= mc + JOINT_WIDTH_M) return Math.round(px + (JOINT_WIDTH_M > 0 ? (m - mc) / JOINT_WIDTH_M : 0) * JOINT_PX);
+      px += JOINT_PX; mc += JOINT_WIDTH_M;
+    }
+  }
+  return TW;
+}
+/* Bay number shown for array index i (index 0 = aft / left on screen). */
+function bayLabel(i){
+  return (VESSEL && VESSEL.bay1At === 'stern') ? String(i + 1) : String(BAY_COUNT - i);
+}
+const _r4 = v => Math.round(v * 10000) / 10000;
+/* px rectangle → metre rectangle (exact round-trip through metersToDeckX). */
+function _zonePxToM(z){
+  const x0 = deckXToMeters(z.x), x1 = deckXToMeters(z.x + z.w);
+  return { x: _r4(x0), y: _r4(z.y / YS), w: _r4(x1 - x0), h: _r4(z.h / YS) };
+}
+function _zoneMToPx(z){
+  const x0 = metersToDeckX(z.x), x1 = metersToDeckX(z.x + z.w);
+  const y0 = Math.max(0, Math.round(z.y * YS)), y1 = Math.min(CVH, Math.round((z.y + z.h) * YS));
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
 
-/* Permanent no-cargo zones, px. Single source of truth: setupCanvas()
-   draws these exact rectangles and the Deck Used gauge subtracts them, so
-   the drawing and the calculation can never drift apart again. */
-const HOSE_BAY_H     = Math.round(2.16 * YS);
-const ZONE_TIGER     = { x: 0, y: 0, w: Math.round(1.0 * M), h: CVH };                 /* Bay 12 aft tiger strip, 1.00 m */
-const ZONE_HOSE_PORT = { x: Math.round(BL_[2] + BW[2]*0.4), y: 0,
-                         w: Math.round(BW[2]*0.6 + BW[3]*0.55), h: HOSE_BAY_H };        /* Bays 10–9 PORT */
-const ZONE_HOSE_STBD = { x: BL_[2], y: CVH - HOSE_BAY_H,
-                         w: Math.round(BW[2] + BW[3]*0.88), h: HOSE_BAY_H };            /* Bays 10–9 STBD */
-const ZONE_SKIP      = { x: BL_[10] + 8, y: 5, w: 82, h: 50 };                          /* Ship's waste skip, Bay 2 */
-/* Usable deck = Bays 12 → 2 (Bay 1 excluded entirely: store + no-DG bow
-   bay), minus tiger strip, both hose bays and the waste skip. */
-const USABLE_X_END   = BL_[10] + BW[10];                                                /* fore edge of Bay 2 */
-const DECK_USABLE_AREA_PX = USABLE_X_END * CVH
-  - [ZONE_TIGER, ZONE_HOSE_PORT, ZONE_HOSE_STBD, ZONE_SKIP].reduce((a, z) => a + z.w * z.h, 0);
+/* Built-in SPICA TIDE profile. Zones are derived from the original pixel
+   formulas (measured layout) and converted to metres, so applying the
+   profile reproduces the historic canvas exactly. */
+function spicaTideProfile(){
+  const prev = BW ? [BAY_LENGTHS_M.slice(), JOINT_WIDTH_M, CVH / YS] : null;
+  _computeGeometry(SPICA_TIDE_BAYS_M, 0.15, 15);
+  const HOSE_BAY_H = Math.round(2.16 * YS);
+  const px = [
+    { id:'tiger',     type:'tiger', label:'',          x:0, y:0, w:Math.round(1.0 * M), h:CVH },                  /* Bay 12 aft tiger strip, 1.00 m */
+    { id:'hose-port', type:'hose',  label:'HOSE BAY',  x:Math.round(BL_[2] + BW[2]*0.4), y:0,
+                      w:Math.round(BW[2]*0.6 + BW[3]*0.55), h:HOSE_BAY_H },                                     /* Bays 10–9 PORT */
+    { id:'hose-stbd', type:'hose',  label:'HOSE BAY',  x:BL_[2], y:CVH - HOSE_BAY_H,
+                      w:Math.round(BW[2] + BW[3]*0.88), h:HOSE_BAY_H },                                         /* Bays 10–9 STBD */
+    { id:'store',     type:'store', label:'STORE',     x:TW - Math.round(4*M), y:0, w:Math.round(4*M), h:Math.round(3.75*YS) },
+    { id:'nodg',      type:'nodg',  label:'NO DG CARGO', x:BL_[10], y:0, w:TW - BL_[10], h:CVH },               /* Bays 2–1 */
+    { id:'skip',      type:'skip',  label:"SHIP'S WASTE SKIP", x:BL_[10] + 8, y:5, w:82, h:50 },               /* Bay 2 */
+    { id:'methanol',  type:'methanol', label:'METHANOL ZONE', x:0, y:102, w:BL_[3], h:CVH - 102, r:340 },     /* Bays 12–10 arc */
+  ];
+  const zones = px.map(z => {
+    const m = _zonePxToM(z);
+    const out = { id:z.id, type:z.type, label:z.label, x:m.x, y:m.y, w:m.w, h:m.h };
+    if(z.r != null) out.r = _r4(z.r / M);
+    return out;
+  });
+  if(prev) _computeGeometry(prev[0], prev[1], prev[2]);
+  return {
+    schema: VESSEL_SCHEMA, id:'spica-tide', name:'SPICA TIDE', builtin:true,
+    deckWidthM: 15, jointM: 0.15, bay1At: 'bow',
+    /* Bay 1 is excluded from Deck Used (store + no-DG bow bay). */
+    bays: SPICA_TIDE_BAYS_M.map((l, i) => ({ l, usable: i < 11 })),
+    maxLoadT: 2500, maxPressureT: 10, deckAreaM2: 752,
+    zones,
+    lashing: { dollies:[0,2,3,6,9,10,12], drings:[1,4,7,11] },
+  };
+}
+
+/* Validate + normalise a profile (from storage or a file). Returns null
+   when it cannot describe a deck. */
+function normaliseVesselProfile(p){
+  if(!p || typeof p !== 'object') return null;
+  const num = (v, lo, hi, d) => { v = parseFloat(v); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const bays = Array.isArray(p.bays) ? p.bays.map(b => (typeof b === 'number' ? { l:b, usable:true } : b))
+    .filter(b => b && isFinite(parseFloat(b.l)))
+    .map(b => ({ l: _r4(num(b.l, 0.5, 30, 4)), usable: b.usable !== false })) : [];
+  if(bays.length < 1 || bays.length > 40) return null;
+  const out = {
+    schema: VESSEL_SCHEMA,
+    id: String(p.id || 'custom').slice(0, 40),
+    name: String(p.name || 'VESSEL').trim().slice(0, 40) || 'VESSEL',
+    builtin: !!p.builtin,
+    deckWidthM: _r4(num(p.deckWidthM, 4, 40, 15)),
+    jointM: _r4(num(p.jointM, 0, 1, 0.15)),
+    bay1At: p.bay1At === 'stern' ? 'stern' : 'bow',
+    bays,
+    maxLoadT: Math.round(num(p.maxLoadT, 1, 20000, 2500)),
+    maxPressureT: _r4(num(p.maxPressureT, 0.5, 100, 10)),
+    deckAreaM2: Math.round(num(p.deckAreaM2, 0, 5000, 0)),
+    zones: [],
+    lashing: { dollies:[], drings:[] },
+  };
+  const deckL = bays.reduce((a,b) => a + b.l, 0) + (bays.length - 1) * out.jointM;
+  (Array.isArray(p.zones) ? p.zones : []).slice(0, 60).forEach((z, k) => {
+    if(!z || !ZONE_TYPES[z.type]) return;
+    /* clamp into the deck (never drop a zone because the deck shrank) */
+    const x = num(z.x, 0, Math.max(0, deckL - 0.1), 0), y = num(z.y, 0, Math.max(0, out.deckWidthM - 0.1), 0);
+    const w = num(z.w, 0.1, deckL - x, 1), h = num(z.h, 0.1, out.deckWidthM - y, 1);
+    const zz = { id: String(z.id || ('z' + k)).slice(0, 40), type: z.type,
+                 label: String(z.label == null ? ZONE_TYPES[z.type].label : z.label).slice(0, 40),
+                 x:_r4(x), y:_r4(y), w:_r4(w), h:_r4(h) };
+    if(z.type === 'methanol') zz.r = _r4(num(z.r, 0.5, 200, Math.max(w, h)));
+    out.zones.push(zz);
+  });
+  if(p.lashing && typeof p.lashing === 'object'){
+    const ints = a => (Array.isArray(a) ? a : []).map(v => parseInt(v, 10)).filter(v => isFinite(v) && v >= 0);
+    out.lashing.dollies = ints(p.lashing.dollies).filter(v => v <= bays.length);
+    out.lashing.drings  = ints(p.lashing.drings).filter(v => v < bays.length);
+  }
+  return out;
+}
+
+/* Make a profile the active geometry. Does NOT redraw — callers that
+   change the profile at runtime call redrawDeck() afterwards. */
+function applyVesselGeometry(profile){
+  const p = normaliseVesselProfile(profile) || spicaTideProfile();
+  VESSEL = p;
+  _computeGeometry(p.bays.map(b => b.l), p.jointM, p.deckWidthM);
+  ZONES_PX = p.zones.map(z => Object.assign({ id:z.id, type:z.type, label:z.label }, _zoneMToPx(z),
+    z.r != null ? { r: Math.round(z.r * M) } : {}));
+  /* Deck Used: spans of usable bays (joints between two usable bays count
+     too), minus blocking zones that fall inside them. */
+  USABLE_RANGES_PX = [];
+  p.bays.forEach((b, i) => {
+    if(!b.usable) return;
+    const x0 = BL_[i], x1 = BL_[i] + BW[i];
+    const last = USABLE_RANGES_PX[USABLE_RANGES_PX.length - 1];
+    if(last && i > 0 && p.bays[i-1].usable) last[1] = x1; else USABLE_RANGES_PX.push([x0, x1]);
+  });
+  const inUsable = (x0, x1) => USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + Math.max(0, Math.min(x1, u1) - Math.max(x0, u0)), 0);
+  const total = USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + (u1 - u0), 0) * CVH;
+  const blocked = ZONES_PX.filter(z => ZONE_BLOCKING.has(z.type)).reduce((a, z) => a + inUsable(z.x, z.x + z.w) * z.h, 0);
+  DECK_USABLE_AREA_PX = Math.max(1, total - blocked);
+  return p;
+}
+/* Width (px) of a cargo's footprint that lies inside the usable deck. */
+function usableWidthPx(x, w){
+  return USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + Math.max(0, Math.min(x + w, u1) - Math.max(x, u0)), 0);
+}
+/* Saved profile → active at module load (before the first canvas draw). */
+function loadVesselProfile(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(VESSEL_STORE_KEY) || 'null'); }catch(e){}
+  return applyVesselGeometry(saved || spicaTideProfile());
+}
+loadVesselProfile();
 
 /* px² → m² conversion factor: M (px/m along deck) × YS (px/m across deck) */
 const PX2_TO_M2 = M * YS;  /* ≈ 785.23 */
@@ -1052,7 +1232,7 @@ function createCustomLoc(name){
 ════════════════════════════════════ */
 const m2px   = metres => Math.round(metres * M);          // kept for backward compat (horizontal only)
 const m2px_w = metres => Math.round(metres * M);          // horizontal: 31 px/m (along deck, aft→bow)
-const m2px_h = metres => Math.round(metres * (CVH / 15)); // vertical:   25.33 px/m (across deck, port→stbd)
+const m2px_h = metres => Math.round(metres * YS);          // vertical:   25.33 px/m (across deck, port→stbd)
 
 const CCU_PRESETS = [
   /* ── Containers ─────────────────────────────────────── */
@@ -1868,10 +2048,48 @@ function clearDragSegOverlay(){
 /* ════════════════════════════════════
    CANVAS
 ════════════════════════════════════ */
-function setupCanvas(){
+/* ── v3.12 — vessel-specific deck drawing, re-runnable ──────────────────
+   Everything here derives from the active VESSEL profile (geometry
+   bindings + ZONES_PX). Built into a fragment, tagged data-deck-static
+   and prepended to the canvas so a redraw (Vessel Setup) can wipe and
+   rebuild it without touching cargo blocks or listeners. */
+function _fmtM2(v){ return String(+(+v).toFixed(2)); }
+function vesselSummaryLine(withLimits){
+  const p = VESSEL || {};
+  let t = `${p.name || 'SPICA TIDE'} · ${_fmtM2(DECK_LENGTH_M)} m × ${_fmtM2(CVH / YS)} m`;
+  if(p.deckAreaM2) t += ` · ${p.deckAreaM2} m²`;
+  if(withLimits){
+    if(p.maxLoadT) t += ` · Max ${p.maxLoadT} T`;
+    if(p.maxPressureT) t += ` · ${_fmtM2(p.maxPressureT)} T/m²`;
+  }
+  return t;
+}
+function _updateDeckCaptions(){
+  const comp = document.querySelector('.deck-compass');
+  if(comp){
+    const sp = comp.querySelectorAll('span');
+    if(sp[0]) sp[0].textContent = '◄ AFT / STERN — BAY ' + bayLabel(0);
+    if(sp[1]) sp[1].textContent = vesselSummaryLine(true);
+    if(sp[2]) sp[2].textContent = 'BAY ' + bayLabel(BAY_COUNT - 1) + ' — BOW / FORE ►';
+  }
+  const len = document.getElementById('inspLen');
+  if(len) len.max = _fmtM2(DECK_LENGTH_M);
+  /* The GA drawing behind the deck matches the built-in SPICA TIDE
+     geometry only — hide it for any other profile. */
+  document.body.classList.toggle('vessel-custom', !_isBuiltinGeometry());
+}
+function _isBuiltinGeometry(){
+  if(!VESSEL || VESSEL.id !== 'spica-tide') return false;
+  const d = spicaTideProfile();
+  return JSON.stringify(d.bays) === JSON.stringify(VESSEL.bays) && d.jointM === VESSEL.jointM && d.deckWidthM === VESSEL.deckWidthM;
+}
+function drawDeckStatics(){
   const cv=document.getElementById('cvDECK');
+  if(!cv) return;
+  cv.querySelectorAll('[data-deck-static]').forEach(el => el.remove());
+  const frag=document.createDocumentFragment();
   cv.style.width=TW+'px';
-  const HB_H=HOSE_BAY_H;
+  cv.style.height=CVH+'px';
 
   /* Bay stripes + ghost bay-number watermarks.
      Positions come from BL_/BW which already account for the 0.15 m
@@ -1884,150 +2102,600 @@ function setupCanvas(){
       s.className = 'bay-stripe';
       s.style.left  = x + 'px';
       s.style.width = w + 'px';
-      cv.appendChild(s);
+      frag.appendChild(s);
     }
     const bn = document.createElement('div');
     bn.className = 'bay-num';
     bn.style.cssText = `position:absolute;left:${x}px;width:${w}px;top:50%;transform:translateY(-50%);
       text-align:center;font-family:'Manrope',sans-serif;font-size:40px;font-weight:900;
       color:rgba(49,51,44,.14);pointer-events:none;z-index:1;user-select:none;line-height:1;`;
-    bn.textContent = 12 - i;
-    cv.appendChild(bn);
+    bn.textContent = bayLabel(i);
+    frag.appendChild(bn);
   });
 
-  /* Bay joints — physical 0.15 m steel plates between adjacent bays.
-     Rendered as real-width vertical bands (JOINT_PX wide), not hairline
-     borders. There are 11 joints between 12 bays. */
+  /* Bay joints — physical steel plates between adjacent bays, rendered
+     as real-width vertical bands (JOINT_PX wide), not hairline borders. */
   for(let i = 0; i < BAY_COUNT - 1; i++){
+    if(!JOINT_PX) break;
     const jx = BL_[i] + BW[i];  /* right edge of bay i = joint left edge */
     const jo = document.createElement('div');
     jo.className = 'bay-joint';
     jo.style.left  = jx + 'px';
     jo.style.width = JOINT_PX + 'px';
-    cv.appendChild(jo);
+    frag.appendChild(jo);
   }
 
   /* v3.10 — deck lighting layer (night floodlights / wet sheen) */
   const dl=document.createElement('div');dl.className='deck-light';dl.setAttribute('aria-hidden','true');
-  dl.innerHTML='<i class="dl-dark"></i><i class="dl-pools"></i><i class="dl-wet"></i>';cv.appendChild(dl);
+  dl.innerHTML='<i class="dl-dark"></i><i class="dl-pools"></i><i class="dl-wet"></i>';frag.appendChild(dl);
 
   /* Centre line + PORT/STBD */
-  const cl=document.createElement('div');cl.className='center-line';cl.style.top=(CVH/2)+'px';cv.appendChild(cl);
+  const cl=document.createElement('div');cl.className='center-line';cl.style.top=(CVH/2)+'px';frag.appendChild(cl);
   [{txt:'PORT ▶',top:'8px'},{txt:'STBD ▶',bottom:'8px'}].forEach(o=>{
     const el=document.createElement('div');el.className='side-lbl';
-    Object.assign(el.style,o.top?{top:o.top}:{bottom:o.bottom});el.textContent=o.txt;cv.appendChild(el);
+    Object.assign(el.style,o.top?{top:o.top}:{bottom:o.bottom});el.textContent=o.txt;frag.appendChild(el);
   });
 
-  /* Zones */
-  /* Aft tiger-striped reference strip. 1.00 m longitudinal length,
-     positioned INSIDE Bay 12 at its aft (stern) edge. Does NOT add to
-     total deck length — Bay 12 still spans 4.15 m in total. Scaled via
-     m2px_w so it uses the same metre→pixel system as cargo and bays. */
-  addZone(cv, ZONE_TIGER.x, ZONE_TIGER.y, ZONE_TIGER.w, ZONE_TIGER.h, 'tiger', '');
-  addZone(cv, ZONE_HOSE_PORT.x, ZONE_HOSE_PORT.y, ZONE_HOSE_PORT.w, ZONE_HOSE_PORT.h, 'hose', 'HOSE BAY');
-  addZone(cv, ZONE_HOSE_STBD.x, ZONE_HOSE_STBD.y, ZONE_HOSE_STBD.w, ZONE_HOSE_STBD.h, 'hose', 'HOSE BAY');
-  addZone(cv,TW-Math.round(4*M),0,Math.round(4*M),Math.round(3.75*YS),'store','STORE');
+  /* Zones — drawn in the historic order so the built-in profile stacks
+     exactly as before: plain zones, NO DG, methanol arc, lashing, skip. */
+  const Z = ZONES_PX;
+  Z.filter(z => z.type === 'tiger' || z.type === 'hose' || z.type === 'store' || z.type === 'restricted').forEach(z => {
+    addZone(frag, z.x, z.y, z.w, z.h, z.type === 'restricted' ? 'hose' : z.type, z.label || '');
+    frag.lastChild.dataset.zoneId = z.id;
+  });
 
-  /* DG limit */
-  const DGX=BL_[10];
-  const dgl=document.createElement('div');dgl.className='dg-limit-line';dgl.style.left=DGX+'px';cv.appendChild(dgl);
-  ['top:2px','bottom:2px'].forEach(pos=>{const t=document.createElement('div');t.className='dg-limit-lbl';t.style.cssText=`left:${DGX}px;${pos};`;t.textContent='DG LIMIT';cv.appendChild(t);});
-
-  /* No DG zone — large elegant label */
-  const noDGw=TW-DGX;
-  const nodg=document.createElement('div');nodg.className='nodg-zone';
-  nodg.style.cssText=`position:absolute;left:${DGX}px;top:0;width:${noDGw}px;height:100%;pointer-events:none;z-index:2;
+  Z.filter(z => z.type === 'nodg').forEach(z => {
+    const DGX = z.x, full = z.y === 0 && z.h >= CVH;
+    if(full){
+      /* DG limit line along the zone's aft edge */
+      const dgl=document.createElement('div');dgl.className='dg-limit-line';dgl.style.left=DGX+'px';frag.appendChild(dgl);
+      ['top:2px','bottom:2px'].forEach(pos=>{const t=document.createElement('div');t.className='dg-limit-lbl';t.style.cssText=`left:${DGX}px;${pos};`;t.textContent='DG LIMIT';frag.appendChild(t);});
+    }
+    /* No DG zone hatch */
+    const nodg=document.createElement('div');nodg.className='nodg-zone';nodg.dataset.zoneId=z.id;
+    nodg.style.cssText=`position:absolute;left:${DGX}px;top:${z.y}px;width:${z.w}px;height:${full ? '100%' : z.h + 'px'};pointer-events:none;z-index:2;
     background:repeating-linear-gradient(45deg,rgba(220,38,38,.055),rgba(220,38,38,.055) 6px,transparent 6px,transparent 12px);
     border-left:2px dashed rgba(220,38,38,.45);`;
-  cv.appendChild(nodg);
-
-  /* Big NO DG CARGO label — rotated, centred in zone */
-  const noDGlbl=document.createElement('div');
-  noDGlbl.style.cssText=`position:absolute;pointer-events:none;z-index:5;
-    left:${DGX}px;width:${noDGw}px;top:0;height:${CVH}px;
+    frag.appendChild(nodg);
+    /* Big NO DG CARGO label — rotated when the zone is tall and narrow */
+    const vertical = z.h > z.w;
+    const lbl=document.createElement('div');
+    lbl.style.cssText=`position:absolute;pointer-events:none;z-index:5;
+    left:${DGX}px;width:${z.w}px;top:${z.y}px;height:${z.h}px;
     display:flex;align-items:center;justify-content:center;`;
-  noDGlbl.innerHTML=`<span class="nodg-lbl" style="font-family:'Manrope',sans-serif;font-size:22px;font-weight:900;
+    lbl.innerHTML=`<span class="nodg-lbl" style="font-family:'Manrope',sans-serif;font-size:22px;font-weight:900;
     letter-spacing:3px;text-transform:uppercase;color:rgba(180,30,30,.22);
-    transform:rotate(-90deg);white-space:nowrap;">No DG Cargo</span>`;
-  cv.appendChild(noDGlbl);
+    transform:rotate(${vertical ? -90 : 0}deg);white-space:nowrap;"></span>`;
+    lbl.firstElementChild.textContent = z.label || 'No DG Cargo';
+    frag.appendChild(lbl);
+  });
 
-  /* ── METHANOL CURVE — precise circular arc via SVG A command ──
-     Operational spec:
-     - Start (anchor): halfway between outer PORT edge and midship centreline,
-       in Bay 12 → x = BL_[0]+BW[0]/2 ≈ 64px, y = CVH/4 = 95px (port quarter-height)
-     - The arc sweeps clockwise as a quarter-circle
-     - End: STBD side (bottom), near right edge of Bay 10 → x = BL_[2]+BW[2] = 402, y = CVH = 380
-     - Circle centre: computed so radius is consistent
-     
-     For a true circular arc from (sx,sy) to (ex,ey) with radius R:
-     We use SVG arc notation: A rx ry x-rotation large-arc-flag sweep-flag ex ey
-     
-     Choose: start at (65, 95), end at (402, 380)
-     Horizontal distance: 337px, vertical: 285px
-     Diagonal: sqrt(337²+285²) ≈ 441px → radius ≈ 290 for a clean quarter arc
-     Using R=340 gives a naturally sweeping curve across Bay 12-11-10-9 area.
-  */
-  const svgNS='http://www.w3.org/2000/svg';
-  const msvg=document.createElementNS(svgNS,'svg');
-  msvg.setAttribute('width',TW);
-  msvg.setAttribute('height',CVH);
-  msvg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:4;overflow:visible;';
+  /* ── METHANOL LINE — circular arc across its box (built-in: R=340 px
+     circle from (0,102) to the Bay 9 aft edge on the STBD side). */
+  Z.filter(z => z.type === 'methanol').forEach(z => {
+    const svgNS='http://www.w3.org/2000/svg';
+    const msvg=document.createElementNS(svgNS,'svg');
+    msvg.setAttribute('width',TW);
+    msvg.setAttribute('height',CVH);
+    msvg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:4;overflow:visible;';
+    msvg.dataset.zoneId = z.id;
+    const R = z.r || Math.max(z.w, z.h);
+    const arcPath=document.createElementNS(svgNS,'path');
+    arcPath.setAttribute('d',`M ${z.x} ${z.y} A ${R} ${R} 0 0 1 ${z.x + z.w} ${z.y + z.h}`);
+    arcPath.setAttribute('stroke','rgba(202,158,0,0.28)');
+    arcPath.setAttribute('stroke-width','6');
+    arcPath.setAttribute('fill','none');
+    arcPath.setAttribute('stroke-linecap','round');
+    msvg.appendChild(arcPath);
+    const mtxt=document.createElementNS(svgNS,'text');
+    mtxt.setAttribute('x', z.x + 14);
+    mtxt.setAttribute('y', z.y - 14);
+    mtxt.setAttribute('font-family','Manrope,sans-serif');
+    mtxt.setAttribute('font-size','9.5');
+    mtxt.setAttribute('font-weight','700');
+    mtxt.setAttribute('letter-spacing','1.5');
+    mtxt.setAttribute('fill','rgba(133,97,0,0.40)');
+    mtxt.setAttribute('text-anchor','start');
+    mtxt.textContent=z.label || '';
+    msvg.appendChild(mtxt);
+    frag.appendChild(msvg);
+  });
 
-  /* Anchor point: Bay 12 PORT half-width midpoint */
-  /* ── Methanol zone arc — original R=340 circle, extended to Bay12 left edge
-     Original arc: M 64 95 A 340 340 0 0 1 402 380  (same circle, R=340)
-     Extended:     M 0 102 A 340 340 0 0 1 402 380
-     The point (0,102) is on the exact same circle as the original arc —
-     computed from circle center (66.5, 435.0) at radius 340.
-     This continues the original curve seamlessly to the deck left edge. */
-  const mEndX = BL_[3];   // = 402 — Bay9 left boundary
-  const mEndY = CVH;       // = 380 — STBD bottom edge
+  /* Lashing dollies (bay boundaries) and D-rings (mid-bay) */
+  const L = (VESSEL && VESSEL.lashing) || { dollies:[], drings:[] };
+  L.dollies.forEach(k => { const lx = k <= 0 ? 0 : k >= BAY_COUNT ? TW : BL_[k]; addDolly(frag,lx,0);addDolly(frag,lx,CVH); });
+  L.drings.forEach(i => { if(i >= BAY_COUNT) return; const lx = BL_[i]+Math.round(BW[i]/2); addDring(frag,lx,0);addDring(frag,lx,CVH); });
 
-  const arcPath=document.createElementNS(svgNS,'path');
-  /* Same circle (R=340), extended start to x=0 on Bay12 left edge */
-  arcPath.setAttribute('d',`M 0 102 A 340 340 0 0 1 ${mEndX} ${mEndY}`);
-  arcPath.setAttribute('stroke','rgba(202,158,0,0.28)');  /* original amber-yellow, 28% */
-  arcPath.setAttribute('stroke-width','6');               /* original width */
-  arcPath.setAttribute('fill','none');
-  arcPath.setAttribute('stroke-linecap','round');
-
-  msvg.appendChild(arcPath);
-
-  /* Methanol label — subtle, inside the arc area near Bay12 */
-  const mtxt=document.createElementNS(svgNS,'text');
-  mtxt.setAttribute('x', 14);           /* Bay12 left area, near arc start */
-  mtxt.setAttribute('y', 88);           /* just above the arc at x≈64, y≈95 */
-  mtxt.setAttribute('font-family','Manrope,sans-serif');
-  mtxt.setAttribute('font-size','9.5');
-  mtxt.setAttribute('font-weight','700');
-  mtxt.setAttribute('letter-spacing','1.5');
-  mtxt.setAttribute('fill','rgba(133,97,0,0.40)');
-  mtxt.setAttribute('text-anchor','start');
-  mtxt.textContent='METHANOL ZONE';
-  msvg.appendChild(mtxt);
-
-  cv.appendChild(msvg);
-
-  /* Lashing dollies */
-  [0,BL_[2],BL_[3],BL_[6],BL_[9],BL_[10],TW].forEach(lx=>{addDolly(cv,lx,0);addDolly(cv,lx,CVH);});
-  [BL_[1]+Math.round(BW[1]/2),BL_[4]+Math.round(BW[4]/2),BL_[7]+Math.round(BW[7]/2),BL_[11]+Math.round(BW[11]/2)]
-    .forEach(lx=>{addDring(cv,lx,0);addDring(cv,lx,CVH);});
-
-  /* Skip */
-  const skip=document.createElement('div');skip.className='ships-skip';
-  skip.style.cssText=`left:${ZONE_SKIP.x}px;top:${ZONE_SKIP.y}px;width:${ZONE_SKIP.w}px;height:${ZONE_SKIP.h}px;`;
-  skip.innerHTML="Ship's<br>Waste<br>Skip";cv.appendChild(skip);
+  /* Waste skip(s) */
+  Z.filter(z => z.type === 'skip').forEach(z => {
+    const skip=document.createElement('div');skip.className='ships-skip';skip.dataset.zoneId=z.id;
+    skip.style.cssText=`left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;`;
+    const words = String(z.label || '').split(/\s+/).filter(Boolean);
+    words.forEach((w, k) => { if(k) skip.appendChild(document.createElement('br')); skip.appendChild(document.createTextNode(w.charAt(0) + w.slice(1).toLowerCase())); });
+    frag.appendChild(skip);
+  });
 
   /* DG exclusion overlay (pending placement) */
   const dgo=document.createElement('div');dgo.id='dgExclOverlay';
   dgo.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:8;';
-  cv.appendChild(dgo);
+  frag.appendChild(dgo);
 
   /* DG drag segregation overlay (live during block drag) */
   const dgd=document.createElement('div');dgd.id='dgDragOverlay';
   dgd.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:21;';
-  cv.appendChild(dgd);
+  frag.appendChild(dgd);
 
+  Array.from(frag.childNodes).forEach(n => { if(n.nodeType === 1) n.setAttribute('data-deck-static', ''); });
+  cv.prepend(frag);
+  _updateDeckCaptions();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   v3.12 — VESSEL SETUP MODE
+   Edit → Vessel Setup… (admin password). Edits a DRAFT copy of the active
+   vessel profile; every change re-applies the geometry and redraws the
+   deck live. Zones are edited on the deck itself through an overlay layer
+   (#vsLayer) — drag to move, handles to resize, snapping to bay edges and
+   deck edges (Alt = free). Cancel restores the saved profile; Save writes
+   it to localStorage (VESSEL_STORE_KEY). Cargo is untouched (positions
+   stay in px) and is dimmed / inert while the mode is open.
+══════════════════════════════════════════════════════════════════════ */
+let VS = null;   /* { draft, orig, sel } while the mode is open */
+const _vsClone = o => JSON.parse(JSON.stringify(o));
+const _vsF = (v, d = 2) => (Math.round((+v || 0) * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d);
+
+function vesselSetupRequest(){
+  if(!isOperator()){ showToast('Switch to Operator mode to set up the vessel', 'warn'); return; }
+  if(VS) return;
+  adminOpenModal(vesselSetupOpen, 'Vessel Setup', 'Enter admin password to open Vessel Setup');
+}
+
+function vesselSetupOpen(){
+  if(VS) return;
+  if(typeof toggle3D === 'function' && document.body.classList.contains('view-3d')) toggle3D(false);
+  if(typeof inspClose === 'function') inspClose();
+  if(typeof CP_OPEN !== 'undefined' && CP_OPEN && typeof cpClose === 'function') cpClose();
+  if(typeof kbDeselect === 'function') kbDeselect();
+  VS = { draft: _vsClone(VESSEL), orig: JSON.stringify(VESSEL), sel: null };
+  _vsBind();
+  document.body.classList.add('vessel-setup');
+  const panel = document.getElementById('vsPanel');
+  panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
+  _vsRenderPanel();
+  _vsApply();
+  const body = document.getElementById('vsBody'); if(body) body.scrollTop = 0;
+}
+
+function _vsClose(){
+  VS = null;
+  document.body.classList.remove('vessel-setup');
+  const panel = document.getElementById('vsPanel');
+  if(panel){ panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); }
+  document.getElementById('vsLayer')?.remove();
+}
+
+function vesselSetupCancel(){
+  if(!VS) return;
+  applyVesselGeometry(JSON.parse(VS.orig));
+  _vsClose();
+  redrawDeck();
+}
+
+function vesselSetupSave(){
+  if(!VS) return;
+  const prevName = JSON.parse(VS.orig).name;
+  const p = applyVesselGeometry(VS.draft);
+  if(p.builtin && JSON.stringify(_vsComparable(p)) !== JSON.stringify(_vsComparable(spicaTideProfile()))){
+    p.builtin = false; p.id = 'custom-' + Date.now().toString(36);
+  }
+  try{ localStorage.setItem(VESSEL_STORE_KEY, JSON.stringify(p)); }catch(e){}
+  /* Header wordmark follows the vessel name when it was showing the old one. */
+  if(SPICA_CONFIG.BRAND.name === prevName && p.name !== prevName){
+    SPICA_CONFIG.BRAND.name = p.name;
+    try{ localStorage.setItem('spicaTide_brand', JSON.stringify(SPICA_CONFIG.BRAND)); }catch(e){}
+    if(typeof applyBrandLabels === 'function') applyBrandLabels();
+  }
+  _vsClose();
+  redrawDeck();
+  const out = S.cargo.filter(c => c.x + c.w > TW + 1 || c.y + c.h > CVH + 1).length;
+  showToast(out ? `Vessel saved — ${out} cargo now outside the deck, move them in` : `Vessel saved — ${p.name}`, out ? 'warn' : 'ok');
+}
+function _vsComparable(p){ const c = _vsClone(p); delete c.id; delete c.builtin; delete c.name; return c; }
+
+/* Re-draw everything that depends on geometry. */
+function redrawDeck(){
+  drawDeckStatics();
+  if(typeof renderAll === 'function') renderAll();
+  if(typeof updateStats === 'function') updateStats();
+  if(typeof checkSeg === 'function') checkSeg();
+  if(typeof _atFit !== 'undefined' && _atFit && typeof fitToScreen === 'function') requestAnimationFrame(() => fitToScreen());
+}
+
+/* Apply the draft: normalise, make it the live geometry, redraw. */
+function _vsApply(opts = {}){
+  if(!VS) return;
+  const prevTW = TW, prevCVH = CVH;
+  VS.draft = applyVesselGeometry(VS.draft);
+  if(VS.sel && !VS.draft.zones.some(z => z.id === VS.sel)) VS.sel = null;
+  drawDeckStatics();
+  if(prevTW !== TW || prevCVH !== CVH){
+    if(typeof renderAll === 'function') renderAll();
+    if(typeof fitToScreen === 'function') requestAnimationFrame(() => fitToScreen());
+  }
+  if(typeof updateStats === 'function') updateStats();
+  _vsDrawLayer();
+  if(!opts.keepPanel) _vsRenderPanel(); else _vsRenderMeta();
+}
+
+/* ── Panel ─────────────────────────────────────────────────────────── */
+function _vsRenderMeta(){
+  if(!VS) return;
+  const d = VS.draft;
+  document.getElementById('vsTitle').textContent = d.name || 'Vessel';
+  document.getElementById('vsBaysMeta').textContent = `${d.bays.length} bays · ${_fmtM2(DECK_LENGTH_M)} m`;
+  document.getElementById('vsZonesMeta').textContent = d.zones.length ? String(d.zones.length) : '';
+}
+function _vsRenderPanel(){
+  if(!VS) return;
+  const d = VS.draft;
+  const set = (id, v) => { const el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
+  set('vsName', d.name); set('vsWidth', _vsF(d.deckWidthM)); set('vsJoint', _vsF(d.jointM));
+  set('vsMaxLoad', d.maxLoadT); set('vsMaxP', +(+d.maxPressureT).toFixed(2)); set('vsArea', d.deckAreaM2 || 0);
+  document.querySelectorAll('#vsBay1At button').forEach(b => b.classList.toggle('sel', b.dataset.v === d.bay1At));
+
+  /* Bays — aft (top) to bow (bottom), labelled with the live numbering */
+  const bays = document.getElementById('vsBays');
+  bays.innerHTML = '';
+  d.bays.forEach((b, i) => {
+    const row = document.createElement('div');
+    row.className = 'vs-bay';
+    row.innerHTML = `<span class="vs-bay-n">${bayLabel(i)}</span>
+      <input type="number" step="0.01" min="0.5" max="30" value="${_vsF(b.l)}" aria-label="Bay ${bayLabel(i)} length">
+      <label class="vs-chk"><input type="checkbox" ${b.usable ? 'checked' : ''}><i></i></label>
+      <button type="button" class="vs-del" title="Remove bay" ${d.bays.length < 2 ? 'disabled' : ''}>×</button>`;
+    const [inp, chk] = row.querySelectorAll('input');
+    inp.addEventListener('change', () => _vsSetBayLength(i, parseFloat(inp.value)));
+    chk.addEventListener('change', () => { if(VS && VS.draft.bays[i]){ VS.draft.bays[i].usable = chk.checked; _vsApply({ keepPanel:true }); } });
+    row.querySelector('.vs-del').addEventListener('click', () => _vsRemoveBay(i));
+    bays.appendChild(row);
+  });
+
+  /* Zones */
+  const zl = document.getElementById('vsZones');
+  zl.innerHTML = '';
+  if(!d.zones.length) zl.innerHTML = '<div class="vs-empty">No zones yet — add one below.</div>';
+  d.zones.forEach(z => {
+    const sel = z.id === VS.sel;
+    const row = document.createElement('div');
+    row.className = 'vs-zone-row' + (sel ? ' sel' : '');
+    row.dataset.id = z.id;
+    row.innerHTML = `<div class="vs-zone-top">
+        <i class="vs-sw vs-sw-${z.type}"></i>
+        <span class="vs-zone-name"></span>
+        <span class="vs-zone-pos">${_vsF(z.x,1)}–${_vsF(z.x + z.w,1)} m</span>
+        <button type="button" class="vs-del" title="Delete zone">×</button></div>`;
+    row.querySelector('.vs-zone-name').textContent = (z.label || ZONE_TYPES[z.type].name) + (z.label ? ' · ' + ZONE_TYPES[z.type].name : '');
+    row.querySelector('.vs-zone-top').addEventListener('click', e => {
+      if(e.target.closest('.vs-del')) return;
+      VS.sel = sel ? null : z.id; _vsDrawLayer(); _vsRenderPanel();
+    });
+    row.querySelector('.vs-del').addEventListener('click', () => _vsDeleteZone(z.id));
+    if(sel){
+      const ed = document.createElement('div');
+      ed.className = 'vs-zone-edit';
+      ed.innerHTML = `
+        <label class="vs-field"><span>Type</span><select data-k="type">${Object.entries(ZONE_TYPES).map(([k,t]) => `<option value="${k}" ${k===z.type?'selected':''}>${t.name}</option>`).join('')}</select></label>
+        <label class="vs-field"><span>Label</span><input type="text" data-k="label" maxlength="40"></label>
+        <label class="vs-field"><span>From aft (m)</span><input type="number" step="0.01" data-k="x" value="${_vsF(z.x)}"></label>
+        <label class="vs-field"><span>From port (m)</span><input type="number" step="0.01" data-k="y" value="${_vsF(z.y)}"></label>
+        <label class="vs-field"><span>Along (m)</span><input type="number" step="0.01" data-k="w" value="${_vsF(z.w)}"></label>
+        <label class="vs-field"><span>Across (m)</span><input type="number" step="0.01" data-k="h" value="${_vsF(z.h)}"></label>
+        ${z.type === 'methanol' ? `<label class="vs-field"><span>Arc radius (m)</span><input type="number" step="0.1" data-k="r" value="${_vsF(z.r)}"></label>` : ''}`;
+      ed.querySelector('[data-k="label"]').value = z.label || '';
+      ed.querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', () => {
+        const k = el.dataset.k;
+        if(k === 'type'){
+          const wasDefault = !z.label || z.label === ZONE_TYPES[z.type].label;
+          z.type = el.value;
+          if(wasDefault) z.label = ZONE_TYPES[z.type].label;
+          if(z.type === 'methanol' && z.r == null) z.r = Math.max(z.w, z.h);
+        } else if(k === 'label') z.label = el.value;
+        else z[k] = parseFloat(el.value) || 0;
+        _vsApply();
+      }));
+      row.appendChild(ed);
+    }
+    zl.appendChild(row);
+  });
+  const ts = document.getElementById('vsZoneType');
+  if(ts && !ts.options.length) ts.innerHTML = Object.entries(ZONE_TYPES).map(([k,t]) => `<option value="${k}">${t.name}</option>`).join('');
+  _vsRenderMeta();
+}
+
+/* ── Bays: keep zones and lashing attached to their physical place ──── */
+function _vsShiftZones(fromM, dM){
+  VS.draft.zones.forEach(z => { if(z.x >= fromM - 0.001) z.x = Math.max(0, z.x + dM); });
+}
+function _vsBayStartM(i){
+  const d = VS.draft; let m = 0;
+  for(let k = 0; k < i; k++) m += d.bays[k].l + d.jointM;
+  return m;
+}
+function _vsSetBayLength(i, l){
+  const d = VS.draft;
+  if(!isFinite(l)) return _vsRenderPanel();
+  l = Math.min(30, Math.max(0.5, l));
+  const dM = l - d.bays[i].l;
+  _vsShiftZones(_vsBayStartM(i) + d.bays[i].l, dM);
+  d.bays[i].l = l;
+  _vsApply();
+}
+function _vsAddBay(atStern){
+  const d = VS.draft;
+  if(d.bays.length >= 40) return showToast('40 bays is the maximum', 'warn');
+  const l = d.bays.length ? d.bays[atStern ? 0 : d.bays.length - 1].l : 4;
+  if(atStern){
+    _vsShiftZones(0, l + d.jointM);
+    d.bays.unshift({ l, usable:true });
+    d.lashing.dollies = d.lashing.dollies.map(k => k + 1);
+    d.lashing.drings  = d.lashing.drings.map(k => k + 1);
+  } else {
+    d.bays.push({ l, usable:true });
+  }
+  _vsApply();
+}
+function _vsRemoveBay(i){
+  const d = VS.draft;
+  if(d.bays.length < 2) return;
+  const start = _vsBayStartM(i), cut = d.bays[i].l + d.jointM;
+  /* zones fully inside the bay go with it; others aft stay, fore shift */
+  d.zones = d.zones.filter(z => !(z.x >= start - 0.001 && z.x + z.w <= start + d.bays[i].l + 0.001));
+  _vsShiftZones(start + d.bays[i].l, -cut);
+  d.bays.splice(i, 1);
+  d.lashing.dollies = d.lashing.dollies.filter(k => k !== i + 1 || i === d.bays.length).map(k => k > i ? k - 1 : k);
+  d.lashing.drings  = d.lashing.drings.filter(k => k !== i).map(k => k > i ? k - 1 : k);
+  _vsApply();
+}
+
+/* ── Zones ─────────────────────────────────────────────────────────── */
+function _vsAddZone(type){
+  const d = VS.draft, L = DECK_LENGTH_M, W = d.deckWidthM;
+  const id = 'z' + Date.now().toString(36);
+  let z;
+  if(type === 'nodg')          z = { x: Math.max(0, L - 8), y: 0, w: Math.min(8, L), h: W };
+  else if(type === 'tiger')    z = { x: 0, y: 0, w: 1, h: W };
+  else if(type === 'methanol') z = { x: 0, y: W * 0.27, w: Math.min(13, L), h: W * 0.73, r: 11 };
+  else if(type === 'skip')     z = { x: L / 2 - 1.3, y: 0.2, w: 2.6, h: 2 };
+  else                         z = { x: L / 2 - 2.5, y: W / 2 - 1.25, w: 5, h: 2.5 };
+  z = Object.assign({ id, type, label: ZONE_TYPES[type].label }, z);
+  d.zones.push(z);
+  VS.sel = id;
+  _vsApply();
+}
+function _vsDeleteZone(id){
+  VS.draft.zones = VS.draft.zones.filter(z => z.id !== id);
+  if(VS.sel === id) VS.sel = null;
+  _vsApply();
+}
+
+/* ── On-deck zone editing layer ────────────────────────────────────── */
+function _vsDrawLayer(){
+  const cv = document.getElementById('cvDECK');
+  if(!cv || !VS) return;
+  let layer = document.getElementById('vsLayer');
+  if(!layer){
+    layer = document.createElement('div');
+    layer.id = 'vsLayer';
+    layer.addEventListener('mousedown', _vsLayerDown);
+    cv.appendChild(layer);
+  }
+  layer.innerHTML = '';
+  ZONES_PX.forEach(z => {
+    const b = document.createElement('div');
+    b.className = 'vs-zbox vs-zbox-' + z.type + (z.id === VS.sel ? ' sel' : '');
+    b.dataset.id = z.id;
+    b.style.cssText = `left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;`;
+    const t = document.createElement('span'); t.className = 'vs-ztag';
+    t.textContent = z.label || ZONE_TYPES[z.type].name; b.appendChild(t);
+    if(z.id === VS.sel){
+      ['nw','n','ne','e','se','s','sw','w'].forEach(h => { const k = document.createElement('i'); k.className = 'vs-h vs-h-' + h; k.dataset.h = h; b.appendChild(k); });
+      const m = document.createElement('span'); m.className = 'vs-zsize'; b.appendChild(m);
+      _vsSizeTag(m, z);
+    }
+    layer.appendChild(b);
+  });
+}
+function _vsSizeTag(el, zpx){
+  const x0 = deckXToMeters(zpx.x), x1 = deckXToMeters(zpx.x + zpx.w);
+  el.textContent = `${_vsF(x1 - x0)} × ${_vsF(zpx.h / YS)} m`;
+}
+function _vsSnapX(px, free){
+  if(free) return px;
+  const cands = [0, TW];
+  BL_.forEach((x, i) => { cands.push(x, x + BW[i]); });
+  let best = px, bd = 7;
+  cands.forEach(c => { const dd = Math.abs(c - px); if(dd < bd){ bd = dd; best = c; } });
+  return best;
+}
+function _vsSnapY(py, free){
+  if(free) return py;
+  let best = py, bd = 7;
+  [0, CVH, Math.round(CVH / 2)].forEach(c => { const dd = Math.abs(c - py); if(dd < bd){ bd = dd; best = c; } });
+  return best;
+}
+function _vsLayerDown(e){
+  if(!VS || e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const box = e.target.closest('.vs-zbox');
+  if(!box){ if(VS.sel){ VS.sel = null; _vsDrawLayer(); _vsRenderPanel(); } return; }
+  const id = box.dataset.id;
+  if(VS.sel !== id){
+    VS.sel = id; _vsDrawLayer(); _vsRenderPanel();
+    document.querySelector(`#vsZones .vs-zone-row[data-id="${id}"]`)?.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }
+  const live = document.querySelector(`#vsLayer .vs-zbox[data-id="${id}"]`);
+  const handle = e.target.dataset && e.target.dataset.h ? e.target.dataset.h : null;
+  const z0 = Object.assign({}, ZONES_PX.find(z => z.id === id));
+  const cv = document.getElementById('cvDECK');
+  const cr = cv.getBoundingClientRect();
+  const sx = (e.clientX - cr.left) / zoomLevel, sy = (e.clientY - cr.top) / zoomLevel;
+  let cur = Object.assign({}, z0), moved = false;
+  const MIN = 6;
+  const onMove = ev => {
+    const mx = (ev.clientX - cr.left) / zoomLevel, my = (ev.clientY - cr.top) / zoomLevel;
+    const dx = mx - sx, dy = my - sy, free = ev.altKey;
+    if(!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+    moved = true;
+    cur = Object.assign({}, z0);
+    if(!handle){
+      let nx = Math.max(0, Math.min(TW - z0.w, z0.x + dx));
+      let ny = Math.max(0, Math.min(CVH - z0.h, z0.y + dy));
+      /* snap whichever edge is closer to a guide */
+      const sxL = _vsSnapX(nx, free), sxR = _vsSnapX(nx + z0.w, free) - z0.w;
+      nx = Math.abs(sxL - nx) <= Math.abs(sxR - nx) ? sxL : sxR;
+      const syT = _vsSnapY(ny, free), syB = _vsSnapY(ny + z0.h, free) - z0.h;
+      ny = Math.abs(syT - ny) <= Math.abs(syB - ny) ? syT : syB;
+      cur.x = Math.round(Math.max(0, Math.min(TW - z0.w, nx)));
+      cur.y = Math.round(Math.max(0, Math.min(CVH - z0.h, ny)));
+    } else {
+      let l = z0.x, r = z0.x + z0.w, t = z0.y, b = z0.y + z0.h;
+      if(handle.includes('w')) l = Math.min(r - MIN, _vsSnapX(Math.max(0, z0.x + dx), free));
+      if(handle.includes('e')) r = Math.max(l + MIN, _vsSnapX(Math.min(TW, z0.x + z0.w + dx), free));
+      if(handle.includes('n')) t = Math.min(b - MIN, _vsSnapY(Math.max(0, z0.y + dy), free));
+      if(handle.includes('s')) b = Math.max(t + MIN, _vsSnapY(Math.min(CVH, z0.y + z0.h + dy), free));
+      cur.x = Math.round(l); cur.y = Math.round(t); cur.w = Math.round(r - l); cur.h = Math.round(b - t);
+    }
+    if(live){
+      live.style.left = cur.x + 'px'; live.style.top = cur.y + 'px';
+      live.style.width = cur.w + 'px'; live.style.height = cur.h + 'px';
+      const tag = live.querySelector('.vs-zsize'); if(tag) _vsSizeTag(tag, cur);
+    }
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if(!moved || !VS) return;
+    const dz = VS.draft.zones.find(z => z.id === id);
+    if(!dz) return;
+    /* commit in metres; keep the radius proportional when an arc is resized */
+    const m = _zonePxToM(cur);
+    if(dz.type === 'methanol' && dz.r && z0.w) dz.r = _r4(dz.r * (cur.w / z0.w));
+    Object.assign(dz, m);
+    _vsApply();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* ── Profile files ─────────────────────────────────────────────────── */
+async function _vsExport(){
+  const p = normaliseVesselProfile(VS ? VS.draft : VESSEL);
+  const txt = JSON.stringify(Object.assign({ _type:'spica-tide-vessel' }, p), null, 2);
+  const fname = (p.name || 'Vessel').replace(/[^\w\- ]+/g, '').trim() + ' vessel.json';
+  if(_isTauri()){
+    try{
+      const dlg = await import('@tauri-apps/plugin-dialog');
+      const path = await dlg.save({ title:'Export vessel profile', defaultPath: fname, filters:[{ name:'Vessel profile', extensions:['json'] }] });
+      if(!path) return;
+      await invoke('write_file', { path, contents: txt });
+      showToast('Vessel profile exported — ' + path.split(/[/\\]/).pop(), 'ok');
+    }catch(e){ console.error('[VesselExport]', e); showToast('Export failed: ' + (e && e.message || e), 'warn'); }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type:'application/json' }));
+  a.download = fname; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function _vsLoadText(txt, name){
+  let p = null;
+  try{ p = normaliseVesselProfile(JSON.parse(txt)); }catch(e){}
+  if(!p) return showToast('Not a vessel profile' + (name ? ': ' + name : ''), 'warn');
+  VS.draft = p; VS.sel = null;
+  _vsApply();
+  showToast(`Loaded ${p.name} — press Save to keep it`, 'ok');
+}
+async function _vsImport(){
+  if(_isTauri()){
+    try{
+      const dlg = await import('@tauri-apps/plugin-dialog');
+      const sel = await dlg.open({ title:'Import vessel profile', filters:[{ name:'Vessel profile', extensions:['json'] }], multiple:false });
+      if(!sel) return;
+      const path = typeof sel === 'string' ? sel : sel.path;
+      _vsLoadText(await invoke('read_file', { path }), path.split(/[/\\]/).pop());
+    }catch(e){ console.error('[VesselImport]', e); showToast('Import failed: ' + (e && e.message || e), 'warn'); }
+    return;
+  }
+  document.getElementById('vsImportFile').click();
+}
+
+/* ── Wiring (once) ─────────────────────────────────────────────────── */
+function _vsBind(){
+  const panel = document.getElementById('vsPanel');
+  if(!panel || panel.dataset.bound) return;
+  panel.dataset.bound = '1';
+  const on = (id, ev, fn) => document.getElementById(id)?.addEventListener(ev, fn);
+  on('vsClose', 'click', vesselSetupCancel);
+  on('vsCancel', 'click', vesselSetupCancel);
+  on('vsSave', 'click', vesselSetupSave);
+  on('vsName', 'change', e => { VS.draft.name = e.target.value.trim() || VS.draft.name; _vsApply({ keepPanel:true }); });
+  const numField = (id, key, int) => on(id, 'change', e => {
+    const v = parseFloat(e.target.value);
+    if(isFinite(v)) VS.draft[key] = int ? Math.round(v) : v;
+    _vsApply();
+  });
+  /* Deck width: zones on the STBD edge stay on it, full-width zones stretch */
+  on('vsWidth', 'change', e => {
+    const v = parseFloat(e.target.value);
+    if(!isFinite(v)) return _vsRenderPanel();
+    const oldW = VS.draft.deckWidthM, nw = Math.min(40, Math.max(4, v)), dW = nw - oldW;
+    VS.draft.zones.forEach(z => {
+      if(Math.abs(z.y + z.h - oldW) < 0.05){ if(z.y < 0.05) z.h += dW; else z.y += dW; }
+    });
+    VS.draft.deckWidthM = nw;
+    _vsApply();
+  });
+  numField('vsJoint', 'jointM');
+  numField('vsMaxLoad', 'maxLoadT', true); numField('vsMaxP', 'maxPressureT'); numField('vsArea', 'deckAreaM2', true);
+  document.querySelectorAll('#vsBay1At button').forEach(b => b.addEventListener('click', () => { VS.draft.bay1At = b.dataset.v; _vsApply(); }));
+  on('vsAddStern', 'click', () => _vsAddBay(true));
+  on('vsAddBow', 'click', () => _vsAddBay(false));
+  on('vsAddZone', 'click', () => _vsAddZone(document.getElementById('vsZoneType').value || 'restricted'));
+  on('vsExport', 'click', _vsExport);
+  on('vsImport', 'click', _vsImport);
+  on('vsImportFile', 'change', e => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const r = new FileReader(); r.onload = () => _vsLoadText(String(r.result), f.name); r.readAsText(f);
+    e.target.value = '';
+  });
+  on('vsReset', 'click', () => {
+    VS.draft = spicaTideProfile(); VS.sel = null; _vsApply();
+    showToast('SPICA TIDE layout restored — press Save to keep it', 'ok');
+  });
+  /* Keyboard: Delete removes the selected zone, Esc deselects / cancels;
+     every other deck shortcut is held off while the mode is open. */
+  document.addEventListener('keydown', e => {
+    if(!VS) return;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
+    if(e.key === 'Escape'){
+      e.preventDefault(); e.stopImmediatePropagation();
+      if(typing) e.target.blur();
+      else if(VS.sel){ VS.sel = null; _vsDrawLayer(); _vsRenderPanel(); }
+      else vesselSetupCancel();
+      return;
+    }
+    if(typing) return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && VS.sel){
+      e.preventDefault(); e.stopImmediatePropagation(); _vsDeleteZone(VS.sel); return;
+    }
+    const zoomCombo = (e.ctrlKey || e.metaKey) && /^[=+\-0]$/.test(e.key);
+    if(!zoomCombo){ e.stopImmediatePropagation(); }
+  }, true);
+}
+
+function setupCanvas(){
+  const cv=document.getElementById('cvDECK');
+  drawDeckStatics();
   cv.addEventListener('mousedown',e=>{
     /* Never interfere with clicks on existing cargo — those have their own handlers */
     if(e.target.closest('.cb')) return;
@@ -3727,7 +4395,7 @@ function updateStats(){
 
   /* Phase 3A — weight-as-hero capacity bar. Always visible in the ribbon;
      threshold class shifts color calmly at 70 % (warn) and 90 % (crit). */
-  const MAX_WT = 2500;
+  const MAX_WT = (VESSEL && VESSEL.maxLoadT) || 2500;
   const pct = Math.min(100, wt / MAX_WT * 100);
   const bar = document.getElementById('sWTbar');
   if(bar){
@@ -3747,7 +4415,7 @@ function updateStats(){
        standing in Bay 1 does not consume usable area. */
     let occupiedPx = 0;
     S.cargo.forEach(c => {
-      const wIn = Math.max(0, Math.min((c.x || 0) + (c.w || 0), USABLE_X_END) - (c.x || 0));
+      const wIn = usableWidthPx(c.x || 0, c.w || 0);
       occupiedPx += wIn * (c.h || 0);
     });
     const usedPct = Math.min(100, Math.round((occupiedPx / DECK_USABLE_AREA_PX) * 100));
@@ -6645,7 +7313,7 @@ let _atFit = true;
   let open = null;
   const sync = () => {
     const b = document.body;
-    const now = b.classList.contains('cp-panel-open') || b.classList.contains('insp-open');
+    const now = b.classList.contains('cp-panel-open') || b.classList.contains('insp-open') || b.classList.contains('vessel-setup');
     if(now === open) return;
     const first = open === null;
     open = now;
@@ -8590,8 +9258,9 @@ async function buildPDF(deckCanvas, data, opts){
   let lx = ML + HB_PAD;
   doc.setFont('Manrope','bold'); doc.setFontSize(11); doc.setTextColor(...C.inkOnNavy);
   doc.setCharSpace(0.4);
-  doc.text('SPICA TIDE', lx, hbBL);
-  lx += doc.getTextWidth('SPICA TIDE');
+  const _vName = (VESSEL && VESSEL.name) || 'SPICA TIDE';
+  doc.text(_vName, lx, hbBL);
+  lx += doc.getTextWidth(_vName);
   doc.setCharSpace(0);
   lx += 4; drawHair(lx); lx += 4;
   doc.setFont('Inter','normal'); doc.setFontSize(7); doc.setTextColor(...C.inkOnNavyMute);
@@ -8727,11 +9396,10 @@ async function buildPDF(deckCanvas, data, opts){
         impeccable no-em-dash guideline for this specific deck wayfinding band. */
   const lblBL = y + 4;
   doc.setFont('Inter','normal'); doc.setFontSize(5.5); doc.setTextColor(...inkMute); doc.setCharSpace(0.4);
-  doc.text('◄ AFT / STERN — BAY 12', ML, lblBL);
-  doc.text('BAY 1 — BOW / FORE ►', ML+CW, lblBL, {align:'right'});
+  doc.text('◄ AFT / STERN — BAY ' + bayLabel(0), ML, lblBL);
+  doc.text('BAY ' + bayLabel(BAY_COUNT - 1) + ' — BOW / FORE ►', ML+CW, lblBL, {align:'right'});
   doc.setFont('Inter','bold'); doc.setFontSize(6); doc.setTextColor(...ink); doc.setCharSpace(0.3);
-  doc.text('SPICA TIDE · 54.92 m × 15 m · 752 m²',
-           ML+CW/2, lblBL, {align:'center'});
+  doc.text(vesselSummaryLine(false), ML+CW/2, lblBL, {align:'center'});
   doc.setCharSpace(0);
   y += 5;
   doc.setDrawColor(...cardBorder); doc.setLineWidth(0.15);
@@ -8772,9 +9440,8 @@ async function buildPDF(deckCanvas, data, opts){
         (DESIGN_RULES §6). The bottom row stays even though the snapshot already
         carries the ghost-watermark Manrope 900 numbers — cargo can cover those,
         so the explicit row gives a guaranteed readable reference. */
-  const bayNms = ['12','11','10','9','8','7','6','5','4','3','2','1'];
-  doc.setFont('Inter','bold'); doc.setFontSize(11); doc.setTextColor(...inkMute);
-  BW.forEach((w,i) => { doc.text(bayNms[i], ML+((BL_[i]+w/2)/TW)*dw, y+5, {align:'center'}); });
+  doc.setFont('Inter','bold'); doc.setFontSize(BAY_COUNT > 16 ? 8 : 11); doc.setTextColor(...inkMute);
+  BW.forEach((w,i) => { doc.text(bayLabel(i), ML+((BL_[i]+w/2)/TW)*dw, y+5, {align:'center'}); });
 
   /* clear the bay-number row before the DG card */
   y += BAY_LBL_H;
@@ -10542,6 +11209,8 @@ function _cmdpActions(){
       run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
     { group:'View',      label:'3D deck view',            shortcut:'V',
       run: () => toggle3D() },
+    { group:'View',      label:'Vessel setup…',
+      guard: () => isOperator(), run: () => vesselSetupRequest() },
     { group:'View',      label:'Charterer (PDF)…',
       guard: () => isOperator(), run: () => { bindCharterModal(); charterOpenModal(); } },
     { group:'Cargo',     label:'Mark selected as lifted',
@@ -11242,12 +11911,12 @@ async function exportExcel(){
     /* Estimate bay from x position — uses the central bayIndexFromX()
        helper so joint gaps are attributed to the bay on their left. */
     const _bi = bayIndexFromX(c.x);
-    const bayNum = (_bi >= 0 && _bi < BAY_COUNT) ? String(12 - _bi) : '—';
+    const bayNum = (_bi >= 0 && _bi < BAY_COUNT) ? bayLabel(_bi) : '—';
     rows.push([
       c.ccu||'',
       c.desc||'',
       parseFloat((c.length_m||c.w/M).toFixed(2)),
-      parseFloat((c.width_m||c.h/(CVH/15)).toFixed(2)),
+      parseFloat((c.width_m||c.h/YS).toFixed(2)),
       parseFloat(c.wt)||0,
       c.status==='L'?'Load':c.status==='BL'?'Backload':c.status==='ROB'?'ROB':c.status==='TR'?'Transfer':'',
       loc?loc.name:(c.platform||''),
@@ -11795,7 +12464,7 @@ function smartGridSnap(cargo){
   if(!SMART.gridSnap) return null;
 
   const SNAP_THRESH_X = Math.round(0.75 * M);          /* ~23 px horizontal */
-  const SNAP_THRESH_Y = Math.round(0.75 * (CVH / 15)); /* ~19 px vertical   */
+  const SNAP_THRESH_Y = Math.round(0.75 * YS); /* ~19 px vertical   */
   const HB_H          = Math.round(2.16 * YS);         /* Hose Bay height   */
 
   const others = S.cargo.filter(c => c.id !== cargo.id);
@@ -12987,6 +13656,7 @@ function bindMenuBar(){
        releases acknowledged DG pairs of the removed cargo. */
     view3D:        () => toggle3D(),
     editCharterer: () => { bindCharterModal(); charterOpenModal(); },
+    vesselSetup:   () => vesselSetupRequest(),
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];

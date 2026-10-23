@@ -156,6 +156,7 @@
       <div class="menu-action" data-action="markLifted">Mark Selected as Lifted</div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="editCharterer">Charterer…</div>
+      <div class="menu-action" data-action="vesselSetup">Vessel Setup…</div>
     </div>
   </div>
   <div class="menu-item" data-menu="view">
@@ -420,6 +421,73 @@
     <button type="button" class="insp-act insp-act-dup"  id="inspDup"  title="Duplicate (D)"><span>Duplicate</span></button>
     <button type="button" class="insp-act insp-act-lift" id="inspLift2" title="Lifted off the deck at the platform (Undo restores)"><span>Lifted</span></button>
     <button type="button" class="insp-act insp-act-del"  id="inspDel"  title="Remove (Del)"><span>Remove</span></button>
+  </div>
+</aside>
+
+<!-- v3.12 — VESSEL SETUP panel (Edit → Vessel Setup…, admin password).
+     Edits the active vessel profile: deck size, bays, zones, limits. -->
+<aside class="vs-panel" id="vsPanel" aria-hidden="true" aria-label="Vessel setup">
+  <div class="vs-head">
+    <div class="vs-head-text">
+      <div class="vs-kicker">Vessel setup</div>
+      <div class="vs-title" id="vsTitle">SPICA TIDE</div>
+    </div>
+    <button type="button" class="vs-x" id="vsClose" title="Cancel (Esc)">✕</button>
+  </div>
+  <div class="vs-body" id="vsBody">
+    <div class="vs-note">The deck updates live. Drag zones on the deck to move them, pull the handles to resize. Nothing is kept until you press Save.</div>
+
+    <section class="vs-sec">
+      <div class="vs-sec-title">Vessel</div>
+      <label class="vs-field vs-field-wide"><span>Name</span><input type="text" id="vsName" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="vs-row2">
+        <label class="vs-field"><span>Deck width (m)</span><input type="number" id="vsWidth" step="0.01" min="4" max="40"></label>
+        <label class="vs-field"><span>Joint between bays (m)</span><input type="number" id="vsJoint" step="0.01" min="0" max="1"></label>
+      </div>
+      <div class="vs-row2">
+        <label class="vs-field"><span>Max deck load (t)</span><input type="number" id="vsMaxLoad" step="1" min="1"></label>
+        <label class="vs-field"><span>Max deck pressure (t/m²)</span><input type="number" id="vsMaxP" step="0.1" min="0.5"></label>
+      </div>
+      <div class="vs-row2">
+        <label class="vs-field"><span>Clear deck area (m²)</span><input type="number" id="vsArea" step="1" min="0"></label>
+        <div class="vs-field"><span>Bay 1 is at the</span>
+          <div class="vs-seg" id="vsBay1At" role="radiogroup"><button type="button" data-v="bow">Bow</button><button type="button" data-v="stern">Stern</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="vs-sec">
+      <div class="vs-sec-title">Bays <span class="vs-sec-meta" id="vsBaysMeta"></span></div>
+      <div class="vs-bay-head"><span>Bay</span><span>Length (m)</span><span title="Counts towards Deck Used %">Deck used</span><span></span></div>
+      <div class="vs-bays" id="vsBays"></div>
+      <div class="vs-btnrow">
+        <button type="button" class="vs-btn" id="vsAddStern">+ Bay at stern</button>
+        <button type="button" class="vs-btn" id="vsAddBow">+ Bay at bow</button>
+      </div>
+    </section>
+
+    <section class="vs-sec">
+      <div class="vs-sec-title">Zones <span class="vs-sec-meta" id="vsZonesMeta"></span></div>
+      <div class="vs-zones" id="vsZones"></div>
+      <div class="vs-btnrow">
+        <select class="vs-select" id="vsZoneType" aria-label="Zone type"></select>
+        <button type="button" class="vs-btn" id="vsAddZone">+ Add zone</button>
+      </div>
+    </section>
+
+    <section class="vs-sec vs-sec-files">
+      <div class="vs-sec-title">Profile</div>
+      <div class="vs-btnrow">
+        <button type="button" class="vs-btn" id="vsExport">Export…</button>
+        <button type="button" class="vs-btn" id="vsImport">Import…</button>
+        <button type="button" class="vs-btn vs-btn-quiet" id="vsReset">Reset to SPICA TIDE</button>
+      </div>
+      <input type="file" id="vsImportFile" accept=".json,application/json" hidden>
+    </section>
+  </div>
+  <div class="vs-foot">
+    <button type="button" class="vs-cancel" id="vsCancel">Cancel</button>
+    <button type="button" class="vs-save" id="vsSave">Save</button>
   </div>
 </aside>
 
