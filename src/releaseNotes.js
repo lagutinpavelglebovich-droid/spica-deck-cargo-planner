@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.14.2',
+    date: '2026-10-23',
+    highlights: [
+      'ASCO load lists in the new iLMS layout import with unit numbers and weights',
+    ],
+    changes: [
+      { type: 'fix', text: 'ASCO import: unit numbers (CCU) and estimated weights were empty for load lists in the current iLMS layout — now read from the "CCU / Lifts" and "Est WT" columns' },
+      { type: 'fix', text: 'ASCO import: when the Loadlist ID is only a file name, the location is taken from "Location:" (e.g. BLEOHOLM)' },
+      { type: 'fix', text: 'The "ROB Lines" sheet (units remaining on board) is not imported as cargo to load' },
+    ],
+  },
+  {
     version: '3.14.1',
     date: '2026-10-23',
     highlights: [

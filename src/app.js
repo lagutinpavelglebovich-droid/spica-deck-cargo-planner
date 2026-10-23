@@ -8127,6 +8127,9 @@ function isItemId(v){
    Uses the known fixed ASCO column layout directly.                       */
 function parseASCOSheet(sheetName, sheetData){
   if(!sheetData || sheetData.length < 9) return null;
+  /* "ROB Lines" lists units that Remain On Board — already on deck, not
+     cargo to load. */
+  if(/^\s*rob\b/i.test(sheetName)) return null;
 
   /* ── Step 1: Extract metadata from the known fixed metadata rows ── */
   const r6 = sheetData[6] || [];
@@ -8178,38 +8181,36 @@ function parseASCOSheet(sheetName, sheetData){
   const COL_HAZARD = 9;
   const COL_UN     = 10;
 
-  /* Verify at least one header row has 'description' at col 1 */
-  let confirmedLayout = false;
-  for(let ri = 6; ri < Math.min(sheetData.length, 30); ri++){
-    const row = sheetData[ri] || [];
-    if(normCell(row[COL_DESC]).includes('description') &&
-       normCell(row[COL_WT]).includes('wt')){
-      confirmedLayout = true;
-      break;
-    }
-  }
-
-  /* If we can't confirm the fixed layout, fall back to dynamic column search */
+  /* Find the first header row ('Description' + a 'WT' column) anywhere in
+     the top of the sheet — iLMS exports differ in how many rows sit above
+     it (row 8 in older files, row 5 in the 2026 export). Columns are then
+     read from that header. The FIRST matching header wins per role, and
+     'CCU Test Date' / 'Gross WT' / 'Actual WT' are never taken for the
+     CCU / estimated-weight columns (v3.14.2 — the 2026 layout put the CCU
+     number in a blank 'CCU Test Date' column and lost every unit code). */
   let descCol = COL_DESC, wtCol = COL_WT, ccuCol = COL_CCU, hazCol = COL_HAZARD;
-  if(!confirmedLayout){
-    for(let ri = 0; ri < Math.min(sheetData.length, 25); ri++){
-      const row = sheetData[ri] || [];
-      let dFound = false;
-      row.forEach((cell, ci) => {
-        const cv = normCell(cell);
-        if(cv === 'description' || cv === 'item description') { descCol = ci; dFound = true; }
-        if(dFound && (cv.includes('est wt') || cv.includes('wt (t)'))) wtCol = ci;
-        if(dFound && (cv.includes('ccu') || cv.includes('lifts')))     ccuCol = ci;
-        if(dFound && cv.includes('hazard')) hazCol = ci;
-      });
-      if(dFound) break;
-    }
+  let headerRow = -1;
+  for(let ri = 0; ri < Math.min(sheetData.length, 30); ri++){
+    const row = (sheetData[ri] || []).map(normCell);
+    const di = row.findIndex(cv => cv === 'description' || cv === 'item description');
+    if(di < 0 || !row.some(cv => /\bwt\b/.test(cv))) continue;
+    headerRow = ri;
+    descCol = di;
+    const find = test => row.findIndex((cv, ci) => ci > di && test(cv));
+    let wi = find(cv => cv.startsWith('est wt') || cv.startsWith('estimated w'));
+    if(wi < 0) wi = find(cv => /\bwt\b/.test(cv) && !/gross|actual/.test(cv));
+    if(wi >= 0) wtCol = wi;
+    const ci = find(cv => /^ccu\b/.test(cv) && !/test|date/.test(cv));
+    if(ci >= 0) ccuCol = ci;
+    const hi = find(cv => cv.startsWith('hazard'));
+    if(hi >= 0) hazCol = hi;
+    break;
   }
 
-  /* ── Step 3: Parse every cargo row from row 8 onwards ─────────────── */
+  /* ── Step 3: Parse every cargo row below the header ─────────────── */
   const items = [];
 
-  for(let ri = 8; ri < sheetData.length; ri++){
+  for(let ri = headerRow >= 0 ? headerRow + 1 : 8; ri < sheetData.length; ri++){
     const row = sheetData[ri];
     if(!row) continue;
 
@@ -8285,9 +8286,11 @@ function parseASCOSheet(sheetName, sheetData){
   /* Display name: use Loadlist ID if it contains meaningful location info,
      else fall back to sheet name.  Format: "CLAYMORE CAP" from
      "CLAYMORE CAP - 462 - 100050 - 08.04.26 - SPICA TIDE"            */
-  const displayName = loadlistId
+  /* When the Loadlist ID is just a file name ("BLEOHOLM PRODUCTION
+     LOADLIST 532 REV0.xls") it carries no " - " parts; use Location. */
+  const displayName = (loadlistId && loadlistId.includes(' - '))
     ? loadlistId.split(' - ')[0].trim()
-    : (sheetLocation || sheetName);
+    : (sheetLocation || loadlistId.replace(/\.xlsx?$/i, '').trim() || sheetName);
 
   return {
     sheetName,
@@ -13837,8 +13840,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.14.1';
-const APP_VERSION   = '3.14.1';
+const CURRENT_BUILD = 'v3.14.2';
+const APP_VERSION   = '3.14.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
