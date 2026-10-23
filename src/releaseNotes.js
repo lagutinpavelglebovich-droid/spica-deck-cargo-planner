@@ -11,6 +11,19 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.13.0',
+    date: '2026-10-23',
+    highlights: [
+      'Several vessels, each with its own deck, locations and charterer',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Vessel Setup: pick the vessel in use or add a new one — name it first, then set up its deck (copy of the current vessel or an empty deck)' },
+      { type: 'feature',     text: 'Locations belong to the vessel: rename, add or delete them, set Platform / FPSO, "always grey" and the ASCO names that mean this location' },
+      { type: 'feature',     text: 'The charterer on the PDF is kept per vessel' },
+      { type: 'improvement', text: 'The header shows the vessel in use; saved plans remember their vessel and opening one switches to it' },
+    ],
+  },
+  {
     version: '3.12.0',
     date: '2026-10-23',
     highlights: [
