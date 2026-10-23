@@ -207,6 +207,50 @@ function applyBrandLabels(){
 ════════════════════════════════════════════════════════════ */
 let ADMIN_ACTIVE = false;
 
+/* ── v3.11.1 — Charterer ──────────────────────────────────────
+   Per-installation setting (the vessel's current charter), not per plan.
+   Printed on the PDF header brand mark and the footer. Empty = none. */
+const CHARTERER_KEY = 'spicaTide_charterer';
+const CHARTERER_DEFAULT = 'NeoNext';
+function getCharterer(){
+  try{
+    const v = localStorage.getItem(CHARTERER_KEY);
+    return v === null ? CHARTERER_DEFAULT : v;
+  }catch(e){ return CHARTERER_DEFAULT; }
+}
+function setCharterer(name){
+  const v = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 28);
+  try{ localStorage.setItem(CHARTERER_KEY, v); }catch(e){}
+  return v;
+}
+function charterOpenModal(){
+  if(!isOperator()){ if(typeof showToast === 'function') showToast('Switch to Operator mode to change the charterer', 'warn'); return; }
+  const ov = document.getElementById('charterModalOv'), inp = document.getElementById('charterInput');
+  if(!ov || !inp) return;
+  inp.value = getCharterer();
+  ov.classList.add('open');
+  setTimeout(() => { inp.focus(); inp.select(); }, 120);
+}
+function charterCloseModal(){ document.getElementById('charterModalOv')?.classList.remove('open'); }
+function charterSave(){
+  const v = setCharterer(document.getElementById('charterInput')?.value);
+  charterCloseModal();
+  if(typeof showToast === 'function') showToast(v ? `Charterer: ${v}` : 'Charterer removed from the PDF', 'ok');
+}
+function bindCharterModal(){
+  const ov = document.getElementById('charterModalOv');
+  if(!ov || ov.dataset.bound) return;
+  ov.dataset.bound = '1';
+  document.getElementById('charterModalClose')?.addEventListener('click', charterCloseModal);
+  document.getElementById('charterCancel')?.addEventListener('click', charterCloseModal);
+  document.getElementById('charterSave')?.addEventListener('click', charterSave);
+  ov.addEventListener('click', e => { if(e.target === ov) charterCloseModal(); });
+  document.getElementById('charterInput')?.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); charterSave(); }
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); charterCloseModal(); }
+  });
+}
+
 function adminOpenModal(){
   const ov = document.getElementById('adminModalOv');
   const inp = document.getElementById('adminPwInput');
@@ -8574,12 +8618,15 @@ async function buildPDF(deckCanvas, data, opts){
     return pairW;
   };
 
-  /* Item 1: NeoNext brand mark */
-  doc.setFont('Manrope','bold'); doc.setFontSize(9); doc.setTextColor(...C.inkOnNavy); doc.setCharSpace(0.2);
-  const neoW = doc.getTextWidth('NeoNext');
-  doc.text('NeoNext', rx - neoW, hbBL);
-  doc.setCharSpace(0);
-  rx -= neoW + 5; drawHair(rx); rx -= 5;
+  /* Item 1: charterer brand mark (Edit → Charterer…; empty = omitted) */
+  const charterer = getCharterer();
+  if(charterer){
+    doc.setFont('Manrope','bold'); doc.setFontSize(9); doc.setTextColor(...C.inkOnNavy); doc.setCharSpace(0.2);
+    const neoW = doc.getTextWidth(charterer);
+    doc.text(charterer, rx - neoW, hbBL);
+    doc.setCharSpace(0);
+    rx -= neoW + 5; drawHair(rx); rx -= 5;
+  }
 
   /* Item 5: DATE pair */
   rx -= renderHbPair('DATE', dateStr, 'Inter', 'bold');
@@ -8811,7 +8858,7 @@ async function buildPDF(deckCanvas, data, opts){
   doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.footerInk); doc.setCharSpace(0.2);
   doc.text('Generated ' + ts + '  \u00B7  SPICA TIDE v' + APP_VERSION, ML, fy + 4);
   /* Right: page indicator + brand. Single-page output for now (multi-page work is post-Stage-2). */
-  doc.text('Page 1 / 1  \u00B7  NeoNext', ML + CW, fy + 4, {align:'right'});
+  doc.text('Page 1 / 1' + (charterer ? '  \u00B7  ' + charterer : ''), ML + CW, fy + 4, {align:'right'});
   doc.setCharSpace(0);
 
   /* 9. OUTPUT — print or save depending on mode */
@@ -10495,6 +10542,8 @@ function _cmdpActions(){
       run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
     { group:'View',      label:'3D deck view',            shortcut:'V',
       run: () => toggle3D() },
+    { group:'View',      label:'Charterer (PDF)…',
+      guard: () => isOperator(), run: () => { bindCharterModal(); charterOpenModal(); } },
     { group:'Cargo',     label:'Mark selected as lifted',
       guard: () => isOperator() && !!KB_SEL, run: () => markLifted([...(KB_SEL_SET.size ? KB_SEL_SET : [KB_SEL])].map(id => (S.cargo.find(c => String(c.id) === String(id)) || {}).id).filter(v => v != null)) },
     { group:'Cargo',     label:'Show DG segregation conflicts',
@@ -12937,6 +12986,7 @@ function bindMenuBar(){
     /* Same semantics as the Delete key: Operator only, honours multi-select,
        releases acknowledged DG pairs of the removed cargo. */
     view3D:        () => toggle3D(),
+    editCharterer: () => { bindCharterModal(); charterOpenModal(); },
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];

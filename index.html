@@ -154,6 +154,8 @@
       <div class="menu-action" data-action="deleteSelected">Delete Selected<span class="menu-shortcut">Del</span></div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="markLifted">Mark Selected as Lifted</div>
+      <div class="menu-sep"></div>
+      <div class="menu-action" data-action="editCharterer">Charterer…</div>
     </div>
   </div>
   <div class="menu-item" data-menu="view">
@@ -1914,6 +1916,26 @@
     <div class="rmk-actions">
       <button class="rmk-cancel" id="rmkCancel"><span data-i18n="btn_cancel">Cancel</span></button>
       <button class="rmk-save" id="rmkSave"><span data-i18n="rmk_save">Save Notes</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTERER MODAL (v3.11.1) — name shown on the PDF header and footer -->
+<div class="admin-modal-ov" id="charterModalOv">
+  <div class="admin-modal" role="dialog" aria-labelledby="charterModalTitle">
+    <div class="admin-modal-head">
+      <div class="admin-modal-icon">⚓</div>
+      <div class="admin-modal-title" id="charterModalTitle">Charterer</div>
+      <div class="admin-modal-close" id="charterModalClose">✕</div>
+    </div>
+    <div class="admin-modal-body">
+      <div class="admin-modal-lbl">Shown on the PDF deck plan</div>
+      <input class="admin-modal-input charter-input" id="charterInput" type="text" maxlength="28" placeholder="e.g. NeoNext" autocomplete="off" spellcheck="false">
+      <div class="charter-hint" id="charterHint">Leave empty to print no charterer.</div>
+      <div class="admin-modal-actions">
+        <button class="admin-modal-cancel" id="charterCancel">Cancel</button>
+        <button class="admin-modal-unlock" id="charterSave">Save</button>
+      </div>
     </div>
   </div>
 </div>
