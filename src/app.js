@@ -11,6 +11,7 @@ import * as Sync from './sync.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
+import { readManifestFile } from './manifestImport.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 import { interRegularB64, interBoldB64, manropeExtraBoldB64, jetBrainsMonoRegularB64, jetBrainsMonoMediumB64 } from './inter-fonts.js';
@@ -1013,9 +1014,9 @@ const SPICA_TIDE_LOCS=[
    KEYWORD_MAP; matching now takes the LONGEST alias that fits, which
    reproduces the old "specific before generic" order). */
 const SPICA_TIDE_LOC_ALIASES = {
-  CLAY_WOP:['CLAYMORE WOPS','CLAY WOPS'], CLAY_CPP:['CLAYMORE CPP','CLAY CPP'],
-  CLAY_CAP:['CLAYMORE CAP','CLAY CAP','CLAYMORE'], CLAY_DRL:['CLAYMORE DRILL','CLAY DRILL','CLAYMORE DRILLING'],
-  PIPER_WOP:['PIPER WOPS','PIPER WOP'], PIPER_DR:['PIPER DRILL','PIPER DR'], PIPER:['PIPER'],
+  CLAY_WOP:['CLAYMORE WOPS','CLAY WOPS'], CLAY_CPP:['CLAYMORE CPP','CLAY CPP','CPP'],
+  CLAY_CAP:['CLAYMORE CAP','CLAY CAP','CLAYMORE','CAP'], CLAY_DRL:['CLAYMORE DRILL','CLAY DRILL','CLAYMORE DRILLING'],
+  PIPER_WOP:['PIPER WOPS','PIPER WOP'], PIPER_DR:['PIPER DRILL','PIPER DR'], PIPER:['PIPER','PIPER BRAVO'],
   SALT:['SALTIRE','SALT'], TART:['TARTAN','TART'], BEAT:['BEATRICE','BEAT'], CLYDE:['CLYDE'],
   FULMAR:['FULMAR'], ARBR:['ARBROATH','ARBR'], MONTR:['MONTROSE','MONTR'], BLEO:['BLEO'], GP3:['GP3'], AUK:['AUK'],
 };
@@ -7756,15 +7757,24 @@ function _matchImportedLocId(displayName){
   /* v3.13 — aliases live on each location (vessel profile). The LONGEST
      alias / name contained in the sheet name wins, so "CLAYMORE WOPS"
      beats "CLAYMORE" exactly as the old ordered keyword table did. */
-  let resolvedId = null, bestLen = 0;
-  [...LOC_ALL, ...S.customLocs].forEach(l => {
-    const keys = [...(l.aliases || []), l.name];
-    keys.forEach(k => {
-      const nk = norm(k);
-      if(nk && nk.length > bestLen && (dn === nk || dn.includes(nk))){ bestLen = nk.length; resolvedId = l.id; }
+  /* v3.14 — whole-word matches first ("CAP" in "CAP BACKLOAD", never in
+     "CAPACITY"); plain substring only as a fallback (old behaviour). */
+  const builtin = VESSEL && VESSEL.id === 'spica-tide';
+  const pad = ' ' + dn + ' ';
+  const scan = whole => {
+    let id = null, best = 0;
+    [...LOC_ALL, ...S.customLocs].forEach(l => {
+      const keys = [...(l.aliases || []), ...(builtin ? (SPICA_TIDE_LOC_ALIASES[l.id] || []) : []), l.name];
+      keys.forEach(k => {
+        const nk = norm(k);
+        if(!nk || nk.length <= best) return;
+        const hit = whole ? pad.includes(' ' + nk + ' ') : (nk.length >= 4 && dn.includes(nk));
+        if(hit){ best = nk.length; id = l.id; }
+      });
     });
-  });
-  return resolvedId || null;
+    return id;
+  };
+  return scan(true) || scan(false) || null;
 }
 
 /* Side-effecting resolver used at import time: falls back to the selected
@@ -7844,7 +7854,7 @@ function _importLedger(){
   return { deck, queue };
 }
 function _rowKeys(item, sheet){
-  return { k1: ccuKey(item.ccu), k2: _descKey(item.desc, item.wt, _matchImportedLocId(sheet.displayName || sheet.sheetName) || '') };
+  return { k1: ccuKey(item.ccu), k2: _descKey(item.desc, item.wt, sheet.locId || _matchImportedLocId(sheet.displayName || sheet.sheetName) || '') };
 }
 function _rowIn(bag, keys){ return (keys.k1 && bag.take(keys.k1)) || (keys.k2 && bag.take(keys.k2)); }
 /* Classify every parsed row: 'deck' | 'queue' | 'new'. */
@@ -8327,8 +8337,17 @@ function renderAscoContent(sheets, stats){
   ascoImportData = sheets;
   ascoSelected.clear();
   ascoStatus = classifyImport(sheets);
-  Object.keys(ascoStatus).forEach(k => { if(ascoStatus[k] === 'new') ascoSelected.add(k); });
-  ascoDiff = computeImportDiff(sheets);
+  /* v3.14 — a platform file that holds both a backload and an offload
+     sheet: tick the backload rows only (the offload is ASCO's load list). */
+  const _gen = sheets.filter(sh => sh.source === 'generic');
+  const _skipL = _gen.length && _gen.some(sh => sh.status === 'BL') && _gen.some(sh => sh.status === 'L');
+  Object.keys(ascoStatus).forEach(k => {
+    if(ascoStatus[k] !== 'new') return;
+    const sh = sheets[+k.split('-')[0]];
+    if(_skipL && sh && sh.source === 'generic' && sh.status === 'L') return;
+    ascoSelected.add(k);
+  });
+  ascoDiff = sheets.some(sh => sh.source !== 'generic') ? computeImportDiff(sheets.filter(sh => sh.source !== 'generic')) : { changed: [], dropped: [], byRow: {} };
 
   const content = document.getElementById('ascoContent');
   content.innerHTML = '';
@@ -8406,6 +8425,39 @@ function renderAscoContent(sheets, stats){
       <span class="asco-sheet-count">${sheet.items.length} item${sheet.items.length !== 1 ? 's' : ''}</span>
       <span class="asco-sheet-sel-all" data-si="${si}">Select all</span>`;
     section.appendChild(hdr);
+    /* v3.14 — platform files: choose Load / Backload and the location */
+    if(sheet.source === 'generic'){
+      const ctl = document.createElement('div');
+      ctl.className = 'asco-gen-ctl';
+      const locs = [...LOC_ALL, ...S.customLocs];
+      ctl.innerHTML = `
+        <div class="asco-gen-seg" role="radiogroup" aria-label="Direction">
+          <button type="button" data-v="BL" class="${sheet.status === 'BL' ? 'sel' : ''}">Backload</button>
+          <button type="button" data-v="L" class="${sheet.status === 'L' ? 'sel' : ''}">Load</button>
+        </div>
+        <select class="asco-gen-loc${sheet.locId ? '' : ' need'}" aria-label="Location">
+          <option value="">Choose location…</option>
+          ${locs.map(l => `<option value="${escHtml(l.id)}" ${l.id === sheet.locId ? 'selected' : ''}>${escHtml(l.name)}</option>`).join('')}
+        </select>
+        ${sheet.title ? `<span class="asco-gen-title" title="${escHtml(sheet.title)}">${escHtml(sheet.title)}</span>` : ''}
+        ${sheet.scanned ? '<span class="asco-badge ocr">Scanned — check numbers</span>' : ''}`;
+      ctl.querySelectorAll('.asco-gen-seg button').forEach(b => b.addEventListener('click', e => {
+        e.stopPropagation();
+        sheet.status = b.dataset.v;
+        ctl.querySelectorAll('.asco-gen-seg button').forEach(x => x.classList.toggle('sel', x === b));
+      }));
+      const ls = ctl.querySelector('.asco-gen-loc');
+      ls.addEventListener('click', e => e.stopPropagation());
+      ls.addEventListener('change', () => {
+        sheet.locId = ls.value;
+        const L = locById(ls.value);
+        if(L){ sheet.displayName = L.name; sheet.location = L.name; sheet.items.forEach(it => { it.platform = L.name; it.location = L.name; }); }
+        ls.classList.toggle('need', !ls.value);
+        hdr.querySelector('.asco-sheet-name').textContent = L ? L.name : (sheet.title || sheet.sheetName);
+        updateAscoSelection();
+      });
+      section.appendChild(ctl);
+    }
 
     /* Items */
     const itemsDiv = document.createElement('div');
@@ -8430,6 +8482,8 @@ function renderAscoContent(sheets, stats){
       else badges += `<span class="asco-badge size">${item.dims.length_m.toFixed(2)}×${item.dims.width_m.toFixed(2)} m</span>`;
       if(item.wt > 0) badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
       if(item.autoAssigned) badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
+      if(item.corrected) badges += `<span class="asco-badge ocr" title="Read as ${escHtml(item.corrected)} — matched to a known unit">read ${escHtml(item.corrected)}</span>`;
+      if(item.note) badges += `<span class="asco-badge note" title="${escHtml(item.note)}">${escHtml(item.note.length > 34 ? item.note.slice(0, 33) + '…' : item.note)}</span>`;
 
       el.innerHTML = `
         <div class="asco-cb" data-key="${key}"></div>
@@ -8490,7 +8544,13 @@ function updateAscoSelection(){
   document.getElementById('ascoBadgeCount').textContent = `${n} selected`;
   const nd = (ascoDiff.changed.length + ascoDiff.dropped.length);
   const btn = document.getElementById('ascoImportBtn');
-  btn.disabled = n === 0 && nd === 0;
+  const noLoc = ascoImportData.find((sh, si) => sh.source === 'generic' && !sh.locId && sh.items.some((_, ii) => ascoSelected.has(`${si}-${ii}`)));
+  btn.disabled = (n === 0 && nd === 0) || !!noLoc;
+  if(noLoc){
+    btn.textContent = 'Add to Queue';
+    document.getElementById('ascoFootInfo').innerHTML = `Choose the location for <b>${escHtml(noLoc.title || noLoc.sheetName)}</b>`;
+    return;
+  }
   btn.textContent = n === 0 && nd > 0 ? 'Mark changes on deck' : 'Add to Queue';
   document.getElementById('ascoFootInfo').innerHTML = n > 0
     ? `<b>${n}</b> item${n!==1?'s':''} selected — will be added to the Imported queue`
@@ -8583,23 +8643,24 @@ function performAscoImport(){
   const added = [];
   /* v3.11 — diff against deck BEFORE the load list is replaced (dropped
      detection needs the previous list). */
-  const _diff = computeImportDiff(ascoImportData);
+  const _asco = ascoImportData.filter(sh => sh.source !== 'generic');
+  const _diff = _asco.length ? computeImportDiff(_asco) : { changed: [], dropped: [], byRow: {} };
   const _applyEl = document.getElementById('ascoDiffApply');
   applyImportDiff(_diff, _applyEl ? _applyEl.checked : false);
   const _nDiff = _diff.changed.length + _diff.dropped.length;
   if(_nDiff){ renderAll(); updateStats(); checkSeg(); updateDGSummary(); }
   /* v3.10 — the whole file (every row, selected or not) is the load list
      for the locations it covers; progress = how much of it is on deck. */
-  _loadListRecord(ascoImportData);
+  if(_asco.length) _loadListRecord(_asco);
   /* Dedup by CCU against existing queue entries and cargo already placed
      on deck. Same normalisation as runManifestMatch (trim + uppercase).
      Rows without a CCU are never dedup-matched — always imported. */
   /* The new load list is the truth for every location it covers: queue
      items of those locations that no longer appear anywhere in the file
      were dropped by ASCO and leave the Imported queue. */
-  const fileLocs = new Set(ascoImportData.map(sh => _matchImportedLocId(sh.displayName || sh.sheetName)).filter(Boolean));
+  const fileLocs = new Set(_asco.map(sh => _matchImportedLocId(sh.displayName || sh.sheetName)).filter(Boolean));
   const fileBag = _keyBag();
-  ascoImportData.forEach(sh => sh.items.forEach(it => { const k = _rowKeys(it, sh); fileBag.add(k.k1 || k.k2); }));
+  _asco.forEach(sh => sh.items.forEach(it => { const k = _rowKeys(it, sh); fileBag.add(k.k1 || k.k2); }));
   let removedStale = 0;
   for(let i = IMPORT_QUEUE.length - 1; i >= 0; i--){
     const q = IMPORT_QUEUE[i];
@@ -8639,7 +8700,9 @@ function performAscoImport(){
         platform: item.platform,          // raw string e.g. "CLAYMORE WOPS - 797..."
         location: item.location,          // e.g. "CLAYMORE"
         displayName: sheet.displayName || sheet.sheetName,  // e.g. "CLAYMORE WOPS"
-        locId: resolveImportedLocId(sheet.displayName || sheet.sheetName), // LOC_ALL id
+        locId: sheet.locId || resolveImportedLocId(sheet.displayName || sheet.sheetName), // LOC_ALL id
+        status: sheet.source === 'generic' ? (sheet.status || 'BL') : 'L',
+        note: item.note || '',
         sheetName: item.sheetName,
         loadlistId: item.loadlistId,
         sizeDetected: item.sizeDetected,
@@ -8724,6 +8787,7 @@ function buildQueueList(){
     if(item.wt > 0)        badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
     if(!item.sizeDetected) badges += `<span class="asco-badge no-size">default size</span>`;
     if(item.autoAssigned)  badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
+    if(item.status === 'BL') badges += `<span class="asco-badge bl">Backload</span>`;
 
     el.innerHTML = `
       <div class="asco-qitem-icon">${_qdg.length>0 ?
@@ -8809,7 +8873,7 @@ function openAscoModal(){
   document.getElementById('ascoDropzone').style.display = 'flex';
   document.getElementById('ascoContent').style.display = 'none';
   document.getElementById('ascoFooter').style.display = 'none';
-  document.getElementById('ascoSubtitle').textContent = 'Select an ASCO loadout Excel file to import';
+  document.getElementById('ascoSubtitle').textContent = 'Select a load list or backload file to import';
   document.getElementById('ascoBadgeCount').style.display = 'none';
   ascoImportData = [];
   ascoSelected.clear();
@@ -8863,7 +8927,118 @@ function bindAscoUpload(){
   });
 }
 
+/* v3.14 — an ASCO iLMS load list is recognised by its "Loadlist ID" /
+   "Est WT" layout; anything else goes to the universal reader. */
+function _isAscoWorkbook(buf){
+  try{
+    const wb = XLSX.read(buf, { type:'array', sheetRows: 20 });
+    return wb.SheetNames.some(n => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, defval:null, raw:true });
+      return rows.some(r => (r || []).some(c => /^\s*loadlist\s*id/i.test(String(c || '')) || /\best\.?\s*wt\b/i.test(String(c || ''))));
+    });
+  }catch(e){ return false; }
+}
+const _IMPORT_EXT = /\.(xlsx|xlsm|xls|csv|ods|docx|pdf)$/i;
+
+/* Edit distance ≤ 1 (for OCR'd numbers vs CCUs already known). */
+function _near1(a, b){
+  if(a === b) return true;
+  if(Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, e = 0;
+  while(i < a.length && j < b.length){
+    if(a[i] === b[j]){ i++; j++; continue; }
+    if(++e > 1) return false;
+    if(a.length > b.length) i++; else if(b.length > a.length) j++; else { i++; j++; }
+  }
+  return e + (a.length - i) + (b.length - j) <= 1;
+}
+
+/* Universal reader result → the same sheet/item shape the ASCO parser
+   produces, so preview, dedupe and the Imported queue work unchanged. */
+function _genericSheets(res){
+  const known = [...S.cargo.map(c => c.ccu), ...IMPORT_QUEUE.map(q => q.ccu)].map(ccuKey).filter(Boolean);
+  const knownRaw = {};
+  [...S.cargo, ...IMPORT_QUEUE].forEach(c => { const k = ccuKey(c.ccu); if(k && !knownRaw[k]) knownRaw[k] = c.ccu; });
+  return res.sections.map(sec => {
+    const locId = sec.platformHint.map(h => _matchImportedLocId(h)).find(Boolean) || '';
+    const loc = locId ? locById(locId) : null;
+    const status = sec.direction || 'BL';
+    const items = [];
+    /* scanned weights: a lost decimal point ("14" among 1.4 / 1.9 / 2.4) */
+    if(res.scanned){
+      const ws = sec.rows.map(r => r.wt).filter(w => w > 0);
+      const small = ws.filter(w => w < 10).length;
+      sec.rows.forEach(r => { if(r.wt >= 10 && r.wt < 100 && Number.isInteger(r.wt) && small >= ws.length / 2) r.wt = r.wt / 10; });
+    }
+    sec.rows.forEach(r => {
+      let ccu = String(r.ccu || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      let corrected = '';
+      if(res.scanned && ccu){
+        const k = ccuKey(ccu);
+        const hit = !known.includes(k) && known.find(x => _near1(x, k));
+        if(hit){ corrected = ccu; ccu = knownRaw[hit] || hit; }
+      }
+      let desc = String(r.desc || '').trim();
+      if(r.contents && !desc.toUpperCase().includes(r.contents.toUpperCase())) desc = desc ? desc + ' — ' + r.contents : r.contents;
+      if(!desc) desc = r.pkg || 'Cargo';
+      const sizeText = desc + ' ' + (r.pkg || '');
+      const detected = detectSizeFromDesc(sizeText);
+      let dims = detected ? sizeToCanvasPx(detected.length_m, detected.width_m) : sizeToCanvasPx(null, null);
+      let sizeDetected = !!detected, autoAssigned = '';
+      if(!detected && /\b(mini|food)\b/i.test(sizeText)){
+        const mini = CCU_PRESETS.find(p => p.key === 'cont_mini_std');
+        if(mini){ dims = sizeToCanvasPx(mini.length_m, mini.width_m); sizeDetected = true; autoAssigned = mini.label; }
+      }
+      const dgClasses = extractDGClasses(r.dg, desc);
+      const n = ccu ? 1 : Math.min(20, Math.max(1, r.qty || 1));
+      for(let k = 0; k < n; k++) items.push({
+        desc, ccu, wt: r.wt || 0, dgClasses, heavyLift: (r.wt || 0) >= HL_THRESHOLD,
+        dims, autoAssigned, sizeDetected,
+        platform: loc ? loc.name : (sec.platformHint[0] || ''), loadlistId: sec.manifestNo || '',
+        location: loc ? loc.name : '', sheetName: sec.sheetName,
+        ocr: !!res.scanned, corrected, note: [r.dest, r.landing].filter(Boolean).join(' · '),
+      });
+    });
+    return {
+      sheetName: sec.sheetName, title: sec.title,
+      displayName: loc ? loc.name : (sec.title || sec.sheetName),
+      location: loc ? loc.name : '', loadlistId: sec.manifestNo || '', noLifts: items.length,
+      items, source: 'generic', status, locId, scanned: !!res.scanned, kind: res.kind,
+    };
+  }).filter(sh => sh.items.length);
+}
+
+async function _processGenericFile(file, ascoBody){
+  const sub = document.getElementById('ascoSubtitle');
+  if(sub) sub.textContent = `Reading ${file.name}…`;
+  try{
+    const res = await readManifestFile(file, pr => {
+      if(sub && pr && pr.phase === 'ocr') sub.textContent = `Scanned PDF — reading page ${pr.page}/${pr.pages}${pr.pct ? ' · ' + pr.pct + '%' : ''}… (on this computer)`;
+    });
+    const sheets = _genericSheets(res);
+    if(!sheets.length){
+      if(ascoBody) ascoBody.innerHTML = '';
+      if(sub) sub.textContent = 'Select a load list or backload file to import';
+      showToast(`No cargo rows found in ${file.name}`, 'warn');
+      return;
+    }
+    const stats = { totalSheets: res.sections.length, validSheets: sheets.length,
+      totalItems: sheets.reduce((a, s2) => a + s2.items.length, 0),
+      locations: [...new Set(sheets.map(s2 => s2.displayName))] };
+    if(sub) sub.textContent = `Reading: ${file.name}`;
+    renderAscoContent(sheets, stats);
+  }catch(err){
+    if(ascoBody) ascoBody.innerHTML = '';
+    showToast(t('toast_read_err', err.message), 'warn');
+    console.error('Manifest read error:', err);
+  }
+}
+
 function processASCOFile(file){
+  if(!_IMPORT_EXT.test(file.name || '')){
+    showToast('Use an Excel, Word or PDF file', 'warn');
+    return;
+  }
   /* V11: Show skeleton shimmer while parsing */
   const ascoBody = document.querySelector('.asco-body') || document.getElementById('ascoContent');
   if(ascoBody){
@@ -8871,8 +9046,10 @@ function processASCOFile(file){
     for(let i=0;i<6;i++){ const sk=document.createElement('div'); sk.className='skel-card'; ascoBody.appendChild(sk); }
   }
 
+  if(!/\.(xlsx|xlsm|xls)$/i.test(file.name || '')){ _processGenericFile(file, ascoBody); return; }
   const reader = new FileReader();
   reader.onload = e => {
+    if(!_isAscoWorkbook(e.target.result)){ _processGenericFile(file, ascoBody); return; }
     try{
       const result = parseASCOWorkbook(e.target.result);
       const { sheets, stats } = result;
@@ -8925,7 +9102,7 @@ function placeAt(cx, cy){
       desc:      item.name     || '',
       wt:        item.wt       || 0,
       platform:  platformId,
-      status:    'L',
+      status:    item.status || 'L',
       dgClasses: item.dgClasses || [],
       heavyLift: !!item.heavyLift,
       priority: false,

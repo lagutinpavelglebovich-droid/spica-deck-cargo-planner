@@ -937,17 +937,17 @@
       </div>
       <div class="asco-title-wrap">
         <div class="asco-title">Imported Cargo List</div>
-        <div class="asco-subtitle" id="ascoSubtitle">Select an ASCO loadout Excel file to import</div>
+        <div class="asco-subtitle" id="ascoSubtitle">Select a load list or backload file to import</div>
       </div>
       <div class="asco-badge-count" id="ascoBadgeCount" style="display:none"></div>
     </div>
     <!-- Drop zone -->
     <div class="asco-dropzone" id="ascoDropzone">
       <div class="asco-drop-icon">📂</div>
-      <div class="asco-drop-title">Drop ASCO Loadout Excel File</div>
-      <div class="asco-drop-sub">Supports .xlsx and .xls files with multiple sheet tabs.<br>Each sheet = one load list / platform batch.</div>
+      <div class="asco-drop-title">Drop a load list or backload file</div>
+      <div class="asco-drop-sub">ASCO load lists, and platform backloads / manifests in Excel, Word or PDF — scanned PDFs too.<br>Read on this computer; nothing is sent anywhere.</div>
       <button class="asco-drop-pill" id="ascoFilePill">Choose File…</button>
-      <input type="file" id="ascoFileInput" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="ascoFileInput" accept=".xlsx,.xlsm,.xls,.csv,.ods,.docx,.pdf" style="display:none">
     </div>
     <!-- Results content -->
     <div class="asco-content" id="ascoContent" style="display:none"></div>
@@ -2138,7 +2138,7 @@
           </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyQueue">
-          <div class="cp-empty" id="cpQueueEmpty">No imported cargo yet. Upload an ASCO file to start.</div>
+          <div class="cp-empty" id="cpQueueEmpty">No imported cargo yet. Import a load list or backload to start.</div>
         </div>
       </div>
 
