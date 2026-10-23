@@ -11,6 +11,21 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.12.0',
+    date: '2026-10-23',
+    highlights: [
+      'Vessel Setup: set up the deck of any vessel',
+    ],
+    changes: [
+      { type: 'feature',     text: 'Edit → Vessel Setup… (admin password): vessel name, deck width, joint width, max deck load and pressure, clear deck area, and whether Bay 1 is at the bow or the stern' },
+      { type: 'feature',     text: 'Bays: change any bay length, add a bay at the stern or bow, remove bays, choose which bays count towards Deck Used' },
+      { type: 'feature',     text: 'Zones: add hose bays, no-cargo areas, No DG areas, stores, waste skips, tiger strip and the methanol line; drag and resize them on the deck, with snapping to bay and deck edges (Alt for free)' },
+      { type: 'feature',     text: 'The deck redraws live while you edit; Cancel puts everything back, Save keeps it' },
+      { type: 'feature',     text: 'Export a vessel profile to a file and import it on another vessel; Reset to SPICA TIDE restores the measured layout' },
+      { type: 'improvement', text: 'PDF, Excel, the deck caption and the 3D view follow the vessel profile (name, size, bay numbers)' },
+    ],
+  },
+  {
     version: '3.11.1',
     date: '2026-10-23',
     highlights: [
