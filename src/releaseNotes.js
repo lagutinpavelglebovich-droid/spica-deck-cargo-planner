@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.14.1',
+    date: '2026-10-23',
+    highlights: [
+      'Security update of PDF, Excel and file libraries',
+    ],
+    changes: [
+      { type: 'fix',         text: 'PDF reader updated: a crafted PDF can no longer run code when imported' },
+      { type: 'fix',         text: 'PDF export and Excel libraries updated to versions without known vulnerabilities; exports look the same' },
+      { type: 'fix',         text: 'Text PDF manifests: a quantity column is no longer read as weight, and a table continued on page 2 stays one section' },
+    ],
+  },
+  {
     version: '3.14.0',
     date: '2026-10-23',
     highlights: [

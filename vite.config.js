@@ -38,6 +38,10 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'esnext',
+    /* Desktop app: the bundle is read from local disk by the Tauri
+       WebView, never downloaded, so the 500 kB web-page warning does
+       not apply. Main bundle ≈ 3.5 MB (app + SheetJS + jsPDF). */
+    chunkSizeWarningLimit: 5000,
   },
   server: {
     /* host:true binds to both IPv4 and IPv6 — otherwise Vite defaults to

@@ -1,7 +1,7 @@
 {
   "name": "spica-tide",
-  "version": "3.14.0",
-  "description": "SPICA TIDE — Deck Cargo Planning Tool for PSV SPICA TIDE",
+  "version": "3.14.1",
+  "description": "SPICA TIDE \u2014 Deck Cargo Planning Tool for PSV SPICA TIDE",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,13 +24,13 @@
     "@tauri-apps/plugin-store": "^2",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tesseract.js-data/eng": "1.0.0",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "html2canvas": "1.4.1",
-    "jspdf": "2.5.1",
+    "jspdf": "4.2.1",
     "motion": "^12.38.0",
-    "pdfjs-dist": "3.11.174",
+    "pdfjs-dist": "6.4.299",
     "tesseract.js": "5.1.1",
-    "xlsx": "0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

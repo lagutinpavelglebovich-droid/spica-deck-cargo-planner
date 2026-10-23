@@ -13,6 +13,8 @@
 ══════════════════════════════════════════════════════════════════════ */
 import * as XLSX from 'xlsx';
 import { unzipSync, strFromU8 } from 'fflate';
+/* pdf.js legacy build: polyfilled for older WebView2 / WKWebView engines */
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 /* ── Header vocabulary: normalised header text → role ──────────────── */
 const ROLE_WORDS = {
@@ -81,12 +83,12 @@ const looksText = s => /[a-z]{3,}/i.test(String(s || '')) && !looksCCU(s);
 /* Guess roles for a table without a usable header row. */
 function inferColumns(rows, hint){
   const width = Math.max(0, ...rows.map(r => r.length));
-  const stat = Array.from({ length: width }, () => ({ n:0, ccu:0, wt:0, txt:0, idx:0 }));
+  const stat = Array.from({ length: width }, () => ({ n:0, ccu:0, wt:0, txt:0, idx:0, dec:0, vals:new Set() }));
   rows.forEach(r => r.forEach((c, i) => {
     const s = cellStr(c); if(!s) return;
     const st = stat[i]; st.n++;
     if(looksCCU(s)) st.ccu++;
-    if(looksWeight(s)) st.wt++;
+    if(looksWeight(s)){ st.wt++; st.vals.add(s); if(/[.,]/.test(s)) st.dec++; }
     if(looksText(s)) st.txt++;
     if(/^\d{1,3}$/.test(s)) st.idx++;
   }));
@@ -100,6 +102,8 @@ function inferColumns(rows, hint){
   /* the running item number column is not a CCU */
   stat.forEach((st, i) => { if(st.n >= 2 && st.idx / st.n > 0.9 && free(i) && map.idx == null) map.idx = i; });
   if(map.ccu == null){ const i = best('ccu', 0.6); if(i >= 0) map.ccu = i; }
+  /* weights vary and usually carry decimals; a column of "1"s is a quantity */
+  stat.forEach(st => { if(st.vals.size <= 1 && !st.dec) st.wt = 0; });
   if(map.wt == null){ const i = best('wt', 0.6); if(i >= 0) map.wt = i; }
   const textCols = stat.map((st, i) => ({ i, v: st.n ? st.txt / st.n : 0, n: st.n }))
     .filter(o => free(o.i) && o.n >= 2 && o.v >= 0.6).map(o => o.i);
@@ -181,7 +185,7 @@ function readGrid(grid, sheetName, docMeta){
     const body = pending.filter(r => !r.some(c => headerRole(c)));
     const imap = inferColumns(body, hint);
     if(imap){
-      const sec = { title, sheetName, rows: [], meta: Object.assign({}, meta) };
+      const sec = { title, sheetName, rows: [], meta: Object.assign({}, meta), inferred: true };
       body.forEach(r => { const rec = rowToRecord(r, imap, ''); if(rec && rec.ccu) sec.rows.push(rec); });
       if(sec.rows.length) sections.push(sec);
     }
@@ -277,10 +281,9 @@ function gridFromWords(words, pageW){
 let _pdfjs = null;
 async function loadPdfjs(){
   if(_pdfjs) return _pdfjs;
-  const lib = await import('pdfjs-dist/build/pdf.js');
+  const lib = await import('pdfjs-dist/legacy/build/pdf.min.mjs');
   const pdfjs = lib.default || lib;
-  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.js?url')).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  pdfjs.GlobalWorkerOptions.workerSrc = String(pdfWorkerUrl);
   _pdfjs = pdfjs;
   return pdfjs;
 }
@@ -448,7 +451,7 @@ async function gridsFromPdf(buf, onProgress){
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(v2.width); canvas.height = Math.round(v2.height);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+    await page.render({ canvas, canvasContext: ctx, viewport: v2 }).promise;
     const scan = cleanScan(ctx, canvas.width, canvas.height);
     const worker = await ocrWorker(pct => onProgress && onProgress({ phase:'ocr', page:p, pages:pdf.numPages, pct }));
     const ruled = await ocrRuledTable(worker, canvas, scan);
@@ -512,7 +515,13 @@ export async function readManifestFile(file, onProgress){
   out.forEach(sec => {
     const key = (sec.sheetName + '|' + (sec.title || '').replace(/\(?\s*page\s*\d+\s*of\s*\d+\s*\)?/i, '').trim()).toUpperCase();
     const prev = merged.find(m => m._key === key);
-    if(prev) prev.rows.push(...sec.rows); else { sec._key = key; merged.push(sec); }
+    /* a PDF page without its own title continues the previous page's table */
+    const last = merged[merged.length - 1];
+    const cont = last && /^Page \d+$/.test(sec.sheetName) && sec.sheetName !== 'Page 1'
+      && (!sec.title || sec.inferred) && (!sec.direction || !last.direction || sec.direction === last.direction);
+    if(prev) prev.rows.push(...sec.rows);
+    else if(cont) last.rows.push(...sec.rows);
+    else { sec._key = key; merged.push(sec); }
   });
   /* a later scanned / repeated table may restate the same CCUs — keep first */
   return { kind, scanned, fileName: name, sections: merged.filter(s => s.rows.length) };
