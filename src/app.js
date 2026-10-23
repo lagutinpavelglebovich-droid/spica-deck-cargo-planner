@@ -526,12 +526,13 @@ const SPICA_TIDE_BAYS_M = [
 ═══════════════════════════════════════════════════════════════════════ */
 const VESSEL_SCHEMA = 1;
 const VESSEL_STORE_KEY = 'spicaTide_vessel';
-const ZONE_BLOCKING = new Set(['tiger','hose','store','skip','restricted']);
+const ZONE_BLOCKING = new Set(['tiger','hose','store','workshop','skip','restricted']);
 const ZONE_TYPES = {
   hose:       { name:'Hose bay',        label:'HOSE BAY' },
   restricted: { name:'No cargo area',   label:'NO CARGO' },
   nodg:       { name:'No DG area',      label:'NO DG CARGO' },
   store:      { name:'Store',           label:'STORE' },
+  workshop:   { name:'Workshop',        label:'WORKSHOP' },
   skip:       { name:'Waste skip',      label:"SHIP'S WASTE SKIP" },
   tiger:      { name:'Tiger strip',     label:'' },
   methanol:   { name:'Methanol line',   label:'METHANOL ZONE' },
@@ -2238,8 +2239,8 @@ function drawDeckStatics(){
   /* Zones — drawn in the historic order so the built-in profile stacks
      exactly as before: plain zones, NO DG, methanol arc, lashing, skip. */
   const Z = ZONES_PX;
-  Z.filter(z => z.type === 'tiger' || z.type === 'hose' || z.type === 'store' || z.type === 'restricted').forEach(z => {
-    addZone(frag, z.x, z.y, z.w, z.h, z.type === 'restricted' ? 'hose' : z.type, z.label || '');
+  Z.filter(z => ['tiger','hose','store','workshop','restricted'].includes(z.type)).forEach(z => {
+    addZone(frag, z.x, z.y, z.w, z.h, z.type === 'restricted' ? 'hose' : z.type === 'workshop' ? 'store' : z.type, z.label || '');
     frag.lastChild.dataset.zoneId = z.id;
   });
 
@@ -2585,8 +2586,13 @@ function _vsRenderPanel(){
         <label class="vs-field"><span>From port (m)</span><input type="number" step="0.01" data-k="y" value="${_vsF(z.y)}"></label>
         <label class="vs-field"><span>Along (m)</span><input type="number" step="0.01" data-k="w" value="${_vsF(z.w)}"></label>
         <label class="vs-field"><span>Across (m)</span><input type="number" step="0.01" data-k="h" value="${_vsF(z.h)}"></label>
-        ${z.type === 'methanol' ? `<label class="vs-field"><span>Arc radius (m)</span><input type="number" step="0.1" data-k="r" value="${_vsF(z.r)}"></label>` : ''}`;
+        ${z.type === 'methanol' ? `<label class="vs-field"><span>Arc radius (m)</span><input type="number" step="0.1" data-k="r" value="${_vsF(z.r)}"></label>` : ''}
+        <div class="vs-btnrow vs-zone-acts">
+          <button type="button" class="vs-btn" data-act="mirror" title="Copy to the other side of the deck (PORT ↔ STBD)">Copy to other side</button>
+          <button type="button" class="vs-btn" data-act="dup" title="Copy next to this zone">Duplicate</button>
+        </div>`;
       ed.querySelector('[data-k="label"]').value = z.label || '';
+      ed.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => _vsCopyZone(z.id, btn.dataset.act === 'mirror')));
       ed.querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', () => {
         const k = el.dataset.k;
         if(k === 'type'){
@@ -2636,6 +2642,9 @@ function _vsAddBay(atStern){
     d.lashing.dollies = d.lashing.dollies.map(k => k + 1);
     d.lashing.drings  = d.lashing.drings.map(k => k + 1);
   } else {
+    /* zones on the bow edge (store, No DG bow bays…) move with the bow */
+    const oldL = d.bays.reduce((a, b) => a + b.l, 0) + (d.bays.length - 1) * d.jointM;
+    d.zones.forEach(z => { if(Math.abs(z.x + z.w - oldL) < 0.05) z.x = _r4(z.x + l + d.jointM); });
     d.bays.push({ l, usable:true });
   }
   _vsApply();
@@ -2666,6 +2675,23 @@ function _vsAddZone(type){
   z = Object.assign({ id, type, label: ZONE_TYPES[type].label }, z);
   d.zones.push(z);
   VS.sel = id;
+  _vsApply();
+}
+/* Copy a zone: mirrored across the centre line (workshop / hose bay on
+   both sides) or placed right after it along the deck. */
+function _vsCopyZone(id, mirror){
+  const d = VS.draft, z = d.zones.find(q => q.id === id);
+  if(!z) return;
+  const c = _vsClone(z);
+  c.id = 'z' + Date.now().toString(36);
+  if(mirror){
+    c.y = _r4(Math.max(0, d.deckWidthM - z.y - z.h));
+    if(Math.abs(c.y - z.y) < 0.05) return showToast('This zone already spans both sides', 'warn');
+  } else {
+    c.x = _r4(Math.min(Math.max(0, DECK_LENGTH_M - z.w), z.x + z.w + 0.5));
+  }
+  d.zones.push(c);
+  VS.sel = c.id;
   _vsApply();
 }
 function _vsDeleteZone(id){
