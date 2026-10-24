@@ -3842,6 +3842,29 @@ function cbControlsFlipLeft(cargo){ return cargo.x + cargo.w > TW - 34; }
    fit inside the block (padding 3px 5px, line-height 1.2, word wrap), it
    steps down 1 px at a time to a 6 px floor — the label shrinks with the
    block and never disappears. Used by renderBlock and live resize.     */
+/* v3.15.1 — DG badges sit INSIDE the block corners (they used to ride half
+   out of small blocks and collided with the neighbours). The label is
+   pushed below them by exactly the badge height, so neither overlaps.
+   Tier thresholds match renderBlock's .cb-dg-strip-small / -xs. */
+function dgBadgeReservePx(cargo){
+  const dg = cargo.dgClasses || [];
+  if(!dg.length || cargo.w < 36) return { top: 0, bottom: 0 };
+  /* badge bottom edge minus the label's own 3 px top padding */
+  let r = cargo.w < 48 ? 9 : cargo.w < 82 ? 11 : 15;
+  if(dg.some(c => String(c).toUpperCase() === 'LQ')) r += 3;   /* LQ chip has 2.5 px top/bottom bars */
+  return { top: r, bottom: dg.length >= 3 ? r : 0 };
+}
+let _cbMeasureCtx = null;
+function _cbTextWidth(f){
+  if(!_cbMeasureCtx){
+    try { _cbMeasureCtx = document.createElement('canvas').getContext('2d'); } catch(e){}
+  }
+  const ctx = _cbMeasureCtx;
+  if(!ctx) return w => w.length * 0.62 * f;
+  ctx.font = `700 ${f}px Inter, system-ui, sans-serif`;
+  /* +0.1 px letter-spacing per glyph (.cb-id), +4 % safety for hinting */
+  return w => (ctx.measureText(w).width + w.length * 0.1) * 1.04;
+}
 function cbLabelFontPx(cargo, maxPx){
   maxPx = maxPx || 18;
   const text   = String(cargo.ccu || '');
@@ -3849,19 +3872,25 @@ function cbLabelFontPx(cargo, maxPx){
   const n      = Math.max(1, text.length);
   const minDim = Math.min(cargo.w, cargo.h);
   /* DG badge strip sits in the top-right corner (renderBlock gate: w >= 36). */
-  const hasDg  = (cargo.dgClasses || []).length > 0 && cargo.w >= 36;
-  const availW = Math.max(1, cargo.w - 10);
-  const availH = Math.max(1, cargo.h - 6 - (hasDg ? 12 : 0));
+  const dgRes  = dgBadgeReservePx(cargo);
+  /* label box = block − 1 px border each side − 5 px label padding each side */
+  const availW = Math.max(1, cargo.w - 12);
+  const availH = Math.max(1, cargo.h - 8 - dgRes.top - dgRes.bottom);
   const fontByName = Math.floor(availW / (n * 0.54));
   let fs = Math.max(12, Math.min(maxPx, Math.round(minDim * 0.30), fontByName));
-  /* Greedy word wrap, the way the browser breaks the label (Inter 700
-     ≈ 0.58 em per glyph); over-long words break mid-word. */
+  /* Greedy word wrap, the way the browser breaks the label; over-long
+     words break mid-word. v3.15.1 — widths are MEASURED (canvas, Inter
+     700) instead of guessed at 0.58 em: capitals and digits run wider,
+     so "AMF 626" was judged one line, wrapped to two and ran into the
+     DG badge. */
   const lines = f => {
-    const cw = 0.58 * f; let ln = 1, cur = 0;
+    const mw = _cbTextWidth(f);
+    const sp = mw(' ');
+    let ln = 1, cur = 0;
     for(const w of words){
-      const ww = w.length * cw;
-      if(cur && cur + cw + ww > availW){ ln++; cur = 0; }
-      cur = cur ? cur + cw + ww : ww;
+      const ww = mw(w);
+      if(cur && cur + sp + ww > availW){ ln++; cur = 0; }
+      cur = cur ? cur + sp + ww : ww;
       if(cur > availW){ ln += Math.ceil(cur / availW) - 1; cur = cur % availW; }
     }
     return ln;
@@ -3988,6 +4017,9 @@ function renderBlock(cv,cargo){
       strip.appendChild(badge);
     });
     b.appendChild(strip);
+    const res = dgBadgeReservePx(cargo);
+    if(res.top) b.style.paddingTop = res.top + 'px';
+    if(res.bottom) b.style.paddingBottom = res.bottom + 'px';
   }
   /* Heavy Lift badge — bottom-left, opposite corner from DG.
      Phase 26 — matches DG strip tier classes at 82px/48px for unified
@@ -13922,8 +13954,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.15.0';
-const APP_VERSION   = '3.15.0';
+const CURRENT_BUILD = 'v3.15.1';
+const APP_VERSION   = '3.15.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

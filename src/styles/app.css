@@ -17103,3 +17103,20 @@ body.vessel-setup .cb *{ pointer-events:none !important; }
 /* folding: contents are clipped whole, never squeezed / wrapped */
 .ll-progress{ white-space:nowrap; }
 .ll-progress > *, .ll-open > *{ flex-shrink:0; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.15.1 — DG badges stay INSIDE the cargo block
+   Replaces the v3.10 "ride on the edge" placement for small cargo: the
+   half-out tabs collided with neighbouring units on a packed deck. All
+   tiers now sit in the corners, 2 px in; renderBlock pads the block top
+   (dgBadgeReservePx) so the centred label starts below the badges.
+════════════════════════════════════════════════════════════ */
+.cb-dg-strip > .cb-dg-badge{ max-width:calc(50% - 3px); overflow:hidden; text-overflow:clip; }
+.cb-dg-strip-small > .cb-dg-badge:nth-child(1),
+.cb-dg-strip-xs    > .cb-dg-badge:nth-child(1){ top:2px; right:2px; }
+.cb-dg-strip-small > .cb-dg-badge:nth-child(2),
+.cb-dg-strip-xs    > .cb-dg-badge:nth-child(2){ top:2px; left:2px; }
+.cb-dg-strip-small > .cb-dg-badge:nth-child(3),
+.cb-dg-strip-xs    > .cb-dg-badge:nth-child(3){ bottom:2px; right:2px; }
+.cb-dg-strip-small > .cb-dg-badge{ max-width:calc(50% - 3px); font-size:7.5px !important; padding:1px 3px !important; }
+.cb-dg-strip-xs    > .cb-dg-badge{ font-size:6.5px !important; padding:0 2px !important; }

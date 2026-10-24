@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.15.1',
+    date: '2026-10-24',
+    highlights: [
+      'DG class badges stay inside the cargo block',
+    ],
+    changes: [
+      { type: 'fix', text: 'DG class badges on small units (minis, tote tanks, baskets) no longer stick out over the edge and under neighbouring cargo — they sit in the corner inside the block' },
+      { type: 'fix', text: 'The unit number moves below the DG badge and is sized to fit, so the two never overlap' },
+      { type: 'improvement', text: 'Unit numbers are fitted using the real text width, so a label no longer wraps unexpectedly on small blocks' },
+    ],
+  },
+  {
     version: '3.15.0',
     date: '2026-10-24',
     highlights: [
