@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.17.0',
+    date: '2026-10-24',
+    highlights: [
+      'Deck camera: record the loading',
+      'Deck camera: read lifts from a video',
+    ],
+    changes: [
+      { type: 'feature', text: 'Deck Camera → Record: records the bridge camera to a folder you choose, and next to the video keeps the load list, the Imported queue and every move you make on the plan with its time. Keeps recording when the window is closed — REC shows in the corner' },
+      { type: 'feature', text: 'Deck Camera → Read lifts: open a video and the planner finds every lift, reads the unit number on the hook against the load list, Imported and the deck, and shows where it was lifted from or landed — Mark lifted or Place on plan in one click' },
+      { type: 'improvement', text: 'Text on units standing on deck under the load is told apart from the load itself — it does not vote' },
+      { type: 'improvement', text: 'Everything is read on this computer (PaddleOCR on ONNX Runtime); the first read takes a few seconds to load' },
+    ],
+  },
+  {
     version: '3.16.0',
     date: '2026-10-24',
     highlights: [

@@ -10,7 +10,16 @@ const OCR_FILES = {
   'tesseract-core-simd-lstm.wasm.js':   'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
   'tesseract-core-lstm.wasm.js':        'node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js',
   'eng.traineddata.gz':                 'node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz',
+  /* v3.17 — deck-camera text reading (PaddleOCR PP-OCRv4 on ONNX Runtime) */
+  'ort-wasm-simd-threaded.wasm':        'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm',
+  'ort-wasm-simd-threaded.mjs':         'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
+  'ppocr-det.onnx':                     'node_modules/@gutenye/ocr-models/assets/ch_PP-OCRv4_det_infer.onnx',
+  'ppocr-rec.onnx':                     'node_modules/@gutenye/ocr-models/assets/ch_PP-OCRv4_rec_infer.onnx',
+  'ppocr-keys.txt':                     'node_modules/@gutenye/ocr-models/assets/ppocr_keys_v1.txt',
 };
+const OCR_TYPE = n => n.endsWith('.wasm') ? 'application/wasm'
+  : /\.m?js$/.test(n) ? 'application/javascript'
+  : n.endsWith('.txt') ? 'text/plain; charset=utf-8' : 'application/octet-stream';
 function ocrAssets(){
   return {
     name: 'spica-ocr-assets',
@@ -19,7 +28,7 @@ function ocrAssets(){
         const m = req.url && req.url.match(/^\/ocr\/([^?#]+)/);
         const src = m && OCR_FILES[m[1]];
         if(!src || !existsSync(resolve(src))) return next();
-        res.setHeader('Content-Type', m[1].endsWith('.js') ? 'application/javascript' : 'application/octet-stream');
+        res.setHeader('Content-Type', OCR_TYPE(m[1]));
         res.end(readFileSync(resolve(src)));
       });
     },
@@ -34,6 +43,11 @@ function ocrAssets(){
 export default defineConfig({
   root: '.',
   plugins: [ocrAssets()],
+  /* v3.17 — CPU (WASM) build of ONNX Runtime only: the default entry pulls
+     the 28 MB WebGPU/JSEP variant that the WebView does not need. */
+  /* The "extern wasm" build loads ort-wasm-simd-threaded.{mjs,wasm} from
+     env.wasm.wasmPaths (/ocr/), so the 14 MB runtime is shipped once. */
+  resolve: { alias: [{ find: /^onnxruntime-web$/, replacement: resolve('node_modules/onnxruntime-web/dist/ort.wasm.min.mjs') }] },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

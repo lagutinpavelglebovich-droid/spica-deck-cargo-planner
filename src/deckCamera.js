@@ -21,6 +21,8 @@
 
 let API = null;
 let DC = null;            /* panel state while open */
+let CAM = null;           /* live camera — outlives the panel while recording */
+let REC = null;           /* recording in progress */
 
 export function initDeckCamera(api){ API = api; }
 
@@ -155,6 +157,8 @@ function buildPanel(){
       <div class="dc-head-text"><div class="dc-kicker">Deck camera</div><div class="dc-title" id="dcTitle">—</div></div>
       <nav class="dc-tabs" id="dcTabs" role="tablist">
         <button type="button" role="tab" data-tab="calib" class="sel">Calibrate</button>
+        <button type="button" role="tab" data-tab="record">Record</button>
+        <button type="button" role="tab" data-tab="analyse">Read lifts</button>
       </nav>
       <button type="button" class="dc-x" id="dcClose" title="Close (Esc)">✕</button>
     </header>
@@ -195,7 +199,35 @@ function buildPanel(){
             </div>
           </section>
 
-          <section class="dc-sec">
+          <section class="dc-sec dc-pane" data-pane="record" hidden>
+            <div class="dc-sec-title">Recording <span class="dc-sec-meta" id="dcRecState"></span></div>
+            <div class="dc-note">Records the camera and, next to the video, the load list and every move you make on the plan with its time — the material the camera model learns from. Keeps recording when this window is closed.</div>
+            <label class="dc-field"><span>Folder</span>
+              <div class="dc-row"><span class="dc-path" id="dcRecDir">Not chosen</span><button type="button" class="dc-btn" id="dcRecDirBtn">Choose…</button></div></label>
+            <label class="dc-field"><span>Quality</span>
+              <select class="dc-select" id="dcRecQ">
+                <option value="8">Standard · 8 Mbit/s · about 3.6 GB per hour</option>
+                <option value="12" selected>High · 12 Mbit/s · about 5.4 GB per hour</option>
+                <option value="20">Best · 20 Mbit/s · about 9 GB per hour</option>
+              </select></label>
+            <button type="button" class="dc-rec-btn" id="dcRecBtn"><span class="dc-rec-dot"></span><span id="dcRecBtnT">Start recording</span></button>
+            <div class="dc-rec-stats" id="dcRecStats" hidden>
+              <div><span>Time</span><b id="dcRecTime">0:00:00</b></div>
+              <div><span>Size</span><b id="dcRecSize">0 MB</b></div>
+              <div><span>Plan moves</span><b id="dcRecEv">0</b></div>
+            </div>
+            <div class="dc-hint" id="dcRecHint"></div>
+          </section>
+
+          <section class="dc-sec dc-pane" data-pane="analyse" hidden>
+            <div class="dc-sec-title">Read lifts <span class="dc-sec-meta" id="dcAnState"></span></div>
+            <div class="dc-note">Goes through the opened video, finds every lift, reads the unit number on the hook against the load list, the Imported queue and the deck, and shows where it was lifted from or landed. Runs on this computer — takes about 6–8 times the length of the video.</div>
+            <button type="button" class="dc-btn dc-primary dc-an-go" id="dcAnBtn">Read lifts in this video</button>
+            <div class="dc-an-prog" id="dcAnProg" hidden><div class="dc-an-bar"><i id="dcAnBar"></i></div><span id="dcAnTxt"></span></div>
+            <div class="dc-an-list" id="dcAnList"></div>
+          </section>
+
+          <section class="dc-sec dc-pane" data-pane="calib">
             <div class="dc-sec-title">Calibration <span class="dc-sec-meta" id="dcCalState"></span></div>
             <label class="dc-field"><span>Bay line used for points 3 and 4</span>
               <select class="dc-select" id="dcLine"></select></label>
@@ -219,7 +251,7 @@ function buildPanel(){
         </div>
         <footer class="dc-foot">
           <button type="button" class="dc-btn dc-quiet" id="dcCancel">Close</button>
-          <button type="button" class="dc-btn dc-primary" id="dcSave" disabled>Save calibration</button>
+          <button type="button" class="dc-btn dc-primary dc-pane" data-pane="calib" id="dcSave" disabled>Save calibration</button>
         </footer>
       </aside>
     </div>
@@ -230,7 +262,7 @@ function buildPanel(){
 }
 
 /* ── open / close ──────────────────────────────────────────── */
-export function openDeckCamera(){
+export function openDeckCamera(tab){
   if(!API) return;
   const ov = buildPanel();
   const geo = API.geo();
@@ -266,22 +298,47 @@ export function openDeckCamera(){
   ov.classList.add('open');
   document.body.classList.add('dc-open');
   renderSteps(); layout(); drawOverlay(); listDevices(false);
+  setTab(tab || (REC ? 'record' : 'calib'));
+  if(CAM) attachLive();
+  recRender();
   setTimeout(() => ov.querySelector('#dcClose').focus(), 30);
+}
+function setTab(t){
+  if(!DC) return;
+  DC.tab = t;
+  DC.ov.querySelectorAll('#dcTabs button').forEach(b => b.classList.toggle('sel', b.dataset.tab === t));
+  DC.ov.querySelectorAll('.dc-pane').forEach(p => { p.hidden = p.dataset.pane !== t; });
+  if(t !== 'calib') DC.placing = -1;
+  drawOverlay(); recRender(); anRender();
 }
 function closeDeckCamera(){
   if(!DC) return;
   stopSource();
+  if(!REC) stopCam();                /* keep the camera only while recording */
   DC.ov.classList.remove('open');
   document.body.classList.remove('dc-open');
   DC = null;
+  recRender();
 }
 function stopSource(){
   if(!DC) return;
   cancelAnimationFrame(DC.raf); DC.raf = 0;
-  if(DC.stream){ DC.stream.getTracks().forEach(t => t.stop()); DC.stream = null; }
   if(DC.src && DC.kind === 'video'){ try{ DC.src.pause(); }catch(e){} }
   if(DC.url){ URL.revokeObjectURL(DC.url); DC.url = ''; }
   DC.src = null; DC.kind = '';
+}
+function stopCam(){
+  if(!CAM) return;
+  CAM.stream.getTracks().forEach(t => t.stop());
+  CAM = null;
+}
+function attachLive(){
+  if(!DC || !CAM) return;
+  stopSource();
+  DC.src = CAM.video; DC.kind = 'live';
+  DC.ov.querySelector('#dcVideoRow').hidden = true;
+  setSourceSize(CAM.video.videoWidth, CAM.video.videoHeight);
+  loop();
 }
 
 /* A photo / video dropped on the window while the panel is open. */
@@ -309,7 +366,9 @@ async function startCamera(){
   if(!DC) return;
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ API.toast('Camera is not available here', 'warn'); return; }
   const id = DC.ov.querySelector('#dcDevice').value;
-  stopSource();
+  if(CAM && (!id || CAM.deviceId === id) && CAM.stream.active){ attachLive(); return; }
+  if(REC){ API.toast('Stop the recording before switching camera', 'warn'); return; }
+  stopSource(); stopCam();
   try{
     const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
       deviceId: id ? { exact: id } : undefined,
@@ -317,11 +376,13 @@ async function startCamera(){
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.srcObject = stream;
     await v.play();
-    DC.stream = stream; DC.src = v; DC.kind = 'live';
-    DC.liveLabel = (stream.getVideoTracks()[0] || {}).label || '';
-    setSourceSize(v.videoWidth, v.videoHeight);
+    const tr = stream.getVideoTracks()[0] || {};
+    const st = tr.getSettings ? tr.getSettings() : {};
+    CAM = { stream, video: v, label: tr.label || '', deviceId: st.deviceId || id };
+    DC.liveLabel = CAM.label;
+    attachLive();
     listDevices(true);
-    loop();
+    recRender();
   }catch(e){
     API.toast('Could not start the camera — ' + (e && e.name === 'NotAllowedError' ? 'access was refused' : 'is it plugged in?'), 'warn');
   }
@@ -473,15 +534,22 @@ function drawOverlay(){
       if(ps) out += `<text class="dc-side-t" x="${ps[0].toFixed(1)}" y="${ps[1].toFixed(1)}" style="opacity:${alpha.toFixed(2)}">STBD</text>`;
     }
   }
+  /* lift being read (Read lifts) */
+  if(DC.anBlob && DC.tab === 'analyse'){
+    const b = DC.anBlob, q = toDisp(b.x, b.y), r = toDisp(b.x + b.w, b.y + b.h);
+    const x = Math.min(q[0], r[0]) * W, y = Math.min(q[1], r[1]) * Hh, w = Math.abs(r[0] - q[0]) * W, h = Math.abs(r[1] - q[1]) * Hh;
+    out += `<rect class="dc-an-box" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="4"/>`;
+    if(DC.anText) out += `<text class="dc-an-t" x="${x.toFixed(1)}" y="${(y - 6).toFixed(1)}">${esc(DC.anText)}</text>`;
+  }
   /* picked points */
-  DC.extra.forEach((e, k) => {
+  if(DC.tab === 'calib') DC.extra.forEach((e, k) => {
     const x = e.p[0] * W, y = e.p[1] * Hh, i = 4 + k;
     out += `<g class="dc-pt dc-pt-x${i === DC.sel ? ' sel' : ''}" data-i="${i}">
       <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" class="dc-pt-halo"/>
       <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="dc-pt-dot"/>
       <text x="${(x + 12).toFixed(1)}" y="${(y - 10).toFixed(1)}" class="dc-pt-n">${esc(geo.labels[e.bay])}</text></g>`;
   });
-  DC.pts.forEach((p, i) => {
+  if(DC.tab === 'calib') DC.pts.forEach((p, i) => {
     if(!p) return;
     const x = p[0] * W, y = p[1] * Hh;
     out += `<g class="dc-pt${i === DC.sel ? ' sel' : ''}" data-i="${i}">
@@ -601,6 +669,11 @@ function showLoupe(e){
 function bind(ov){
   const $ = s => ov.querySelector(s);
   $('#dcClose').addEventListener('click', () => closeDeckCamera());
+  $('#dcTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if(b) setTab(b.dataset.tab); });
+  $('#dcRecBtn').addEventListener('click', () => { if(REC) stopRecording(); else startRecording(); });
+  $('#dcRecDirBtn').addEventListener('click', () => chooseRecFolder());
+  $('#dcRecQ').addEventListener('change', e => lsSet('spicaTide_recQ', e.target.value));
+  $('#dcAnBtn').addEventListener('click', () => { if(DC && DC.anRun) DC.anStop = true; else analyse(); });
   $('#dcCancel').addEventListener('click', () => closeDeckCamera());
   $('#dcStart').addEventListener('click', () => startCamera());
   $('#dcDevice').addEventListener('change', () => { if(DC && DC.kind === 'live') startCamera(); });
@@ -627,7 +700,7 @@ function bind(ov){
 
   const stage = $('#dcStage');
   stage.addEventListener('pointerdown', e => {
-    if(!DC || !DC.sw || e.button !== 0) return;
+    if(!DC || !DC.sw || e.button !== 0 || DC.tab !== 'calib') return;
     const n = toNorm(e);
     if(n[0] < 0 || n[1] < 0 || n[0] > 1 || n[1] > 1) return;
     const hit = hitPoint(e);
@@ -654,8 +727,9 @@ function bind(ov){
       setPt(DC.drag, [Math.min(1, Math.max(0, n[0])), Math.min(1, Math.max(0, n[1]))]);
       DC.dirty = true; drawOverlay();
     }
-    const placing = DC.step < 4 || DC.placing >= 0 || DC.drag >= 0 || hitPoint(e) >= 0;
+    const placing = DC.tab === 'calib' && (DC.step < 4 || DC.placing >= 0 || DC.drag >= 0 || hitPoint(e) >= 0);
     if(placing) showLoupe(e); else $('#dcLoupe').hidden = true;
+    if(DC.tab !== 'calib'){ stage.style.cursor = 'default'; return; }
     stage.style.cursor = DC.drag >= 0 ? 'grabbing' : (hitPoint(e) >= 0 && DC.placing < 0 ? 'grab' : ((DC.step < 4 || DC.placing >= 0) && DC.sw ? 'crosshair' : 'default'));
   });
   const end = () => { if(DC){ DC.drag = -1; renderSteps(); } };
@@ -710,7 +784,7 @@ function save(){
              aspect: d ? Math.round(d.w / d.h * 1e4) / 1e4 : (prev.calib && prev.calib.aspect) || 0,
              at: new Date().toISOString() },
   });
-  if(DC.kind === 'live' && DC.liveLabel) cam.deviceLabel = DC.liveLabel;
+  if(DC.kind === 'live' && CAM && CAM.label) cam.deviceLabel = CAM.label;
   API.setCamera(cam);
   DC.savedAspect = cam.calib.aspect;
   DC.dirty = false;
@@ -718,5 +792,316 @@ function save(){
   API.toast('Camera calibration saved for ' + API.vesselName(), 'ok');
 }
 
+/* ════════════════════════════════════════════════════════════
+   RECORDING
+   MediaRecorder on the live camera, 2-second chunks appended straight to
+   disk (Rust append_file_raw, raw bytes — no JSON), so a crash loses at
+   most the last two seconds. Next to the video, <name>.json holds the
+   vessel, calibration, load list, Imported queue, the deck at the start
+   and a timed log of every change on the plan (place / move / status /
+   remove) — ground truth for training the camera model.
+════════════════════════════════════════════════════════════ */
+const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v == null ? d : v; }catch(e){ return d; } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, v); }catch(e){} };
+const tauri = () => !!(window.__dcMock || API.isTauri());
+const call = (c, a, o) => (window.__dcMock ? window.__dcMock(c, a, o) : API.invoke(c, a, o));
+const MIMES = ['video/mp4;codecs=avc1.640033', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+function pickMime(){ return (typeof MediaRecorder !== 'undefined' && MIMES.find(m => { try{ return MediaRecorder.isTypeSupported(m); }catch(e){ return false; } })) || ''; }
+const pad = n => String(n).padStart(2, '0');
+const fmtDur = s => `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(Math.floor(s) % 60)}`;
+const fmtSize = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e7 ? Math.round(b / 1e6) + ' MB' : (b / 1e6).toFixed(1) + ' MB';
+const sepOf = dir => (dir.includes('\\') && !dir.includes('/')) ? '\\' : '/';
+
+async function chooseRecFolder(){
+  if(window.__dcMock){ lsSet('spicaTide_recDir', window.__dcMockDir || '/rec'); recRender(); return true; }
+  if(!API.isTauri()){ API.toast('In the browser the video is downloaded when you stop', 'info'); return true; }
+  try{
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const d = await dlg.open({ directory: true, multiple: false, title: 'Folder for deck camera recordings' });
+    const dir = typeof d === 'string' ? d : (d && d.path);
+    if(!dir) return false;
+    lsSet('spicaTide_recDir', dir); recRender(); return true;
+  }catch(e){ API.toast('Could not choose the folder — ' + (e && e.message || e), 'warn'); return false; }
+}
+
+function cargoMap(){
+  const m = new Map();
+  API.cargo().forEach(c => m.set(String(c.id), c));
+  return m;
+}
+const r2 = v => Math.round(v * 100) / 100;
+function evOf(type, c, t){
+  return { t, at: new Date().toISOString(), type, id: c.id, ccu: c.ccu || '', desc: c.desc || '', wt: c.wt || '',
+           status: c.status || '', loc: c.loc || '', dg: c.dg || [],
+           x0: r2(c.x0), x1: r2(c.x1), y0: r2(c.y0), y1: r2(c.y1) };
+}
+/* Called by the app after every saved change of the plan. */
+export function onPlanChanged(){
+  if(!REC) return;
+  const now = cargoMap(), t = Math.round((performance.now() - REC.t0) / 10) / 100;
+  now.forEach((c, id) => {
+    const p = REC.prev.get(id);
+    if(!p){ REC.events.push(evOf('place', c, t)); return; }
+    if(Math.abs(p.x0 - c.x0) > 0.05 || Math.abs(p.y0 - c.y0) > 0.05 || Math.abs((p.x1 - p.x0) - (c.x1 - c.x0)) > 0.05) REC.events.push(evOf('move', c, t));
+    else if(p.status !== c.status || p.loc !== c.loc || p.ccu !== c.ccu) REC.events.push(evOf('edit', c, t));
+  });
+  REC.prev.forEach((c, id) => { if(!now.has(id)) REC.events.push(evOf('remove', c, t)); });
+  REC.prev = now;
+  recRender();
+}
+
+function sidecar(final){
+  const snap = API.snapshot();
+  return JSON.stringify({
+    schema: 1, kind: 'spica-tide-deck-recording', app: snap.app,
+    vessel: snap.vessel, camera: API.getCamera(),
+    video: { file: REC.file, mime: REC.mime, width: REC.w, height: REC.h, bitsPerSecond: REC.bps, deviceLabel: CAM ? CAM.label : '' },
+    startedAt: REC.startedAt.toISOString(), endedAt: final ? new Date().toISOString() : null,
+    durationS: Math.round((performance.now() - REC.t0) / 100) / 10,
+    loadList: snap.loadList, queue: snap.queue,
+    deckAtStart: REC.deckAtStart, events: REC.events,
+  }, null, 1);
+}
+async function writeSidecar(final){
+  if(!REC || !REC.jsonPath) return;
+  try{ await call('write_file', { path: REC.jsonPath, contents: sidecar(final) }); }
+  catch(e){ REC.err = 'Could not write the log file — ' + String(e && e.message || e).slice(0, 120); recRender(); }
+}
+async function writeChunk(blob){
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const n = await call('append_file_raw', buf, { headers: { 'x-path': encodeURIComponent(REC.path) } });
+  if(REC) REC.bytes = typeof n === 'number' ? n : REC.bytes + buf.length;
+}
+
+async function startRecording(){
+  if(REC) return;
+  if(!API.isOperator()){ API.toast('Viewer mode — recording is not available', 'warn'); return; }
+  if(!CAM){ API.toast('Start the camera first', 'warn'); return; }
+  const mime = pickMime();
+  if(!mime){ API.toast('This computer cannot record video here', 'warn'); return; }
+  let dir = lsGet('spicaTide_recDir', '');
+  if(tauri() && !dir){ if(!(await chooseRecFolder())) return; dir = lsGet('spicaTide_recDir', ''); if(!dir) return; }
+  const bps = (+(DC && DC.ov.querySelector('#dcRecQ').value) || 12) * 1e6;
+  const d = new Date();
+  const slug = String(API.vesselName()).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'DECK';
+  const base = `${slug}_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  let rec;
+  try{ rec = new MediaRecorder(CAM.stream, { mimeType: mime, videoBitsPerSecond: bps }); }
+  catch(e){ API.toast('Could not start recording — ' + (e && e.message || e), 'warn'); return; }
+  const sep = sepOf(dir);
+  REC = {
+    recorder: rec, mime, bps, file: base + '.' + ext,
+    path: tauri() ? dir.replace(/[\\/]+$/, '') + sep + base + '.' + ext : '',
+    jsonPath: tauri() ? dir.replace(/[\\/]+$/, '') + sep + base + '.json' : '',
+    startedAt: d, t0: performance.now(), bytes: 0, events: [], prev: cargoMap(),
+    deckAtStart: [], chain: Promise.resolve(), mem: [], err: '',
+    w: CAM.video.videoWidth, h: CAM.video.videoHeight,
+  };
+  REC.deckAtStart = [...REC.prev.values()].map(c => evOf('onDeck', c, 0));
+  if(tauri()){ try{ await call('ensure_dir', { path: dir }); }catch(e){} }
+  rec.ondataavailable = e => {
+    if(!REC || !e.data || !e.data.size) return;
+    if(!tauri()){ REC.mem.push(e.data); REC.bytes += e.data.size; return; }
+    const blob = e.data;
+    REC.chain = REC.chain.then(() => writeChunk(blob)).catch(err => {
+      if(!REC) return;
+      REC.err = 'Writing the video failed — ' + String(err && err.message || err).slice(0, 140);
+      API.toast(REC.err, 'warn');
+      stopRecording();
+    });
+  };
+  rec.onstop = () => finishRecording();
+  rec.start(2000);
+  REC.tick = setInterval(recRender, 1000);
+  REC.flush = setInterval(() => writeSidecar(false), 30000);
+  writeSidecar(false);
+  API.sound && API.sound('start');
+  recRender();
+}
+function stopRecording(){
+  if(!REC || REC.stopping) return;
+  REC.stopping = true;
+  try{ if(REC.recorder.state !== 'inactive') REC.recorder.stop(); else finishRecording(); }catch(e){ finishRecording(); }
+  recRender();
+}
+async function finishRecording(){
+  if(!REC || REC.finished) return;
+  REC.finished = true;
+  clearInterval(REC.tick); clearInterval(REC.flush);
+  try{ await REC.chain; }catch(e){}
+  const r = REC;
+  if(tauri()){
+    await writeSidecar(true);
+  }else{
+    /* browser: hand the files over as downloads */
+    const dl = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); };
+    dl(new Blob(r.mem, { type: r.mime.split(';')[0] }), r.file);
+    dl(new Blob([sidecar(true)], { type: 'application/json' }), r.file.replace(/\.\w+$/, '.json'));
+  }
+  const msg = `Recording saved — ${r.file} · ${fmtDur((performance.now() - r.t0) / 1000)} · ${fmtSize(r.bytes)} · ${r.events.length} plan move${r.events.length === 1 ? '' : 's'}`;
+  REC = null;
+  if(!DC) stopCam();
+  API.toast(msg, r.err ? 'warn' : 'ok');
+  recRender();
+}
+
+function recRender(){
+  /* app-wide pill while recording */
+  let pill = document.getElementById('dcRecPill');
+  if(REC){
+    if(!pill){
+      pill = document.createElement('button');
+      pill.type = 'button'; pill.id = 'dcRecPill'; pill.className = 'dc-rec-pill';
+      pill.title = 'Deck camera is recording — open';
+      pill.addEventListener('click', () => openDeckCamera('record'));
+      document.body.appendChild(pill);
+    }
+    const s = (performance.now() - REC.t0) / 1000;
+    pill.innerHTML = `<span class="dc-rec-dot"></span>REC <b>${fmtDur(s)}</b><span class="dc-rec-pill-sz">${fmtSize(REC.bytes)}</span>`;
+    pill.classList.toggle('stopping', !!REC.stopping);
+  }else if(pill){ pill.remove(); }
+  if(!DC) return;
+  const $ = q => DC.ov.querySelector(q);
+  const dir = lsGet('spicaTide_recDir', '');
+  $('#dcRecDir').textContent = dir || (tauri() ? 'Not chosen' : 'Downloads (browser)');
+  $('#dcRecDir').title = dir;
+  $('#dcRecQ').value = lsGet('spicaTide_recQ', '12');
+  $('#dcRecQ').disabled = !!REC;
+  $('#dcRecDirBtn').disabled = !!REC;
+  const btn = $('#dcRecBtn');
+  btn.classList.toggle('on', !!REC);
+  btn.disabled = (!REC && !CAM) || !!(REC && REC.stopping) || !API.isOperator();
+  $('#dcRecBtnT').textContent = REC ? (REC.stopping ? 'Saving…' : 'Stop recording') : 'Start recording';
+  $('#dcRecStats').hidden = !REC;
+  if(REC){
+    $('#dcRecTime').textContent = fmtDur((performance.now() - REC.t0) / 1000);
+    $('#dcRecSize').textContent = fmtSize(REC.bytes);
+    $('#dcRecEv').textContent = String(REC.events.length);
+  }
+  $('#dcRecState').textContent = REC ? '· recording' : '';
+  const hint = $('#dcRecHint');
+  hint.classList.toggle('warn', !!(REC && REC.err));
+  hint.textContent = REC && REC.err ? REC.err
+    : REC ? `Writing ${REC.file}${REC.path ? '' : ' (downloaded when you stop)'}`
+    : !CAM ? 'Start the camera above to record.'
+    : !API.getCamera() || !API.getCamera().calib ? 'Tip: calibrate first — the recording then knows where every pixel is on the deck.'
+    : `Camera ${CAM.video.videoWidth} × ${CAM.video.videoHeight} · ${pickMime().split(';')[0] || 'no recorder'}`;
+}
+window.addEventListener('beforeunload', () => { if(REC){ try{ REC.recorder.stop(); }catch(e){} } });
+
+/* ════════════════════════════════════════════════════════════
+   READ LIFTS (video analysis) — see liftReader.js
+════════════════════════════════════════════════════════════ */
+/* source-frame normalised point → displayed (rotated) frame */
+function toDisp(u, v){
+  switch(DC ? DC.rotation : 0){
+    case 90:  return [1 - v, u];
+    case 180: return [1 - u, 1 - v];
+    case 270: return [v, 1 - u];
+    default:  return [u, v];
+  }
+}
+function deckPointOf(at){
+  const H = currentH(); if(!H) return null;
+  const Hi = invert3(H); if(!Hi) return null;
+  const d = toDisp(at[0], at[1]);
+  const p = project(Hi, d[0], d[1]);
+  if(!p) return null;
+  const g = DC.geo;
+  if(p[0] < -1 || p[0] > g.length + 1 || p[1] < -1 || p[1] > g.width + 1) return null;
+  return { x: Math.min(g.length, Math.max(0, p[0])), y: Math.min(g.width, Math.max(0, p[1])) };
+}
+function whereText(pt){
+  if(!pt) return '';
+  const g = DC.geo;
+  let x = 0, bay = g.labels[g.bays.length - 1];
+  for(let i = 0; i < g.bays.length; i++){ if(pt.x <= x + g.bays[i] + g.joint / 2){ bay = g.labels[i]; break; } x += g.bays[i] + g.joint; }
+  const side = pt.y < g.width / 3 ? 'PORT' : pt.y > g.width * 2 / 3 ? 'STBD' : 'centre';
+  return `Bay ${bay} · ${side}`;
+}
+const tFmt = s => `${Math.floor(s / 60)}:${pad(Math.floor(s) % 60)}`;
+
+async function analyse(){
+  if(!DC) return;
+  if(DC.kind !== 'video' || !DC.src || !DC.src.duration){ API.toast('Open a video in Picture first', 'warn'); return; }
+  const cands = API.candidates();
+  if(!cands.length) API.toast('No load list, Imported queue or cargo on deck — numbers can only be read, not matched', 'info');
+  let LR;
+  try{ LR = await import('./liftReader.js'); }catch(e){ API.toast('Could not load the reader — ' + (e && e.message || e), 'warn'); return; }
+  const v = DC.src;
+  try{ v.pause(); }catch(e){}
+  DC.anRun = true; DC.anStop = false; DC.anRes = null;
+  anRender();
+  const $ = q => DC.ov.querySelector(q);
+  $('#dcAnTxt').textContent = 'Loading the text reader…';
+  try{
+    const res = await LR.analyseVideo(v, {
+      candidates: cands,
+      shouldStop: () => !DC || DC.anStop,
+      onProgress: (f, info) => {
+        if(!DC) return;
+        DC.anBlob = info.blob || null;
+        DC.anText = (info.texts || []).filter(t => /[0-9]/.test(t)).slice(0, 2).join(' · ');
+        $('#dcAnBar').style.width = Math.round(f * 100) + '%';
+        $('#dcAnTxt').textContent = `${tFmt(info.t)} of ${tFmt(v.duration)}`;
+        drawFrame(); drawOverlay();
+      },
+    });
+    if(!DC) return;
+    res.events.forEach(e => { e.where = deckPointOf(e.at); });
+    DC.anRes = res;
+  }catch(e){
+    if(DC) API.toast('Reading the video failed — ' + String(e && e.message || e).slice(0, 140), 'warn');
+  }finally{
+    if(DC){ DC.anRun = false; DC.anBlob = null; DC.anText = ''; drawOverlay(); anRender(); }
+  }
+}
+
+function anRender(){
+  if(!DC) return;
+  const $ = q => DC.ov.querySelector(q);
+  const btn = $('#dcAnBtn');
+  btn.textContent = DC.anRun ? 'Stop' : (DC.anRes ? 'Read again' : 'Read lifts in this video');
+  btn.disabled = !DC.anRun && DC.kind !== 'video';
+  $('#dcAnProg').hidden = !DC.anRun;
+  const st = $('#dcAnState');
+  const evs = DC.anRes ? DC.anRes.events : null;
+  st.textContent = DC.anRun ? '· reading…' : evs ? `· ${evs.length} lift${evs.length === 1 ? '' : 's'}` : (DC.kind !== 'video' ? '· open a video' : '');
+  const list = $('#dcAnList');
+  list.innerHTML = '';
+  if(!evs) return;
+  if(!evs.length){ list.innerHTML = '<div class="dc-hint">No lifts found in this video.</div>'; return; }
+  evs.forEach((e, i) => {
+    const card = el('div', 'dc-an-card');
+    const info = e.unit ? API.unitInfo(e.unit.ccu) : {};
+    const confTxt = e.conf === 'high' ? 'Sure' : e.conf === 'low' ? 'Maybe' : e.raw ? 'Not on lists' : 'Not read';
+    const kindTxt = e.kind === 'landed' ? 'Landed' : e.kind === 'lifted' ? 'Lifted off' : 'Moved';
+    const where = whereText(e.where);
+    card.innerHTML = `
+      <div class="dc-an-thumb"></div>
+      <div class="dc-an-main">
+        <div class="dc-an-top"><span class="dc-an-ccu">${e.unit && e.conf !== 'none' ? esc(e.unit.ccu) : e.raw ? 'read: ' + esc(e.raw) : '—'}</span>
+          <span class="dc-an-conf ${e.conf}">${confTxt}</span></div>
+        <div class="dc-an-sub"><button type="button" class="dc-an-time" title="Show in the video">${tFmt(e.t0)}–${tFmt(e.t1)}</button> · ${kindTxt}${where ? ' · ' + esc(where) : ''}</div>
+        ${e.alt && e.alt.length && e.conf !== 'high' ? `<div class="dc-an-alt">${e.conf === 'none' && e.unit ? `also read: <b>${esc(e.unit.ccu)}</b>${e.alt.length ? ', ' : ''}` : 'or: '}${e.alt.map(a => esc(a.ccu)).join(', ')}</div>` : ''}
+        <div class="dc-an-act"></div>
+      </div>`;
+    if(e.thumb){ const im = document.createElement('img'); im.src = e.thumb.toDataURL('image/jpeg', 0.7); im.alt = ''; card.querySelector('.dc-an-thumb').appendChild(im); }
+    card.querySelector('.dc-an-time').addEventListener('click', () => { try{ DC.src.currentTime = e.t0; }catch(_){} });
+    const act = card.querySelector('.dc-an-act');
+    const addBtn = (label, fn, primary) => { const b = el('button', 'dc-btn' + (primary ? ' dc-primary' : ''), esc(label)); b.type = 'button'; b.addEventListener('click', () => { fn(); e.done = label; anRender(); }); act.appendChild(b); };
+    if(e.done){ act.innerHTML = `<span class="dc-an-done">✓ ${esc(e.done)}</span>`; }
+    else if(e.unit && e.conf !== 'none' && API.isOperator()){
+      if(e.kind !== 'landed' && info.onDeck) addBtn('Mark lifted', () => API.markLifted(e.unit.ccu), e.conf === 'high');
+      if(e.kind === 'landed' && info.inQueue && e.where) addBtn('Place at ' + where, () => API.placeQueued(e.unit.ccu, e.where.x, e.where.y), e.conf === 'high');
+      if(!info.onDeck && !info.inQueue) act.innerHTML = '<span class="dc-an-note">Not on deck and not in Imported</span>';
+    }else if(e.raw && (!e.unit || e.conf === 'none')){
+      act.innerHTML = '<span class="dc-an-note">Not on the load list, Imported or deck — check the number</span>';
+    }
+    list.appendChild(card);
+  });
+}
+
 /* test hooks */
-export const _dc = { state: () => DC, boundaryX, refPoints };
+export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, analyse, deckPointOf };

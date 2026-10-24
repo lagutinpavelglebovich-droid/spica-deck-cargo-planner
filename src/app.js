@@ -12,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
-import { initDeckCamera, openDeckCamera, dropFileToDeckCamera } from './deckCamera.js';
+import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
@@ -7554,6 +7554,7 @@ function listPlans() {
 function save() {
   _pushUndo();
   savePlan();
+  try{ dcPlanChanged(); }catch(e){}       /* v3.17 — deck-camera recording log */
   /* v3.10 — keep inspector fields (size, lift #, status…) in step with
      edits made elsewhere (corner resize, R-rotate, drag, menu). Skipped
      while the user is typing inside the inspector or in aggregate view. */
@@ -9315,7 +9316,7 @@ function processASCOFile(file){
 }
 
 /* ── Unified placeAt: handles queue items AND standard library placement ── */
-function placeAt(cx, cy){
+function placeAt(cx, cy, quiet){
   if(!isOperator()) return;            /* Viewer: block placement */
   if(!S.pending) return;
 
@@ -9370,7 +9371,7 @@ function placeAt(cx, cy){
     if(typeof cpRenderQueue==='function') cpRenderQueue();
     if(typeof cpUpdateBadge==='function') cpUpdateBadge();
 
-    openModal(c.id);
+    if(!quiet) openModal(c.id);
     return;
   }
 
@@ -14082,8 +14083,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.16.0';
-const APP_VERSION   = '3.16.0';
+const CURRENT_BUILD = 'v3.17.0';
+const APP_VERSION   = '3.17.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -17243,7 +17244,8 @@ initDeckCamera({
                 length: DECK_LENGTH_M, labels: BAY_LENGTHS_M.map((_, i) => bayLabel(i)) }),
   cargo: () => S.cargo.map(c => {
     const loc = locById(c.platform) || LOC_ALL[0];
-    return { id: c.id, ccu: c.ccu || '', status: c.status,
+    return { id: c.id, ccu: c.ccu || '', status: c.status, desc: c.desc || '', wt: c.wt || '', loc: c.platform || '',
+      dg: Array.isArray(c.dgClasses) ? c.dgClasses.slice() : [],
       x0: deckXToMeters(c.x), x1: deckXToMeters(c.x + c.w), y0: deckYToMeters(c.y), y1: deckYToMeters(c.y + c.h),
       color: opColor(c.platform, c.status) || getLocBase(loc ? loc.id : '') };
   }),
@@ -17257,6 +17259,41 @@ initDeckCamera({
   isOperator: () => isOperator(),
   toast: (m, t) => showToast(m, t),
   vesselName: () => (VESSEL && VESSEL.name) || 'VESSEL',
+  isTauri: () => _isTauri(),
+  invoke: (c, a, o) => invoke(c, a, o),
+  sound: () => playSound('select'),
+  /* v3.17 — Read lifts */
+  candidates: () => {
+    const seen = new Map(), add = (ccu, src) => { const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if(k.length >= 3 && !seen.has(k)) seen.set(k, { ccu: String(ccu).trim(), src }); };
+    S.cargo.forEach(c => add(c.ccu, 'deck'));
+    IMPORT_QUEUE.forEach(q => add(q.ccu, 'queue'));
+    ((S.loadList && S.loadList.items) || []).forEach(i => add(i.ccu, 'list'));
+    return [...seen.values()];
+  },
+  unitInfo: ccu => {
+    const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), n = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return { onDeck: S.cargo.some(c => n(c.ccu) === k), inQueue: IMPORT_QUEUE.some(q => n(q.ccu) === k) };
+  },
+  markLifted: ccu => {
+    const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const c = S.cargo.find(x => String(x.ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k);
+    if(c) markLifted([c.id]);
+  },
+  placeQueued: (ccu, xM, yM) => {
+    const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const qi = IMPORT_QUEUE.findIndex(q => String(q.ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k);
+    if(qi < 0) return;
+    selectQueueItem(qi);
+    placeAt(metersToDeckX(xM), yM * YS, true);
+    showToast(`${ccu} placed from the camera`, 'ok');
+  },
+  snapshot: () => ({
+    app: APP_VERSION,
+    vessel: { id: _activeVesselId(), name: (VESSEL && VESSEL.name) || '' },
+    loadList: S.loadList || null,
+    queue: IMPORT_QUEUE.map(q => ({ ccu: q.ccu || '', desc: q.desc || q.name || '', wt: q.wt || 0, status: q.status || 'L',
+      loc: q.locId || '', dg: q.dgClasses || [], l: q.length_m || null, w: q.width_m || null })),
+  }),
 });
 
 init();
