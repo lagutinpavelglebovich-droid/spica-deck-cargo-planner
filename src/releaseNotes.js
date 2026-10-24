@@ -11,6 +11,19 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.15.0',
+    date: '2026-10-24',
+    highlights: [
+      'Finish loading — close the load list when the job is done',
+    ],
+    changes: [
+      { type: 'feature', text: 'LOAD LIST chip has a ✓ button: when everything is on deck it turns green and says Finish — one click closes the list' },
+      { type: 'feature', text: 'Finishing early (the platform says "that\'s all"): the first click asks "Finish 30/33?", the second confirms; the toast tells how many were not loaded' },
+      { type: 'ui',      text: 'Closing fills the bar, ticks and folds the chip away; Undo in the toast brings it back' },
+      { type: 'improvement', text: 'A finished load list is not carried into the next import' },
+    ],
+  },
+  {
     version: '3.14.3',
     date: '2026-10-23',
     highlights: [

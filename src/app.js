@@ -8584,13 +8584,14 @@ function _loadListRecord(sheets){
       items.push({ k1: k.k1 || '', k2: k.k2 || '', locId, ccu: item.ccu || '', desc: item.desc || '' });
     });
   });
-  const keep = (S.loadList && Array.isArray(S.loadList.items))
+  /* A finished (closed) list is not carried into the next one. */
+  const keep = (S.loadList && !S.loadList.closedAt && Array.isArray(S.loadList.items))
     ? S.loadList.items.filter(i => !locs.has(i.locId)) : [];
   S.loadList = { importedAt: new Date().toISOString(), items: keep.concat(items) };
 }
 function loadListProgress(){
   const ll = S.loadList;
-  if(!ll || !Array.isArray(ll.items) || !ll.items.length) return null;
+  if(!ll || ll.closedAt || !Array.isArray(ll.items) || !ll.items.length) return null;
   const { deck } = _importLedger();
   const per = {};
   let done = 0;
@@ -8601,14 +8602,23 @@ function loadListProgress(){
   });
   return { total: ll.items.length, done, per };
 }
-let _llState = { key: null, complete: null };
+let _llState = { key: null, complete: null, reopen: false };
 function updateLoadListProgress(){
   const el = document.getElementById('llProgress');
   if(!el) return;
   _bindLoadListChip();
   const pr = loadListProgress();
-  if(!pr){ el.hidden = true; return; }
+  if(el.classList.contains('ll-finishing')) return;   /* closing animation owns the chip */
+  if(!pr){ el.hidden = true; _llDisarm(el); return; }
+  const wasHidden = el.hidden;
   el.hidden = false;
+  if(wasHidden && _llState.reopen){
+    _llState.reopen = false;
+    el.classList.remove('ll-arrive'); void el.offsetWidth; el.classList.add('ll-arrive');
+    setTimeout(() => el.classList.remove('ll-arrive'), 600);
+  }
+  const done = el.querySelector('.ll-done');
+  if(done) done.hidden = !isOperator();
   const pct = Math.round(pr.done / pr.total * 100);
   const complete = pr.done === pr.total;
   /* "All loaded" moment — only on a live transition within the same list
@@ -8620,7 +8630,11 @@ function updateLoadListProgress(){
     playSound('export');
   }
   _llState = { key, complete };
+  if(!complete && el.classList.contains('complete')) _llDisarm(el);
   el.classList.toggle('complete', complete);
+  if(done) done.title = complete
+    ? 'Loading complete — close the load list'
+    : 'Finish loading — close the load list (' + pr.done + ' of ' + pr.total + ' on deck)';
   setOdometer(el.querySelector('.ll-num'), `${pr.done} / ${pr.total}`);
   el.querySelector('.ll-bar > i').style.width = pct + '%';
   el.title = 'Load list on deck: ' + pr.done + ' of ' + pr.total + ' (' + pct + '%)\n' +
@@ -8631,16 +8645,82 @@ function _bindLoadListChip(){
   const el = document.getElementById('llProgress');
   if(!el || el.dataset.bound) return;
   el.dataset.bound = '1';
-  el.addEventListener('click', () => {
+  el.querySelector('.ll-open')?.addEventListener('click', () => {
     /* Open the Library on the Imported queue — what is still to load. */
     const ov = document.querySelector('.cp-overlay');
     if(ov && !ov.classList.contains('open')) document.getElementById('btnLibOpen')?.click();
     document.querySelector('.stab[data-tab="queue"]')?.click();
   });
+  el.querySelector('.ll-done')?.addEventListener('click', e => {
+    e.stopPropagation();
+    finishLoadList();
+  });
 }
 function clearLoadList(){
   if(!isOperator()) return;
   S.loadList = null; updateLoadListProgress(); save();
+}
+
+/* ════════════════════════════════════════════════════════════
+   v3.15 — FINISH LOADING
+   The ✓ on the LOAD LIST chip closes the list: at 33/33 in one click;
+   before that the first click arms it ("Finish 30/33?") and a second
+   click within 4 s confirms — the platform may say "that's all" with
+   units left ashore. The chip fills, ticks and folds away; the list is
+   kept in the plan as closed (S.loadList.closedAt) so the re-import
+   diff still knows it. Undo in the toast brings it back.
+════════════════════════════════════════════════════════════ */
+let _llArmTimer = 0;
+function _llDisarm(el){
+  clearTimeout(_llArmTimer); _llArmTimer = 0;
+  el = el || document.getElementById('llProgress');
+  if(!el) return;
+  el.classList.remove('ll-armed');
+  const t = el.querySelector('.ll-done-t');
+  if(t) t.textContent = 'Finish';
+}
+function finishLoadList(){
+  if(!isOperator()) return;
+  const el = document.getElementById('llProgress');
+  const pr = loadListProgress();
+  if(!el || !pr || el.classList.contains('ll-finishing')) return;
+  const complete = pr.done === pr.total;
+  if(!complete && !el.classList.contains('ll-armed')){
+    el.classList.add('ll-armed');
+    el.querySelector('.ll-done-t').textContent = `Finish ${pr.done}/${pr.total}?`;
+    clearTimeout(_llArmTimer);
+    _llArmTimer = setTimeout(() => _llDisarm(el), 4000);
+    return;
+  }
+  _llDisarm(el);
+  el.classList.add('complete');
+  const prev = JSON.parse(JSON.stringify(S.loadList));
+  const close = () => {
+    S.loadList = Object.assign({}, S.loadList, { closedAt: new Date().toISOString() });
+    save();
+    el.classList.remove('ll-finishing', 'll-fold');
+    el.style.removeProperty('--ll-w');
+    updateLoadListProgress();
+    const msg = complete
+      ? `Loading complete — ${pr.total} of ${pr.total} on deck`
+      : `Loading finished — ${pr.done} of ${pr.total} on deck, ${pr.total - pr.done} not loaded`;
+    showUndoToast(msg, 'Undo', () => {
+      if(!isOperator()) return;
+      S.loadList = prev;
+      _llState = { key: prev.importedAt, complete: null, reopen: true };
+      save(); updateLoadListProgress();
+    }, 8000);
+  };
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce){ close(); return; }
+  /* 1 — fill + tick (bar to 100 %), 2 — fold away, 3 — commit */
+  el.style.setProperty('--ll-w', el.offsetWidth + 'px');
+  el.classList.add('ll-finishing');
+  const bar = el.querySelector('.ll-bar > i');
+  if(bar) bar.style.width = '100%';
+  playSound('export');
+  setTimeout(() => el.classList.add('ll-fold'), 650);
+  setTimeout(close, 650 + 520);
 }
 
 /* ── Perform import: move selected items to IMPORT_QUEUE ── */
@@ -13842,8 +13922,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.14.3';
-const APP_VERSION   = '3.14.3';
+const CURRENT_BUILD = 'v3.15.0';
+const APP_VERSION   = '3.15.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

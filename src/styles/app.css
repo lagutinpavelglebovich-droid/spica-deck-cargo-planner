@@ -17023,3 +17023,83 @@ body.vessel-setup .cb *{ pointer-events:none !important; }
 [data-theme="dark"] .asco-badge.no-size{ background:rgba(251,209,133,.10); color:#f0b45a; border-color:rgba(240,180,90,.32); }
 [data-theme="dark"] .asco-badge.auto-assign{ background:rgba(76,175,80,.14); color:#8fd694; border-color:rgba(76,175,80,.35); }
 .asco-badge.bl{ background:rgba(74,127,165,.14); color:var(--s-BL, #4a7fa5); border:1px solid rgba(74,127,165,.35); }
+
+/* ════════════════════════════════════════════════════════════
+   v3.15 — LOAD LIST · Finish loading
+   The chip is a group: .ll-open (label / bar / count → Imported queue)
+   and .ll-done (✓ → close the list). At 100 % the ✓ turns green and
+   says "Finish"; before that the first click arms "Finish 30/33?".
+   Closing: bar fills, tick draws, chip folds to nothing.
+════════════════════════════════════════════════════════════ */
+.ll-progress{ padding:0 5px 0 14px; gap:8px; cursor:default; max-width:420px; }
+.ll-open{
+  display:inline-flex; align-items:center; gap:8px; height:100%;
+  padding:0; margin:0; border:0; background:none;
+  font:inherit; color:inherit; letter-spacing:inherit; cursor:pointer;
+}
+.ll-open:focus-visible, .ll-done:focus-visible{ outline:2px solid var(--acc); outline-offset:2px; border-radius:8px; }
+.ll-done{
+  display:inline-flex; align-items:center; justify-content:center; gap:0;
+  height:22px; min-width:22px; padding:0 4px; margin:0;
+  border-radius:11px; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--txt) 18%, transparent);
+  background:transparent; color:var(--txt3);
+  font:inherit; font-size:10px; font-weight:800; letter-spacing:.5px;
+  transition:background-color .25s ease, color .25s ease, border-color .25s ease, padding .3s cubic-bezier(.2,.8,.2,1), gap .3s;
+}
+.ll-done[hidden]{ display:none; }
+.ll-done svg{ width:12px; height:12px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+.ll-done svg path{ stroke-dasharray:14; stroke-dashoffset:0; }
+.ll-done-t{
+  max-width:0; overflow:hidden; opacity:0; white-space:nowrap;
+  transition:max-width .35s cubic-bezier(.2,.8,.2,1), opacity .25s ease .05s;
+}
+.ll-done:hover{ color:var(--s-L); border-color:color-mix(in srgb, var(--s-L) 60%, transparent); }
+/* Armed (not all on deck): asks once */
+.ll-progress.ll-armed .ll-done{
+  gap:5px; padding:0 9px 0 6px;
+  color:var(--s-L); border-color:var(--s-L);
+  background:color-mix(in srgb, var(--s-L) 12%, transparent);
+}
+/* Complete: green, labelled, one soft call-out */
+.ll-progress.complete .ll-done{
+  gap:5px; padding:0 9px 0 6px;
+  color:#fff; border-color:transparent; background:var(--s-L);
+  animation:llDoneRing 1.6s ease-out .4s 2;
+}
+.ll-progress.complete .ll-done:hover{ color:#fff; filter:brightness(1.08); }
+.ll-progress.complete .ll-done-t,
+.ll-progress.ll-armed .ll-done-t{ max-width:130px; opacity:1; }
+@keyframes llDoneRing{
+  0%  { box-shadow:0 0 0 0 color-mix(in srgb, var(--s-L) 55%, transparent); }
+  100%{ box-shadow:0 0 0 8px color-mix(in srgb, var(--s-L) 0%, transparent); }
+}
+
+/* Finishing — fill, tick, fold */
+.ll-progress.ll-finishing{ max-width:var(--ll-w, 420px); animation:llPop .5s cubic-bezier(.3,1.4,.5,1) 1; pointer-events:none; }
+.ll-progress.ll-finishing::after{ animation:llShine 1s cubic-bezier(.4,0,.2,1) .1s 1 both; }
+.ll-progress.ll-finishing .ll-bar > i{ background:var(--s-L); transition:width .45s cubic-bezier(.2,.8,.2,1), background-color .3s ease; }
+.ll-progress.ll-finishing .ll-num{ color:var(--s-L); }
+.ll-progress.ll-finishing .ll-done{ animation:none; }
+.ll-progress.ll-finishing .ll-done svg path{ animation:llTick .42s cubic-bezier(.3,.7,.3,1) .12s both; }
+@keyframes llTick{ from{ stroke-dashoffset:14; } to{ stroke-dashoffset:0; } }
+.ll-progress.ll-fold{
+  max-width:0; padding-left:0; padding-right:0; border-width:0;
+  opacity:0; transform:scale(.9) translateY(-4px); filter:blur(1.5px);
+  transition:max-width .5s cubic-bezier(.6,0,.3,1), padding .5s cubic-bezier(.6,0,.3,1),
+             opacity .32s ease .12s, transform .5s cubic-bezier(.6,0,.3,1), filter .4s ease;
+}
+/* Back again (Undo) */
+.ll-progress.ll-arrive{ animation:llArrive .5s cubic-bezier(.2,.9,.3,1.2) 1; }
+@keyframes llArrive{ from{ opacity:0; transform:scale(.9) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+@media (prefers-reduced-motion: reduce){
+  .ll-progress.complete .ll-done, .ll-progress.ll-finishing, .ll-progress.ll-finishing::after,
+  .ll-progress.ll-finishing .ll-done svg path, .ll-progress.ll-arrive{ animation:none; }
+  .ll-done, .ll-done-t, .ll-progress.ll-fold{ transition:none; }
+}
+[data-theme="dark"] .ll-progress.complete .ll-done,
+[data-theme="dark"] .ll-progress.complete .ll-done:hover{ color:#06200f; }
+/* folding: contents are clipped whole, never squeezed / wrapped */
+.ll-progress{ white-space:nowrap; }
+.ll-progress > *, .ll-open > *{ flex-shrink:0; }
