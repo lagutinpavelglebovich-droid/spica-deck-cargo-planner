@@ -12,6 +12,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
+import { initDeckCamera, openDeckCamera, dropFileToDeckCamera } from './deckCamera.js';
+import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
 import { interRegularB64, interBoldB64, manropeExtraBoldB64, jetBrainsMonoRegularB64, jetBrainsMonoMediumB64 } from './inter-fonts.js';
@@ -787,6 +789,28 @@ function normaliseVesselProfile(p){
     const ints = a => (Array.isArray(a) ? a : []).map(v => parseInt(v, 10)).filter(v => isFinite(v) && v >= 0);
     out.lashing.dollies = ints(p.lashing.dollies).filter(v => v <= bays.length);
     out.lashing.drings  = ints(p.lashing.drings).filter(v => v < bays.length);
+  }
+  const cam = _normaliseCamera(p.camera, bays.length);
+  if(cam) out.camera = cam;
+  return out;
+}
+/* v3.16 — bridge camera: mount rotation + deck calibration (4 picked
+   points, normalised to the rotated frame). See deckCamera.js. */
+function _normaliseCamera(c, nBays){
+  if(!c || typeof c !== 'object') return null;
+  const out = { rotation: [0, 90, 180, 270].includes(c.rotation) ? c.rotation : 0 };
+  if(c.deviceLabel) out.deviceLabel = String(c.deviceLabel).slice(0, 120);
+  const k = c.calib;
+  if(k && Array.isArray(k.pts) && k.pts.length === 4 && k.pts.every(q => Array.isArray(q) && q.length === 2 && q.every(v => isFinite(+v)))){
+    out.calib = {
+      pts: k.pts.map(q => [Math.min(1.5, Math.max(-0.5, +q[0])), Math.min(1.5, Math.max(-0.5, +q[1]))]),
+      line: Math.min(Math.max(0, nBays - 2), Math.max(0, parseInt(k.line, 10) || 0)),
+      aspect: isFinite(+k.aspect) ? +k.aspect : 0,
+      extra: (Array.isArray(k.extra) ? k.extra : []).slice(0, 24)
+        .filter(e => e && isFinite(+e.u) && isFinite(+e.v) && parseInt(e.bay, 10) >= 0 && parseInt(e.bay, 10) < nBays)
+        .map(e => ({ bay: parseInt(e.bay, 10), u: +e.u, v: +e.v })),
+    };
+    if(k.at) out.calib.at = String(k.at).slice(0, 40);
   }
   return out;
 }
@@ -8570,6 +8594,19 @@ function toggleAscoItem(key){
   updateAscoSelection();
 }
 
+/* Every row still to load (not on deck, not already in Imported), all sheets. */
+function _ascoAllNewKeys(){
+  const out = [];
+  ascoImportData.forEach((sh, si) => sh.items.forEach((_, ii) => { const k = `${si}-${ii}`; if(ascoStatus[k] === 'new') out.push(k); }));
+  return out;
+}
+function ascoToggleSelectAll(){
+  const keys = _ascoAllNewKeys();
+  if(!keys.length) return;
+  if(keys.every(k => ascoSelected.has(k))) keys.forEach(k => ascoSelected.delete(k));
+  else keys.forEach(k => ascoSelected.add(k));
+  updateAscoSelection();
+}
 function updateAscoSelection(){
   /* Update visual state */
   document.querySelectorAll('.asco-item').forEach(el => {
@@ -8579,6 +8616,16 @@ function updateAscoSelection(){
 
   const n = ascoSelected.size;
   document.getElementById('ascoBadgeCount').textContent = `${n} selected`;
+  /* v3.16 — one Select all across every sheet / location */
+  const sa = document.getElementById('ascoSelAll');
+  if(sa){
+    const keys = _ascoAllNewKeys();
+    const hasContent = ascoImportData.length > 0 && document.getElementById('ascoContent').style.display !== 'none';
+    sa.hidden = !hasContent || keys.length === 0;
+    const all = keys.length && keys.every(k => ascoSelected.has(k));
+    sa.textContent = all ? 'Clear all' : `Select all ${keys.length}`;
+    sa.classList.toggle('quiet', !!all);
+  }
   const nd = (ascoDiff.changed.length + ascoDiff.dropped.length);
   const btn = document.getElementById('ascoImportBtn');
   const noLoc = ascoImportData.find((sh, si) => sh.source === 'generic' && !sh.locId && sh.items.some((_, ii) => ascoSelected.has(`${si}-${ii}`)));
@@ -8982,6 +9029,68 @@ function updateQueueBadge(){
   if(typeof cpUpdateBadge==='function') cpUpdateBadge();
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3.16 — DROP FILES ANYWHERE ON THE WINDOW
+   • load list / backload / manifest (xlsx, xls, csv, docx, pdf…) → Import
+   • project (.spica / .json) → open the plan
+   • photo / video while Deck Camera is open → its picture
+   Tauri's own file-drop is switched off (tauri.conf dragDropEnabled:
+   false) so the WebView delivers real File objects here. Drops already
+   handled by an inner drop zone (defaultPrevented) are left alone.
+════════════════════════════════════════════════════════════ */
+function _dragHasFiles(e){ return !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')); }
+function bindWindowFileDrop(){
+  if(document.body.dataset.fileDrop) return;
+  document.body.dataset.fileDrop = '1';
+  let ov = null, depth = 0;
+  const show = on => {
+    if(on && !ov){
+      ov = document.createElement('div');
+      ov.className = 'file-drop-ov';
+      ov.innerHTML = `<div class="file-drop-card"><div class="file-drop-ico">⇣</div>
+        <div class="file-drop-t">Drop to import</div>
+        <div class="file-drop-s">ASCO load list, backload or manifest — Excel, Word, PDF · or a SPICA project file</div></div>`;
+      document.body.appendChild(ov);
+    }
+    if(ov) ov.classList.toggle('on', on);
+  };
+  window.addEventListener('dragenter', e => { if(!_dragHasFiles(e)) return; depth++; if(!document.body.classList.contains('dc-open')) show(true); });
+  window.addEventListener('dragleave', e => { if(!_dragHasFiles(e)) return; depth = Math.max(0, depth - 1); if(!depth) show(false); });
+  window.addEventListener('dragover', e => { if(_dragHasFiles(e)){ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  window.addEventListener('drop', e => {
+    if(!_dragHasFiles(e)) return;
+    depth = 0; show(false);
+    if(e.defaultPrevented) return;          /* an inner zone took it */
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files || []);
+    if(!files.length) return;
+    handleDroppedFiles(files);
+  });
+}
+function handleDroppedFiles(files){
+  const f = files[0];
+  const name = f.name || '';
+  if(document.body.classList.contains('dc-open')){
+    if(/^(image|video)\//.test(f.type) || /\.(jpe?g|png|heic|mov|mp4|m4v|webm|mkv)$/i.test(name)){ dropFileToDeckCamera(f); return; }
+  }
+  if(/\.(spica|json)$/i.test(name)){
+    if(!isOperator()){ showToast('Viewer mode — opening a plan is not available', 'warn'); return; }
+    const r = new FileReader();
+    r.onload = () => { _applyProjectData(String(r.result || ''), name); _currentFilePath = null; _updateWindowTitle(null); };
+    r.onerror = () => showToast('Could not read ' + name, 'warn');
+    r.readAsText(f);
+    return;
+  }
+  if(_IMPORT_EXT.test(name)){
+    if(!isOperator()){ showToast('Viewer mode — import is not available', 'warn'); return; }
+    if(files.length > 1) showToast(`Importing ${name} — drop the other ${files.length - 1} file${files.length > 2 ? 's' : ''} one at a time`, 'info');
+    if(!document.getElementById('ascoOv').classList.contains('open')) openAscoModal();
+    processASCOFile(f);
+    return;
+  }
+  showToast(`${name || 'This file'} is not a load list, manifest or project`, 'warn');
+}
+
 /* ── ASCO Modal control ── */
 function openAscoModal(){
   const ov = document.getElementById('ascoOv');
@@ -8992,6 +9101,7 @@ function openAscoModal(){
   document.getElementById('ascoFooter').style.display = 'none';
   document.getElementById('ascoSubtitle').textContent = 'Select a load list or backload file to import';
   document.getElementById('ascoBadgeCount').style.display = 'none';
+  document.getElementById('ascoSelAll').hidden = true;
   ascoImportData = [];
   ascoSelected.clear();
 }
@@ -9029,6 +9139,22 @@ function bindAscoUpload(){
     const file = e.dataTransfer.files[0];
     if(file) processASCOFile(file);
   });
+
+  bindWindowFileDrop();
+  /* v3.16 — Outlook (classic, this computer) → offer new load lists */
+  initMailWatch({
+    isTauri: () => _isTauri(),
+    invoke: (c, a) => invoke(c, a),
+    isOperator: () => isOperator(),
+    toast: (m, t) => showToast(m, t),
+    sound: () => playSound('select'),
+    importFile: file => {
+      if(!document.getElementById('ascoOv').classList.contains('open')) openAscoModal();
+      processASCOFile(file);
+    },
+  });
+
+  document.getElementById('ascoSelAll').addEventListener('click', ascoToggleSelectAll);
 
   /* Import button */
   document.getElementById('ascoImportBtn').addEventListener('click', performAscoImport);
@@ -11766,6 +11892,8 @@ function _cmdpActions(){
       run: () => { if(typeof fitToScreen === 'function') fitToScreen(); } },
     { group:'View',      label:'3D deck view',            shortcut:'V',
       run: () => toggle3D() },
+    { group:'View',      label:'Deck camera…',
+      run: () => openDeckCamera() },
     { group:'View',      label:'Vessel setup…',
       guard: () => isOperator(), run: () => vesselSetupRequest() },
     { group:'View',      label:'Charterer (PDF)…',
@@ -13954,8 +14082,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.15.1';
-const APP_VERSION   = '3.15.1';
+const CURRENT_BUILD = 'v3.16.0';
+const APP_VERSION   = '3.16.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -14214,6 +14342,7 @@ function bindMenuBar(){
     view3D:        () => toggle3D(),
     editCharterer: () => { bindCharterModal(); charterOpenModal(); },
     vesselSetup:   () => vesselSetupRequest(),
+    deckCamera:    () => openDeckCamera(),
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];
@@ -17106,5 +17235,28 @@ function bindAutosaveToggle(){
   window.__vesselAlign = { toggle, reset, lock, cancel, get state(){ return { ...state }; } };
 })();
 
+
+/* v3.16 — Deck camera workspace (calibration / overlay). The module only
+   sees the planner through this API. */
+initDeckCamera({
+  geo: () => ({ bays: BAY_LENGTHS_M.slice(), joint: JOINT_WIDTH_M, width: (VESSEL && VESSEL.deckWidthM) || 15,
+                length: DECK_LENGTH_M, labels: BAY_LENGTHS_M.map((_, i) => bayLabel(i)) }),
+  cargo: () => S.cargo.map(c => {
+    const loc = locById(c.platform) || LOC_ALL[0];
+    return { id: c.id, ccu: c.ccu || '', status: c.status,
+      x0: deckXToMeters(c.x), x1: deckXToMeters(c.x + c.w), y0: deckYToMeters(c.y), y1: deckYToMeters(c.y + c.h),
+      color: opColor(c.platform, c.status) || getLocBase(loc ? loc.id : '') };
+  }),
+  getCamera: () => (VESSEL && VESSEL.camera) || null,
+  setCamera: cam => {
+    if(!VESSEL) return;
+    const c = _normaliseCamera(cam, BAY_COUNT);
+    if(c) VESSEL.camera = c; else delete VESSEL.camera;
+    vesselPut(VESSEL);
+  },
+  isOperator: () => isOperator(),
+  toast: (m, t) => showToast(m, t),
+  vesselName: () => (VESSEL && VESSEL.name) || 'VESSEL',
+});
 
 init();

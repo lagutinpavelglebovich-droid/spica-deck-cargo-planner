@@ -167,6 +167,7 @@
       <div class="menu-action" data-action="zoomReset">Reset Zoom</div>
       <div class="menu-action" data-action="zoomFit">Fit to Screen</div>
       <div class="menu-action" data-action="view3D">3D Deck View<span class="menu-shortcut">V</span></div>
+      <div class="menu-action" data-action="deckCamera">Deck Camera…</div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="toggleLibrary">Toggle Library<span class="menu-shortcut">L</span></div>
     </div>
@@ -187,7 +188,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.15.1</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.16.0</div>
     </div>
   </div>
 </div>
@@ -209,7 +210,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.15.1<br>
+      Version 3.16.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -939,6 +940,7 @@
         <div class="asco-title">Imported Cargo List</div>
         <div class="asco-subtitle" id="ascoSubtitle">Select a load list or backload file to import</div>
       </div>
+      <button type="button" class="asco-selall" id="ascoSelAll" hidden title="Select every new item in every sheet and location">Select all</button>
       <div class="asco-badge-count" id="ascoBadgeCount" style="display:none"></div>
     </div>
     <!-- Drop zone -->
@@ -948,6 +950,16 @@
       <div class="asco-drop-sub">ASCO load lists, and platform backloads / manifests in Excel, Word or PDF — scanned PDFs too.<br>Read on this computer; nothing is sent anywhere.</div>
       <button class="asco-drop-pill" id="ascoFilePill">Choose File…</button>
       <input type="file" id="ascoFileInput" accept=".xlsx,.xlsm,.xls,.csv,.ods,.docx,.pdf" style="display:none">
+      <!-- v3.16 — load lists found in the Outlook Inbox on this computer -->
+      <div class="asco-mail" id="ascoMail" hidden>
+        <div class="asco-mail-head">
+          <span class="asco-mail-t">From Outlook</span>
+          <span class="asco-mail-meta" id="ascoMailMeta"></span>
+          <label class="asco-mail-watch" title="Look for new load lists every 3 minutes and offer them"><input type="checkbox" id="ascoMailWatch"> Watch</label>
+          <button type="button" class="asco-mail-btn" id="ascoMailCheck">Check now</button>
+        </div>
+        <div class="asco-mail-list" id="ascoMailList"></div>
+      </div>
     </div>
     <!-- Results content -->
     <div class="asco-content" id="ascoContent" style="display:none"></div>

@@ -11,6 +11,23 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.16.0',
+    date: '2026-10-24',
+    highlights: [
+      'Load lists straight from Outlook',
+      'Drop files onto the window',
+      'Deck camera calibration',
+    ],
+    changes: [
+      { type: 'feature', text: 'Outlook: the Import window lists load lists, backloads and manifests from the Inbox of the last 7 days — Import in one click. Reads classic Outlook on this computer only; nothing is sent anywhere' },
+      { type: 'feature', text: 'Outlook watch: a new load list or backload arriving while the planner is open shows a card with Import (switch off with Watch in the Import window)' },
+      { type: 'feature', text: 'Drag a load list, backload or manifest anywhere onto the window to import it; drop a project file to open it' },
+      { type: 'feature', text: 'Import: Select all / Clear all across every sheet and location at once' },
+      { type: 'feature', text: 'View → Deck Camera: calibrate the bridge camera to the deck — 4 points plus painted bay numbers; the plan is drawn over the picture, with the error of every point shown' },
+      { type: 'fix',     text: 'Dropping a file on the Import window now works in the desktop app (the window used to swallow it)' },
+    ],
+  },
+  {
     version: '3.15.1',
     date: '2026-10-24',
     highlights: [

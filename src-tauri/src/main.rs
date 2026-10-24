@@ -77,6 +77,163 @@ fn add_recent_file(path: String, name: String) -> Vec<RecentFile> {
     recents
 }
 
+/// v3.16 — append raw bytes to a file (deck-camera recording). The bytes
+/// arrive as a raw IPC body (no JSON), the target path in the `x-path`
+/// header, percent-encoded so non-ASCII folder names survive.
+#[tauri::command]
+fn append_file_raw(request: tauri::ipc::Request<'_>) -> Result<u64, String> {
+    let path = request
+        .headers()
+        .get("x-path")
+        .and_then(|v| v.to_str().ok())
+        .map(pct_decode)
+        .ok_or_else(|| "missing x-path header".to_string())?;
+    let data = match request.body() {
+        tauri::ipc::InvokeBody::Raw(d) => d,
+        _ => return Err("expected raw bytes".into()),
+    };
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    use std::io::Write;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("Open failed: {}", e))?;
+    f.write_all(data).map_err(|e| format!("Write failed: {}", e))?;
+    Ok(f.metadata().map(|m| m.len()).unwrap_or(0))
+}
+
+/// v3.16 — read a whole file as raw bytes (mail attachments → import).
+#[tauri::command]
+fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, String> {
+    fs::read(&path)
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| format!("Read failed: {}", e))
+}
+
+/// v3.16 — make sure a folder exists (recordings folder).
+#[tauri::command]
+fn ensure_dir(path: String) -> Result<(), String> {
+    fs::create_dir_all(&path).map_err(|e| format!("Folder failed: {}", e))
+}
+
+fn pct_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let h = |c: u8| -> Option<u8> {
+                match c {
+                    b'0'..=b'9' => Some(c - b'0'),
+                    b'a'..=b'f' => Some(c - b'a' + 10),
+                    b'A'..=b'F' => Some(c - b'A' + 10),
+                    _ => None,
+                }
+            };
+            if let (Some(x), Some(y)) = (h(b[i + 1]), h(b[i + 2])) {
+                out.push(x * 16 + y);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// v3.16 — look through the classic Outlook Inbox on THIS computer for
+/// recent mail with load-list / backload / manifest attachments. Read
+/// only: attachments are copied to %TEMP%\spica-tide-mail and their
+/// paths returned as JSON. Nothing leaves the computer. Windows only.
+#[tauri::command]
+async fn outlook_scan(days: u32, max_items: u32, pattern: String) -> Result<String, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (days, max_items, pattern);
+        Err("Outlook scanning is available on Windows only".into())
+    }
+    #[cfg(windows)]
+    {
+        use std::io::Write;
+        use std::os::windows::process::CommandExt;
+        use std::process::{Command, Stdio};
+        // The script goes in as plain text on stdin — no -EncodedCommand and
+        // no execution-policy override, so it reads like any admin one-liner.
+        let script = OUTLOOK_PS
+            .replace("__DAYS__", &days.min(60).to_string())
+            .replace("__MAX__", &max_items.clamp(20, 2000).to_string())
+            .replace("__PATTERN__", &pattern.replace('\'', "''").replace(|c: char| !c.is_ascii(), ""));
+        let mut child = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-NoLogo", "-Command", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .spawn()
+            .map_err(|e| format!("PowerShell failed to start: {}", e))?;
+        if let Some(mut si) = child.stdin.take() {
+            si.write_all(script.as_bytes()).map_err(|e| format!("PowerShell input failed: {}", e))?;
+        }
+        let out = child.wait_with_output().map_err(|e| format!("PowerShell failed: {}", e))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        if let Some(line) = stdout.lines().find(|l| l.contains("@@SPICA@@")) {
+            return Ok(line.split("@@SPICA@@").nth(1).unwrap_or("").trim().to_string());
+        }
+        let err: String = String::from_utf8_lossy(&out.stderr).trim().chars().take(500).collect();
+        Err(if err.is_empty() { "Outlook scan returned nothing".into() } else { err })
+    }
+}
+
+#[cfg(windows)]
+const OUTLOOK_PS: &str = r#"
+$ErrorActionPreference = 'Stop'
+$days = __DAYS__; $max = __MAX__; $pattern = '__PATTERN__'
+$out = [ordered]@{ ok = $true; running = $true; scanned = 0; items = @() }
+function Emit($o) { [Console]::Out.WriteLine('@@SPICA@@' + ($o | ConvertTo-Json -Compress -Depth 4)) }
+if (-not (Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)) { $out.running = $false; Emit $out; exit 0 }
+try { $ol = [Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application') } catch { $ol = New-Object -ComObject Outlook.Application }
+$inbox = $ol.GetNamespace('MAPI').GetDefaultFolder(6)
+$items = $inbox.Items
+$items.Sort('[ReceivedTime]', $true)
+$since = (Get-Date).AddDays(-$days)
+$dir = Join-Path $env:TEMP 'spica-tide-mail'
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$ext = '\.(xlsx|xlsm|xls|csv|ods|docx|pdf)$'
+$n = 0
+foreach ($m in $items) {
+  $n++
+  if ($n -gt $max) { break }
+  try {
+    if ($m.Class -ne 43) { continue }
+    if ($m.ReceivedTime -lt $since) { break }
+    if ($m.Attachments.Count -eq 0) { continue }
+    $subject = [string]$m.Subject
+    foreach ($a in $m.Attachments) {
+      $name = [string]$a.FileName
+      if ($name -notmatch $ext) { continue }
+      if (($name -notmatch $pattern) -and ($subject -notmatch $pattern)) { continue }
+      if ($a.Size -gt 31457280) { continue }
+      $id = [string]$m.EntryID
+      $key = $id.Substring([Math]::Max(0, $id.Length - 24))
+      $sub = Join-Path $dir $key
+      New-Item -ItemType Directory -Force -Path $sub | Out-Null
+      $p = Join-Path $sub ($name -replace '[\\/:*?"<>|]', '_')
+      if (-not (Test-Path -LiteralPath $p)) { $a.SaveAsFile($p) }
+      $out.items += [ordered]@{ subject = $subject; from = [string]$m.SenderName; received = $m.ReceivedTime.ToString('o'); name = $name; path = $p; size = [int]$a.Size; key = $key }
+    }
+  } catch { }
+}
+$out.scanned = $n
+Emit $out
+exit 0
+
+
+"#;
+
 /// Simple ISO timestamp without pulling in chrono crate
 fn chrono_now() -> String {
     use std::time::SystemTime;
@@ -102,6 +259,10 @@ fn main() {
             read_file,
             get_recent_files,
             add_recent_file,
+            append_file_raw,
+            read_file_bytes,
+            ensure_dir,
+            outlook_scan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
