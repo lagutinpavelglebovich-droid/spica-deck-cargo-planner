@@ -31,16 +31,17 @@ const KN2MS = 0.514444;
 export function windVal(kn, unit){ if(kn == null || !isFinite(kn)) return null; return (unit || windUnit()) === 'ms' ? kn * KN2MS : kn; }
 export function windLbl(unit){ return (unit || windUnit()) === 'ms' ? 'm/s' : 'kn'; }
 
-/* ── Colour scales in the Windy style ────────────────────────────
-   Wind: Windy's wind palette by speed in m/s — blue → cyan → green →
-   yellow → orange / brown → red → magenta → purple. Waves use the same
-   colour order by significant wave height (m), so a look at the table
-   reads the same way for wind and sea. */
+/* ── Colour scales: Windy's own default gradients ────────────────
+   Copied from windy.com (client v51.3.2, colors module `wind` and
+   `waves`, read on 2026-10-25). Wind and gusts use the wind gradient
+   by speed in m/s; Hs, Hmax and swell use the waves gradient by
+   height in m — exactly as the Windy overlays and forecast tables do. */
 const WIND_STOPS = [[0,[98,113,183]],[1,[57,97,159]],[3,[74,148,169]],[5,[77,141,123]],[7,[83,165,83]],[9,[53,159,53]],
   [11,[167,157,81]],[13,[159,127,58]],[15,[161,108,92]],[17,[129,58,78]],[19,[175,80,136]],[21,[117,74,147]],
-  [24,[109,97,163]],[27,[68,105,141]],[29,[92,144,152]],[36,[125,68,165]],[46,[231,215,215]],[51,[219,212,135]],[77,[205,202,112]]];
-const WAVE_STOPS = [[0,[57,97,159]],[0.5,[74,148,169]],[1,[77,141,123]],[1.5,[83,165,83]],[2,[167,157,81]],[2.5,[159,127,58]],
-  [3,[161,108,92]],[4,[129,58,78]],[5,[175,80,136]],[6,[117,74,147]],[8,[109,97,163]],[10,[125,68,165]],[14,[231,215,215]]];
+  [24,[109,97,163]],[27,[68,105,141]],[29,[92,144,152]],[36,[125,68,165]],[46,[231,215,215]],[51,[219,212,135]],
+  [77,[205,202,112]],[104,[128,128,128]]];
+const WAVE_STOPS = [[0,[159,185,191]],[0.5,[48,157,185]],[1,[48,98,141]],[1.5,[56,104,191]],[2,[57,60,142]],[2.5,[187,90,191]],
+  [3,[154,48,151]],[4,[133,48,48]],[5,[191,51,95]],[7,[191,103,87]],[10,[191,191,191]],[12,[154,127,155]]];
 function ramp(stops, v){
   if(v == null || !isFinite(v)) return null;
   if(v <= stops[0][0]) return stops[0][1];
@@ -218,7 +219,7 @@ function ensurePanel(){
         <button type="button" class="fwx-x" id="fwxClose" title="Close (Esc)">✕</button>
       </div>
       <div class="fwx-body" id="fwxBody"></div>
-      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours as on Windy · times are this computer's local time · only the coordinates of the locations are sent</div>
+      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours: Windy's own wind and waves scales · times are this computer's local time · only the coordinates of the locations are sent</div>
     </div>`;
   document.body.appendChild(ov);
   const close = () => { ov.classList.remove('open'); };
@@ -310,7 +311,7 @@ function card(l, isActive, u){
       <div class="fwx-c fwx-d" title="${compass(x.wd)} ${fmt0(x.wd)}°">${arrow(x.wd, 16)}</div>
       ${cell(fmt1(x.hs), waveColor(x.hs), 'fwx-h')}
       ${cell(hm != null ? fmt1(hm) : '—', waveColor(hm), 'fwx-g')}
-      <div class="fwx-c fwx-s">${x.sw != null ? fmt1(x.sw) + '<small>' + fmt0(x.sp) + 's</small>' : ''}</div>
+      ${x.sw != null ? cell(fmt1(x.sw) + '<small>&thinsp;' + fmt0(x.sp) + 's</small>', waveColor(x.sw), 'fwx-s') : '<div class="fwx-c fwx-s"></div>'}
     </div>`;
   }).join('');
   const keys = `<div class="fwx-tl-k"><div class="fwx-t">&nbsp;</div><div>Wind <small>${U}</small></div><div>Gusts <small>${U}</small></div><div>Direction</div>

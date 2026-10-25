@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.22.1',
+    date: '2026-10-25',
+    highlights: [ 'Exact Windy colour scales' ],
+    changes: [
+      { type: 'fix', text: 'Wind, gusts, Hs, Hmax and swell now use Windy\'s own default colour scales, taken from windy.com itself (wind by m/s, waves by metres) — not an approximation' },
+      { type: 'improvement', text: 'Swell cells are coloured on the waves scale, as on Windy' },
+    ],
+  },
+  {
     version: '3.22.0',
     date: '2026-10-25',
     highlights: [
