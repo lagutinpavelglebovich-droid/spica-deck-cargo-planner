@@ -12,7 +12,7 @@
 ════════════════════════════════════════════════════════════ */
 
 import { wmoToCondition } from './weather/api.js';
-import { iconForCondition } from './weather/iconMap.js';
+import { staticIconForCondition } from './weather/iconMap.js';
 const URL_FC = 'https://api.open-meteo.com/v1/forecast';
 const URL_MAR = 'https://marine-api.open-meteo.com/v1/marine';
 const LS_CACHE = 'spicaTide_fieldWx';
@@ -240,6 +240,25 @@ function ensurePanel(){
       <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours: Windy's forecast-table scales · times are this computer's local time · only the coordinates of the locations are sent</div>
     </div>`;
   document.body.appendChild(ov);
+  /* v3.26.2 — while the forecast is open the app behind it holds still:
+     no full-screen blur and no ambient animation under the panel, so the
+     GPU spends every frame on the tables (the blur had to be redrawn each
+     frame the sky / atmosphere behind it moved) */
+  let paused = [];
+  new MutationObserver(() => {
+    const open = ov.classList.contains('open');
+    document.documentElement.classList.toggle('fwx-open', open);
+    if(open){
+      paused = [...document.querySelectorAll('svg')].filter(s => !ov.contains(s) && s.pauseAnimations && !s.animationsPaused());
+      paused.forEach(s => s.pauseAnimations());
+    } else {
+      if(PAN.raf){ cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.last = 0; }
+      if(PAN.ac) PAN.ac.abort();
+      PAN.coast = false; PAN.x = PAN.target;
+      paused.forEach(s => { if(s.isConnected && document.documentElement.getAttribute('data-motion') !== 'off') s.unpauseAnimations(); });
+      paused = [];
+    }
+  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
   const close = () => { ov.classList.remove('open'); };
   ov.addEventListener('mousedown', e => { if(e.target === ov) close(); });
   ov.querySelector('#fwxClose').addEventListener('click', close);
@@ -257,6 +276,7 @@ function ensurePanel(){
 
 export function openFieldWeather(id){
   focusId = id || null;
+  PAN.x = PAN.target = 0; PAN.vel = 0; PAN.coast = false;
   const ov = ensurePanel();
   ov.classList.add('open');
   ov.tabIndex = -1; ov.focus();
@@ -305,7 +325,7 @@ const skyIcon = x => {
   if(x.wc == null) return '';
   let day = x.day;
   if(day == null){ const h = new Date(x.t).getUTCHours(); day = h >= 7 && h < 17 ? 1 : 0; }
-  return iconForCondition(wmoToCondition(x.wc, day === 1 || day === true).condition);
+  return staticIconForCondition(wmoToCondition(x.wc, day === 1 || day === true).condition);
 };
 function band(cols, f){
   if(!cols.length) return 'transparent';
@@ -356,8 +376,8 @@ function table(rows, u){
       ${rowsDef.map(r => r[2]).join('')}
       ${seps.map(x => `<i class="fw-sep" style="left:${x}px"></i>`).join('')}
       ${nowX > 0 && nowX < W ? `<i class="fw-now" style="left:${nowX}px"></i>` : ''}
-      <i class="fw-slice" hidden></i>
-    </div></div>
+      <i class="fw-slice"></i>
+    </div><div class="fw-pan" hidden><i class="fw-pan-th"></i></div></div>
   </div>`;
 }
 function card(l, isActive, u){
@@ -382,27 +402,187 @@ function card(l, isActive, u){
     : `<div class="fw-card fw-card-wait">${busy ? 'Loading…' : 'No data yet — press Refresh'}</div>`;
   return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}${now}${body}</section>`;
 }
-/* red time slice through every table + tables scroll together */
+/* v3.26.2 — the tables pan together on the compositor.
+   Native scrollers were kept in step from the scroll event, so every
+   table but the one under the mouse trailed a frame behind and the whole
+   panel shuddered. Now there is ONE horizontal position for all tables:
+   each grid is moved with translate3d in the same animation frame, wheel
+   and trackpad input glide to their target, a drag pans 1:1 and coasts
+   on release, and a thin shared bar under each table shows and moves the
+   position. The red time slice follows the mouse while the tables move. */
+const PAN = { x: 0, target: 0, raf: 0, last: 0, vel: 0, coast: false, mouseX: null, hoverGrid: null };
+const motionOff = () => document.documentElement.getAttribute('data-motion') === 'off';
 function wireTables(body){
-  const grids = [...body.querySelectorAll('.fw-grid')];
-  const scrolls = [...body.querySelectorAll('.fw-scroll')];
-  const show = i => grids.forEach(g => {
-    const sl = g.querySelector('.fw-slice'), n = g.querySelector('.fw-hour').children.length;
-    g.querySelectorAll('.fw-hour .fw-c.on').forEach(c => c.classList.remove('on'));
-    if(i == null || i >= n){ sl.hidden = true; return; }
-    sl.hidden = false; sl.style.left = (i * COLW + COLW / 2 - 1) + 'px';
-    g.querySelector('.fw-hour').children[i].classList.add('on');
+  /* a re-render (refresh, unit switch) replaces the tables: drop the old
+     frame loop and size watcher, keep the position */
+  if(PAN.raf){ cancelAnimationFrame(PAN.raf); PAN.raf = 0; PAN.last = 0; }
+  if(PAN.ro){ PAN.ro.disconnect(); PAN.ro = null; }
+  if(PAN.io){ PAN.io.disconnect(); PAN.io = null; }
+  if(PAN.ac) PAN.ac.abort();                 /* drops a drag in progress with the old tables */
+  const ac = PAN.ac = new AbortController(), sig = { signal: ac.signal };
+  PAN.coast = false; PAN.mouseX = null; PAN.hoverGrid = null;
+  body.classList.remove('fw-panning', 'fw-moving');
+  const tbls = [...body.querySelectorAll('.fw-tbl')].map(t => {
+    const scroll = t.querySelector('.fw-scroll'), grid = t.querySelector('.fw-grid');
+    const hour = grid.querySelector('.fw-hour');
+    return { scroll, grid, slice: grid.querySelector('.fw-slice'), cells: hour ? [...hour.children] : [], on: -1,
+             bar: t.querySelector('.fw-pan'), thumb: t.querySelector('.fw-pan-th') };
   });
-  grids.forEach(g => {
-    g.addEventListener('mousemove', e => { const x = e.clientX - g.getBoundingClientRect().left; show(Math.max(0, Math.floor(x / COLW))); });
-    g.addEventListener('mouseleave', () => show(null));
+  if(!tbls.length) return;
+  /* sizes are read once (and on resize), never inside the frame loop —
+     reading layout after writing transforms would force a reflow per table */
+  let M = 0;
+  const measure = () => {
+    tbls.forEach(t => { t.vw = t.scroll.clientWidth; t.gw = t.grid.offsetWidth; t.max = Math.max(0, t.gw - t.vw); t.bw = t.bar ? t.bar.parentNode.clientWidth - 16 : 0; });
+    M = Math.max(0, ...tbls.map(t => t.max));
+  };
+  measure();
+  const maxX = () => M;
+  const clamp = v => Math.min(maxX(), Math.max(0, v));
+  PAN.target = clamp(PAN.target); PAN.x = clamp(PAN.x);
+
+  const show = i => tbls.forEach(t => {
+    const n = t.cells.length, idx = (i == null || i >= n) ? -1 : i;
+    if(idx === t.on) return;
+    if(t.on >= 0 && t.cells[t.on]) t.cells[t.on].classList.remove('on');
+    t.on = idx;
+    if(idx < 0){ t.slice.classList.remove('vis'); return; }
+    t.cells[idx].classList.add('on');
+    t.slice.style.transform = `translate3d(${idx * COLW + COLW / 2}px,0,0)`;
+    t.slice.classList.add('vis');
   });
-  let syncing = false;
-  scrolls.forEach(s => s.addEventListener('scroll', () => {
-    if(syncing) return; syncing = true;
-    scrolls.forEach(o => { if(o !== s) o.scrollLeft = s.scrollLeft; });
-    requestAnimationFrame(() => { syncing = false; });
-  }, { passive: true }));
+  const sliceFromMouse = () => {
+    if(PAN.mouseX == null || !PAN.hoverGrid) return;
+    /* grid left = its scroll box left (cached per hover) minus the pan */
+    const t = tbls.find(o => o.grid === PAN.hoverGrid); if(!t) return;
+    if(t.left == null) t.left = t.scroll.getBoundingClientRect().left;
+    const x = PAN.mouseX - (t.left - Math.min(PAN.x, t.max));
+    show(Math.max(0, Math.floor(x / COLW)));
+  };
+  const paint = () => {
+    const m = M;
+    tbls.forEach(t => {
+      if(t.vis === false) return;          /* off-screen tables catch up when they scroll into view */
+      t.grid.style.transform = `translate3d(${-Math.min(PAN.x, t.max)}px,0,0)`;
+      if(t.bar){
+        const show = t.max > 1;
+        if(t.bar.hidden === show) t.bar.hidden = !show;
+        if(show){
+          const tw = Math.max(36, t.vw / t.gw * t.bw), room = t.bw - tw;
+          if(t.tw !== tw){ t.tw = tw; t.thumb.style.width = tw + 'px'; }
+          t.thumb.style.transform = `translate3d(${m ? PAN.x / m * room : 0}px,0,0)`;
+        }
+      }
+    });
+  };
+  const tick = now => {
+    const dt = Math.min(48, now - (PAN.last || now)); PAN.last = now;
+    if(PAN.coast){
+      PAN.target = clamp(PAN.target + PAN.vel * dt);
+      PAN.vel *= Math.pow(0.92, dt / 16.67);
+      if(Math.abs(PAN.vel) < 0.02 || PAN.target === 0 || PAN.target === maxX()) PAN.coast = false;
+    }
+    const k = motionOff() ? 1 : 1 - Math.pow(1 - 0.2, dt / 16.67);
+    PAN.x += (PAN.target - PAN.x) * k;
+    if(Math.abs(PAN.target - PAN.x) < 0.4) PAN.x = PAN.target;
+    paint(); sliceFromMouse();
+    if(PAN.x !== PAN.target || PAN.coast){ PAN.raf = requestAnimationFrame(tick); body.classList.add('fw-moving'); }
+    else { PAN.raf = 0; PAN.last = 0; body.classList.remove('fw-moving'); }
+  };
+  const kick = () => { if(!PAN.raf) PAN.raf = requestAnimationFrame(tick); };
+  const panTo = (v, instant) => { PAN.coast = false; PAN.target = clamp(v); if(instant) PAN.x = PAN.target; kick(); };
+
+  tbls.forEach(t => {
+    /* wheel: sideways (trackpad / tilt wheel) or Shift + wheel pans; a plain
+       vertical wheel keeps scrolling the panel up and down */
+    t.scroll.addEventListener('wheel', e => {
+      const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? t.scroll.clientWidth : 1;
+      let dx = e.deltaX * unit;
+      if(e.shiftKey && !dx) dx = e.deltaY * unit;
+      if(!dx || Math.abs(dx) < Math.abs(e.deltaY * unit) && !e.shiftKey) return;
+      const m = maxX();
+      if((dx < 0 && PAN.target <= 0) || (dx > 0 && PAN.target >= m)) return;
+      e.preventDefault();
+      panTo(PAN.target + dx);
+    }, { passive: false, signal: ac.signal });
+    /* drag to pan (as on Windy), coasting on release */
+    t.grid.addEventListener('pointerdown', e => {
+      if(e.button !== 0 || !e.isPrimary || e.target.closest('a,button,input,select')) return;
+      const x0 = e.clientX, y0 = e.clientY, p0 = PAN.target; let lx = e.clientX, lt = performance.now(), moved = false;
+      PAN.coast = false; PAN.vel = 0;
+      const mv = ev => {
+        if(ev.pointerId !== e.pointerId) return;
+        if(!moved && (Math.abs(ev.clientX - x0) < 4 || Math.abs(ev.clientX - x0) < Math.abs(ev.clientY - y0))) return;
+        if(!moved){ moved = true; t.grid.setPointerCapture?.(e.pointerId); body.classList.add('fw-panning'); }
+        const nt = performance.now(), d = nt - lt;
+        if(d > 0) PAN.vel = PAN.vel * 0.6 + (-(ev.clientX - lx) / d) * 0.4;
+        lx = ev.clientX; lt = nt;
+        panTo(p0 - (ev.clientX - x0), true);
+      };
+      const g = new AbortController(), gs = { signal: g.signal };
+      ac.signal.addEventListener('abort', () => g.abort(), gs);
+      const up = ev => {
+        g.abort();
+        body.classList.remove('fw-panning');
+        if(ev && ev.type === 'pointerup' && moved && !motionOff() && performance.now() - lt < 90 && Math.abs(PAN.vel) > 0.08){
+          PAN.coast = true; PAN.vel = Math.max(-4, Math.min(4, PAN.vel)); kick(); }
+      };
+      addEventListener('pointermove', mv, gs); addEventListener('pointerup', up, gs); addEventListener('pointercancel', up, gs);
+      t.grid.addEventListener('lostpointercapture', up, gs); addEventListener('blur', up, gs);
+    }, sig);
+    t.grid.addEventListener('mousemove', e => { PAN.mouseX = e.clientX; PAN.hoverGrid = t.grid; sliceFromMouse(); }, sig);
+    t.grid.addEventListener('mouseenter', () => { t.left = null; }, sig);
+    t.grid.addEventListener('mouseleave', () => { PAN.mouseX = null; PAN.hoverGrid = null; show(null); }, sig);
+    /* the bar: drag the thumb or click the track to jump there */
+    t.bar?.addEventListener('pointerdown', e => {
+      if(e.button !== 0) return;
+      e.preventDefault();
+      const r = t.bar.getBoundingClientRect(), tw = t.thumb.offsetWidth, room = Math.max(1, r.width - tw);
+      t.bw = r.width;
+      const th = t.thumb.getBoundingClientRect();
+      const grab = e.target === t.thumb ? e.clientX - th.left : tw / 2;
+      const at = cx => (cx - r.left - grab) / room * maxX();
+      if(e.target !== t.thumb) panTo(at(e.clientX));
+      t.bar.setPointerCapture?.(e.pointerId);
+      const mv = ev => panTo(at(ev.clientX), true);
+      const up = () => { t.bar.removeEventListener('pointermove', mv); t.bar.removeEventListener('pointerup', up); t.bar.removeEventListener('pointercancel', up); };
+      t.bar.addEventListener('pointermove', mv); t.bar.addEventListener('pointerup', up); t.bar.addEventListener('pointercancel', up);
+      t.bar.addEventListener('lostpointercapture', up);
+    }, sig);
+  });
+  /* ← → also pan while the panel has focus */
+  const ov = body.closest('.fwx-ov');
+  if(ov && !ov._fwKeys){
+    ov._fwKeys = true;
+    ov.addEventListener('keydown', e => {
+      if(e.target.closest('input,select,textarea,[contenteditable]') || e.altKey || e.ctrlKey || e.metaKey) return;
+      if(!PAN.panTo) return;
+      if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); PAN.panTo(PAN.target + (e.key === 'ArrowRight' ? 1 : -1) * COLW * 4); }
+      else if(e.key === 'Home'){ e.preventDefault(); PAN.panTo(0); }
+      else if(e.key === 'End'){ e.preventDefault(); PAN.panTo(1e9); }
+    });
+  }
+  PAN.panTo = panTo;
+  PAN.repaint = () => { measure(); tbls.forEach(t => { t.left = null; t.tw = null; }); PAN.target = clamp(PAN.target); PAN.x = PAN.target; paint(); };
+  /* window resize, the panel's own scrollbar appearing, late fonts — any
+     change of the visible width re-measures */
+  if(typeof ResizeObserver === 'function'){
+    let first = true;
+    PAN.ro = new ResizeObserver(() => { if(first){ first = false; return; } PAN.repaint(); });
+    PAN.ro.observe(tbls[0].scroll);
+  }
+  /* only tables in (or near) view keep a GPU layer and follow every frame */
+  const root = body.closest('.fwx-body') || body;
+  if(typeof IntersectionObserver === 'function'){
+    PAN.io = new IntersectionObserver(ents => ents.forEach(en => {
+      const t = tbls.find(o => o.scroll === en.target); if(!t) return;
+      t.vis = en.isIntersecting;
+      t.grid.style.transform = t.vis ? `translate3d(${-Math.min(PAN.x, t.max)}px,0,0)` : `translateX(${-Math.min(PAN.x, t.max)}px)`;
+      t.grid.classList.toggle('fw-live', t.vis);
+    }), { root, rootMargin: '240px 0px' });
+    tbls.forEach(t => PAN.io.observe(t.scroll));
+  }
+  paint();
 }
 
 /* test hooks */

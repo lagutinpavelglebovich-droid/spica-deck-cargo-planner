@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.26.2',
+    date: '2026-10-25',
+    highlights: [ 'Forecast tables slide smoothly', 'Softer time slice' ],
+    changes: [
+      { type: 'improvement', text: 'Field weather: all forecast tables now move together in one smooth motion — sideways swipe, Shift + wheel, drag with the mouse (it coasts on release), the thin bar under each table, or ← → / Home / End. No more stutter or tables lagging behind each other' },
+      { type: 'improvement', text: 'While the forecast is open, the app behind it holds still (no blur, no ambient animation) so the computer spends its effort on the tables' },
+      { type: 'ui', text: 'The red time slice is thinner and softer, fades at its ends and follows the mouse while the tables move' },
+      { type: 'ui', text: 'Header: the weather block is captioned "Weather · <location>", so it is clear what the numbers are' },
+    ],
+  },
+  {
     version: '3.26.1',
     date: '2026-10-25',
     highlights: [ 'Big animated sky icon in the header' ],

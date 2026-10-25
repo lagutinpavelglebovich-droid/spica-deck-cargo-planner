@@ -70,3 +70,20 @@ export function inlineIconForCondition(condition){
     .replace(/(xlink:)?href="#([^"]+)"/g, (_, x, id) => `${x || ''}href="#${p}${id.replace(/\s+/g, '_')}"`)
     .replace('<svg ', '<svg aria-hidden="true" focusable="false" ');
 }
+
+/* v3.26.2 — still copies for dense tables (40+ icons per forecast row):
+   dozens of SMIL clocks in a scrolling table repaint every frame and made
+   horizontal scrolling stutter. Same artwork, animation removed, hidden
+   start frames (rain / snow drops) shown. */
+const _static = {};
+export function staticIconForCondition(condition){
+  const key = RAW[condition] ? condition : 'cloudy';
+  if(!_static[key]){
+    const svg = RAW[key]
+      .replace(/<animate(Transform|Motion)?\b[^>]*\/>/g, '')
+      .replace(/<animate(Transform|Motion)?\b[^>]*>[\s\S]*?<\/animate(Transform|Motion)?>/g, '')
+      .replace(/\sopacity="0"/g, '');
+    _static[key] = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  return _static[key];
+}

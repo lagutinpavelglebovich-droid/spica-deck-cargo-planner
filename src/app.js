@@ -15225,8 +15225,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.26.1';
-const APP_VERSION   = '3.26.1';
+const CURRENT_BUILD = 'v3.26.2';
+const APP_VERSION   = '3.26.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18570,7 +18570,7 @@ function updateHeaderFieldWx(){
   const loc = locById(id);
   blk.dataset.loc = id;
   blk.title = `Weather at ${loc ? loc.name : id} now — click for the 48 h forecast`;
-  main.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
+  main.innerHTML = `<span class="info-label">Weather<span class="hfw-at"> · ${escHtml(loc ? loc.name : id)}</span></span>
     <div class="hfw-row">
       ${cond && cond.temperature != null ? `<span class="hfw-temp">${cond.temperature}°</span>` : ''}
       <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>

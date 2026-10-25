@@ -18128,3 +18128,32 @@ html[data-motion="off"] .skel-card{ animation-duration:1400ms !important; animat
   font:700 11.5px/1 'Inter',sans-serif; cursor:pointer; flex-shrink:0; }
 .st-mini-btn:hover{ border-color:var(--acc); color:var(--acc); }
 .cp-sec-grip:focus-visible{ outline:2px solid var(--acc); outline-offset:1px; opacity:1; }
+
+/* ═══ v3.26.2 — field weather tables pan smoothly; softer time slice ═══
+   One shared position moves every grid with translate3d on its own
+   compositor layer (see wireTables in fieldWeather.js); the native
+   scrollbars are replaced by one thin bar under each table. */
+.fw-scroll{ overflow:hidden !important; contain:paint; position:relative; }
+.fw-grid{ user-select:none; -webkit-user-select:none; touch-action:pan-y; }
+.fwx-body.fw-panning, .fwx-body.fw-panning .fw-grid{ cursor:grabbing; }
+.fw-icon img{ -webkit-user-drag:none; pointer-events:none; }
+.fw-slice{ left:0; top:22px; bottom:0; width:1px; margin-left:-.5px; z-index:1; box-shadow:none; opacity:0;
+  background:linear-gradient(to bottom, transparent, var(--fw-slice) 16px, var(--fw-slice) calc(100% - 16px), transparent);
+  transition:opacity .18s ease, transform .14s cubic-bezier(.2,.7,.2,1); will-change:transform, opacity; }
+.fw-slice.vis{ opacity:.55; }
+.fw-hour .fw-c.on{ color:var(--fw-slice); font-weight:500 !important; opacity:.9; }
+.fw-pan{ position:relative; height:12px; margin:0 8px 2px; cursor:pointer; touch-action:none; }
+.fw-pan[hidden]{ display:none; }
+.fw-pan::before{ content:''; position:absolute; left:0; right:0; top:5px; height:2px; border-radius:2px; background:var(--fw-line); opacity:.7; }
+.fw-pan-th{ position:absolute; left:0; top:4px; height:4px; border-radius:3px; background:var(--fw-ctxt2); opacity:.55; will-change:transform;
+  transition:height .15s, top .15s, opacity .15s; }
+.fw-pan:hover .fw-pan-th, .fw-pan:active .fw-pan-th{ top:3px; height:6px; opacity:.85; }
+/* header weather caption: "WEATHER · <location>" — the name a shade darker */
+.info-fieldwx .hfw-at{ color:var(--txt2); }
+html.fwx-open .fwx-ov{ backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(16,19,24,.56); }
+html.fwx-open body > :not(.fwx-ov), html.fwx-open body > :not(.fwx-ov) *,
+html.fwx-open body > :not(.fwx-ov)::before, html.fwx-open body > :not(.fwx-ov) *::before,
+html.fwx-open body > :not(.fwx-ov)::after, html.fwx-open body > :not(.fwx-ov) *::after{ animation-play-state:paused !important; }
+.info-fieldwx > .hfw-main > .info-label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.fw-grid.fw-live{ will-change:transform; }
+.fwx-body.fw-moving .fw-slice{ transition:opacity .18s ease; }
