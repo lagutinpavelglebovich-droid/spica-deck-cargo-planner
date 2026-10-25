@@ -1709,6 +1709,104 @@ const CLIB = CCU_PRESETS.map(p => ({
   approx: p.approx || false,
 }));
 
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.19 — PIPES & NON-STANDARD CARGO
+   cargo.pipe    = { nps, n, len }  nominal size (inch), pipes in the
+                   bundle (1 = single joint, up to 5), joint length (m).
+                   Footprint, stack height and an estimated weight
+                   (standard wall) come from pipeSpec().
+   cargo.special = lifeboat | rescue | frame | reel | oog — drawn as its
+                   own silhouette with a non-standard outline and tag.
+   Both are plain fields on the cargo, so save / undo / sync carry them.
+═══════════════════════════════════════════════════════════════════════ */
+const PIPE_NPS  = [4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 30];
+const _PIPE_OD  = { 2:2.375, 3:3.5, 4:4.5, 5:5.563, 6:6.625, 8:8.625, 10:10.75, 12:12.75 };   /* NPS ≤ 12: OD ≠ NPS */
+const _PIPE_WALL = { 2:.154, 3:.216, 4:.237, 5:.258, 6:.280, 8:.322, 10:.365, 12:.375 };     /* standard wall, inch */
+const PIPE_ROWS = { 1:[1], 2:[2], 3:[2,1], 4:[2,2], 5:[3,2] };                               /* bottom row first */
+function pipeSpec(p){
+  p = p || {};
+  const nps = Math.max(1, Math.min(60, +p.nps || 10));
+  const n   = Math.max(1, Math.min(5, Math.round(+p.n || 1)));
+  const len = Math.max(1, Math.min(30, +p.len || 12.2));
+  const odIn = _PIPE_OD[nps] || nps, tIn = _PIPE_WALL[nps] || .375;
+  const od = odIn * 0.0254, rows = PIPE_ROWS[n];
+  const kgPerM = 0.02466 * (tIn * 25.4) * (odIn * 25.4 - tIn * 25.4);
+  return { nps, n, len, od, odIn, rows, nb: rows[0], layers: rows.length,
+    across: Math.max(0.3, +(rows[0] * od + 0.04).toFixed(2)),
+    height: od * (1 + (rows.length - 1) * 0.866),
+    wt: Math.max(0.1, Math.round(n * kgPerM * len / 100) / 10) };
+}
+function pipeName(p){
+  const s = pipeSpec(p);
+  return `${s.nps}" pipe ${s.n > 1 ? 'bundle ×' + s.n : 'joint'} · ${s.len.toFixed(1)} m`;
+}
+const SPECIAL_TYPES = {
+  lifeboat: { name:'Lifeboat',      L:8.5, W:3.0, wt:6.0, h:3.2 },
+  rescue:   { name:'Rescue boat',   L:6.5, W:2.6, wt:2.5, h:2.0 },
+  frame:    { name:'Open frame',    L:6.0, W:3.0, wt:4.0, h:2.5 },
+  reel:     { name:'Cable reel',    L:4.0, W:2.5, wt:8.0, h:4.0 },
+  oog:      { name:'Out of gauge',  L:5.0, W:3.5, wt:5.0, h:3.0 },
+};
+/* Top-view drawing inside a cargo block (pipes / special silhouettes).
+   viewBox = the block's px box, stretched with the block (PDF stretch). */
+function _cargoArtSvg(c, fill){
+  const w = Math.max(4, c.w), h = Math.max(4, c.h);
+  const vert = h > w;                                  /* long axis across the deck */
+  const L = vert ? h : w, D = vert ? w : h;
+  const uid = 'ca' + String(c.id).replace(/[^0-9a-z]/gi, '');
+  const dk = t => darken(fill, t), lt = t => lighten(fill, t);
+  let body = '', defs = '';
+  if(c.pipe){
+    const s = pipeSpec(c.pipe), band = D / s.nb, pad = Math.max(0.4, band * 0.06);
+    defs = `<linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${dk(.5)}"/><stop offset=".3" stop-color="${lt(.3)}"/><stop offset=".48" stop-color="${lt(.62)}"/><stop offset=".7" stop-color="${lt(.12)}"/><stop offset="1" stop-color="${dk(.55)}"/></linearGradient>`;
+    const cap = Math.max(2, Math.min(7, L * 0.025));
+    const tube = (y, hh, top) => {
+      let t = '';
+      if(top) t += `<rect x="2.5" y="${(y + 1.4).toFixed(2)}" width="${(L - 4).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="rgba(0,0,0,.28)"/>`;
+      t += `<rect x="1.5" y="${y.toFixed(2)}" width="${(L - 3).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="url(#${uid})" stroke="${dk(.45)}" stroke-width=".6"/>`;
+      t += `<rect x="1.5" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
+      t += `<rect x="${(L - 1.5 - cap).toFixed(2)}" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
+      return t;
+    };
+    for(let i = 0; i < s.nb; i++) body += tube(i * band + pad, band - 2 * pad, false);
+    const top = s.rows[1] || 0;
+    for(let i = 0; i < top; i++){
+      const y = (top === s.nb ? i * band : (i + 0.5) * band) + pad - (top === s.nb ? 1 : 0);
+      body += tube(y, band - 2 * pad, true);
+    }
+    if(s.n > 1) [0.14, 0.5, 0.86].forEach(f => { body += `<rect x="${(L * f - 1.5).toFixed(2)}" y="0" width="3" height="${D}" fill="rgba(25,25,25,.62)"/>`; });
+  } else if(c.special === 'lifeboat' || c.special === 'rescue'){
+    const r = D * 0.42;
+    const hull = `M${r} 1 H${(L * 0.68).toFixed(2)} Q${L - 1} 1 ${L - 1} ${D / 2} Q${L - 1} ${D - 1} ${(L * 0.68).toFixed(2)} ${D - 1} H${r} Q1 ${D - 1} 1 ${D / 2} Q1 1 ${r} 1 Z`;
+    if(c.special === 'lifeboat'){
+      body = `<path d="${hull}" fill="${fill}" stroke="${dk(.4)}" stroke-width="1.2"/>`
+        + `<rect x="${(L * 0.12).toFixed(2)}" y="${(D * 0.2).toFixed(2)}" width="${(L * 0.66).toFixed(2)}" height="${(D * 0.6).toFixed(2)}" rx="${(D * 0.28).toFixed(2)}" fill="${lt(.35)}" stroke="${dk(.3)}" stroke-width=".8"/>`
+        + `<circle cx="${(L * 0.3).toFixed(2)}" cy="${D / 2}" r="${(D * 0.1).toFixed(2)}" fill="${dk(.25)}"/><circle cx="${(L * 0.62).toFixed(2)}" cy="${D / 2}" r="${(D * 0.1).toFixed(2)}" fill="${dk(.25)}"/>`;
+    } else {
+      const tw = Math.max(2, D * 0.16);
+      body = `<path d="${hull}" fill="${lt(.55)}" stroke="${dk(.35)}" stroke-width="${tw.toFixed(2)}"/>`
+        + `<rect x="${(L * 0.42).toFixed(2)}" y="${(D * 0.34).toFixed(2)}" width="${(L * 0.14).toFixed(2)}" height="${(D * 0.32).toFixed(2)}" rx="2" fill="${dk(.15)}"/>`;
+    }
+  } else if(c.special === 'frame'){
+    const pw = Math.max(18, Math.min(D * 1.1, L / Math.max(1, Math.round(L / Math.max(18, D)))));
+    const n = Math.max(1, Math.round(L / pw)), step = L / n, e = dk(.4);
+    body = `<rect x="1.5" y="1.5" width="${L - 3}" height="${D - 3}" fill="none" stroke="${e}" stroke-width="3"/>`;
+    for(let i = 0; i < n; i++){
+      const x0 = i * step, x1 = x0 + step;
+      if(i) body += `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x0.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="2"/>`;
+      body += i % 2 ? `<line x1="${x0.toFixed(2)}" y1="${D - 1.5}" x2="${x1.toFixed(2)}" y2="1.5" stroke="${e}" stroke-width="1.4"/>`
+                    : `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x1.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="1.4"/>`;
+    }
+  } else if(c.special === 'reel'){
+    const f = Math.max(3, D * 0.13);
+    body = `<rect x="1" y="${f}" width="${L - 2}" height="${D - 2 * f}" fill="${lt(.25)}"/>`;
+    for(let y = f + 3; y < D - f - 1; y += 3.2) body += `<line x1="2" y1="${y.toFixed(2)}" x2="${L - 2}" y2="${y.toFixed(2)}" stroke="${dk(.3)}" stroke-width=".8" opacity=".7"/>`;
+    body += `<rect x="0.5" y="0.5" width="${L - 1}" height="${f}" rx="1.5" fill="${dk(.35)}"/><rect x="0.5" y="${(D - f - 0.5).toFixed(2)}" width="${L - 1}" height="${f}" rx="1.5" fill="${dk(.35)}"/>`;
+  } else return '';
+  const g = vert ? `<g transform="translate(${w} 0) rotate(90)">${body}</g>` : body;
+  return `<svg class="cb-art" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs>${defs}</defs>${g}</svg>`;
+}
+
 /* ════════════════════════════════════
    CARGO LIBRARY PERSONALISATION
    Persisted separately under key 'spicaTide_libPrefs'
@@ -4260,6 +4358,8 @@ function _placeAtCore(cx,cy){
     dgClasses:p.type==='dg'?[it.cls]:[],
     priority:false,
     trDest:''};
+  if(isC && it.pipe) c.pipe = Object.assign({}, it.pipe);
+  if(isC && it.special) c.special = it.special;
   S.cargo.push(c);ensureLocActive(c.platform);renderAll();updateStats();buildActiveLocStrip();
   checkSeg();updateDGSummary();save();
   /* Hybrid stamp: the editor opens on every placement so the copy can be
@@ -4437,6 +4537,33 @@ function renderBlock(cv,cargo){
      (6 px floor) instead of hiding it on small blocks. */
   idEl.textContent = cargo.ccu||'';
   b.appendChild(idEl);
+
+  /* v3.19 — pipes and non-standard cargo: drawn from above inside the block */
+  if(cargo.pipe || (cargo.special && SPECIAL_TYPES[cargo.special])){
+    const art = _cargoArtSvg(cargo, fill);
+    if(art){
+      b.insertAdjacentHTML('afterbegin', art);
+      const [r,g,bb] = h2r(fill);
+      b.style.background = `rgba(${r},${g},${bb},${cargo.pipe || cargo.special === 'frame' ? .16 : .1})`;
+      b.classList.add('cb-has-art');
+    }
+    if(cargo.pipe){
+      const ps = pipeSpec(cargo.pipe);
+      b.classList.add('cb-pipe');
+      if(cargo.h > cargo.w) b.classList.add('cb-pipe-v');
+      b.style.setProperty('--pn', ps.nb); b.style.setProperty('--pl', ps.layers);
+      b.style.setProperty('--pipe-l', lighten(fill, .5)); b.style.setProperty('--pipe-d', darken(fill, .5));
+      b.title = pipeName(cargo.pipe) + ` · OD ${ps.odIn}"`;
+    }
+    if(cargo.special && SPECIAL_TYPES[cargo.special]){
+      b.classList.add('cb-special', 'cb-sp-' + cargo.special);
+      b.style.setProperty('--sp-face', fill); b.style.setProperty('--sp-edge', darken(fill, .4));
+      const ring = document.createElement('div'); ring.className = 'cb-sp-ring'; b.appendChild(ring);
+      const tag = document.createElement('div'); tag.className = 'cb-sp-tag';
+      tag.textContent = cargo.special === 'oog' ? 'OUT OF GAUGE' : 'NON-STD · ' + SPECIAL_TYPES[cargo.special].name.toUpperCase();
+      b.appendChild(tag);
+    }
+  }
 
   /* DG badges — wrapped in a safe-area strip that owns layout.
      The strip is pinned to the top with left:3px and right:3px so
@@ -4757,6 +4884,8 @@ function renderBlock(cv,cargo){
 ════════════════════════════════════════════════════════════ */
 const CARGO_3D_SCALE = 0.9;            /* slight vertical understatement keeps labels readable */
 function cargoHeightM(c){
+  if(c.pipe) return Math.max(0.25, pipeSpec(c.pipe).height);
+  if(c.special && SPECIAL_TYPES[c.special]) return c.special === 'reel' ? Math.max(1, Math.max(c.length_m || 0, c.width_m || 0)) : SPECIAL_TYPES[c.special].h;
   const t = ((c.desc || '') + ' ' + (c.ccu || '')).toLowerCase();
   if(/half[\s-]?height|open[\s-]?top|\bhh\b/.test(t))        return 1.3;
   if(/basket|rack|flat|bundle|pipe|frame|skid|pallet|tray/.test(t)) return 1.1;
@@ -6290,6 +6419,20 @@ function inspPopulate(cargo){
   inspBuildLocs(cargo.platform);
   inspSetStatusSeg(cargo.status || 'L');
 
+  /* v3.19 — kind of unit (pipe / non-standard) */
+  const kind = document.getElementById('inspKind');
+  if(kind) kind.value = cargo.pipe ? 'pipe' : (cargo.special && SPECIAL_TYPES[cargo.special] ? cargo.special : '');
+  const prow = document.getElementById('inspPipeRow');
+  if(prow){
+    prow.hidden = !cargo.pipe;
+    if(cargo.pipe){
+      const ps = pipeSpec(cargo.pipe);
+      document.getElementById('inspPipeNps').value = ps.nps;
+      document.getElementById('inspPipeN').value = String(ps.n);
+      document.getElementById('inspPipeLen').value = ps.len;
+    }
+  }
+
   /* Summary rows for fields that still live in the legacy modal */
   const dg  = document.getElementById('inspDgDetail');
   const hl  = document.getElementById('inspHlDetail');
@@ -6622,6 +6765,51 @@ function bindInspector(){
     el.addEventListener('change', commitSize);
     el.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitSize(); } });
   });
+
+  /* v3.19 — kind of unit + pipe parameters */
+  const _applyPipe = (c, np) => {
+    const old = c.pipe ? pipeSpec(c.pipe) : null, ns = pipeSpec(np);
+    const vert = c.h > c.w, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    c.pipe = { nps: ns.nps, n: ns.n, len: ns.len };
+    c.length_m = vert ? ns.across : ns.len; c.width_m = vert ? ns.len : ns.across;
+    c.w = m2px_w(c.length_m); c.h = m2px_h(c.width_m);
+    c.x = Math.max(0, Math.min(cx - c.w / 2, TW - c.w));
+    c.y = Math.max(0, Math.min(cy - c.h / 2, CVH - c.h));
+    if(!(c.wt > 0) || (old && Math.abs(c.wt - old.wt) < 0.05)) c.wt = ns.wt;
+    const autoDesc = !c.desc || (old && c.desc === pipeName(old));
+    if(autoDesc) c.desc = pipeName(ns);
+  };
+  const _kindCommit = () => {
+    if(!isOperator() || inspSelId == null) return;
+    const c = S.cargo.find(x => x.id === inspSelId);
+    if(!c) return;
+    renderAll(); kbSelect(inspSelId); inspPopulate(c);
+    updateStats(); buildActiveLocStrip(); checkSeg(); save();
+  };
+  document.getElementById('inspKind')?.addEventListener('change', e => {
+    const c = inspSelId != null && S.cargo.find(x => x.id === inspSelId);
+    if(!c || !isOperator()) return;
+    const v = e.target.value;
+    if(v === 'pipe'){
+      delete c.special;
+      if(!c.pipe){
+        const L = Math.max(c.length_m || c.w / M, c.width_m || c.h / YS);
+        _applyPipe(c, { nps: 10, n: 1, len: Math.min(30, Math.max(1, +L.toFixed(2))) });
+      }
+    } else {
+      delete c.pipe;
+      if(v) c.special = v; else delete c.special;
+    }
+    _kindCommit();
+  });
+  ['inspPipeNps','inspPipeN','inspPipeLen'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+    const c = inspSelId != null && S.cargo.find(x => x.id === inspSelId);
+    if(!c || !c.pipe || !isOperator()) return;
+    _applyPipe(c, { nps: parseFloat(document.getElementById('inspPipeNps').value) || c.pipe.nps,
+                    n: parseInt(document.getElementById('inspPipeN').value, 10) || c.pipe.n,
+                    len: parseFloat(document.getElementById('inspPipeLen').value) || c.pipe.len });
+    _kindCommit();
+  }));
 
   const diffOk = document.getElementById('inspDiffDismiss');
   if(diffOk) diffOk.addEventListener('click', () => { if(inspSelId != null) clearImportDiff(inspSelId); });
@@ -10050,6 +10238,14 @@ function _stretchDeckClone(cdoc, k){
       tx.setAttribute('transform', 'scale(1 ' + (1/k) + ')');
     });
   });
+  /* v3.19 — pipe / special drawings stretch with their block */
+  dcv.querySelectorAll('.cb > .cb-art').forEach(svg => {
+    const c = S.cargo.find(x => String(x.id) === svg.parentElement.dataset.id);
+    if(!c) return;
+    const loc = locById(c.platform) || LOC_ALL[0];
+    const fill = opColor(c.platform, c.status) || getLocBase(loc.id);
+    svg.outerHTML = _cargoArtSvg(Object.assign({}, c, { h: c.h * k }), fill);
+  });
   /* Cargo labels: print size for the taller block + light plate. */
   dcv.querySelectorAll('.cb').forEach(cb => {
     const c = S.cargo.find(x => String(x.id) === cb.dataset.id);
@@ -10901,7 +11097,7 @@ let CP_Q      = '';
    on the header flip the value via cpBindSections, so toggle works
    normally thereafter. Not persisted — module-scope const resets on
    every page load. */
-const CP_SECTIONS = { queue:true, freq:true, lib:false, custom:true };
+const CP_SECTIONS = { queue:true, freq:true, pipe:true, lib:false, custom:true };
 
 /* ── Placing state — slide library clear of deck during placement ── */
 let _cpPlacingActive = false;
@@ -10968,7 +11164,7 @@ function cpUpdateBadge(){
 
 /* ── Section toggle ── */
 function cpBindSections(){
-  ['Queue','Freq','Lib','Custom'].forEach(sec=>{
+  ['Queue','Freq','Pipe','Lib','Custom'].forEach(sec=>{
     const hdr = document.getElementById('cpSecHdr'+sec);
     const body= document.getElementById('cpSecBody'+sec);
     if(!hdr||!body) return;
@@ -11079,6 +11275,7 @@ function cpPassFilter(item, src){
 function cpRender(){
   cpRenderQueue();
   cpRenderFreq();
+  cpRenderPipe();
   cpRenderLib();
   cpRenderCustom();
   cpUpdateBadge();
@@ -11397,6 +11594,7 @@ function cpRenderFreq(){
   const stdItems = (typeof CLIB !== 'undefined') ? CLIB : [];
   const allItems = [
     ...stdItems,
+    ..._specialLibItems(),
     ...((S.customLib || []).map(c => ({ ...c, isCustom:true }))),
   ];
 
@@ -11413,6 +11611,93 @@ function cpRenderFreq(){
   }
 
   favItems.forEach(it => body.appendChild(cpMakeLibCard(it, !!it.isCustom)));
+}
+
+/* ── v3.19 — Pipes & special: bundle builder + non-standard presets ── */
+const SPECIAL_ICON = {
+  lifeboat: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 4h7Q13 4 13 7t-3.5 3h-7Q1 10 1 7t1.5-3z" stroke="currentColor" stroke-width="1.3"/><rect x="3" y="5.6" width="6" height="2.8" rx="1.4" stroke="currentColor" stroke-width="1"/></svg>',
+  rescue:   '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 4h7Q13 4 13 7t-3.5 3h-7Q1 10 1 7t1.5-3z" stroke="currentColor" stroke-width="2"/></svg>',
+  frame:    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3.5" width="11" height="7" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 3.5l5.5 7 5.5-7M7 3.5v7" stroke="currentColor" stroke-width="1"/></svg>',
+  reel:     '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2" width="11" height="2" rx=".6" fill="currentColor"/><rect x="1.5" y="10" width="11" height="2" rx=".6" fill="currentColor"/><path d="M2.5 5.5h9M2.5 7h9M2.5 8.5h9" stroke="currentColor" stroke-width=".9"/></svg>',
+  oog:      '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2.5" y="3.5" width="9" height="7" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 1.5"/><path d="M1 7h1.5M11.5 7H13M7 1v2.5M7 10.5V13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+};
+function _specialLibItems(){
+  return Object.entries(SPECIAL_TYPES).map(([k, t]) => ({ cat:'Non-standard', name:t.name, key:'sp-' + k, length_m:t.L, width_m:t.W,
+    wt:t.wt, w:m2px_w(t.L), h:m2px_h(t.W), special:k }));
+}
+let PIPE_UI = { nps: 10, n: 1, len: 12.2 };
+try{ const v = JSON.parse(localStorage.getItem('spicaTide_pipeUi') || 'null'); if(v) PIPE_UI = Object.assign(PIPE_UI, v); }catch(e){}
+function _pipeUiSave(){ try{ localStorage.setItem('spicaTide_pipeUi', JSON.stringify(PIPE_UI)); }catch(e){} }
+function _pipePending(){
+  const s = pipeSpec(PIPE_UI);
+  const name = pipeName(PIPE_UI);
+  return { type:'cargo', item:{ cat:'Pipe', name, key:'pipe-builder', w:m2px_w(s.len), h:m2px_h(s.across), wt:s.wt,
+    length_m:s.len, width_m:s.across, pipe:{ nps:s.nps, n:s.n, len:s.len } } };
+}
+/* End view of the bundle (circles) for the builder */
+function _pipeEndSvg(spec, W, H){
+  const r = Math.min((W - 8) / (2 * spec.nb), (H - 8) / (2 + (spec.layers - 1) * 1.732)) ;
+  const cx0 = W / 2 - (spec.nb - 1) * r, base = H - 4 - r;
+  let out = `<line x1="4" y1="${H - 3.5}" x2="${W - 4}" y2="${H - 3.5}" stroke="currentColor" stroke-width="1" opacity=".35"/>`;
+  const ring = (x, y) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r - 0.6).toFixed(1)}" fill="url(#pipeEndG)" stroke="currentColor" stroke-width="1.1"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 0.72).toFixed(1)}" fill="var(--pipe-bore)"/>`;
+  for(let i = 0; i < spec.nb; i++) out += ring(cx0 + i * 2 * r, base);
+  const top = spec.rows[1] || 0;
+  for(let i = 0; i < top; i++){
+    const x = top === spec.nb ? cx0 + i * 2 * r : cx0 + (i + 0.5) * 2 * r;
+    out += ring(x, top === spec.nb ? base - 2 * r : base - 1.732 * r);
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><defs><radialGradient id="pipeEndG" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="var(--pipe-hi)"/><stop offset="1" stop-color="var(--pipe-lo)"/></radialGradient></defs>${out}</svg>`;
+}
+function cpRenderPipe(){
+  const body = document.getElementById('cpSecBodyPipe');
+  if(!body) return;
+  const hdr = document.getElementById('cpSecHdrPipe');
+  if(hdr){ const open = CP_SECTIONS.pipe !== false; hdr.classList.toggle('collapsed', !open); body.classList.toggle('hidden', !open); }
+  const hide = CP_FILTER === 'ondk' || (CP_Q && !/pipe|joint|bundle|tubular|casing|boat|life|rescue|frame|reel|gauge|oog|special|non/.test(CP_Q));
+  const sec = document.getElementById('cpSecPipe'); if(sec) sec.hidden = hide;
+  if(hide) return;
+  const s = pipeSpec(PIPE_UI);
+  const nps = document.getElementById('cpPipeNps');
+  if(nps && !nps.dataset.bound){
+    nps.dataset.bound = '1';
+    nps.innerHTML = PIPE_NPS.map(v => `<button type="button" data-v="${v}">${v}"</button>`).join('') +
+      '<input type="number" class="cp-pipe-own" id="cpPipeOwn" min="1" max="60" step="1" placeholder="other" title="Other size, inch">';
+    nps.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { PIPE_UI.nps = +b.dataset.v; _pipeUiSave(); cpRenderPipe(); }));
+    const own = document.getElementById('cpPipeOwn');
+    own.addEventListener('change', () => { const v = parseFloat(own.value); if(v >= 1 && v <= 60){ PIPE_UI.nps = Math.round(v * 8) / 8; _pipeUiSave(); } cpRenderPipe(); });
+    const seg = document.getElementById('cpPipeN');
+    seg.innerHTML = [1,2,3,4,5].map(v => `<button type="button" data-v="${v}">${v}</button>`).join('');
+    seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { PIPE_UI.n = +b.dataset.v; _pipeUiSave(); cpRenderPipe(); }));
+    const len = document.getElementById('cpPipeLen');
+    len.addEventListener('change', () => { const v = parseFloat(len.value); if(v >= 1 && v <= 30){ PIPE_UI.len = Math.round(v * 100) / 100; _pipeUiSave(); } cpRenderPipe(); });
+    const place = document.getElementById('cpPipePlace');
+    const arm = () => {
+      if(!isOperator()) return;
+      const pi = _pipePending();
+      document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
+      S.pending = pi; _cpEnterPlacing();
+      cpShowHint('<b>' + escHtml(pi.item.name) + '</b> → click deck to place');
+    };
+    place.addEventListener('click', arm);
+    const prev = document.getElementById('cpPipePrev');
+    prev.addEventListener('mousedown', e => { const pi = _pipePending(); _libDragFromCard(e, pi, pi.item.name, pi.item.w, pi.item.h); });
+    prev.addEventListener('click', arm);
+  }
+  nps && nps.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === s.nps));
+  const own = document.getElementById('cpPipeOwn');
+  if(own && document.activeElement !== own) own.value = PIPE_NPS.includes(s.nps) ? '' : s.nps;
+  document.querySelectorAll('#cpPipeN button').forEach(b => b.classList.toggle('on', +b.dataset.v === s.n));
+  const len = document.getElementById('cpPipeLen'); if(len && document.activeElement !== len) len.value = s.len;
+  const prev = document.getElementById('cpPipePrev'); if(prev) prev.innerHTML = _pipeEndSvg(s, 92, 60);
+  const sum = document.getElementById('cpPipeSum');
+  if(sum) sum.innerHTML = `<div class="cp-pipe-name">${escHtml(pipeName(PIPE_UI))}</div>
+    <div class="cp-pipe-meta">OD ${s.odIn}" · ${s.len.toFixed(2)} × ${s.across.toFixed(2)} m · ≈ ${s.wt.toFixed(1)} t</div>
+    <div class="cp-pipe-note">Weight estimated for standard wall — check against the manifest</div>`;
+  const list = document.getElementById('cpSpecialList');
+  if(list){
+    list.innerHTML = '';
+    _specialLibItems().forEach(it => list.appendChild(cpMakeLibCard(it)));
+  }
 }
 
 function cpRenderLib(){
@@ -11522,7 +11807,10 @@ function cpMakeLibCard(item, isCustom=false, options={}){
 
   const icon = document.createElement('div');
   icon.className = 'cp-lc-icon';
-  if(isCustom){
+  if(item.special){
+    icon.innerHTML = SPECIAL_ICON[item.special] || SPECIAL_ICON.oog;
+    icon.classList.add('cp-lc-icon-sp');
+  } else if(isCustom){
     icon.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.8 2.8l1.4 1.4M9.8 9.8l1.4 1.4M11.2 2.8l-1.4 1.4M4.2 9.8l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
   } else {
     icon.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4.5" width="11" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 4.5L4 1.5h6l2.5 3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5 4.5v1.5h4V4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
@@ -11609,7 +11897,8 @@ function cpMakeLibCard(item, isCustom=false, options={}){
   /* ── F1: Drag from library card onto deck canvas ── */
   const pendingItem = {
     type: 'cargo',
-    item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:parseFloat(wt)||0, length_m:item.length_m, width_m:item.width_m }
+    item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:parseFloat(wt)||0, length_m:item.length_m, width_m:item.width_m,
+            pipe:item.pipe, special:item.special }
   };
 
   card.addEventListener('mousedown', e => {
@@ -14527,8 +14816,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.18.0';
-const APP_VERSION   = '3.18.0';
+const CURRENT_BUILD = 'v3.19.0';
+const APP_VERSION   = '3.19.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

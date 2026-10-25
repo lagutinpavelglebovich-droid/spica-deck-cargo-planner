@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.19.0',
+    date: '2026-10-25',
+    highlights: [
+      'Pipes: joints and bundles',
+      'Non-standard cargo',
+    ],
+    changes: [
+      { type: 'feature', text: 'Library → Pipes & Special: pick the size (4" to 30" or any other), 1 to 5 pipes in the bundle and the joint length — footprint and an estimated weight (standard wall) come out by themselves; click or drag onto the deck' },
+      { type: 'feature', text: 'Pipes are drawn as pipes: shaded tubes, thread protectors, bundle straps; in 3D the ends show the bundle as circles, stacked 3 + 2 like on deck' },
+      { type: 'feature', text: 'Non-standard cargo: lifeboat, rescue boat, open frame, cable reel, out of gauge — each drawn as its own shape, with an orange outline and a NON-STD tag on the plan and in the PDF' },
+      { type: 'feature', text: 'Inspector → Kind of unit: turn any unit into a pipe (size, pipes, joint length) or mark it non-standard' },
+    ],
+  },
+  {
     version: '3.18.0',
     date: '2026-10-25',
     highlights: [

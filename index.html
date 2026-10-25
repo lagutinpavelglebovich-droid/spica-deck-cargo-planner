@@ -188,7 +188,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.18.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.19.0</div>
     </div>
   </div>
 </div>
@@ -210,7 +210,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.18.0<br>
+      Version 3.19.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -386,6 +386,36 @@
       <div class="insp-field">
         <label>Location</label>
         <div class="insp-locs" id="inspLocs"></div>
+      </div>
+    </section>
+
+    <section class="insp-sec" id="inspKindSec">
+      <div class="insp-sec-title">Kind of unit</div>
+      <div class="insp-field">
+        <label for="inspKind">Unit</label>
+        <select id="inspKind">
+          <option value="">Standard unit</option>
+          <option value="pipe">Pipe joint / bundle</option>
+          <option value="lifeboat">Non-standard · Lifeboat</option>
+          <option value="rescue">Non-standard · Rescue boat</option>
+          <option value="frame">Non-standard · Open frame</option>
+          <option value="reel">Non-standard · Cable reel</option>
+          <option value="oog">Non-standard · Out of gauge</option>
+        </select>
+      </div>
+      <div class="insp-field-row insp-pipe-row" id="inspPipeRow" hidden>
+        <div class="insp-field">
+          <label for="inspPipeNps">Size (inch)</label>
+          <input type="number" id="inspPipeNps" min="1" max="60" step="0.125">
+        </div>
+        <div class="insp-field">
+          <label for="inspPipeN">Pipes</label>
+          <select id="inspPipeN"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+        </div>
+        <div class="insp-field">
+          <label for="inspPipeLen">Joint (m)</label>
+          <input type="number" id="inspPipeLen" min="1" max="30" step="0.1">
+        </div>
       </div>
     </section>
 
@@ -2183,6 +2213,42 @@
           </div>
         </div>
         <div class="cp-sec-body" id="cpSecBodyFreq"></div>
+      </div>
+
+      <!-- SECTION: Pipes & non-standard cargo (v3.19) -->
+      <div class="cp-sec" id="cpSecPipe">
+        <div class="cp-sec-hdr" id="cpSecHdrPipe">
+          <div class="cp-sec-title">
+            <span class="cp-sec-icon s-pipe" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="4"/><circle cx="17" cy="15" r="4"/><circle cx="12" cy="7.5" r="4"/></svg></span>
+            Pipes &amp; Special
+          </div>
+          <div class="cp-sec-meta">
+            <span class="cp-sec-arr">▾</span>
+          </div>
+        </div>
+        <div class="cp-sec-body" id="cpSecBodyPipe">
+          <div class="cp-pipe">
+            <div class="cp-pipe-top">
+              <div class="cp-pipe-prev" id="cpPipePrev" title="Drag onto the deck, or click to place"></div>
+              <div class="cp-pipe-sum" id="cpPipeSum"></div>
+            </div>
+            <span class="cp-cf-l">Pipe size (inch)</span>
+            <div class="cp-pipe-chips" id="cpPipeNps"></div>
+            <div class="cp-cf-row">
+              <div class="cp-cf-g">
+                <span class="cp-cf-l">Pipes in bundle</span>
+                <div class="cp-pipe-seg" id="cpPipeN"></div>
+              </div>
+              <div class="cp-cf-g cp-pipe-lenbox">
+                <span class="cp-cf-l">Joint length (m)</span>
+                <input type="number" class="cp-cf-i" id="cpPipeLen" step="0.1" min="1" max="30">
+              </div>
+            </div>
+            <button class="cp-cf-add" id="cpPipePlace">Place pipe on deck</button>
+          </div>
+          <div class="cp-sp-title">Non-standard cargo</div>
+          <div id="cpSpecialList"></div>
+        </div>
       </div>
 
       <!-- SECTION: Other Cargo (standard library presets) -->
