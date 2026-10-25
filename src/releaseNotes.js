@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.6',
+    date: '2026-10-25',
+    highlights: [ 'Finer wave fronts' ],
+    changes: [
+      { type: 'ui', text: 'Waves map: the wave fronts are thin crescent slivers with a soft glow behind the bright edge, as on Ventusky — lighter on the eye, still sized by Hs' },
+    ],
+  },
+  {
     version: '3.27.5',
     date: '2026-10-25',
     highlights: [ 'Calmer wind map' ],

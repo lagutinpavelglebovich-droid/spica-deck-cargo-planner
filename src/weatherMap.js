@@ -640,7 +640,7 @@ const HK = 16, HSTEP = 0.09;                 /* history points, seconds between 
 const PT = { n: 0, x: null, y: null, age: null, life: null, hx: null, hy: null, len: null, cap: 0, head: 0, acc: 0, budget: 1 };
 function targetCount(){
   const area = VIEW.W * VIEW.H, m = motion();
-  const base = layer === 'wind' ? Math.min(900, area / 950) : Math.min(700, area / 1700);   /* v3.27.5 — ~3× fewer wind streaks, calmer to the eye */
+  const base = layer === 'wind' ? Math.min(900, area / 950) : Math.min(950, area / 1250);   /* v3.27.5 — ~3× fewer wind streaks, calmer to the eye */
   return Math.max(250, Math.round(base * (m === 'calm' ? 0.55 : 1) * PT.budget));
 }
 function spawn(i, anyAge){
@@ -718,29 +718,41 @@ function stepParticles(dt){
    sea runs, bigger where the sea is higher, fading in and out as they
    travel — direction, height and colour read together at a glance. */
 function drawCrescents(){
+  /* v3.27.6 — thin crescent-moon slivers as on Ventusky: a sharp bright
+     edge in front, a soft glow behind it (two layers = a light gradient),
+     tapering to points; size follows Hs */
   const { fx } = CV, d = VIEW.dpr, n = PT.n, X = PT.x, Y = PT.y, A = PT.age, Lf = PT.life;
   const zoom = Math.sqrt(VIEW.s / VIEW.fit);
-  const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  const edge = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  const glow = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  const sliver = (p, cx, cy, ux, uy, R, sw, back) => {
+    const th = Math.atan2(uy, ux);
+    p.moveTo(cx + Math.cos(th - sw) * R, cy + Math.sin(th - sw) * R);
+    p.arc(cx, cy, R, th - sw, th + sw);
+    /* inner edge: a circle of almost the same radius set back → thin in the
+       middle, meeting the outer edge at both tips */
+    const bx = cx - ux * R * back, by = cy - uy * R * back, r2 = R * (1 - back * 0.15);
+    p.arc(bx, by, r2, th + sw, th - sw, true);
+    p.closePath();
+  };
   for(let i = 0; i < n; i++){
     if(X[i] < 0 || !flowAt(X[i], Y[i], _v)) continue;
     const m = Math.hypot(_v[0], _v[1]); if(!m) continue;
     const ux = _v[0] / m, uy = _v[1] / m;
     const q = FG.step, gi = Math.min(FG.w * FG.h - 1, ((Y[i] / q) | 0) * FG.w + ((X[i] / q) | 0));
     const hs = FG.hs[gi] === FG.hs[gi] ? FG.hs[gi] : 1;
-    const R = Math.min(36, (6 + hs * 2.6) * zoom) * d;
+    const R = Math.min(30, (8 + hs * 1.7) * zoom) * d;
     const t = A[i] / Lf[i], a = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));    /* fade in, fade out */
     const b = a > 0.8 ? 0 : a > 0.55 ? 1 : a > 0.3 ? 2 : 3;
-    const th = Math.atan2(uy, ux), cx = X[i] * d, cy = Y[i] * d, sw = 1.05;
-    const p = paths[b];
-    /* outer edge: an arc bowed forward; inner edge: the same arc set back */
-    p.moveTo(cx + Math.cos(th - sw) * R, cy + Math.sin(th - sw) * R);
-    p.arc(cx, cy, R, th - sw, th + sw);
-    const bx = cx - ux * R * 0.34, by = cy - uy * R * 0.34;
-    p.arc(bx, by, R * 0.97, th + sw * 0.93, th - sw * 0.93, true);
-    p.closePath();
+    const cx = X[i] * d, cy = Y[i] * d;
+    sliver(edge[b], cx, cy, ux, uy, R, 1.2, 0.1);          /* crisp front edge, ≈ 0.1 R thick */
+    sliver(glow[b], cx, cy, ux, uy, R * 0.99, 1.1, 0.3);    /* soft wash behind it */
   }
-  const alpha = [0.8, 0.56, 0.34, 0.15];
-  for(let b = 0; b < 4; b++){ fx.fillStyle = `rgba(255,255,255,${alpha[b]})`; fx.fill(paths[b]); }
+  const ea = [0.92, 0.66, 0.4, 0.18], ga = [0.22, 0.15, 0.09, 0.04];
+  for(let b = 0; b < 4; b++){
+    fx.fillStyle = `rgba(255,255,255,${ga[b]})`; fx.fill(glow[b]);
+    fx.fillStyle = `rgba(255,255,255,${ea[b]})`; fx.fill(edge[b]);
+  }
 }
 /* Animations → Off: a still field of arrows instead of streaks */
 function drawArrows(){
