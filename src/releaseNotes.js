@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.22.4',
+    date: '2026-10-25',
+    highlights: [ 'Flip-clock counters', 'Only what is on board' ],
+    changes: [
+      { type: 'ui', text: 'Lifts on deck, Load, Backload, ROB and Transfer change like a flip clock — the top half of the plate folds down onto the new number' },
+      { type: 'improvement', text: 'The counters show only what is really on board: no Load 0 after discharge, no ROB 0 when there is none; Transfer appears when there is one. Blocks fold in and out softly' },
+      { type: 'ui', text: 'Weather pills in the header are one fixed size, whatever the number' },
+    ],
+  },
+  {
     version: '3.22.3',
     date: '2026-10-25',
     highlights: [ 'Field weather only in the header' ],

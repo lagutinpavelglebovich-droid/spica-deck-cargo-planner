@@ -5289,6 +5289,55 @@ function setOdometer(el, value){
   el.dataset.odoT = setTimeout(plain, longest + 60);
 }
 
+/* v3.22.4 — split-flap counter (like a flip clock): each changed digit
+   folds its top half down and the new bottom half lands under it.
+   Digits are right-aligned, so 9 → 10 adds a plate on the left. */
+function setFlip(el, value){
+  if(!el) return;
+  const next = String(value), prev = el.dataset.flip;
+  if(prev === next) return;
+  el.dataset.flip = next;
+  el.setAttribute('aria-label', next);
+  el.classList.remove('odo');
+  const plate = (ch, old, anim, k) => {
+    const c = _escHtml(ch), o = _escHtml(old);
+    return `<span class="flip${anim ? ' flipping' : ''}" style="--fd:${k * 70}ms">` +
+      `<span class="flip-t"><i>${c}</i></span><span class="flip-b"><i>${anim ? o : c}</i></span>` +
+      (anim ? `<span class="flip-ft"><i>${o}</i></span><span class="flip-fb"><i>${c}</i></span>` : '') + `</span>`;
+  };
+  if(prev === undefined || !_motionOK()){
+    el.innerHTML = [...next].map(ch => plate(ch, ch, false, 0)).join('');
+    return;
+  }
+  const n = next.length, a = prev.padStart(n, ' ');
+  let k = 0;
+  el.innerHTML = [...next].map((ch, i) => {
+    const old = a[i] === ' ' ? '' : a[i];
+    const anim = old !== ch;
+    return plate(ch, old, anim, anim ? (n - 1 - i) : 0);
+  }).join('');
+  /* once landed, the bottom half shows the new digit for good */
+  clearTimeout(Number(el.dataset.flipT || 0));
+  el.dataset.flipT = String(setTimeout(() => {
+    el.querySelectorAll('.flip.flipping').forEach(f => {
+      f.classList.remove('flipping');
+      f.querySelector('.flip-b > i').textContent = f.querySelector('.flip-t > i').textContent;
+      f.querySelectorAll('.flip-ft, .flip-fb').forEach(x => x.remove());
+    });
+  }, 900 + n * 70));
+}
+/* Show only the operations that are really on board (Load / Backload /
+   ROB / Transfer); the block folds in and out softly. */
+function _gstShow(id, on){
+  const el = document.getElementById(id), g = el?.closest('.gst');
+  if(!g) return;
+  /* a block that just appears shows its number at once, no flip from 0 */
+  if(on && (g.classList.contains('gst-off') || !g.classList.contains('gst-op'))) delete el.dataset.flip;
+  g.classList.add('gst-op');
+  g.classList.toggle('gst-off', !on);
+  g.setAttribute('aria-hidden', on ? 'false' : 'true');
+}
+
 function updateStats(){
   let tot=0,wt=0,L=0,BL=0,ROB=0,TR=0;
   S.cargo.forEach(c=>{
@@ -5300,13 +5349,17 @@ function updateStats(){
     if(c.status==='TR')TR++;
   });
 
-  setOdometer(document.getElementById('sLifts'), tot);
+  setFlip(document.getElementById('sLifts'), tot);
   document.getElementById('sWT').textContent=wt.toFixed(1)+' T';
-  setOdometer(document.getElementById('sL'), L);
-  setOdometer(document.getElementById('sBL'), BL);
-  setOdometer(document.getElementById('sROB'), ROB);
-  setOdometer(document.getElementById('sTR'), TR);
-  const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display=TR>0?'':'none';
+  const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display='';
+  _gstShow('sL', L > 0); _gstShow('sBL', BL > 0); _gstShow('sROB', ROB > 0); _gstShow('sTR', TR > 0);
+  /* hidden blocks keep their last number while they fold away */
+  if(L)   setFlip(document.getElementById('sL'), L);
+  if(BL)  setFlip(document.getElementById('sBL'), BL);
+  if(ROB) setFlip(document.getElementById('sROB'), ROB);
+  if(TR)  setFlip(document.getElementById('sTR'), TR);
+  const opSep = document.getElementById('gstOpSep');
+  if(opSep) opSep.classList.toggle('gst-off', !(L || BL || ROB || TR));
 
   /* Phase 3A — weight-as-hero capacity bar. Always visible in the ribbon;
      threshold class shifts color calmly at 70 % (warn) and 90 % (crit). */
@@ -15015,8 +15068,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.22.3';
-const APP_VERSION   = '3.22.3';
+const CURRENT_BUILD = 'v3.22.4';
+const APP_VERSION   = '3.22.4';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
