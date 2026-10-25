@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.26.1',
+    date: '2026-10-25',
+    highlights: [ 'Big animated sky icon in the header' ],
+    changes: [
+      { type: 'ui', text: 'Header weather: the sky icon is big again and stands beside the location name and numbers; it now animates steadily (rain falls, clouds drift) and no longer freezes after a weather refresh' },
+      { type: 'ui', text: 'Smart Tools: the old port-city weather picker (Peterhead · Change) is gone — the header and the atmosphere follow your working locations; the section is now called Atmosphere' },
+      { type: 'improvement', text: 'Animations → Off also pauses the header sky icon' },
+    ],
+  },
+  {
     version: '3.26.0',
     date: '2026-10-25',
     highlights: [ 'Right side works as one workspace', 'Library sections movable from the keyboard' ],

@@ -34,7 +34,7 @@ import { DEFAULT_CONDITION } from './weather/presets.js';
    readable (e.g. _wxSetLocation rather than `setLocation`, which is too
    generic in app.js scope). */
 import { searchCities } from './weather/api.js';
-import { iconForCondition } from './weather/iconMap.js';
+import { iconForCondition, inlineIconForCondition } from './weather/iconMap.js';
 import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck, motionSwap } from './motion.js';
 import {
   setLocation             as _wxSetLocation,
@@ -15225,8 +15225,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.26.0';
-const APP_VERSION   = '3.26.0';
+const CURRENT_BUILD = 'v3.26.1';
+const APP_VERSION   = '3.26.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18557,18 +18557,34 @@ function updateHeaderFieldWx(){
   if(key === _hfwKey) return;
   _hfwKey = key;
   try{ _wxApply(); }catch(e){}            /* sky + deck light follow the working location */
-  if(!wx){ blk.innerHTML = ''; return; }
+  if(!wx) return;
+  /* v3.26.1 — the sky icon is a persistent inline SVG: only the numbers
+     are rebuilt, so the animation never restarts or freezes */
+  if(!blk._hfwBuilt){ blk.innerHTML = '<span class="hfw-sky" hidden></span><div class="hfw-main"></div>'; blk._hfwBuilt = true; }
+  const sky = blk.querySelector('.hfw-sky'), main = blk.querySelector('.hfw-main');
+  sky.hidden = !cond;
+  if(cond){
+    sky.title = cond.condition.replace(/-/g, ' ');
+    if(sky.dataset.cond !== cond.condition){ sky.dataset.cond = cond.condition; sky.innerHTML = inlineIconForCondition(cond.condition); _hfwSkySync(); }
+  }
   const loc = locById(id);
   blk.dataset.loc = id;
   blk.title = `Weather at ${loc ? loc.name : id} now — click for the 48 h forecast`;
-  blk.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
+  main.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
     <div class="hfw-row">
-      ${cond ? `<span class="hfw-sky" title="${escHtml(cond.condition.replace(/-/g, ' '))}"><img src="${iconForCondition(cond.condition)}" alt=""></span>${cond.temperature != null ? `<span class="hfw-temp">${cond.temperature}°</span>` : ''}` : ''}
+      ${cond && cond.temperature != null ? `<span class="hfw-temp">${cond.temperature}°</span>` : ''}
       <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>
       <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit}<br>G ${wx.wg}</span></span>
       ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}
     </div>`;
 }
+/* Animations → Off pauses the header sky; Full / Calm let it play */
+function _hfwSkySync(){
+  const svg = document.querySelector('#hdrFwx .hfw-sky svg');
+  if(!svg || typeof svg.pauseAnimations !== 'function') return;
+  if(document.documentElement.getAttribute('data-motion') === 'off') svg.pauseAnimations(); else svg.unpauseAnimations();
+}
+new MutationObserver(_hfwSkySync).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
 let _hfwRaf = 0;
 const _hfwSoon = () => { cancelAnimationFrame(_hfwRaf); _hfwRaf = requestAnimationFrame(updateHeaderFieldWx); };
 document.addEventListener('mouseup', _hfwSoon, true);

@@ -17824,8 +17824,15 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
 .leaflet-tooltip.pm-tip::before{ display:none; }
 
 /* ═══ v3.24 — header: location sky, cleaner flip, bigger Deck Used, smaller voyage ═══ */
-.hfw-sky{ display:inline-flex; width:34px; height:34px; margin:-6px -4px -6px -6px; }
-.hfw-sky img{ width:100%; height:100%; }
+/* v3.26.1 — the location sky is big again (as the old port icon) and sits
+   beside the name and numbers; negative margins keep the header height */
+.info-block.info-fieldwx{ flex-direction:row; align-items:center; gap:0; }
+.info-block.info-fieldwx > .hfw-main{ display:flex; flex-direction:column; gap:3px; justify-content:center; min-width:0; }
+.info-block.info-fieldwx > .hfw-main > .hfw-row{ margin-top:0; }
+.hfw-sky{ display:inline-flex; flex:0 0 auto; width:76px; height:76px; margin:-18px -6px -18px -16px; pointer-events:none; }
+.hfw-sky[hidden]{ display:none; }
+.hfw-sky svg{ width:100%; height:100%; display:block; overflow:visible; }
+:root:not([data-theme="dark"]) .hfw-sky svg{ filter:drop-shadow(0 1px 3px rgba(56,138,221,.22)) contrast(1.1) saturate(1.1); }
 .hfw-temp{ font:800 19px/1 'Manrope',sans-serif; color:var(--txt); margin-right:2px; }
 /* flip counters: clean digits at rest — the plate, seam and flaps only
    exist while a digit is turning */
@@ -17875,8 +17882,10 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
   .info-block.info-fieldwx .hfw-row{ gap:7px; }
 }
 @container his (max-width: 430px){
-  .info-block.info-fieldwx .hfw-sky{ display:none; }
   .his-in{ gap:14px; }
+}
+@container his (max-width: 410px){
+  .info-block.info-fieldwx .hfw-sky{ display:none; }
 }
 @container his (max-width: 380px){
   .info-block.info-voyage .info-label{ display:none; }

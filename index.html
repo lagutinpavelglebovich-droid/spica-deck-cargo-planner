@@ -189,7 +189,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.26.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.26.1</div>
     </div>
   </div>
 </div>
@@ -211,7 +211,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.26.0<br>
+      Version 3.26.1<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -1993,29 +1993,14 @@
       <!-- Phase W1 — Weather widget (manual atmosphere for now). -->
       <div class="st-section" data-section-id="weather">
       <div class="st-sec-hdr">
-        <span class="st-sec-title">Weather</span>
+        <span class="st-sec-title">Atmosphere</span>
         <span class="st-sec-count" hidden></span>
         <span class="st-sec-chv" aria-hidden="true">▾</span>
       </div>
       <div class="st-sec-body">
         <div class="wx-form">
-          <!-- Phase W5 §12 (6a) — Location strip replaces the legacy
-               <select id="wxLocation">. The select element is retired;
-               app.js handlers that referenced it are null-guarded and
-               will become dead paths until 6b rewires.
-               #wxSearch is hidden by default; #wxLocChange opens it. -->
-          <div class="wx-loc" id="wxLoc">
-            <div class="wx-loc-current" id="wxLocCurrent">
-              <span class="wx-loc-name" id="wxLocName">—</span>
-              <button type="button" class="wx-loc-change" id="wxLocChange">Change</button>
-            </div>
-            <div class="wx-search" id="wxSearch" hidden>
-              <div class="wx-search-hint" id="wxSearchHint">Pick a city for weather</div>
-              <input type="search" id="wxSearchInput" class="wx-search-input" placeholder="Search city…" autocomplete="off" />
-              <ul class="wx-search-results" id="wxSearchResults" role="listbox"></ul>
-              <div class="wx-search-state" id="wxSearchState">Type to search</div>
-            </div>
-          </div>
+          <!-- v3.26.1 — the port-city picker is gone: the header and the
+               atmosphere follow the working locations (Vessel Setup). -->
           <div class="wx-row">
             <label class="wx-label" for="wxIntensity">Intensity</label>
             <select class="wx-select" id="wxIntensity">
