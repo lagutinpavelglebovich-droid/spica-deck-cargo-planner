@@ -11,11 +11,14 @@
    "Windy" opens windy.com at the same point in the browser.
 ════════════════════════════════════════════════════════════ */
 
+import { wmoToCondition } from './weather/api.js';
+import { iconForCondition } from './weather/iconMap.js';
 const URL_FC = 'https://api.open-meteo.com/v1/forecast';
 const URL_MAR = 'https://marine-api.open-meteo.com/v1/marine';
 const LS_CACHE = 'spicaTide_fieldWx';
 const LS_UNIT = 'spicaTide_fieldWxUnit';
 const MAX_AGE_MS = 30 * 60 * 1000;
+const FC_DAYS = 5;
 const TIMEOUT_MS = 12000;
 
 let API = null, DATA = null, busy = false, timer = 0, lastErr = '', focusId = null;
@@ -31,33 +34,38 @@ const KN2MS = 0.514444;
 export function windVal(kn, unit){ if(kn == null || !isFinite(kn)) return null; return (unit || windUnit()) === 'ms' ? kn * KN2MS : kn; }
 export function windLbl(unit){ return (unit || windUnit()) === 'ms' ? 'm/s' : 'kn'; }
 
-/* ── Colour scales: Windy's own default gradients ────────────────
-   Copied from windy.com (client v51.3.2, colors module `wind` and
-   `waves`, read on 2026-10-25). Wind and gusts use the wind gradient
-   by speed in m/s; Hs, Hmax and swell use the waves gradient by
-   height in m — exactly as the Windy overlays and forecast tables do. */
-const WIND_STOPS = [[0,[98,113,183]],[1,[57,97,159]],[3,[74,148,169]],[5,[77,141,123]],[7,[83,165,83]],[9,[53,159,53]],
-  [11,[167,157,81]],[13,[159,127,58]],[15,[161,108,92]],[17,[129,58,78]],[19,[175,80,136]],[21,[117,74,147]],
-  [24,[109,97,163]],[27,[68,105,141]],[29,[92,144,152]],[36,[125,68,165]],[46,[231,215,215]],[51,[219,212,135]],
-  [77,[205,202,112]],[104,[128,128,128]]];
-const WAVE_STOPS = [[0,[159,185,191]],[0.5,[48,157,185]],[1,[48,98,141]],[1.5,[56,104,191]],[2,[57,60,142]],[2.5,[187,90,191]],
-  [3,[154,48,151]],[4,[133,48,48]],[5,[191,51,95]],[7,[191,103,87]],[10,[191,191,191]],[12,[154,127,155]]];
+/* ── Colour scales: Windy's forecast-table gradients ────────────
+   Copied from windy.com (client v51.3.2, module "additional-colors":
+   windDetail, wavesDetail, periodDetail — read on 2026-10-25). These
+   are the bright scales of Windy's forecast table and Compare
+   forecasts: calm wind light grey, 4 m/s cyan, 6 green, 10 orange,
+   19 pink, then purple; waves transparent below 0.1 m, lavender at 1 m,
+   orange at 2.5 m fading to white; swell period cream → light green.
+   Linear interpolation between the stops, exactly as Windy does. */
+const WIND_DETAIL = [[0,[243,243,243,1]],[3,[243,243,243,1]],[4,[0,200,254,1]],[6,[0,230,0,1]],[10,[254,174,0,1]],[19,[254,0,150,1]],[100,[151,50,222,1]]];
+const WAVE_DETAIL = [[0,[255,255,255,0]],[0.1,[255,255,255,0]],[1,[180,180,255,1]],[2.5,[254,174,0,1]],[20,[255,255,255,1]]];
+const PERIOD_DETAIL = [[0,[255,255,255,0]],[5,[255,255,255,0]],[10,[255,237,180,1]],[20,[180,255,180,1]]];
 function ramp(stops, v){
   if(v == null || !isFinite(v)) return null;
   if(v <= stops[0][0]) return stops[0][1];
   for(let i = 1; i < stops.length; i++){
     if(v <= stops[i][0]){
       const [a, ca] = stops[i - 1], [b, cb] = stops[i], t = (v - a) / (b - a);
-      return ca.map((c, k) => Math.round(c + (cb[k] - c) * t));
+      return ca.map((c, k) => k < 3 ? Math.round(c + (cb[k] - c) * t) : +(c + (cb[k] - c) * t).toFixed(3));
     }
   }
   return stops[stops.length - 1][1];
 }
-const rgb = c => c ? `rgb(${c[0]},${c[1]},${c[2]})` : 'transparent';
-const ink = c => !c ? 'inherit' : (c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114) > 170 ? '#16181c' : '#fff';
+const rgba = c => c ? `rgba(${c[0]},${c[1]},${c[2]},${c[3]})` : 'transparent';
+/* solid version (over white) for the small pills in the header / cards */
+const solid = c => c ? `rgb(${c.slice(0, 3).map(x => Math.round(x * c[3] + 255 * (1 - c[3]))).join(',')})` : 'transparent';
+const INK = '#17191d';            /* Windy writes dark text on its bands */
+const windRGBA = kn => ramp(WIND_DETAIL, kn == null ? null : kn * KN2MS);
+const waveRGBA = m => ramp(WAVE_DETAIL, m);
+const periodRGBA = s => ramp(PERIOD_DETAIL, s);
 /* Colour (bg + text) for a wind speed in knots / a wave height in m */
-export function windColor(kn){ const c = ramp(WIND_STOPS, kn == null ? null : kn * KN2MS); return { bg: rgb(c), fg: ink(c) }; }
-export function waveColor(m){ const c = ramp(WAVE_STOPS, m); return { bg: rgb(c), fg: ink(c) }; }
+export function windColor(kn){ const c = windRGBA(kn); return { bg: solid(c), fg: c ? INK : 'inherit' }; }
+export function waveColor(m){ const c = waveRGBA(m); return { bg: solid(c), fg: c ? INK : 'inherit' }; }
 /* Most probable maximum of ~1000 waves (≈ 3 h): Hmax ≈ 1.86 · Hs */
 export const HMAX_K = 1.86;
 
@@ -119,13 +127,13 @@ export async function refresh(force){
   const locs = located();
   if(!locs.length || busy) return DATA;
   const key = posKey(locs);
-  if(!force && DATA && DATA.key === key && Date.now() - DATA.at < MAX_AGE_MS) return DATA;
+  if(!force && DATA && DATA.key === key && DATA.days === FC_DAYS && Date.now() - DATA.at < MAX_AGE_MS) return DATA;
   busy = true; render();
   try{
     const lat = locs.map(l => l.lat.toFixed(4)).join(','), lon = locs.map(l => l.lon.toFixed(4)).join(',');
-    const common = `latitude=${lat}&longitude=${lon}&timezone=UTC&timeformat=unixtime&forecast_days=3`;
+    const common = `latitude=${lat}&longitude=${lon}&timezone=UTC&timeformat=unixtime&forecast_days=${FC_DAYS}`;
     const [fc, mar] = await Promise.all([
-      getJson(`${URL_FC}?${common}&wind_speed_unit=kn&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility`),
+      getJson(`${URL_FC}?${common}&wind_speed_unit=kn&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,is_day`),
       getJson(`${URL_MAR}?${common}&hourly=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height,swell_wave_direction,swell_wave_period`).catch(() => null),
     ]);
     const fcA = Array.isArray(fc) ? fc : [fc], marA = mar ? (Array.isArray(mar) ? mar : [mar]) : [];
@@ -139,13 +147,13 @@ export async function refresh(force){
         const mk = idx.get(t);
         return { t: t * 1000,
           ws: f.wind_speed_10m[k], wg: f.wind_gusts_10m[k], wd: f.wind_direction_10m[k],
-          ta: f.temperature_2m[k], pr: f.precipitation[k], wc: f.weather_code[k], vis: pick(f.visibility, k),
+          ta: f.temperature_2m[k], pr: f.precipitation[k], wc: f.weather_code[k], vis: pick(f.visibility, k), day: pick(f.is_day, k),
           hs: pick(m && m.wave_height, mk), hd: pick(m && m.wave_direction, mk), tp: pick(m && m.wave_period, mk),
           ww: pick(m && m.wind_wave_height, mk),
           sw: pick(m && m.swell_wave_height, mk), sd: pick(m && m.swell_wave_direction, mk), sp: pick(m && m.swell_wave_period, mk) };
       });
     });
-    DATA = { at: Date.now(), key, loc: out, marine: !!mar };
+    DATA = { at: Date.now(), key, days: FC_DAYS, loc: out, marine: !!mar };
     lsSet(LS_CACHE, DATA);
     lastErr = mar ? '' : 'Sea state not available right now — wind only';
   }catch(e){
@@ -185,6 +193,16 @@ export function fieldWxSummary(id){
            hs: r.hs != null ? r.hs : null, hmax: r.hs != null ? r.hs * HMAX_K : null,
            wc: windColor(r.ws), hc: waveColor(r.hs), stale: Date.now() - DATA.at > 3 * 3600000, at: DATA.at };
 }
+/* Sky / atmosphere at a location right now (drives the animated
+   background and the header icon instead of the port weather). */
+export function fieldWxCondition(id){
+  const r = nowRow(id);
+  if(!r || r.wc == null) return null;
+  let day = r.day;
+  if(day == null){ const h = new Date(r.t).getUTCHours(); day = h >= 7 && h < 17 ? 1 : 0; }   /* older cache: rough North Sea daylight */
+  const c = wmoToCondition(r.wc, day === 1 || day === true);
+  return { condition: c.condition, intensity: c.intensity, temperature: r.ta != null ? Math.round(r.ta) : null, code: r.wc };
+}
 export function hasPosition(id){ return located().some(l => l.id === id); }
 
 const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
@@ -219,7 +237,7 @@ function ensurePanel(){
         <button type="button" class="fwx-x" id="fwxClose" title="Close (Esc)">✕</button>
       </div>
       <div class="fwx-body" id="fwxBody"></div>
-      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours: Windy's own wind and waves scales · times are this computer's local time · only the coordinates of the locations are sent</div>
+      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours: Windy's forecast-table scales · times are this computer's local time · only the coordinates of the locations are sent</div>
     </div>`;
   document.body.appendChild(ov);
   const close = () => { ov.classList.remove('open'); };
@@ -271,52 +289,120 @@ function render(){
   const order = withPos.slice().sort((a, b) => ((b.id === focusId) - (a.id === focusId)) || (active.has(b.id) - active.has(a.id)));
   body.innerHTML = order.map(l => card(l, active.has(l.id), u)).join('') +
     (noPos.length ? `<div class="fwx-nopos">No position: ${noPos.map(l => esc(l.name)).join(', ')} — <a href="#" data-setup="1">add in Vessel Setup</a></div>` : '');
+  wireTables(body);
 }
 
-const cell = (txt, c, cls) => `<div class="fwx-c${cls ? ' ' + cls : ''}" style="background:${c.bg};color:${c.fg}">${txt}</div>`;
+/* ── Forecast table in the style of Windy "Compare forecasts" ────
+   One white table per location on the dark panel: days split by thin
+   lines, 3-hourly columns at 00 03 06 … local time, sky icon and air
+   temperature, then wind, gusts and direction, then the sea. Every
+   coloured row is ONE smooth gradient (stops at the column centres)
+   instead of separate tiles, so weather windows read at a glance.
+   Moving the mouse draws a red time slice through every table at once;
+   the tables scroll together. */
+const COLW = 46;
+const skyIcon = x => {
+  if(x.wc == null) return '';
+  let day = x.day;
+  if(day == null){ const h = new Date(x.t).getUTCHours(); day = h >= 7 && h < 17 ? 1 : 0; }
+  return iconForCondition(wmoToCondition(x.wc, day === 1 || day === true).condition);
+};
+function band(cols, f){
+  if(!cols.length) return 'transparent';
+  const st = cols.map((x, i) => `${rgba(f(x))} ${Math.round(i * COLW + COLW / 2)}px`);
+  return `linear-gradient(to right, ${st.join(', ')})`;
+}
+function columns(rows){
+  const now = Date.now();
+  return (rows || []).filter(x => x.t > now - 3 * 3600000 && new Date(x.t).getHours() % 3 === 0).slice(0, FC_DAYS * 8);
+}
+function table(rows, u){
+  const cols = columns(rows);
+  if(!cols.length) return '';
+  const marine = cols.some(x => x.hs != null);
+  const W = cols.length * COLW;
+  const v = (val, f) => val == null || !isFinite(val) ? '' : f(val);
+  /* `cf` = colour of the band under the cell: where it is (almost) transparent the text takes the table colour */
+  const cellsOf = (f, cf) => cols.map(x => { const c = cf ? cf(x) : null; return `<span class="fw-c${cf && (!c || c[3] < .45) ? ' lo' : ''}">${f(x)}</span>`; }).join('');
+  const dayKey = t => new Date(t).toDateString();
+  const seps = [], days = [];
+  cols.forEach((x, i) => {
+    if(i === 0 || dayKey(x.t) !== dayKey(cols[i - 1].t)){
+      if(i > 0) seps.push(i * COLW);
+      days.push({ x: i * COLW, lbl: new Date(x.t).toLocaleDateString('en-GB', { weekday:'long', day:'numeric' }) });
+    }
+  });
+  const nowX = Math.round(COLW / 2 + (Date.now() - cols[0].t) / (3 * 3600000) * COLW);
+  const U = windLbl(u);
+  const lab = (k, unit) => `<div class="fw-l">${k}${unit ? ` <small>${unit}</small>` : ''}</div>`;
+  const rowsDef = [
+    ['days', '', `<div class="fw-r fw-days">${days.map(d => `<span class="fw-day" style="left:${d.x}px">${esc(d.lbl)}</span>`).join('')}</div>`],
+    ['hour', lab('Hours'), `<div class="fw-r fw-hour">${cellsOf(x => new Date(x.t).getHours())}</div>`],
+    ['icon', '', `<div class="fw-r fw-icon">${cellsOf(x => { const s = skyIcon(x); return s ? `<img src="${s}" alt="">` : ''; })}</div>`],
+    ['temp', lab('Temperature', '°C'), `<div class="fw-r fw-temp">${cellsOf(x => v(x.ta, t => Math.round(t) + '°'))}</div>`],
+    ['wind', lab('Wind', U), `<div class="fw-r fw-band fw-wind" style="background:${band(cols, x => windRGBA(x.ws))}">${cellsOf(x => v(windVal(x.ws, u), Math.round), x => windRGBA(x.ws))}</div>`],
+    ['gust', lab('Gusts', U), `<div class="fw-r fw-band fw-gust" style="background:${band(cols, x => windRGBA(x.wg))}">${cellsOf(x => v(windVal(x.wg, u), Math.round), x => windRGBA(x.wg))}</div>`],
+    ['dir', lab('Direction'), `<div class="fw-r fw-dir">${cellsOf(x => `<span title="${compass(x.wd)} ${fmt0(x.wd)}°">${arrow(x.wd, 15)}</span>`)}</div>`],
+  ];
+  if(marine) rowsDef.push(
+    ['hs', lab('Waves Hs', 'm'), `<div class="fw-r fw-band fw-hs" style="background:${band(cols, x => waveRGBA(x.hs))}">${cellsOf(x => v(x.hs, fmt1), x => waveRGBA(x.hs))}</div>`],
+    ['hmax', lab('Hmax ≈', 'm'), `<div class="fw-r fw-band fw-hmax" style="background:${band(cols, x => waveRGBA(x.hs != null ? x.hs * HMAX_K : null))}">${cellsOf(x => v(x.hs != null ? x.hs * HMAX_K : null, fmt1), x => waveRGBA(x.hs != null ? x.hs * HMAX_K : null))}</div>`],
+    ['swell', lab('Swell', 'm'), `<div class="fw-r fw-band fw-swell" style="background:${band(cols, x => waveRGBA(x.sw))}">${cellsOf(x => x.sw == null ? '' : `${x.sd != null ? arrow(x.sd, 11) : ''}${fmt1(x.sw)}`, x => waveRGBA(x.sw))}</div>`],
+    ['period', lab('Swell period', 's'), `<div class="fw-r fw-band fw-period" style="background:${band(cols, x => periodRGBA(x.sp))}">${cellsOf(x => v(x.sp, Math.round), x => periodRGBA(x.sp))}</div>`],
+  );
+  return `<div class="fw-tbl">
+    <div class="fw-legend">${rowsDef.map(r => `<div class="fw-lrow fw-lrow-${r[0]}">${r[1]}</div>`).join('')}</div>
+    <div class="fw-scroll"><div class="fw-grid" style="width:${W}px">
+      ${rowsDef.map(r => r[2]).join('')}
+      ${seps.map(x => `<i class="fw-sep" style="left:${x}px"></i>`).join('')}
+      ${nowX > 0 && nowX < W ? `<i class="fw-now" style="left:${nowX}px"></i>` : ''}
+      <i class="fw-slice" hidden></i>
+    </div></div>
+  </div>`;
+}
 function card(l, isActive, u){
   const rows = DATA && DATA.loc && DATA.loc[l.id];
   const r = nowRow(l.id);
   const U = windLbl(u);
   const links = `<button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, false))}">Windy</button>
     <button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, true))}">Windy · waves</button>`;
+  const pill = (val, c, unit) => `<b class="fw-pill" style="background:${c.bg};color:${c.fg}">${val}${unit ? `<small>${unit}</small>` : ''}</b>`;
+  const now = r ? `<div class="fw-nowline"><span class="fw-nowk">Now</span>
+      ${pill(fmt0(windVal(r.ws, u)), windColor(r.ws), U)}<span class="fw-nowt">gust</span>${pill(fmt0(windVal(r.wg, u)), windColor(r.wg))}
+      <span class="fw-nowt fw-nowdir">${arrow(r.wd, 14)} ${compass(r.wd)} ${fmt0(r.wd)}°</span>
+      ${r.hs != null ? `<span class="fw-nowt">Hs</span>${pill(fmt1(r.hs), waveColor(r.hs), 'm')}<span class="fw-nowt">Hmax ≈</span>${pill(fmt1(r.hs * HMAX_K), waveColor(r.hs * HMAX_K), 'm')}` : ''}
+      ${r.sw != null ? `<span class="fw-nowt">swell <b>${fmt1(r.sw)} m · ${fmt0(r.sp)} s</b>${r.sd != null ? ` from ${compass(r.sd)}` : ''}</span>` : ''}
+      ${r.ww != null ? `<span class="fw-nowt">wind sea <b>${fmt1(r.ww)} m</b></span>` : ''}
+      <span class="fw-nowt">air <b>${fmt0(r.ta)}°C</b> · vis <b>${r.vis != null ? (r.vis >= 10000 ? '10+ km' : (r.vis / 1000).toFixed(1) + ' km') : '—'}</b></span>
+    </div>` : '';
   const head = `<div class="fwx-loc-head"><span class="fwx-dot" style="background:${esc(l.c || '#9aa0a8')}"></span>
     <span class="fwx-name">${esc(l.name)}</span>${isActive ? '<span class="fwx-act">on this trip</span>' : ''}
     <span class="fwx-pos">${esc(formatLatLon(l.lat, l.lon))}</span><span class="fwx-sp"></span>${links}</div>`;
-  if(!r) return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}<div class="fwx-wait">${busy ? 'Loading…' : 'No data yet — press Refresh'}</div></section>`;
-  const wc = windColor(r.ws), gc = windColor(r.wg), hc = waveColor(r.hs), mc = waveColor(r.hs != null ? r.hs * HMAX_K : null);
-  const now = `<div class="fwx-now">
-      <div class="fwx-tile"><span class="fwx-k">Wind</span><span class="fwx-v" style="background:${wc.bg};color:${wc.fg}">${fmt0(windVal(r.ws, u))} <small>${U}</small></span>
-        <span class="fwx-k">Gusts</span><span class="fwx-v fwx-v2" style="background:${gc.bg};color:${gc.fg}">${fmt0(windVal(r.wg, u))} <small>${U}</small></span></div>
-      <div class="fwx-tile fwx-dir"><span class="fwx-k">Direction</span>${arrow(r.wd, 30)}<span class="fwx-dirtx">${compass(r.wd)} · ${fmt0(r.wd)}°</span></div>
-      <div class="fwx-tile"><span class="fwx-k">Hs</span><span class="fwx-v" style="background:${hc.bg};color:${hc.fg}">${fmt1(r.hs)} <small>m</small></span>
-        <span class="fwx-k">Hmax ≈</span><span class="fwx-v fwx-v2" style="background:${mc.bg};color:${mc.fg}">${r.hs != null ? fmt1(r.hs * HMAX_K) : '—'} <small>m</small></span></div>
-      <div class="fwx-side">
-        <div class="fwx-kv"><span>Swell</span><b>${r.sw != null ? fmt1(r.sw) + ' m · ' + fmt0(r.sp) + ' s' : '—'}</b>${r.sd != null ? `<i>${arrow(r.sd, 12)} from ${compass(r.sd)}</i>` : ''}</div>
-        <div class="fwx-kv"><span>Wind sea</span><b>${r.ww != null ? fmt1(r.ww) + ' m' : '—'}</b><i>${r.tp != null ? 'period ' + fmt0(r.tp) + ' s' : ''}</i></div>
-        <div class="fwx-kv"><span>Air</span><b>${fmt0(r.ta)}°C</b><span>Visibility</span><b>${r.vis != null ? (r.vis >= 10000 ? '10+ km' : (r.vis / 1000).toFixed(1) + ' km') : '—'}</b></div>
-      </div>
-    </div>`;
-  /* next 48 h every 3 h — Windy-style rows */
-  const t0 = Date.now() - 60 * 60000;
-  const steps = (rows || []).filter(x => x.t >= t0).filter((x, k) => k % 3 === 0).slice(0, 17);
-  let lastDay = '';
-  const cols = steps.map(x => {
-    const d = dayLbl(x.t), nd = d !== lastDay; lastDay = d;
-    const hm = x.hs != null ? x.hs * HMAX_K : null;
-    return `<div class="fwx-col${nd ? ' nd' : ''}">
-      <div class="fwx-t">${nd ? `<span>${esc(d)}</span>` : '<span>&nbsp;</span>'}${hhmm(x.t)}</div>
-      ${cell(fmt0(windVal(x.ws, u)), windColor(x.ws))}
-      ${cell(fmt0(windVal(x.wg, u)), windColor(x.wg), 'fwx-g')}
-      <div class="fwx-c fwx-d" title="${compass(x.wd)} ${fmt0(x.wd)}°">${arrow(x.wd, 16)}</div>
-      ${cell(fmt1(x.hs), waveColor(x.hs), 'fwx-h')}
-      ${cell(hm != null ? fmt1(hm) : '—', waveColor(hm), 'fwx-g')}
-      ${x.sw != null ? cell(fmt1(x.sw) + '<small>&thinsp;' + fmt0(x.sp) + 's</small>', waveColor(x.sw), 'fwx-s') : '<div class="fwx-c fwx-s"></div>'}
-    </div>`;
-  }).join('');
-  const keys = `<div class="fwx-tl-k"><div class="fwx-t">&nbsp;</div><div>Wind <small>${U}</small></div><div>Gusts <small>${U}</small></div><div>Direction</div>
-    <div>Hs <small>m</small></div><div>Hmax <small>m</small></div><div>Swell <small>m · s</small></div></div>`;
-  return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}${now}<div class="fwx-tl">${keys}<div class="fwx-tl-cols">${cols}</div></div></section>`;
+  const body = r ? `<div class="fw-card">${table(rows, u)}</div>`
+    : `<div class="fw-card fw-card-wait">${busy ? 'Loading…' : 'No data yet — press Refresh'}</div>`;
+  return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}${now}${body}</section>`;
+}
+/* red time slice through every table + tables scroll together */
+function wireTables(body){
+  const grids = [...body.querySelectorAll('.fw-grid')];
+  const scrolls = [...body.querySelectorAll('.fw-scroll')];
+  const show = i => grids.forEach(g => {
+    const sl = g.querySelector('.fw-slice'), n = g.querySelector('.fw-hour').children.length;
+    g.querySelectorAll('.fw-hour .fw-c.on').forEach(c => c.classList.remove('on'));
+    if(i == null || i >= n){ sl.hidden = true; return; }
+    sl.hidden = false; sl.style.left = (i * COLW + COLW / 2 - 1) + 'px';
+    g.querySelector('.fw-hour').children[i].classList.add('on');
+  });
+  grids.forEach(g => {
+    g.addEventListener('mousemove', e => { const x = e.clientX - g.getBoundingClientRect().left; show(Math.max(0, Math.floor(x / COLW))); });
+    g.addEventListener('mouseleave', () => show(null));
+  });
+  let syncing = false;
+  scrolls.forEach(s => s.addEventListener('scroll', () => {
+    if(syncing) return; syncing = true;
+    scrolls.forEach(o => { if(o !== s) o.scrollLeft = s.scrollLeft; });
+    requestAnimationFrame(() => { syncing = false; });
+  }, { passive: true }));
 }
 
 /* test hooks */

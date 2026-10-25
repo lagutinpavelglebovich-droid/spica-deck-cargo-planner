@@ -13,7 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
-import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon, arrowSvg, windyUrl, refresh as fieldWxRefresh } from './fieldWeather.js';
+import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, windyUrl, refresh as fieldWxRefresh } from './fieldWeather.js';
 import { checkPositionOnMap } from './locMap.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
@@ -11248,7 +11248,7 @@ let CP_Q      = '';
    on the header flip the value via cpBindSections, so toggle works
    normally thereafter. Not persisted — module-scope const resets on
    every page load. */
-const CP_SECTIONS = { queue:true, freq:true, pipe:true, lib:false, custom:true };
+const CP_SECTIONS = { queue:true, freq:true, pipe:true, sp:true, lib:false, custom:true };
 
 /* ── Placing state — slide library clear of deck during placement ── */
 let _cpPlacingActive = false;
@@ -11315,17 +11315,87 @@ function cpUpdateBadge(){
 
 /* ── Section toggle ── */
 function cpBindSections(){
-  ['Queue','Freq','Pipe','Lib','Custom'].forEach(sec=>{
+  cpInitSectionOrder();
+  ['Queue','Freq','Pipe','Sp','Lib','Custom'].forEach(sec=>{
     const hdr = document.getElementById('cpSecHdr'+sec);
     const body= document.getElementById('cpSecBody'+sec);
     if(!hdr||!body) return;
     const key = sec.toLowerCase();
-    hdr.addEventListener('click', ()=>{
+    hdr.addEventListener('click', e=>{
+      if(e.target.closest('.cp-sec-grip') || hdr._justDragged) return;
       CP_SECTIONS[key] = !CP_SECTIONS[key];
       body.classList.toggle('hidden', !CP_SECTIONS[key]);
       hdr.classList.toggle('collapsed', !CP_SECTIONS[key]);
     });
   });
+}
+
+/* ── Section order (v3.24) ──
+   Default: Imported → Frequent → Other Cargo → Pipes → Non-standard unit
+   → Custom Cargo. Each header has a grip (⋮⋮) on the left: hold it and
+   drag the section up or down; the order is kept on this computer. */
+const CP_ORDER_KEY = 'spicaTide_libOrder';
+const CP_ORDER_DEFAULT = ['cpSecQueue','cpSecFreq','cpSecLib','cpSecPipe','cpSecSp','cpSecCustom'];
+function _cpOrderGet(){
+  let o = null;
+  try{ o = JSON.parse(localStorage.getItem(CP_ORDER_KEY) || 'null'); }catch(e){}
+  if(!Array.isArray(o)) return CP_ORDER_DEFAULT.slice();
+  o = o.filter(id => CP_ORDER_DEFAULT.includes(id));
+  CP_ORDER_DEFAULT.forEach((id, i) => { if(!o.includes(id)) o.splice(Math.min(i, o.length), 0, id); });   /* new sections keep their default spot */
+  return o;
+}
+function _cpOrderApply(order){
+  const body = document.getElementById('cpBody'); if(!body) return;
+  const secs = order.map(id => document.getElementById(id)).filter(Boolean);
+  if(!secs.length) return;
+  /* sections are the first .cp-sec children; re-append them in order before whatever follows the last one */
+  const after = [...body.children].filter(el => el.classList.contains('cp-sec')).pop()?.nextSibling || null;
+  secs.forEach(el => body.insertBefore(el, after));
+}
+function cpInitSectionOrder(){
+  _cpOrderApply(_cpOrderGet());
+  document.querySelectorAll('#cpBody > .cp-sec > .cp-sec-hdr').forEach(hdr => {
+    if(hdr.querySelector('.cp-sec-grip')) return;
+    const g = document.createElement('span');
+    g.className = 'cp-sec-grip'; g.title = 'Hold and drag to move this section';
+    g.setAttribute('aria-hidden', 'true');
+    g.innerHTML = '<svg viewBox="0 0 10 16" width="8" height="12"><g fill="currentColor"><circle cx="3" cy="3" r="1.3"/><circle cx="7" cy="3" r="1.3"/><circle cx="3" cy="8" r="1.3"/><circle cx="7" cy="8" r="1.3"/><circle cx="3" cy="13" r="1.3"/><circle cx="7" cy="13" r="1.3"/></g></svg>';
+    hdr.insertBefore(g, hdr.firstChild);
+    g.addEventListener('pointerdown', e => _cpSecDragStart(e, hdr.parentElement, hdr));
+  });
+}
+function _cpSecDragStart(e, sec, hdr){
+  if(e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const body = document.getElementById('cpBody');
+  const y0 = e.clientY; let moved = false;
+  const rects = () => [...body.querySelectorAll(':scope > .cp-sec:not([hidden])')].filter(el => el !== sec).map(el => ({ el, r: el.getBoundingClientRect() }));
+  const onMove = ev => {
+    if(!moved && Math.abs(ev.clientY - y0) < 4) return;
+    if(!moved){ moved = true; sec.classList.add('cp-sec-dragging'); body.classList.add('cp-sec-sorting'); }
+    const y = ev.clientY;
+    const list = rects();
+    const before = list.find(o => y < o.r.top + o.r.height / 2);
+    const first = list.map(o => o.r.top);                 /* FLIP: remember positions */
+    if(before){ if(sec.nextElementSibling !== before.el) body.insertBefore(sec, before.el); }
+    else { const last = list[list.length - 1]; if(last && last.el.nextElementSibling !== sec) last.el.after(sec); }
+    list.forEach((o, i) => { const dy = first[i] - o.el.getBoundingClientRect().top; if(dy){ o.el.animate([{ transform:`translateY(${dy}px)` }, { transform:'none' }], { duration:160, easing:'ease-out' }); } });
+    const br = body.getBoundingClientRect();              /* auto-scroll near the edges */
+    if(y < br.top + 30) body.scrollTop -= 12; else if(y > br.bottom - 30) body.scrollTop += 12;
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp);
+    if(!moved) return;
+    sec.classList.remove('cp-sec-dragging'); body.classList.remove('cp-sec-sorting');
+    hdr._justDragged = true; setTimeout(() => { hdr._justDragged = false; }, 0);
+    const order = [...body.querySelectorAll(':scope > .cp-sec')].map(el => el.id).filter(id => CP_ORDER_DEFAULT.includes(id));
+    try{ localStorage.setItem(CP_ORDER_KEY, JSON.stringify(order)); }catch(err){}
+  };
+  window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
+}
+function cpResetSectionOrder(){
+  try{ localStorage.removeItem(CP_ORDER_KEY); }catch(e){}
+  _cpOrderApply(CP_ORDER_DEFAULT);
 }
 
 /* ── Filter pills ── */
@@ -11863,9 +11933,13 @@ function cpRenderPipe(){
   if(!body) return;
   const hdr = document.getElementById('cpSecHdrPipe');
   if(hdr){ const open = CP_SECTIONS.pipe !== false; hdr.classList.toggle('collapsed', !open); body.classList.toggle('hidden', !open); }
-  const hide = CP_FILTER === 'ondk' || (CP_Q && !/pipe|joint|bundle|tubular|casing|special|non|odd|frame|plate|oog|gauge|outline/.test(CP_Q));
-  const sec = document.getElementById('cpSecPipe'); if(sec) sec.hidden = hide;
-  if(hide) return;
+  const hdrSp = document.getElementById('cpSecHdrSp'), bodySp = document.getElementById('cpSecBodySp');
+  if(hdrSp && bodySp){ const open = CP_SECTIONS.sp !== false; hdrSp.classList.toggle('collapsed', !open); bodySp.classList.toggle('hidden', !open); }
+  const hidePipe = CP_FILTER === 'ondk' || (CP_Q && !/pipe|joint|bundle|tubular|casing|gauge/.test(CP_Q));
+  const hideSp = CP_FILTER === 'ondk' || (CP_Q && !/special|non|odd|frame|plate|oog|outline|unit|turbine|spool|blade/.test(CP_Q));
+  const secSp = document.getElementById('cpSecSp'); if(secSp) secSp.hidden = hideSp;
+  const sec = document.getElementById('cpSecPipe'); if(sec) sec.hidden = hidePipe;
+  if(hidePipe && hideSp) return;
   _cpPipeBind();
   const cur = _pipeCur(), s = pipeSpec(cur), bundle = PIPE_UI.mode !== 'joint';
   document.querySelectorAll('#cpPipeMode button').forEach(b => b.classList.toggle('on', b.dataset.v === (bundle ? 'bundle' : 'joint')));
@@ -15106,8 +15180,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.23.1';
-const APP_VERSION   = '3.23.1';
+const CURRENT_BUILD = 'v3.24.0';
+const APP_VERSION   = '3.24.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16410,7 +16484,12 @@ function _wxApply(){
      the rendered atmosphere key. If no cache yet (first boot before
      first fetch), fall back to DEFAULT_CONDITION ('cloudy') as a
      neutral baseline. */
-  const cached = _wxGetCached();
+  /* v3.24 — the sky follows the weather at the working location (field
+     weather); the port / city weather is only the fallback before any
+     location has data. */
+  const _fwId = typeof _workingLocId === 'function' ? _workingLocId() : null;
+  const _fw = _fwId ? fieldWxCondition(_fwId) : null;
+  const cached = _fw || _wxGetCached();
   const baseCondition = cached ? cached.condition : DEFAULT_CONDITION;
 
   /* _FALLBACK_MAP collapses the API's 11-key vocabulary into the
@@ -18413,17 +18492,22 @@ function updateHeaderFieldWx(){
   const blk = document.getElementById('hdrFwx');
   if(!blk) return;
   const id = _workingLocId(), wx = id && fieldWxSummary(id);
-  const key = wx ? [id, wx.ws, wx.wg, wx.wd, wx.hs, wx.unit, wx.at].join('|') : '';
-  /* v3.22.2 — the port / city weather stays next to it (both shown) */
+  const cond = id ? fieldWxCondition(id) : null;
+  const key = wx ? [id, wx.ws, wx.wg, wx.wd, wx.hs, wx.unit, wx.at, cond && cond.condition].join('|') : '';
+  /* v3.24 — the port weather is gone from the header: this block carries
+     the location's sky icon and temperature as well */
   blk.hidden = !wx;
+  const city = document.querySelector('.info-peterhead'); if(city) city.hidden = !!wx;
   if(key === _hfwKey) return;
   _hfwKey = key;
+  try{ _wxApply(); }catch(e){}            /* sky + deck light follow the working location */
   if(!wx){ blk.innerHTML = ''; return; }
   const loc = locById(id);
   blk.dataset.loc = id;
   blk.title = `Weather at ${loc ? loc.name : id} now — click for the 48 h forecast`;
   blk.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
     <div class="hfw-row">
+      ${cond ? `<span class="hfw-sky" title="${escHtml(cond.condition.replace(/-/g, ' '))}"><img src="${iconForCondition(cond.condition)}" alt=""></span>${cond.temperature != null ? `<span class="hfw-temp">${cond.temperature}°</span>` : ''}` : ''}
       <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>
       <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit}<br>G ${wx.wg}</span></span>
       ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}

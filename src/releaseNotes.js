@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.24.0',
+    date: '2026-10-25',
+    highlights: [ 'Field weather looks like Windy "Compare forecasts"', 'Header never overlaps', 'Cargo Library sections can be dragged' ],
+    changes: [
+      { type: 'ui', text: 'Field weather: dark panel with one white table per location — days split by thin lines, 3-hourly columns (00 03 06 …), sky icon and temperature, then wind, gusts, direction, waves, Hmax, swell and swell period as smooth colour bands; 5 days ahead' },
+      { type: 'ui', text: 'Colours are Windy\'s own forecast-table scales (calm grey → cyan → green → orange → pink → purple for wind; lavender → orange for waves), also in the header and on the location cards' },
+      { type: 'feature', text: 'Move the mouse over the forecast: a red time slice runs through every location at once; the tables scroll together' },
+      { type: 'fix', text: 'Numbers in the weather are in a normal typeface — no more zeros that read as 8 on Windows' },
+      { type: 'improvement', text: 'Port weather (Peterhead) removed from the header: the sky, the animation and the temperature follow the working location' },
+      { type: 'ui', text: 'Header: Voyage, date and field weather never slide under each other — on a narrow window details fold away and the voyage goes on one line above the weather; Upload / Library / Smart Tools / Theme fold into a 2 × 2 block; Deck Used is large again with room around it; split-flap counters are clean at rest' },
+      { type: 'ui', text: 'Cargo Library: Imported → Frequent → Other Cargo → Pipes → Non-standard unit → Custom Cargo. Hold the ⋮⋮ grip of a section and drag it to put it where you want; the order is kept on this computer' },
+    ],
+  },
+  {
     version: '3.23.1',
     date: '2026-10-25',
     highlights: [ 'Positions and vessel setup sync between computers' ],

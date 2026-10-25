@@ -17822,3 +17822,198 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
 .pm-pin span::after{ content:''; position:absolute; left:50%; top:50%; width:4px; height:4px; margin:-2px 0 0 -2px; border-radius:50%; background:#fff; }
 .leaflet-tooltip.pm-tip{ background:rgba(15,23,42,.82); color:#fff; border:0; box-shadow:none; font:700 10.5px/1 'Inter',sans-serif; padding:3px 6px; }
 .leaflet-tooltip.pm-tip::before{ display:none; }
+
+/* ═══ v3.24 — header: location sky, cleaner flip, bigger Deck Used, smaller voyage ═══ */
+.hfw-sky{ display:inline-flex; width:34px; height:34px; margin:-6px -4px -6px -6px; }
+.hfw-sky img{ width:100%; height:100%; }
+.hfw-temp{ font:800 19px/1 'Manrope',sans-serif; color:var(--txt); margin-right:2px; }
+/* flip counters: clean digits at rest — the plate, seam and flaps only
+   exist while a digit is turning */
+.flip > span{ background:transparent; }
+.flip::after{ opacity:0; transition:opacity .2s ease; }
+.flip.flipping::after{ opacity:1; }
+.flip-ft, .flip-fb{ background:var(--flip-flap); }
+.flip{ width:.62em; margin:0; }
+:root{ --flip-flap: #ffffff; }
+[data-theme="dark"]{ --flip-flap: #23272e; }
+/* Deck Used keeps its size */
+.gst.gst-deck-usage{ flex:0 0 auto; width:104px; min-width:104px; max-width:104px !important; }
+.du-gauge{ width:78px; height:78px; max-width:none; flex-shrink:0; }
+/* voyage number gives up some room */
+.info-voyage .info-value-input{ font-size:17px; width:150px; }
+/* v3.24 — the stats card sizes to its content so Deck Used has room to
+   breathe (no clipping against the card edge) */
+.rc-lifts{ flex:0 0 auto !important; max-width:none !important; }
+.rc-lifts .gstats{ padding:0 18px 0 12px !important; overflow:visible; }
+.gst.gst-deck-usage{ margin-left:10px; padding:6px 4px !important; }
+.gst.gst-op.gst-off{ min-width:0 !important; margin:0 !important; border-width:0 !important; }
+/* tighter header on narrower screens (all four operations on board) */
+@media (max-width: 1599px){
+  .rc-lifts .gstats:not(:has(.gst-op.gst-off)) .gst.gst-op{ padding-left:3px !important; padding-right:3px !important; }
+  .rc-lifts .gstats:not(:has(.gst-op.gst-off)) .gst.gst-op .gst-lbl{ font-size:9px !important; letter-spacing:0 !important; }
+  .rc-lifts .gstats{ padding:0 14px 0 8px !important; }
+}
+@media (max-width: 1440px){
+  .rc-lifts .gst-lift-hero{ padding-left:6px !important; padding-right:6px !important; }
+}
+
+/* ═══ v3.24 — header that never overlaps ═══
+   The voyage / field-weather strip takes exactly the room left between
+   the stats card and the tools, and sheds detail by ITS OWN width
+   (container queries) — so the result is the same whatever the window
+   size or the number of operations on board. Order of shedding: the
+   small sub-lines, the sky icon, the VOYAGE caption; on a very narrow
+   strip the voyage goes on one line with the field weather under it.
+   Nothing ever slides under its neighbour. */
+.shell-ribbon > .header-info-strip{ flex:1 1 0 !important; min-width:0 !important; container:his / inline-size; }
+.shell-ribbon > .rc-tools{ flex:0 0 auto !important; }
+.his-in{ display:flex; align-items:center; gap:inherit; align-self:stretch; min-width:0; }
+.his-in > .info-voyage, .his-in > .info-fieldwx, .his-in > .info-divider{ flex:0 0 auto !important; }
+.header-info-strip .info-date-btn{ white-space:nowrap; }
+@container his (max-width: 520px){
+  .info-block.info-fieldwx .hfw-sub{ display:none; }
+  .info-block.info-fieldwx .hfw-row{ gap:7px; }
+}
+@container his (max-width: 430px){
+  .info-block.info-fieldwx .hfw-sky{ display:none; }
+  .his-in{ gap:14px; }
+}
+@container his (max-width: 380px){
+  .info-block.info-voyage .info-label{ display:none; }
+  .info-voyage .info-value-input{ width:104px !important; font-size:15px !important; }
+}
+/* very narrow: voyage on one line, field weather under it */
+@container his (max-width: 330px){
+  .his-in{ flex-direction:column; align-items:flex-start; justify-content:center; gap:7px; }
+  .his-in > .info-divider{ display:none !important; }
+  .his-in > .info-voyage{ flex-direction:row !important; align-items:center !important; gap:10px !important; }
+  .his-in > .info-voyage .info-value-row{ width:auto !important; flex:0 0 auto; }
+  .info-voyage .info-value-input{ width:auto !important; field-sizing:content; min-width:2.5ch; max-width:120px; }
+  .info-block.info-fieldwx{ margin:0 -8px !important; }
+  .info-block.info-fieldwx .hfw-row{ margin-top:2px; }
+}
+@container his (max-width: 240px){
+  .info-voyage .info-value-input{ max-width:80px; font-size:14px !important; }
+  .his-in > .info-voyage{ gap:6px !important; }
+  .his-in .info-date-btn{ font-size:11.5px !important; padding:2px 2px !important; }
+}
+@container his (max-width: 200px){
+  .info-block.info-fieldwx .hfw-temp, .info-block.info-fieldwx .hfw-arr{ display:none; }
+}
+
+/* Upload / Library / Smart Tools / Theme fold into a 2 × 2 block on
+   narrower windows (language stays beside it); the pills get a little
+   smaller and keep their size on hover — the name shows as a tooltip. */
+@media (max-width: 1679px){
+  .rc-tools .gp-cluster{ display:grid; grid-template-columns:auto auto auto; grid-template-areas:"up lib lang" "smart theme lang";
+    gap:8px 8px; align-items:center; justify-items:center; }
+  .rc-tools .gp-cluster > .gp-upload{ grid-area:up; }
+  .rc-tools .gp-cluster > .gp-library{ grid-area:lib; }
+  .rc-tools .gp-cluster > .gp-smart{ grid-area:smart; }
+  .rc-tools .gp-cluster > .gp-theme{ grid-area:theme; }
+  .rc-tools .gp-cluster > .lang-switch{ grid-area:lang; margin-left:6px; }
+  body .rc-tools .gp-cluster .gp, body .rc-tools .gp-cluster .gp:hover{ width:38px !important; height:38px !important; border-radius:19px !important; }
+  body .rc-tools .gp-cluster .gp .gp-ico svg{ width:16px !important; height:16px !important; }
+  body .rc-tools .gp-cluster .gp:hover .gp-lbl{ display:none !important; }
+  body .rc-tools .gp-cluster .gp:hover .gp-ico{ transform:translate(-50%,-50%) scale(1) !important; opacity:1 !important; color:#fff !important; }
+  body .rc-tools .gp-cluster .gp::before{ border-radius:19px; }
+  .rc-tools .gp .gp-badge{ top:-3px; right:-3px; }
+}
+
+/* ═══ v3.24 — Field weather in the style of Windy "Compare forecasts" ═══
+   Dark grey panel, one white table per location, smooth gradient rows,
+   thin day lines, red time slice under the mouse. Numbers in Inter with
+   tabular figures (no monospace zeros that read as 8). */
+:root{ --fw-panel:#2f3134; --fw-panel2:#3a3c40; --fw-ptxt:#f2f3f5; --fw-ptxt2:#b9bcc2; --fw-ptxt3:#8e9198;
+  --fw-card:#ffffff; --fw-ctxt:#2b2d31; --fw-ctxt2:#8a8d93; --fw-line:#d8d8d8; --fw-slice:#e0242b; --fw-band-f:none; }
+[data-theme="dark"]{ --fw-panel:#17191c; --fw-panel2:#22252a; --fw-ptxt:#eceef1; --fw-ptxt2:#a9adb4; --fw-ptxt3:#7d8188;
+  --fw-card:#24272c; --fw-ctxt:#e6e8eb; --fw-ctxt2:#8d9198; --fw-line:#3a3e45; --fw-slice:#ff4b4b; --fw-band-f:brightness(.86) saturate(.95); }
+.fwx{ width:min(1320px, 96vw); background:var(--fw-panel); color:var(--fw-ptxt); border-color:rgba(255,255,255,.06); }
+.fwx-head{ border-bottom-color:rgba(255,255,255,.08); }
+.fwx-kicker{ color:#ff6b6b; }
+.fwx-title{ color:var(--fw-ptxt); }
+.fwx-meta{ color:var(--fw-ptxt3); }
+.fwx .fwx-unit{ background:var(--fw-panel2); border-color:rgba(255,255,255,.08); }
+.fwx .fwx-unit button{ color:var(--fw-ptxt2); }
+.fwx .fwx-unit button.on{ background:#c8102e; color:#fff; }
+.fwx .fwx-btn{ background:var(--fw-panel2); border-color:rgba(255,255,255,.1); color:var(--fw-ptxt); }
+.fwx .fwx-btn:hover:not(:disabled){ border-color:#ff6b6b; color:#fff; }
+.fwx .fwx-x{ background:rgba(255,255,255,.08); color:var(--fw-ptxt2); }
+.fwx-body{ padding:16px 20px 8px; gap:20px; }
+.fwx-foot{ color:var(--fw-ptxt3); border-top-color:rgba(255,255,255,.08); }
+.fwx .fwx-empty{ color:var(--fw-ptxt2); border-color:rgba(255,255,255,.18); }
+.fwx .fwx-nopos{ color:var(--fw-ptxt3); }
+.fwx .fwx-loc{ border:0; padding:0; background:transparent; gap:8px; box-shadow:none; }
+.fwx .fwx-loc.focus .fw-card{ box-shadow:0 0 0 2px #ff6b6b; }
+.fwx .fwx-name{ color:var(--fw-ptxt); font-size:16px; }
+.fwx .fwx-act{ color:#ffb4b4; background:rgba(255,107,107,.14); }
+.fwx .fwx-pos{ font:600 11.5px/1 'Inter',sans-serif; font-variant-numeric:tabular-nums; color:var(--fw-ptxt3); }
+.fwx .fwx-link{ color:var(--fw-ptxt2); border-color:rgba(255,255,255,.14); }
+.fwx .fwx-link:hover{ color:#fff; border-color:#ff6b6b; }
+.fw-nowline{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; font:500 12px/1 'Inter',sans-serif; color:var(--fw-ptxt2); }
+.fw-nowk{ font-size:10px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:var(--fw-ptxt3); margin-right:2px; }
+.fw-nowt b{ color:var(--fw-ptxt); font-weight:700; }
+.fw-nowt{ display:inline-flex; align-items:center; gap:4px; margin-left:4px; font-variant-numeric:tabular-nums; }
+.fw-nowdir .fwx-arr{ color:var(--fw-ptxt); }
+.fw-pill{ display:inline-flex; align-items:baseline; gap:2px; min-width:30px; justify-content:center; padding:4px 7px; border-radius:6px;
+  font:700 13px/1 'Inter',sans-serif; font-variant-numeric:tabular-nums; filter:var(--fw-band-f); }
+.fw-pill small{ font-size:9.5px; font-weight:600; opacity:.75; }
+.fw-card{ background:var(--fw-card); color:var(--fw-ctxt); border-radius:10px; overflow:hidden; box-shadow:0 1px 0 rgba(0,0,0,.25); }
+.fw-card-wait{ padding:18px; font-size:12.5px; color:var(--fw-ctxt2); }
+.fw-tbl{ display:flex; }
+.fw-legend{ flex:0 0 96px; border-right:1px solid var(--fw-line); background:var(--fw-card); position:relative; z-index:2; }
+.fw-lrow, .fw-r{ height:24px; }
+.fw-lrow-days, .fw-days{ height:26px; }
+.fw-lrow-hour, .fw-hour{ height:20px; }
+.fw-lrow-icon, .fw-icon{ height:30px; }
+.fw-lrow-wind, .fw-wind, .fw-lrow-hs, .fw-hs{ height:28px; }
+.fw-lrow-dir, .fw-dir{ height:24px; }
+.fw-l{ height:100%; display:flex; align-items:center; justify-content:flex-end; gap:4px; padding:0 10px; font:500 11px/1 'Inter',sans-serif; color:var(--fw-ctxt2); white-space:nowrap; }
+.fw-l small{ font-size:10px; opacity:.8; }
+.fw-scroll{ flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
+.fw-grid{ position:relative; }
+.fw-r{ display:flex; position:relative; }
+.fw-c{ flex:0 0 46px; width:46px; display:flex; align-items:center; justify-content:center; gap:2px;
+  font:600 12.5px/1 'Inter',sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.fw-days{ border-bottom:0; }
+.fw-day{ position:absolute; top:0; height:26px; display:flex; align-items:center; padding-left:8px; font:500 12.5px/1 'Inter',sans-serif; color:var(--fw-ctxt2); white-space:nowrap; }
+.fw-hour .fw-c{ font-weight:500; font-size:12px; color:var(--fw-ctxt2); }
+.fw-hour .fw-c.on{ color:var(--fw-slice); font-weight:800; }
+.fw-icon img{ width:28px; height:28px; display:block; }
+.fw-temp .fw-c{ font-size:13px; font-weight:600; }
+.fw-band{ filter:var(--fw-band-f); }
+.fw-band .fw-c{ color:#17191d; }
+.fw-wind .fw-c, .fw-hs .fw-c{ font-size:13.5px; font-weight:700; }
+.fw-gust .fw-c, .fw-hmax .fw-c, .fw-period .fw-c{ font-size:11.5px; font-weight:600; }
+.fw-swell .fw-c{ font-size:12px; }
+.fw-swell .fwx-arr{ color:#17191d; opacity:.75; }
+.fw-dir .fw-c > span{ display:inline-flex; }
+.fw-dir .fwx-arr{ color:var(--fw-ctxt); }
+.fw-dir{ border-bottom:1px solid var(--fw-line); }
+.fw-sep{ position:absolute; top:0; bottom:0; width:1px; margin-left:-.5px; background:var(--fw-line); z-index:3; pointer-events:none; }
+.fw-band + .fw-band{ box-shadow:inset 0 1px 0 rgba(255,255,255,.35); }
+.fw-now{ position:absolute; top:26px; bottom:0; width:0; border-left:2px dashed var(--fw-slice); opacity:.28; z-index:3; pointer-events:none; }
+.fw-slice{ position:absolute; top:22px; bottom:0; width:2px; background:var(--fw-slice); z-index:4; pointer-events:none; box-shadow:0 0 0 1px rgba(255,255,255,.35); }
+.fw-slice[hidden]{ display:none; }
+.fw-grid{ cursor:crosshair; }
+/* text above the red slice, slice above the colour bands; dark theme dims the bands with an overlay (no filter = no stacking trap) */
+.fw-c{ position:relative; z-index:2; }
+.fw-band{ filter:none; }
+.fw-band::after{ content:''; position:absolute; inset:0; background:var(--fw-band-dim, transparent); z-index:1; pointer-events:none; }
+[data-theme="dark"]{ --fw-band-dim:rgba(10,12,16,.16); }
+.fw-sep, .fw-now{ z-index:1; }
+.fw-slice{ z-index:1; width:2px; box-shadow:none; }
+.fw-band .fw-c.lo, .fw-band .fw-c.lo .fwx-arr{ color:var(--fw-ctxt); }
+.fw-icon img{ width:40px; height:40px; margin:-5px 0; }
+
+/* ═══ v3.24 — Cargo Library: sections in a fixed order, drag by the grip ═══ */
+.cp-sec-grip{ display:inline-flex; align-items:center; justify-content:center; width:14px; height:18px; margin:0 2px 0 -6px; border-radius:4px;
+  color:var(--txt3); opacity:.35; cursor:grab; flex-shrink:0; touch-action:none; transition:opacity .15s, background .15s; }
+.cp-sec-hdr:hover .cp-sec-grip{ opacity:.8; }
+.cp-sec-grip:hover{ background:rgba(127,137,150,.16); opacity:1; }
+.cp-sec-sorting, .cp-sec-sorting *{ cursor:grabbing !important; user-select:none; }
+.cp-sec.cp-sec-dragging{ position:relative; z-index:5; box-shadow:0 12px 30px rgba(10,22,40,.22), 0 0 0 1.5px var(--acc); opacity:.97; }
+.cp-sec-icon.s-sp{ color:#a16207; }
+[data-theme="dark"] .cp-sec-icon.s-sp{ color:#fbbf24; }
+.cp-sp .cp-sp-title{ display:none; }
+#cpSecSp[hidden], #cpSecPipe[hidden]{ display:none !important; }

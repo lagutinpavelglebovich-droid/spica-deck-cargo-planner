@@ -227,3 +227,6 @@ export async function reverseGeocode(lat, lng){
 
   return _toCityResult(json.results[0]);
 }
+
+/* v3.24 — shared with the field weather (location-based atmosphere) */
+export { _wmoToCondition as wmoToCondition };
