@@ -820,6 +820,9 @@ function normaliseVesselProfile(p){
   out.lashing = { points: pts };
   const cam = _normaliseCamera(p.camera, bays.length);
   if(cam) out.camera = cam;
+  /* v3.23.1 — when the profile was last edited by a person (synced between
+     the bridge computers: the newer one wins) */
+  if(isFinite(+p.updatedAt) && +p.updatedAt > 0) out.updatedAt = Math.round(+p.updatedAt);
   return out;
 }
 /* v3.16 — bridge camera: mount rotation + deck calibration (4 picked
@@ -2712,9 +2715,11 @@ function vesselSetupSave(){
     showToast(`${orphan.length} cargo on deck belong to a deleted location — put it back or move the cargo first`, 'warn');
     return;
   }
+  p.updatedAt = Date.now();
   vesselPut(p);
   _vsClose();
   activateVessel(p.id, { quiet:true });
+  _syncPushDebounced();
   const out = S.cargo.filter(c => c.x + c.w > TW + 1 || c.y + c.h > CVH + 1).length;
   showToast(out ? `${p.name} saved — ${out} cargo now outside the deck, move them in` : `${p.name} saved and in use`, out ? 'warn' : 'ok');
 }
@@ -15101,8 +15106,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.23.0';
-const APP_VERSION   = '3.23.0';
+const CURRENT_BUILD = 'v3.23.1';
+const APP_VERSION   = '3.23.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -17070,6 +17075,10 @@ function _syncPushDebounced(){
   _syncPushTimer = setTimeout(() => {
     _syncPushTimer = null;             /* nothing pending once the push is out */
     const envelope = _buildEnvelope();
+    /* v3.23.1 — the active vessel profile travels with the plan (locations
+       and their positions, deck layout…); the camera calibration stays on
+       the computer the camera is connected to */
+    if(VESSEL){ const vp = Object.assign({}, VESSEL); delete vp.camera; envelope.plan.vesselProfile = vp; }
     Sync.pushState(envelope.plan);
   }, 3000); // debounce 3s — don't push on every keystroke
 }
@@ -17183,6 +17192,26 @@ function _syncUpdateUI(status){
   _syncUpdateConnectedTime();
 }
 
+/* v3.23.1 — vessel profile from the other computer: taken when it was
+   edited later than ours; our own camera calibration is kept. */
+function _syncApplyRemoteVessel(rp){
+  if(!rp || typeof rp !== 'object' || !rp.id) return false;
+  const remote = normaliseVesselProfile(rp);
+  if(!remote || !(remote.updatedAt > 0)) return false;
+  const local = vesselGet(remote.id);
+  const localAt = (local && +local.updatedAt) || 0;
+  if(remote.updatedAt <= localAt) return false;
+  if(local && local.camera) remote.camera = local.camera;
+  vesselPut(remote);
+  if(VESSEL && VESSEL.id === remote.id){
+    applyVesselGeometry(remote);
+    redrawDeck();
+    if(typeof _refreshLocUI === 'function') _refreshLocUI();
+    try{ fieldWxRefresh(true); }catch(e){}
+  }
+  return true;
+}
+
 function _syncApplyRemote(remoteState){
   if(!remoteState) return;
   if(remoteState.cargo){ S.cargo = remoteState.cargo; _normalizeCargoGeometry(S.cargo); }
@@ -17197,6 +17226,7 @@ function _syncApplyRemote(remoteState){
   if(remoteState.locColors){ Object.keys(S.locColors).forEach(k=>delete S.locColors[k]); Object.assign(S.locColors, remoteState.locColors); }
   if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
   if('loadList' in remoteState) S.loadList = remoteState.loadList || null;
+  _syncApplyRemoteVessel(remoteState.vesselProfile);
   initDynColors(); setDateDisplay();
   buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
   renderAll(); updateStats(); updateDGSummary();
@@ -18272,8 +18302,10 @@ function _setLocPosition(id, ll){
   };
   if(VESSEL && apply(VESSEL.locations.find(l => l.id === id))){
     const p = normaliseVesselProfile(VESSEL);
+    p.updatedAt = Date.now();
     vesselPut(p);
     applyVesselGeometry(p);
+    _syncPushDebounced();                 /* positions reach the other bridge computer */
   } else if(apply(S.customLocs.find(l => l.id === id))){
     save();
   } else return;

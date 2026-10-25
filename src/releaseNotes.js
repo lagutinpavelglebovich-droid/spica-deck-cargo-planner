@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.23.1',
+    date: '2026-10-25',
+    highlights: [ 'Positions and vessel setup sync between computers' ],
+    changes: [
+      { type: 'sync', text: 'Location positions and everything in Vessel Setup (locations, deck, zones, lashing) now travel with the cloud sync: set them on one computer, the other picks them up. The later edit wins; the deck-camera calibration stays on its own computer' },
+    ],
+  },
+  {
     version: '3.23.0',
     date: '2026-10-25',
     highlights: [ 'Weather works out of the box', 'Click a location for its weather and position' ],
