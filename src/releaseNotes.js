@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.7',
+    date: '2026-10-25',
+    highlights: [ 'Box-select on the deck works' ],
+    changes: [
+      { type: 'fix', text: 'Dragging a selection box over the deck now keeps the units it covers selected — the click the browser fires after the drag no longer clears them, so S, Delete and the inspector act on the whole group' },
+    ],
+  },
+  {
     version: '3.27.6',
     date: '2026-10-25',
     highlights: [ 'Finer wave fronts' ],

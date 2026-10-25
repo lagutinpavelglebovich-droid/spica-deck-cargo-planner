@@ -3660,6 +3660,14 @@ function _marqueeStart(startEv, cv){
 
     if(rectEl){ rectEl.remove(); rectEl = null; }
 
+    /* The browser still dispatches a `click` after a drag — on the deck
+       canvas (the common ancestor of mousedown/mouseup targets), whose
+       background-click handler would deselect everything we are about
+       to select. Swallow that one click. */
+    const swallowClick = e => { e.stopPropagation(); e.preventDefault(); };
+    window.addEventListener('click', swallowClick, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallowClick, true), 0);
+
     /* Apply selection. Shift = additive; otherwise replace. */
     if(!shiftHeld){
       KB_SEL_SET.clear();
@@ -15242,8 +15250,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.27.6';
-const APP_VERSION   = '3.27.6';
+const CURRENT_BUILD = 'v3.27.7';
+const APP_VERSION   = '3.27.7';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

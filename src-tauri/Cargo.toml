@@ -1,6 +1,6 @@
 [package]
 name = "spica-tide"
-version = "3.27.6"
+version = "3.27.7"
 description = "SPICA TIDE — Deck Cargo Planning Tool for PSV SPICA TIDE"
 authors = ["Pavlo Lagutin"]
 license = "Proprietary"
