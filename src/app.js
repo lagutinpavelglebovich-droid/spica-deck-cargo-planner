@@ -13,7 +13,8 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
-import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon, arrowSvg } from './fieldWeather.js';
+import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon, arrowSvg, windyUrl, refresh as fieldWxRefresh } from './fieldWeather.js';
+import { checkPositionOnMap } from './locMap.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
@@ -860,9 +861,13 @@ function _normaliseLocations(list){
         .map(a => String(a).replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean).slice(0, 12) };
     if(l.fixed) o.fixed = true;
     if(l.grp) o.grp = String(l.grp).slice(0, 16);
-    /* v3.20 — position for field weather (decimal degrees) */
+    /* v3.20 — position for field weather (decimal degrees); v3.23 — the
+       built-in installations get their charted position unless cleared */
     const la = parseFloat(l.lat), lo = parseFloat(l.lon);
     if(isFinite(la) && isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180){ o.lat = +la.toFixed(5); o.lon = +lo.toFixed(5); }
+    else if(l.nopos) o.nopos = true;
+    else if(SPICA_TIDE_POS[id]){ o.lat = SPICA_TIDE_POS[id][0]; o.lon = SPICA_TIDE_POS[id][1]; o.posDefault = true; }
+    if(o.lat != null && l.posDefault && SPICA_TIDE_POS[id] && o.lat === SPICA_TIDE_POS[id][0] && o.lon === SPICA_TIDE_POS[id][1]) o.posDefault = true;
     out.push(o);
   });
   return out.length ? out : spicaTideLocations();
@@ -1064,6 +1069,31 @@ const SPICA_TIDE_LOCS=[
   {id:'ARBR',      name:'Arbroath',       c:'#148f6e', type:'platform'},  // teal-green
   {id:'GP3',       name:'GP3',            c:'#e67e22', type:'fpso'},  // warm orange
 ];
+/* v3.23 — installation positions for the built-in locations, so field
+   weather works out of the box. Source: NSTA Integrated Reporting Service
+   notifications (installation position, 2022–2026); Beatrice, Fulmar and
+   Auk from the field / platform position on Wikipedia. Claymore and Piper
+   groups use the Claymore A / Piper B platform. Any of them can be
+   changed by clicking the location card. */
+const SPICA_TIDE_POS = {
+  BLEO:      [58.10139, -1.43833],   /* Bleo Holm FPSO, Ross    58°06'05"N 001°26'18"W */
+  GP3:       [58.36056,  0.86778],   /* Global Producer III, Donan 58°21'38"N 000°52'04"E */
+  TART:      [58.36985,  0.07361],   /* Tartan A                58°22'11"N 000°04'25"E */
+  CLAY_CAP:  [58.44944, -0.25361],   /* Claymore A              58°26'58"N 000°15'13"W */
+  CLAY_CPP:  [58.44944, -0.25361],
+  CLAY_WOP:  [58.44944, -0.25361],
+  CLAY_DRL:  [58.44944, -0.25361],
+  PIPER:     [58.46135,  0.25106],   /* Piper B                 58°27'41"N 000°15'04"E */
+  PIPER_DR:  [58.46135,  0.25106],
+  PIPER_WOP: [58.46135,  0.25106],
+  SALT:      [58.41680,  0.33501],   /* Saltire A               58°25'00"N 000°20'06"E */
+  BEAT:      [58.13000, -3.07000],   /* Beatrice field          58°07'48"N 003°04'12"W */
+  CLYDE:     [56.45278,  2.28833],   /* Clyde                   56°27'10"N 002°17'18"E */
+  FULMAR:    [56.49361,  2.15472],   /* Fulmar A                56°29'37"N 002°09'17"E */
+  AUK:       [56.40000,  2.06667],   /* Auk field               56°24'00"N 002°04'00"E */
+  MONTR:     [57.45111,  1.38667],   /* Montrose A              57°27'04"N 001°23'12"E */
+  ARBR:      [57.37472,  1.38306],   /* Arbroath                57°22'29"N 001°22'59"E */
+};
 /* ASCO sheet-name aliases for the built-in locations (was the ordered
    KEYWORD_MAP; matching now takes the LONGEST alias that fits, which
    reproduces the old "specific before generic" order). */
@@ -2779,10 +2809,10 @@ function _vsRenderLocs(){
     po.addEventListener('change', () => {
       const L = loc(); if(!L) return;
       const v = po.value.trim();
-      if(!v){ delete L.lat; delete L.lon; showPos(L); _vsApply({ keepPanel:true }); return; }
+      if(!v){ delete L.lat; delete L.lon; delete L.posDefault; L.nopos = true; showPos(L); _vsApply({ keepPanel:true }); return; }
       const ll = parseLatLon(v);
       if(!ll){ po.classList.add('bad'); pok.textContent = '?'; showToast('Position not understood — e.g. 58 27.4N 000 15.2E or 58.4567, 0.2535', 'warn'); return; }
-      L.lat = ll.lat; L.lon = ll.lon; showPos(L); _vsApply({ keepPanel:true });
+      L.lat = ll.lat; L.lon = ll.lon; delete L.nopos; delete L.posDefault; showPos(L); _vsApply({ keepPanel:true });
     });
     const loc = () => VS && VS.draft.locations[i];
     nm.addEventListener('change', () => { const L = loc(); if(L && nm.value.trim()){ L.name = nm.value.trim(); _vsApply({ keepPanel:true }); } else nm.value = L ? L.name : ''; });
@@ -3981,6 +4011,7 @@ function buildActiveLocStrip(){
         /* Ignore if remove button was clicked */
         if(e.target.closest('.loc-card-rm')) return;
         /* Toggle filter: second click on active filter → clear */
+        const popWasOpen = _locPopId === id;
         if(LOC_FILTER === id){
           clearLocFilter();
         } else {
@@ -3989,6 +4020,8 @@ function buildActiveLocStrip(){
           applyLocFilter(id);
           buildActiveLocStrip();
         }
+        /* v3.23 — the card opens its weather + position popover */
+        if(popWasOpen) closeLocPop(); else openLocPop(id);
       });
       strip.appendChild(el);
     });
@@ -15068,8 +15101,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.22.4';
-const APP_VERSION   = '3.22.4';
+const CURRENT_BUILD = 'v3.23.0';
+const APP_VERSION   = '3.23.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18225,6 +18258,115 @@ function bindAutosaveToggle(){
 
 /* v3.16 — Deck camera workspace (calibration / overlay). The module only
    sees the planner through this API. */
+/* ══ v3.23 — LOCATION POPOVER ══════════════════════════════════════════
+   Click a location card: weather there now, the 48 h forecast, Windy, and
+   its position — typed or pasted from the ECDIS, checked on a map, saved
+   straight into the vessel profile (no Vessel Setup needed). */
+let _locPopId = null;
+function _setLocPosition(id, ll){
+  const apply = L => {
+    if(!L) return false;
+    if(ll){ L.lat = ll.lat; L.lon = ll.lon; delete L.nopos; } else { delete L.lat; delete L.lon; L.nopos = true; }
+    delete L.posDefault;
+    return true;
+  };
+  if(VESSEL && apply(VESSEL.locations.find(l => l.id === id))){
+    const p = normaliseVesselProfile(VESSEL);
+    vesselPut(p);
+    applyVesselGeometry(p);
+  } else if(apply(S.customLocs.find(l => l.id === id))){
+    save();
+  } else return;
+  buildActiveLocStrip();
+  fieldWxRefresh(true);
+}
+function closeLocPop(){
+  _locPopId = null;
+  document.getElementById('locPop')?.remove();
+  document.removeEventListener('mousedown', _locPopOutside, true);
+}
+function _locPopOutside(e){
+  const pop = document.getElementById('locPop');
+  if(!pop || pop.contains(e.target) || e.target.closest('.loc-card') || e.target.closest('#posMapOv')) return;
+  closeLocPop();
+}
+function openLocPop(id){
+  closeLocPop();
+  const loc = locById(id);
+  const card = document.querySelector(`.loc-card[data-loc-id="${CSS.escape(id)}"]`);
+  if(!loc || !card) return;
+  _locPopId = id;
+  const pop = document.createElement('div');
+  pop.id = 'locPop'; pop.className = 'locpop';
+  pop.setAttribute('role', 'dialog');
+  document.body.appendChild(pop);
+  const render = () => {
+    const L = locById(id) || loc;
+    const wx = fieldWxSummary(id);
+    const has = isFinite(L.lat) && isFinite(L.lon);
+    const op = isOperator();
+    pop.innerHTML = `
+      <div class="lp-head"><span class="lp-dot" style="background:${escHtml(getLocBase(id))}"></span><b>${escHtml(L.name)}</b><button type="button" class="lp-x" title="Close">✕</button></div>
+      ${wx ? `<div class="lp-wx">
+          <span class="lp-arr" title="${wx.dir}">${arrowSvg(wx.wd, 18)}</span>
+          <span class="lp-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit} ${wx.dir}<br>gust ${wx.wg}</span></span>
+          ${wx.hs != null ? `<span class="lp-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}
+        </div>
+        <div class="lp-btns"><button type="button" class="lp-btn lp-fc">48 h forecast</button><button type="button" class="lp-btn lp-windy">Windy ↗</button></div>`
+      : `<div class="lp-none">${has ? 'Loading the weather…' : 'No position yet — enter it below and the weather for this spot appears here and in the header.'}</div>`}
+      <div class="lp-pos">
+        <label for="lpPosIn">Position</label>
+        <div class="lp-posrow">
+          <input id="lpPosIn" type="text" spellcheck="false" autocomplete="off" placeholder="58 27.4N 000 15.2E" value="${has ? escHtml(formatLatLon(L.lat, L.lon)) : ''}" ${op ? '' : 'readonly'}>
+          <button type="button" class="lp-btn lp-set" ${op ? '' : 'disabled'}>${has ? 'Map' : 'Set'}</button>
+        </div>
+        <div class="lp-note">${!op ? 'Switch to Operator mode to change the position.'
+          : L.posDefault ? 'Charted installation position (NSTA). Paste yours from the ECDIS to change it.'
+          : 'As on the ECDIS: 58 27.4N 000 15.2E, 58°27.40\'N 000°15.20\'E or 58.4567, 0.2535'}</div>
+      </div>`;
+    const r = card.isConnected ? card.getBoundingClientRect() : document.querySelector(`.loc-card[data-loc-id="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+    if(r){
+      const w = pop.offsetWidth || 320;
+      pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+      pop.style.top = (r.bottom + 8) + 'px';
+    }
+    pop.querySelector('.lp-x').addEventListener('click', closeLocPop);
+    pop.querySelector('.lp-fc')?.addEventListener('click', () => { closeLocPop(); openFieldWeather(id); });
+    pop.querySelector('.lp-windy')?.addEventListener('click', () => {
+      const LL = locById(id); if(!LL || !isFinite(LL.lat)) return;
+      import('./fieldWeather.js').then(() => _fwxOpenUrl(windyUrl(LL.lat, LL.lon, false)));
+    });
+    const inp = pop.querySelector('#lpPosIn');
+    const set = async () => {
+      if(!isOperator()) return;
+      const v = inp.value.trim();
+      const ll = v ? parseLatLon(v) : null;
+      if(v && !ll){ inp.classList.add('bad'); showToast('Position not understood — e.g. 58 27.4N 000 15.2E or 58.4567, 0.2535', 'warn'); return; }
+      if(!ll){ return; }
+      const around = [...LOC_ALL, ...S.customLocs].filter(o => o.id !== id && isFinite(o.lat)).map(o => ({ name: o.name, lat: o.lat, lon: o.lon, c: getLocBase(o.id) }));
+      const res = await checkPositionOnMap({ name: (locById(id) || loc).name, lat: ll.lat, lon: ll.lon, around });
+      if(!res) return;
+      _setLocPosition(id, res);
+      showToast(`${(locById(id) || loc).name}: position saved — ${formatLatLon(res.lat, res.lon)}`, 'ok');
+      if(_locPopId === id) render();
+    };
+    pop.querySelector('.lp-set')?.addEventListener('click', set);
+    inp.addEventListener('keydown', e => { e.stopPropagation(); if(e.key === 'Enter'){ e.preventDefault(); set(); } if(e.key === 'Escape') closeLocPop(); });
+    inp.addEventListener('input', () => inp.classList.remove('bad'));
+  };
+  pop._render = render;
+  render();
+  requestAnimationFrame(() => pop.classList.add('in'));
+  document.addEventListener('mousedown', _locPopOutside, true);
+}
+async function _fwxOpenUrl(url){
+  if(_isTauri()){
+    try{ const { openUrl } = await import('@tauri-apps/plugin-opener'); await openUrl(url); return; }
+    catch(e){ console.warn('[locPop] openUrl', e); showToast('Could not open the browser — ' + url, 'warn'); return; }
+  }
+  window.open(url, '_blank', 'noopener');
+}
+
 /* v3.22 — header shows the weather at the location being worked: the
    selected unit's location, else the location card you clicked, else the
    first location in the strip that has a position. The location cards
@@ -18264,9 +18406,10 @@ document.getElementById('hdrFwx')?.addEventListener('keydown', e => { if(e.key =
 
 /* v3.20 — weather at the working locations (positions from Vessel Setup) */
 initFieldWeather({
-  locations: () => LOC_ALL.map(l => ({ id: l.id, name: l.name, c: getLocBase(l.id), lat: l.lat, lon: l.lon })),
+  locations: () => [...LOC_ALL, ...S.customLocs].map(l => ({ id: l.id, name: l.name, c: getLocBase(l.id), lat: l.lat, lon: l.lon })),
   activeIds: () => S.activeLocs.slice(),
-  onUpdate:  () => { if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip(); _hfwKey = ''; updateHeaderFieldWx(); },
+  onUpdate:  () => { if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip(); _hfwKey = ''; updateHeaderFieldWx();
+                     const lp = document.getElementById('locPop'); if(lp && lp._render) lp._render(); },
   openUrl:   async url => {
     if(_isTauri()){
       try{ const { openUrl } = await import('@tauri-apps/plugin-opener'); await openUrl(url); return; }

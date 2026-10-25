@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.23.0',
+    date: '2026-10-25',
+    highlights: [ 'Weather works out of the box', 'Click a location for its weather and position' ],
+    changes: [
+      { type: 'feature', text: 'Built-in locations come with their installation positions (NSTA register): Bleo Holm, GP3, Tartan, Claymore, Piper, Saltire, Montrose, Arbroath, Clyde, Fulmar, Auk, Beatrice — field weather shows at once, nothing to enter' },
+      { type: 'feature', text: 'Click a location card: weather there now, 48 h forecast, Windy, and its position — paste it from the ECDIS and press Set' },
+      { type: 'feature', text: 'Before a position is saved it is shown on a map (OpenStreetMap + OpenSeaMap) with the other locations around it; zoom in and out, drag the pin to correct it' },
+    ],
+  },
+  {
     version: '3.22.4',
     date: '2026-10-25',
     highlights: [ 'Flip-clock counters', 'Only what is on board' ],

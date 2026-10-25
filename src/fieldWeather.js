@@ -164,7 +164,7 @@ export function initFieldWeather(api){
   if(DATA && !DATA.loc) DATA = null;
   clearInterval(timer);
   timer = setInterval(() => { if(located().length) refresh(false); }, 5 * 60 * 1000);
-  setTimeout(() => { if(located().length) refresh(false); }, 4000);
+  setTimeout(() => { if(located().length) refresh(false); }, 1500);
 }
 
 /* Row for "now" (the current hour) */
