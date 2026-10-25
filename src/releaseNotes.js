@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.22.2',
+    date: '2026-10-25',
+    highlights: [ 'Port and field weather side by side' ],
+    changes: [
+      { type: 'improvement', text: 'The header keeps the port / city weather and shows the weather at the working location next to it' },
+    ],
+  },
+  {
     version: '3.22.1',
     date: '2026-10-25',
     highlights: [ 'Exact Windy colour scales' ],

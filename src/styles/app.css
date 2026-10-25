@@ -17726,3 +17726,5 @@ body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb-sp-poly .cb3:not(.cb3-s
 .fwx-c.fwx-s{ font-size:10.5px; gap:2px; }
 .fwx-c.fwx-s small{ opacity:.7; font-size:9px; }
 .fwx-tl-k > div{ justify-content:center; }
+
+#hdrFwxDiv[hidden]{ display:none !important; }

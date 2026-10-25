@@ -15028,8 +15028,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.22.1';
-const APP_VERSION   = '3.22.1';
+const CURRENT_BUILD = 'v3.22.2';
+const APP_VERSION   = '3.22.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18199,8 +18199,9 @@ function updateHeaderFieldWx(){
   if(!blk) return;
   const id = _workingLocId(), wx = id && fieldWxSummary(id);
   const key = wx ? [id, wx.ws, wx.wg, wx.wd, wx.hs, wx.unit, wx.at].join('|') : '';
-  const city = document.querySelector('.info-peterhead');
-  blk.hidden = !wx; if(city) city.hidden = !!wx;
+  /* v3.22.2 — the port / city weather stays next to it (both shown) */
+  blk.hidden = !wx;
+  const dv = document.getElementById('hdrFwxDiv'); if(dv) dv.hidden = !wx;
   if(key === _hfwKey) return;
   _hfwKey = key;
   if(!wx){ blk.innerHTML = ''; return; }
