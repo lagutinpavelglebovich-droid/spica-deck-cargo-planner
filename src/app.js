@@ -69,12 +69,8 @@ window.__spicaIsViewer = () => !isOperator();
 ════════════════════════════════════════════════════════════ */
 const SPICA_CONFIG = {
 
-  /* ── Admin ────────────────────────────────────────────────
-     SHA-256 of ('spica-tide-admin:' + password) for header edit mode.
-     The plain password is not shipped in the bundle. To change it, run
-     node -e "console.log(require('crypto').createHash('sha256').update('spica-tide-admin:'+'NEW').digest('hex'))"
-     and paste the hex here. */
-  ADMIN_PASSWORD_SHA256: '3da0959fb45b08934b44828ebc6dc80362a0e7c8cb367145fbb0095edbe557f3',
+  /* v3.18 — no admin password any more: Vessel Setup and header editing
+     ask for a plain confirmation instead (owner's decision, 2026-10-25). */
 
   /* ── Brand / Header labels ─────────────────────────────────
      These are the default values. Once edited in admin mode
@@ -265,20 +261,17 @@ function bindCharterModal(){
 }
 
 let _adminUnlockTarget = null;   /* v3.12 — callback instead of header edit */
+/* v3.18 — confirmation instead of a password. */
 function adminOpenModal(target, title, hint){
   const ov = document.getElementById('adminModalOv');
-  const inp = document.getElementById('adminPwInput');
-  const err = document.getElementById('adminPwErr');
   if(!ov) return;
   _adminUnlockTarget = typeof target === 'function' ? target : null;
   const tEl = ov.querySelector('.admin-modal-title'), lEl = ov.querySelector('.admin-modal-lbl'), bEl = document.getElementById('adminModalUnlock');
-  if(tEl) tEl.textContent = _adminUnlockTarget ? (title || 'Admin Access') : 'Admin Access';
-  if(lEl) lEl.textContent = _adminUnlockTarget ? (hint || 'Enter admin password') : 'Enter admin password to unlock editing';
-  if(bEl) bEl.textContent = _adminUnlockTarget ? 'Unlock' : 'Unlock Editing';
-  inp.value = '';
-  err.classList.remove('show');
+  if(tEl) tEl.textContent = _adminUnlockTarget ? (title || 'Confirm') : 'Edit header';
+  if(lEl) lEl.textContent = _adminUnlockTarget ? (hint || 'Continue?') : 'Edit the vessel name and titles in the header?';
+  if(bEl) bEl.textContent = _adminUnlockTarget ? 'Open' : 'Edit';
   ov.classList.add('open');
-  setTimeout(() => inp.focus(), 120);
+  setTimeout(() => bEl && bEl.focus(), 120);
 }
 
 function adminCloseModal(){
@@ -300,30 +293,10 @@ function _trackRibbonBottom(){
   window.addEventListener('resize', apply);
 }
 
-async function _adminHash(pw){
-  if(!(window.crypto && crypto.subtle)) return '';
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('spica-tide-admin:' + pw));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function adminValidate(){
-  const inp = document.getElementById('adminPwInput');
-  const err = document.getElementById('adminPwErr');
-  if(!inp) return;
-  const ok = (await _adminHash(inp.value)) === SPICA_CONFIG.ADMIN_PASSWORD_SHA256;
-  if(ok){
-    const target = _adminUnlockTarget; _adminUnlockTarget = null;
-    adminCloseModal();
-    if(target) target(); else adminEnterEditMode();
-  } else {
-    err.classList.add('show');
-    inp.value = '';
-    inp.focus();
-    /* Brief shake animation */
-    inp.style.transform = 'translateX(-4px)';
-    setTimeout(() => { inp.style.transform = 'translateX(4px)'; }, 60);
-    setTimeout(() => { inp.style.transform = ''; }, 120);
-  }
+function adminValidate(){
+  const target = _adminUnlockTarget; _adminUnlockTarget = null;
+  adminCloseModal();
+  if(target) target(); else adminEnterEditMode();
 }
 
 function adminEnterEditMode(){
@@ -410,10 +383,9 @@ function bindAdmin(){
   /* Modal: unlock button */
   document.getElementById('adminModalUnlock')?.addEventListener('click', adminValidate);
 
-  /* Modal: Enter key submits */
-  document.getElementById('adminPwInput')?.addEventListener('keydown', e => {
-    if(e.key === 'Enter') adminValidate();
-    if(e.key === 'Escape') adminCloseModal();
+  /* Modal: Esc cancels (Enter on the focused button confirms) */
+  document.getElementById('adminModalOv')?.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ e.preventDefault(); adminCloseModal(); }
   });
 
   /* Exit admin mode */
@@ -522,24 +494,47 @@ const SPICA_TIDE_BAYS_M = [
      { schema, id, name, deckWidthM, jointM, bay1At:'bow'|'stern',
        bays:[{l, usable}]  (aft → fore),
        maxLoadT, maxPressureT, deckAreaM2,
-       zones:[{id, type, label, x, y, w, h, r?}],
-       lashing:{ dollies:[boundary idx], drings:[bay idx] } }
-   Zone types: tiger · hose · store · skip · restricted (excluded from
-   Deck Used) · nodg (DG limit + hatch) · methanol (arc line in its box).
+       zones:[{id, type, label, x, y, w, h, r?,
+               shape?, rot?, fill?, color?, sw?, fs?, blocks?}],
+       lashing:{ points:[{id, k:'dolly'|'dring', x, y}] } }
+   Zone types: see ZONE_TYPES. `blocks` overrides the type default for
+   Deck Used; fill/color/sw/shape/rot are optional style overrides (v3.18).
+   v3.12–3.17 stored lashing as { dollies:[boundary idx], drings:[bay
+   idx] } — normaliseVesselProfile() converts that to explicit points
+   at exactly the same positions.
 ═══════════════════════════════════════════════════════════════════════ */
 const VESSEL_SCHEMA = 1;
 const VESSEL_STORE_KEY = 'spicaTide_vessel';
-const ZONE_BLOCKING = new Set(['tiger','hose','store','workshop','skip','restricted']);
+/* blocks: excluded from Deck Used by default · shapes: drawable outlines
+   · c: colour used when the operator picks a custom fill. */
 const ZONE_TYPES = {
-  hose:       { name:'Hose bay',        label:'HOSE BAY' },
-  restricted: { name:'No cargo area',   label:'NO CARGO' },
-  nodg:       { name:'No DG area',      label:'NO DG CARGO' },
-  store:      { name:'Store',           label:'STORE' },
-  workshop:   { name:'Workshop',        label:'WORKSHOP' },
-  skip:       { name:'Waste skip',      label:"SHIP'S WASTE SKIP" },
-  tiger:      { name:'Tiger strip',     label:'' },
-  methanol:   { name:'Methanol line',   label:'METHANOL ZONE' },
+  hose:       { name:'Hose bay',        label:'HOSE BAY',          blocks:true,  c:'#8a7a52' },
+  restricted: { name:'No cargo area',   label:'NO CARGO',          blocks:true,  c:'#8a7a52' },
+  nodg:       { name:'No DG area',      label:'NO DG CARGO',       blocks:false, c:'#dc2626' },
+  store:      { name:'Store',           label:'STORE',             blocks:true,  c:'#7a6a44' },
+  workshop:   { name:'Workshop',        label:'WORKSHOP',          blocks:true,  c:'#7a6a44' },
+  skip:       { name:'Waste skip',      label:"SHIP'S WASTE SKIP", blocks:true,  c:'#8b8d84' },
+  tiger:      { name:'Tiger strip',     label:'',                  blocks:true,  c:'#b08a2a' },
+  methanol:   { name:'Methanol zone',   label:'METHANOL ZONE',     blocks:false, c:'#ca9e00', shapes:['arc','circle','semi','quarter','rect'] },
+  moonpool:   { name:'Moonpool',        label:'MOONPOOL',          blocks:true,  c:'#2f5f8a', shapes:['circle','rect'] },
+  hatch:      { name:'Hatch',           label:'HATCH',             blocks:false, c:'#5e6058', shapes:['rect','circle'] },
+  opening:    { name:'Barrier opening', label:'OPENING',           blocks:false, c:'#e0a800' },
+  text:       { name:'Text label',      label:'TEXT',              blocks:false, c:'#31332c' },
 };
+const ZONE_SHAPES = { arc:'Arc line', circle:'Circle', semi:'Semicircle', quarter:'Quarter circle', rect:'Rectangle' };
+const ZONE_FILLS = { default:'Standard', stripes:'Stripes', solid:'Solid colour', gradient:'Gradient', none:'Outline only' };
+/* Does this zone take its area out of Deck Used? */
+function zoneBlocks(z){ return z.blocks != null ? !!z.blocks : !!(ZONE_TYPES[z.type] && ZONE_TYPES[z.type].blocks); }
+/* Share of the bounding box a shape really covers (for Deck Used). */
+function _zoneAreaFactor(z){
+  const sh = _zoneShape(z);
+  return sh === 'rect' || !sh ? 1 : sh === 'arc' ? 0.5 : Math.PI / 4;
+}
+function _zoneShape(z){
+  const t = ZONE_TYPES[z.type];
+  if(!t || !t.shapes) return null;
+  return t.shapes.includes(z.shape) ? z.shape : t.shapes[0];
+}
 
 let BAY_LENGTHS_M = SPICA_TIDE_BAYS_M.slice();
 let JOINT_WIDTH_M = 0.15;                        /* structural joint between bays */
@@ -771,7 +766,7 @@ function normaliseVesselProfile(p){
     charterer: p.charterer == null ? '' : String(p.charterer).replace(/\s+/g, ' ').trim().slice(0, 28),
     locations: _normaliseLocations(p.locations),
     zones: [],
-    lashing: { dollies:[], drings:[] },
+    lashing: { points:[] },
   };
   const deckL = bays.reduce((a,b) => a + b.l, 0) + (bays.length - 1) * out.jointM;
   (Array.isArray(p.zones) ? p.zones : []).slice(0, 60).forEach((z, k) => {
@@ -779,17 +774,48 @@ function normaliseVesselProfile(p){
     /* clamp into the deck (never drop a zone because the deck shrank) */
     const x = num(z.x, 0, Math.max(0, deckL - 0.1), 0), y = num(z.y, 0, Math.max(0, out.deckWidthM - 0.1), 0);
     const w = num(z.w, 0.1, deckL - x, 1), h = num(z.h, 0.1, out.deckWidthM - y, 1);
+    const T = ZONE_TYPES[z.type];
     const zz = { id: String(z.id || ('z' + k)).slice(0, 40), type: z.type,
-                 label: String(z.label == null ? ZONE_TYPES[z.type].label : z.label).slice(0, 40),
+                 label: String(z.label == null ? T.label : z.label).slice(0, 40),
                  x:_r4(x), y:_r4(y), w:_r4(w), h:_r4(h) };
-    if(z.type === 'methanol') zz.r = _r4(num(z.r, 0.5, 200, Math.max(w, h)));
+    if(T.shapes){
+      zz.shape = T.shapes.includes(z.shape) ? z.shape : T.shapes[0];
+      if(zz.shape === 'arc') zz.r = _r4(num(z.r, 0.5, 200, Math.max(w, h)));
+    }
+    const rot = parseInt(z.rot, 10);
+    if(rot >= 1 && rot <= 3) zz.rot = rot;
+    if(ZONE_FILLS[z.fill] && z.fill !== 'default') zz.fill = z.fill;
+    if(/^#[0-9a-f]{6}$/i.test(z.color || '')) zz.color = z.color.toLowerCase();
+    if(z.sw != null && isFinite(parseFloat(z.sw))) zz.sw = _r4(num(z.sw, 0, 24, 2));
+    if(z.type === 'text') zz.fs = Math.round(num(z.fs, 6, 90, 14));
+    if(typeof z.blocks === 'boolean' && z.blocks !== T.blocks) zz.blocks = z.blocks;
     out.zones.push(zz);
   });
-  if(p.lashing && typeof p.lashing === 'object'){
+  /* Lashing points — explicit {k,x,y} in metres. Legacy dollies (bay
+     boundary index, both deck edges) and D-rings (mid-bay, both edges)
+     are expanded at exactly the positions they used to be drawn at. */
+  const L = (p.lashing && typeof p.lashing === 'object') ? p.lashing : {};
+  const pts = [];
+  if(Array.isArray(L.points)){
+    L.points.slice(0, 400).forEach((q, k) => {
+      if(!q || !isFinite(parseFloat(q.x)) || !isFinite(parseFloat(q.y))) return;
+      pts.push({ id: String(q.id || ('lp' + k)).slice(0, 40), k: q.k === 'dring' ? 'dring' : 'dolly',
+                 x: _r4(num(q.x, 0, deckL, 0)), y: _r4(num(q.y, 0, out.deckWidthM, 0)) });
+    });
+  } else {
     const ints = a => (Array.isArray(a) ? a : []).map(v => parseInt(v, 10)).filter(v => isFinite(v) && v >= 0);
-    out.lashing.dollies = ints(p.lashing.dollies).filter(v => v <= bays.length);
-    out.lashing.drings  = ints(p.lashing.drings).filter(v => v < bays.length);
+    const startM = i => { let m = 0; for(let q = 0; q < i; q++) m += bays[q].l + out.jointM; return m; };
+    let n = 0;
+    ints(L.dollies).filter(v => v <= bays.length).forEach(k => {
+      const x = k <= 0 ? 0 : k >= bays.length ? deckL : startM(k);
+      [0, out.deckWidthM].forEach(y => pts.push({ id: 'lp' + (n++), k: 'dolly', x: _r4(x), y }));
+    });
+    ints(L.drings).filter(v => v < bays.length).forEach(i => {
+      const x = startM(i) + bays[i].l / 2;
+      [0, out.deckWidthM].forEach(y => pts.push({ id: 'lp' + (n++), k: 'dring', x: _r4(x), y }));
+    });
   }
+  out.lashing = { points: pts };
   const cam = _normaliseCamera(p.camera, bays.length);
   if(cam) out.camera = cam;
   return out;
@@ -845,7 +871,7 @@ function applyVesselGeometry(profile){
   VESSEL = p;
   LOC_ALL = p.locations.map(l => Object.assign({}, l, { aliases: l.aliases.slice() }));
   _computeGeometry(p.bays.map(b => b.l), p.jointM, p.deckWidthM);
-  ZONES_PX = p.zones.map(z => Object.assign({ id:z.id, type:z.type, label:z.label }, _zoneMToPx(z),
+  ZONES_PX = p.zones.map(z => Object.assign({}, z, _zoneMToPx(z),
     z.r != null ? { r: Math.round(z.r * M) } : {}));
   /* Deck Used: spans of usable bays (joints between two usable bays count
      too), minus blocking zones that fall inside them. */
@@ -858,7 +884,7 @@ function applyVesselGeometry(profile){
   });
   const inUsable = (x0, x1) => USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + Math.max(0, Math.min(x1, u1) - Math.max(x0, u0)), 0);
   const total = USABLE_RANGES_PX.reduce((a, [u0, u1]) => a + (u1 - u0), 0) * CVH;
-  const blocked = ZONES_PX.filter(z => ZONE_BLOCKING.has(z.type)).reduce((a, z) => a + inUsable(z.x, z.x + z.w) * z.h, 0);
+  const blocked = ZONES_PX.filter(zoneBlocks).reduce((a, z) => a + inUsable(z.x, z.x + z.w) * z.h * _zoneAreaFactor(z), 0);
   DECK_USABLE_AREA_PX = Math.max(1, total - blocked);
   return p;
 }
@@ -2208,6 +2234,112 @@ function _isBuiltinGeometry(){
   const d = spicaTideProfile();
   return JSON.stringify(d.bays) === JSON.stringify(VESSEL.bays) && d.jointM === VESSEL.jointM && d.deckWidthM === VESSEL.deckWidthM;
 }
+/* ── v3.18 — zone styling helpers ───────────────────────────────────── */
+function _hexRgb(h){ const n = parseInt(String(h).slice(1), 16) || 0; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function _rgba(h, a){ const [r, g, b] = _hexRgb(h); return `rgba(${r},${g},${b},${a})`; }
+/* k < 0 darker, k > 0 lighter */
+function _shade(h, k){ return 'rgb(' + _hexRgb(h).map(v => Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k)).join(',') + ')'; }
+/* Custom fill on a div zone. Standard look (no fill/colour set) is left
+   to the stylesheet. Stripes get a flat stand-in for the PDF snapshot
+   (html2canvas cannot draw repeating gradients) via data-flat. */
+function _applyZoneFill(el, z){
+  if(!z.fill && !z.color) return;
+  const c = z.color || ZONE_TYPES[z.type].c, f = z.fill || 'stripes';
+  const set = (k, v) => el.style.setProperty(k, v, 'important');
+  if(f === 'stripes'){
+    set('background', `repeating-linear-gradient(135deg,${_rgba(c,.30)} 0 6px,${_rgba(c,.08)} 6px 12px)`);
+    el.dataset.flat = _rgba(c, .18);
+  } else if(f === 'solid') set('background', _rgba(c, .24));
+  else if(f === 'gradient') set('background', `linear-gradient(135deg,${_rgba(c,.44)},${_rgba(c,.06)})`);
+  else set('background', 'transparent');
+  set('border', f === 'none' ? `1.5px dashed ${_rgba(c,.62)}` : `1px solid ${_rgba(c,.38)}`);
+  set('box-shadow', 'none');
+  el.classList.add('z-custom');
+  el.style.setProperty('--zc-d', _shade(c, -.45));
+  el.style.setProperty('--zc-l', _shade(c, .55));
+}
+const _SVGNS = 'http://www.w3.org/2000/svg';
+function _svgEl(tag, attrs){ const e = document.createElementNS(_SVGNS, tag); for(const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+/* Outline (line) and filled area of a shape in its own box (0,0)–(w,h).
+   rot: semi = side of the flat edge (0 top · 1 right · 2 bottom · 3 left);
+   quarter = corner it is centred on (0 TL · 1 TR · 2 BR · 3 BL);
+   arc = which corners it joins (0 TL→BR, 1 TR→BL, 2 BL→TR, 3 BR→TL). */
+function _shapePaths(sh, rot, w, h, R){
+  rot = rot || 0;
+  if(sh === 'rect'){ const d = `M0 0H${w}V${h}H0Z`; return { line:d, area:d }; }
+  if(sh === 'circle'){ const d = `M0 ${h/2}A${w/2} ${h/2} 0 1 0 ${w} ${h/2}A${w/2} ${h/2} 0 1 0 0 ${h/2}Z`; return { line:d, area:d }; }
+  if(sh === 'semi'){
+    const line = [`M${w} 0A${w/2} ${h} 0 0 1 0 0`, `M${w} ${h}A${w} ${h/2} 0 0 1 ${w} 0`,
+                  `M${w} ${h}A${w/2} ${h} 0 0 0 0 ${h}`, `M0 ${h}A${w} ${h/2} 0 0 0 0 0`][rot];
+    return { line, area: line + 'Z' };
+  }
+  if(sh === 'quarter'){
+    const q = [[`M${w} 0A${w} ${h} 0 0 1 0 ${h}`, `L0 0Z`], [`M${w} ${h}A${w} ${h} 0 0 1 0 0`, `L${w} 0Z`],
+               [`M0 ${h}A${w} ${h} 0 0 1 ${w} 0`, `L${w} ${h}Z`], [`M0 0A${w} ${h} 0 0 1 ${w} ${h}`, `L0 ${h}Z`]][rot];
+    return { line: q[0], area: q[0] + q[1] };
+  }
+  /* arc between two corners with radius R, closed through the third corner */
+  const a = [[0, 0, w, h, 1, 0, h], [w, 0, 0, h, 0, w, h], [0, h, w, 0, 0, 0, 0], [w, h, 0, 0, 1, w, 0]][rot];
+  const line = `M${a[0]} ${a[1]}A${R} ${R} 0 0 ${a[4]} ${a[2]} ${a[3]}`;
+  return { line, area: `${line}L${a[5]} ${a[6]}Z` };
+}
+function _shapeZoneEl(z){
+  const T = ZONE_TYPES[z.type], sh = _zoneShape(z), c = z.color || T.c;
+  const legacy = z.type === 'methanol' && !z.color;          /* built-in look, unchanged */
+  const w = Math.max(1, z.w), h = Math.max(1, z.h);
+  /* Full-canvas SVG like the original methanol arc: an arc may bulge out of
+     its box, and the PDF snapshot clips every SVG to its own size. */
+  const svg = _svgEl('svg', { width: TW, height: CVH });
+  svg.setAttribute('class', 'deck-shape deck-shape-' + z.type);
+  svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:4;overflow:visible;';
+  svg.dataset.zoneId = z.id;
+  svg.style.setProperty('--zc-l', _shade(c, .6));
+  const P = _shapePaths(sh, z.rot, w, h, z.r || Math.max(w, h));
+  const fill = z.fill || (z.type === 'moonpool' ? 'gradient' : z.type === 'hatch' ? 'solid' : 'none');
+  let paint = null;
+  if(fill === 'solid') paint = _rgba(c, z.type === 'hatch' ? .14 : .18);
+  else if(fill === 'gradient'){
+    const g = _svgEl('radialGradient', { id: 'zg-' + z.id, cx: '50%', cy: '50%', r: '60%' });
+    g.appendChild(_svgEl('stop', { offset: '0', 'stop-color': _rgba(c, z.type === 'moonpool' ? .62 : .42) }));
+    g.appendChild(_svgEl('stop', { offset: '1', 'stop-color': _rgba(c, z.type === 'moonpool' ? .26 : .08) }));
+    svg.appendChild(_svgEl('defs', {})).appendChild(g);
+    paint = `url(#zg-${z.id})`;
+  } else if(fill === 'stripes'){
+    const pt = _svgEl('pattern', { id: 'zp-' + z.id, patternUnits: 'userSpaceOnUse', width: 12, height: 12, patternTransform: 'rotate(45)' });
+    pt.appendChild(_svgEl('rect', { x: 0, y: 0, width: 12, height: 12, fill: _rgba(c, .07) }));
+    pt.appendChild(_svgEl('rect', { x: 0, y: 0, width: 6, height: 12, fill: _rgba(c, .28) }));
+    svg.appendChild(_svgEl('defs', {})).appendChild(pt);
+    paint = `url(#zp-${z.id})`;
+  }
+  const g0 = _svgEl('g', { transform: `translate(${z.x} ${z.y})` });
+  if(paint) g0.appendChild(_svgEl('path', { d: P.area, fill: paint, stroke: 'none' }));
+  const sw = z.sw != null ? z.sw : z.type === 'methanol' ? 6 : z.type === 'moonpool' ? 2 : 1.5;
+  if(sw > 0){
+    g0.appendChild(_svgEl('path', { d: P.line, fill: 'none', 'stroke-width': sw, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      stroke: legacy ? 'rgba(202,158,0,0.28)' : _rgba(c, z.type === 'methanol' ? .6 : .75) }));
+  }
+  if(z.type === 'hatch'){
+    const xs = sh === 'circle' ? [[w / 2, 0, w / 2, h], [0, h / 2, w, h / 2]] : [[0, 0, w, h], [w, 0, 0, h]];
+    xs.forEach(q => g0.appendChild(_svgEl('line', { x1: q[0], y1: q[1], x2: q[2], y2: q[3], stroke: _rgba(c, .45), 'stroke-width': 1 })));
+  }
+  if(z.label && (z.type !== 'hatch' || w >= 34)){
+    const arcLbl = sh === 'arc';
+    const t = _svgEl('text', arcLbl
+      ? { x: 14, y: -14, 'text-anchor': 'start' }
+      : { x: w / 2, y: h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+    t.setAttribute('font-family', 'Manrope,sans-serif');
+    t.setAttribute('font-size', z.type === 'hatch' ? '7' : '9.5');
+    t.setAttribute('font-weight', z.type === 'methanol' ? '700' : '800');
+    t.setAttribute('letter-spacing', z.type === 'hatch' ? '.6' : '1.5');
+    t.setAttribute('fill', legacy ? 'rgba(133,97,0,0.40)' : z.type === 'moonpool' ? 'rgba(255,255,255,0.88)' : _shade(c, -.45));
+    if(!legacy && z.type !== 'moonpool') t.setAttribute('class', 'zl');
+    t.textContent = z.label;
+    g0.appendChild(t);
+  }
+  svg.appendChild(g0);
+  return svg;
+}
+
 function drawDeckStatics(){
   const cv=document.getElementById('cvDECK');
   if(!cv) return;
@@ -2262,11 +2394,14 @@ function drawDeckStatics(){
   });
 
   /* Zones — drawn in the historic order so the built-in profile stacks
-     exactly as before: plain zones, NO DG, methanol arc, lashing, skip. */
+     exactly as before: plain zones, NO DG, shapes (methanol arc), lashing,
+     skip; then v3.18 elements: barrier openings and text labels. */
   const Z = ZONES_PX;
   Z.filter(z => ['tiger','hose','store','workshop','restricted'].includes(z.type)).forEach(z => {
     addZone(frag, z.x, z.y, z.w, z.h, z.type === 'restricted' ? 'hose' : z.type === 'workshop' ? 'store' : z.type, z.label || '');
-    frag.lastChild.dataset.zoneId = z.id;
+    const el = frag.lastChild;
+    el.dataset.zoneId = z.id;
+    _applyZoneFill(el, z);
   });
 
   Z.filter(z => z.type === 'nodg').forEach(z => {
@@ -2281,6 +2416,7 @@ function drawDeckStatics(){
     nodg.style.cssText=`position:absolute;left:${DGX}px;top:${z.y}px;width:${z.w}px;height:${full ? '100%' : z.h + 'px'};pointer-events:none;z-index:2;
     background:repeating-linear-gradient(45deg,rgba(220,38,38,.055),rgba(220,38,38,.055) 6px,transparent 6px,transparent 12px);
     border-left:2px dashed rgba(220,38,38,.45);`;
+    _applyZoneFill(nodg, z);
     frag.appendChild(nodg);
     /* Big NO DG CARGO label — rotated when the zone is tall and narrow */
     const vertical = z.h > z.w;
@@ -2292,44 +2428,20 @@ function drawDeckStatics(){
     letter-spacing:3px;text-transform:uppercase;color:rgba(180,30,30,.22);
     transform:rotate(${vertical ? -90 : 0}deg);white-space:nowrap;"></span>`;
     lbl.firstElementChild.textContent = z.label || 'No DG Cargo';
+    if(z.color) lbl.firstElementChild.style.color = _rgba(z.color, .26);
     frag.appendChild(lbl);
   });
 
-  /* ── METHANOL LINE — circular arc across its box (built-in: R=340 px
-     circle from (0,102) to the Bay 9 aft edge on the STBD side). */
-  Z.filter(z => z.type === 'methanol').forEach(z => {
-    const svgNS='http://www.w3.org/2000/svg';
-    const msvg=document.createElementNS(svgNS,'svg');
-    msvg.setAttribute('width',TW);
-    msvg.setAttribute('height',CVH);
-    msvg.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:4;overflow:visible;';
-    msvg.dataset.zoneId = z.id;
-    const R = z.r || Math.max(z.w, z.h);
-    const arcPath=document.createElementNS(svgNS,'path');
-    arcPath.setAttribute('d',`M ${z.x} ${z.y} A ${R} ${R} 0 0 1 ${z.x + z.w} ${z.y + z.h}`);
-    arcPath.setAttribute('stroke','rgba(202,158,0,0.28)');
-    arcPath.setAttribute('stroke-width','6');
-    arcPath.setAttribute('fill','none');
-    arcPath.setAttribute('stroke-linecap','round');
-    msvg.appendChild(arcPath);
-    const mtxt=document.createElementNS(svgNS,'text');
-    mtxt.setAttribute('x', z.x + 14);
-    mtxt.setAttribute('y', z.y - 14);
-    mtxt.setAttribute('font-family','Manrope,sans-serif');
-    mtxt.setAttribute('font-size','9.5');
-    mtxt.setAttribute('font-weight','700');
-    mtxt.setAttribute('letter-spacing','1.5');
-    mtxt.setAttribute('fill','rgba(133,97,0,0.40)');
-    mtxt.setAttribute('text-anchor','start');
-    mtxt.textContent=z.label || '';
-    msvg.appendChild(mtxt);
-    frag.appendChild(msvg);
-  });
+  /* ── Drawn shapes: methanol zone (built-in: R=340 px arc from (0,102)
+     to the Bay 9 aft edge on the STBD side), moonpools, hatches. */
+  Z.filter(z => ZONE_TYPES[z.type] && ZONE_TYPES[z.type].shapes).forEach(z => frag.appendChild(_shapeZoneEl(z)));
 
-  /* Lashing dollies (bay boundaries) and D-rings (mid-bay) */
-  const L = (VESSEL && VESSEL.lashing) || { dollies:[], drings:[] };
-  L.dollies.forEach(k => { const lx = k <= 0 ? 0 : k >= BAY_COUNT ? TW : BL_[k]; addDolly(frag,lx,0);addDolly(frag,lx,CVH); });
-  L.drings.forEach(i => { if(i >= BAY_COUNT) return; const lx = BL_[i]+Math.round(BW[i]/2); addDring(frag,lx,0);addDring(frag,lx,CVH); });
+  /* Lashing points — dollies (filled) and D-rings (open) */
+  ((VESSEL && VESSEL.lashing && VESSEL.lashing.points) || []).forEach(q => {
+    const lx = metersToDeckX(q.x), ly = Math.max(0, Math.min(CVH, Math.round(q.y * YS)));
+    (q.k === 'dring' ? addDring : addDolly)(frag, lx, ly);
+    frag.lastChild.dataset.lpId = q.id;
+  });
 
   /* Waste skip(s) */
   Z.filter(z => z.type === 'skip').forEach(z => {
@@ -2337,7 +2449,38 @@ function drawDeckStatics(){
     skip.style.cssText=`left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;`;
     const words = String(z.label || '').split(/\s+/).filter(Boolean);
     words.forEach((w, k) => { if(k) skip.appendChild(document.createElement('br')); skip.appendChild(document.createTextNode(w.charAt(0) + w.slice(1).toLowerCase())); });
+    _applyZoneFill(skip, z);
     frag.appendChild(skip);
+  });
+
+  /* Openings in the crash barrier — hazard-striped bar + label on the deck side */
+  Z.filter(z => z.type === 'opening').forEach(z => {
+    const c = z.color || ZONE_TYPES.opening.c;
+    const o = document.createElement('div'); o.className = 'deck-opening'; o.dataset.zoneId = z.id;
+    o.style.cssText = `left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;`;
+    o.style.setProperty('background', `repeating-linear-gradient(45deg,${_rgba(c,.9)} 0 5px,rgba(28,28,26,.78) 5px 10px)`, 'important');
+    o.dataset.flat = _rgba(c, .9);
+    frag.appendChild(o);
+    if(z.label){
+      const top = z.y + z.h / 2 < CVH / 2;
+      const l = document.createElement('div'); l.className = 'deck-opening-lbl';
+      l.style.cssText = `left:${z.x}px;width:${z.w}px;top:${top ? z.y + z.h + 2 : z.y - 12}px;`;
+      l.textContent = z.label;
+      frag.appendChild(l);
+    }
+  });
+
+  /* Free text labels painted on the deck */
+  Z.filter(z => z.type === 'text').forEach(z => {
+    const t = document.createElement('div'); t.className = 'deck-text'; t.dataset.zoneId = z.id;
+    t.style.cssText = `left:${z.x}px;top:${z.y}px;width:${z.w}px;height:${z.h}px;font-size:${z.fs || 14}px;`;
+    if(z.color){ t.classList.add('z-custom'); t.style.setProperty('--zc-d', _rgba(z.color, .85)); t.style.setProperty('--zc-l', _shade(z.color, .6)); }
+    const sp = document.createElement('span');
+    const deg = [0, 90, 180, -90][z.rot || 0];
+    if(deg) sp.style.transform = `rotate(${deg}deg)`;
+    sp.textContent = z.label || '';
+    t.appendChild(sp);
+    frag.appendChild(t);
   });
 
   /* DG exclusion overlay (pending placement) */
@@ -2372,7 +2515,7 @@ const _vsF = (v, d = 2) => (Math.round((+v || 0) * Math.pow(10, d)) / Math.pow(1
 function vesselSetupRequest(){
   if(!isOperator()){ showToast('Switch to Operator mode to set up the vessel', 'warn'); return; }
   if(VS) return;
-  adminOpenModal(vesselSetupOpen, 'Vessel Setup', 'Enter admin password to open Vessel Setup');
+  adminOpenModal(vesselSetupOpen, 'Vessel Setup', `Open Vessel Setup for ${(VESSEL && VESSEL.name) || 'this vessel'}? Changes to the deck, zones and locations apply to every plan of this vessel.`);
 }
 
 function vesselSetupOpen(){
@@ -2381,7 +2524,7 @@ function vesselSetupOpen(){
   if(typeof inspClose === 'function') inspClose();
   if(typeof CP_OPEN !== 'undefined' && CP_OPEN && typeof cpClose === 'function') cpClose();
   if(typeof kbDeselect === 'function') kbDeselect();
-  VS = { draft: _vsClone(VESSEL), orig: JSON.stringify(VESSEL), loaded: null, sel: null, mode: 'edit', delArm: false };
+  VS = { draft: _vsClone(VESSEL), orig: JSON.stringify(VESSEL), loaded: null, sel: null, selPt: null, place: null, mode: 'edit', delArm: false };
   VS.loaded = JSON.stringify(VS.draft);
   _vsBind();
   document.body.classList.add('vessel-setup');
@@ -2394,7 +2537,7 @@ function vesselSetupOpen(){
 
 function _vsClose(){
   VS = null;
-  document.body.classList.remove('vessel-setup');
+  document.body.classList.remove('vessel-setup', 'vs-placing');
   const panel = document.getElementById('vsPanel');
   if(panel){ panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); }
   document.getElementById('vsLayer')?.remove();
@@ -2442,6 +2585,7 @@ function _vsApply(opts = {}){
   const prevTW = TW, prevCVH = CVH;
   VS.draft = applyVesselGeometry(VS.draft);
   if(VS.sel && !VS.draft.zones.some(z => z.id === VS.sel)) VS.sel = null;
+  if(VS.selPt && !VS.draft.lashing.points.some(q => q.id === VS.selPt)) VS.selPt = null;
   drawDeckStatics();
   if(prevTW !== TW || prevCVH !== CVH){
     if(typeof renderAll === 'function') renderAll();
@@ -2460,6 +2604,12 @@ function _vsRenderMeta(){
   document.getElementById('vsTitle').textContent = d.name || 'Vessel';
   document.getElementById('vsBaysMeta').textContent = `${d.bays.length} bays · ${_fmtM2(DECK_LENGTH_M)} m`;
   document.getElementById('vsZonesMeta').textContent = d.zones.length ? String(d.zones.length) : '';
+  const used = d.bays.filter(b => b.usable).length;
+  const un = document.getElementById('vsUsedNote');
+  if(un) un.textContent = `Deck Used counts ${used} of ${d.bays.length} bays · ${Math.round(DECK_USABLE_AREA_PX / (M * YS))} m² clear of zones. Zones choose for themselves below.`;
+  const pts = (d.lashing && d.lashing.points) || [];
+  const lm = document.getElementById('vsLpMeta');
+  if(lm){ const nd = pts.filter(q => q.k === 'dolly').length; lm.textContent = `${nd} dollies · ${pts.length - nd} D-rings`; }
 }
 function _vsRenderVesselBar(){
   const sel = document.getElementById('vsVesselSel');
@@ -2587,6 +2737,7 @@ function _vsRenderPanel(){
   if(!d.zones.length) zl.innerHTML = '<div class="vs-empty">No zones yet — add one below.</div>';
   d.zones.forEach(z => {
     const sel = z.id === VS.sel;
+    const T = ZONE_TYPES[z.type];
     const row = document.createElement('div');
     row.className = 'vs-zone-row' + (sel ? ' sel' : '');
     row.dataset.id = z.id;
@@ -2594,47 +2745,73 @@ function _vsRenderPanel(){
         <i class="vs-sw vs-sw-${z.type}"></i>
         <span class="vs-zone-name"></span>
         <span class="vs-zone-pos">${_vsF(z.x,1)}–${_vsF(z.x + z.w,1)} m</span>
-        <button type="button" class="vs-del" title="Delete zone">×</button></div>`;
-    row.querySelector('.vs-zone-name').textContent = (z.label || ZONE_TYPES[z.type].name) + (z.label ? ' · ' + ZONE_TYPES[z.type].name : '');
+        <button type="button" class="vs-del" title="Delete">×</button></div>`;
+    if(z.color) row.querySelector('.vs-sw').style.cssText = `background:${z.color};border:0;`;
+    row.querySelector('.vs-zone-name').textContent = (z.label || T.name) + (z.label ? ' · ' + T.name : '');
     row.querySelector('.vs-zone-top').addEventListener('click', e => {
       if(e.target.closest('.vs-del')) return;
-      VS.sel = sel ? null : z.id; _vsDrawLayer(); _vsRenderPanel();
+      VS.sel = sel ? null : z.id; VS.selPt = null; _vsDrawLayer(); _vsRenderPanel();
     });
     row.querySelector('.vs-del').addEventListener('click', () => _vsDeleteZone(z.id));
     if(sel){
+      const sh = _zoneShape(z), isText = z.type === 'text';
+      const turnable = sh === 'arc' || sh === 'semi' || sh === 'quarter';
+      const opt = (o, cur) => Object.entries(o).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('');
       const ed = document.createElement('div');
       ed.className = 'vs-zone-edit';
       ed.innerHTML = `
-        <label class="vs-field"><span>Type</span><select data-k="type">${Object.entries(ZONE_TYPES).map(([k,t]) => `<option value="${k}" ${k===z.type?'selected':''}>${t.name}</option>`).join('')}</select></label>
-        <label class="vs-field"><span>Label</span><input type="text" data-k="label" maxlength="40"></label>
+        <label class="vs-field"><span>Type</span><select data-k="type">${opt(Object.fromEntries(Object.entries(ZONE_TYPES).map(([k,t]) => [k, t.name])), z.type)}</select></label>
+        <label class="vs-field"><span>${isText ? 'Text' : 'Label'}</span><input type="text" data-k="label" maxlength="40"></label>
         <label class="vs-field"><span>From aft (m)</span><input type="number" step="0.01" data-k="x" value="${_vsF(z.x)}"></label>
         <label class="vs-field"><span>From port (m)</span><input type="number" step="0.01" data-k="y" value="${_vsF(z.y)}"></label>
         <label class="vs-field"><span>Along (m)</span><input type="number" step="0.01" data-k="w" value="${_vsF(z.w)}"></label>
         <label class="vs-field"><span>Across (m)</span><input type="number" step="0.01" data-k="h" value="${_vsF(z.h)}"></label>
-        ${z.type === 'methanol' ? `<label class="vs-field"><span>Arc radius (m)</span><input type="number" step="0.1" data-k="r" value="${_vsF(z.r)}"></label>` : ''}
+        ${T.shapes ? `<label class="vs-field"><span>Shape</span><select data-k="shape">${opt(Object.fromEntries(T.shapes.map(k => [k, ZONE_SHAPES[k]])), sh)}</select></label>
+          ${turnable ? `<div class="vs-field"><span>Direction</span><button type="button" class="vs-btn vs-turn" data-act="turn" title="Turn the shape a quarter">↻ Turn</button></div>` : '<span></span>'}` : ''}
+        ${sh === 'arc' ? `<label class="vs-field"><span>Arc radius (m)</span><input type="number" step="0.1" data-k="r" value="${_vsF(z.r)}"></label>` : ''}
+        ${T.shapes ? `<label class="vs-field"><span>Line width (px)</span><input type="number" step="0.5" min="0" max="24" data-k="sw" value="${z.sw != null ? z.sw : z.type === 'methanol' ? 6 : z.type === 'moonpool' ? 2 : 1.5}"></label>` : ''}
+        ${isText ? `<label class="vs-field"><span>Text size (px)</span><input type="number" step="1" min="6" max="90" data-k="fs" value="${z.fs || 14}"></label>
+          <div class="vs-field"><span>Direction</span><div class="vs-seg vs-seg-sm">${[['0','→'],['3','↑'],['1','↓']].map(([r, g]) => `<button type="button" data-rot="${r}" class="${String(z.rot || 0) === r ? 'sel' : ''}">${g}</button>`).join('')}</div></div>` : ''}
+        ${!isText && z.type !== 'opening' ? `<label class="vs-field"><span>Fill</span><select data-k="fill">${opt(ZONE_FILLS, z.fill || 'default')}</select></label>` : ''}
+        <div class="vs-field"><span>Colour</span><div class="vs-color"><input type="color" data-k="color" value="${z.color || T.c}" aria-label="Colour">${z.color || z.fill ? '<button type="button" class="vs-btn vs-btn-quiet" data-act="std" title="Back to the standard look">Standard</button>' : ''}</div></div>
+        ${isText ? '' : `<label class="vs-check"><input type="checkbox" data-k="blocks" ${zoneBlocks(z) ? 'checked' : ''}><i></i><span>Blocks cargo — not counted in Deck Used</span></label>`}
         <div class="vs-btnrow vs-zone-acts">
           <button type="button" class="vs-btn" data-act="mirror" title="Copy to the other side of the deck (PORT ↔ STBD)">Copy to other side</button>
-          <button type="button" class="vs-btn" data-act="dup" title="Copy next to this zone">Duplicate</button>
+          <button type="button" class="vs-btn" data-act="dup" title="Copy next to this one">Duplicate</button>
         </div>`;
       ed.querySelector('[data-k="label"]').value = z.label || '';
-      ed.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => _vsCopyZone(z.id, btn.dataset.act === 'mirror')));
-      ed.querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', () => {
+      ed.querySelectorAll('[data-act="mirror"],[data-act="dup"]').forEach(btn => btn.addEventListener('click', () => _vsCopyZone(z.id, btn.dataset.act === 'mirror')));
+      ed.querySelector('[data-act="turn"]')?.addEventListener('click', () => { z.rot = ((z.rot || 0) + 1) % 4; _vsApply(); });
+      ed.querySelector('[data-act="std"]')?.addEventListener('click', () => { delete z.color; delete z.fill; _vsApply(); });
+      ed.querySelectorAll('[data-rot]').forEach(btn => btn.addEventListener('click', () => { z.rot = +btn.dataset.rot; _vsApply(); }));
+      ed.querySelectorAll('[data-k]').forEach(el => el.addEventListener(el.type === 'color' ? 'input' : 'change', () => {
         const k = el.dataset.k;
         if(k === 'type'){
           const wasDefault = !z.label || z.label === ZONE_TYPES[z.type].label;
           z.type = el.value;
-          if(wasDefault) z.label = ZONE_TYPES[z.type].label;
-          if(z.type === 'methanol' && z.r == null) z.r = Math.max(z.w, z.h);
+          const NT = ZONE_TYPES[z.type];
+          if(wasDefault) z.label = NT.label;
+          if(NT.shapes){ if(!NT.shapes.includes(z.shape)) z.shape = NT.shapes[0]; if(z.shape === 'arc' && z.r == null) z.r = Math.max(z.w, z.h); }
+          else { delete z.shape; delete z.r; delete z.sw; }
+          if(z.type === 'text'){ z.fs = z.fs || 14; delete z.fill; } else delete z.fs;
+          delete z.blocks;
         } else if(k === 'label') z.label = el.value;
+        else if(k === 'shape'){ z.shape = el.value; if(z.shape === 'arc' && z.r == null) z.r = Math.max(z.w, z.h); }
+        else if(k === 'fill'){ if(el.value === 'default') delete z.fill; else z.fill = el.value; }
+        else if(k === 'color'){ z.color = el.value; _vsColorLive(z); return; }
+        else if(k === 'blocks') z.blocks = el.checked;
         else z[k] = parseFloat(el.value) || 0;
         _vsApply();
       }));
+      /* colour picker: commit once the picker closes */
+      ed.querySelector('[data-k="color"]').addEventListener('change', () => _vsApply());
       row.appendChild(ed);
     }
     zl.appendChild(row);
   });
   const ts = document.getElementById('vsZoneType');
   if(ts && !ts.options.length) ts.innerHTML = Object.entries(ZONE_TYPES).map(([k,t]) => `<option value="${k}">${t.name}</option>`).join('');
+  _vsRenderLashing();
   _vsRenderLocs();
   _vsRenderMeta();
 }
@@ -2642,19 +2819,52 @@ function _vsRenderPanel(){
 /* ── Bays: keep zones and lashing attached to their physical place ──── */
 function _vsShiftZones(fromM, dM){
   VS.draft.zones.forEach(z => { if(z.x >= fromM - 0.001) z.x = Math.max(0, z.x + dM); });
+  VS.draft.lashing.points.forEach(q => { if(q.x >= fromM - 0.001) q.x = _r4(Math.max(0, q.x + dM)); });
 }
 function _vsBayStartM(i){
   const d = VS.draft; let m = 0;
   for(let k = 0; k < i; k++) m += d.bays[k].l + d.jointM;
   return m;
 }
+/* New bay lengths: every zone edge and lashing point keeps its place
+   relative to the bay (or joint) it is in — a D-ring in the middle of a
+   bay stays in the middle, a zone edge on a joint stays on that joint. */
+function _vsRemapBays(newLens){
+  const d = VS.draft, J = d.jointM, old = d.bays.map(b => b.l), n = old.length;
+  const map = m => {
+    let so = 0, sn = 0;
+    for(let i = 0; i < n; i++){
+      if(m <= so + old[i] + 1e-6) return sn + (old[i] > 0 ? Math.max(0, m - so) / old[i] : 0) * newLens[i];
+      so += old[i]; sn += newLens[i];
+      if(i < n - 1){ if(m <= so + J + 1e-6) return sn + (m - so); so += J; sn += J; }
+    }
+    return sn + (m - so);
+  };
+  d.zones.forEach(z => {
+    const x0 = map(z.x), x1 = map(z.x + z.w);
+    if(z.r && z.w) z.r = _r4(z.r * (x1 - x0) / z.w);
+    z.x = _r4(x0); z.w = _r4(Math.max(0.1, x1 - x0));
+  });
+  d.lashing.points.forEach(q => { q.x = _r4(map(q.x)); });
+  newLens.forEach((l, i) => { d.bays[i].l = _r4(l); });
+}
 function _vsSetBayLength(i, l){
   const d = VS.draft;
   if(!isFinite(l)) return _vsRenderPanel();
   l = Math.min(30, Math.max(0.5, l));
-  const dM = l - d.bays[i].l;
-  _vsShiftZones(_vsBayStartM(i) + d.bays[i].l, dM);
-  d.bays[i].l = l;
+  const lens = d.bays.map(b => b.l); lens[i] = l;
+  _vsRemapBays(lens);
+  _vsApply();
+}
+/* Deck width: zones and lashing points on the STBD edge stay on it,
+   full-width zones stretch. */
+function _vsSetWidth(v){
+  const d = VS.draft;
+  if(!isFinite(v)) return _vsRenderPanel();
+  const oldW = d.deckWidthM, nw = _r4(Math.min(40, Math.max(4, v))), dW = nw - oldW;
+  d.zones.forEach(z => { if(Math.abs(z.y + z.h - oldW) < 0.05){ if(z.y < 0.05) z.h = _r4(z.h + dW); else z.y = _r4(z.y + dW); } });
+  d.lashing.points.forEach(q => { if(Math.abs(q.y - oldW) < 0.05 || q.y > nw) q.y = nw; });
+  d.deckWidthM = nw;
   _vsApply();
 }
 function _vsAddBay(atStern){
@@ -2664,12 +2874,11 @@ function _vsAddBay(atStern){
   if(atStern){
     _vsShiftZones(0, l + d.jointM);
     d.bays.unshift({ l, usable:true });
-    d.lashing.dollies = d.lashing.dollies.map(k => k + 1);
-    d.lashing.drings  = d.lashing.drings.map(k => k + 1);
   } else {
-    /* zones on the bow edge (store, No DG bow bays…) move with the bow */
+    /* zones and points on the bow edge (store, No DG bow bays…) move with the bow */
     const oldL = d.bays.reduce((a, b) => a + b.l, 0) + (d.bays.length - 1) * d.jointM;
     d.zones.forEach(z => { if(Math.abs(z.x + z.w - oldL) < 0.05) z.x = _r4(z.x + l + d.jointM); });
+    d.lashing.points.forEach(q => { if(Math.abs(q.x - oldL) < 0.05) q.x = _r4(q.x + l + d.jointM); });
     d.bays.push({ l, usable:true });
   }
   _vsApply();
@@ -2677,14 +2886,59 @@ function _vsAddBay(atStern){
 function _vsRemoveBay(i){
   const d = VS.draft;
   if(d.bays.length < 2) return;
-  const start = _vsBayStartM(i), cut = d.bays[i].l + d.jointM;
-  /* zones fully inside the bay go with it; others aft stay, fore shift */
-  d.zones = d.zones.filter(z => !(z.x >= start - 0.001 && z.x + z.w <= start + d.bays[i].l + 0.001));
-  _vsShiftZones(start + d.bays[i].l, -cut);
+  const start = _vsBayStartM(i), end = start + d.bays[i].l, cut = d.bays[i].l + d.jointM;
+  /* zones / points fully inside the bay go with it; others aft stay, fore shift */
+  d.zones = d.zones.filter(z => !(z.x >= start - 0.001 && z.x + z.w <= end + 0.001));
+  d.lashing.points = d.lashing.points.filter(q => !(q.x > start + 0.01 && q.x < end - 0.01));
+  _vsShiftZones(end, -cut);
+  const seen = new Set();
+  d.lashing.points = d.lashing.points.filter(q => { const k = q.k + '|' + Math.round(q.x * 20) + '|' + Math.round(q.y * 20); if(seen.has(k)) return false; seen.add(k); return true; });
   d.bays.splice(i, 1);
-  d.lashing.dollies = d.lashing.dollies.filter(k => k !== i + 1 || i === d.bays.length).map(k => k > i ? k - 1 : k);
-  d.lashing.drings  = d.lashing.drings.filter(k => k !== i).map(k => k > i ? k - 1 : k);
   _vsApply();
+}
+
+/* ── Lashing points ────────────────────────────────────────────────── */
+function _vsRenderLashing(){
+  const box = document.getElementById('vsLpSel');
+  if(!box) return;
+  document.getElementById('vsAddDolly')?.classList.toggle('on', VS.place === 'dolly');
+  document.getElementById('vsAddDring')?.classList.toggle('on', VS.place === 'dring');
+  const q = VS.selPt && VS.draft.lashing.points.find(p => p.id === VS.selPt);
+  box.hidden = !q;
+  box.innerHTML = '';
+  if(!q) return;
+  box.innerHTML = `<div class="vs-seg vs-seg-sm"><button type="button" data-k="dolly" class="${q.k === 'dolly' ? 'sel' : ''}">Dolly</button><button type="button" data-k="dring" class="${q.k === 'dring' ? 'sel' : ''}">D-ring</button></div>
+    <label class="vs-field"><span>From aft (m)</span><input type="number" step="0.01" data-f="x" value="${_vsF(q.x)}"></label>
+    <label class="vs-field"><span>From port (m)</span><input type="number" step="0.01" data-f="y" value="${_vsF(q.y)}"></label>
+    <button type="button" class="vs-del" title="Remove this point (Delete)">×</button>`;
+  box.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { q.k = b.dataset.k; _vsApply(); }));
+  box.querySelectorAll('[data-f]').forEach(inp => inp.addEventListener('change', () => {
+    const v = parseFloat(inp.value);
+    if(isFinite(v)) q[inp.dataset.f] = _r4(Math.max(0, Math.min(inp.dataset.f === 'x' ? DECK_LENGTH_M : VS.draft.deckWidthM, v)));
+    _vsApply();
+  }));
+  box.querySelector('.vs-del').addEventListener('click', () => _vsDeletePoint(q.id));
+}
+function _vsDeletePoint(id){
+  VS.draft.lashing.points = VS.draft.lashing.points.filter(q => q.id !== id);
+  if(VS.selPt === id) VS.selPt = null;
+  _vsApply();
+}
+function _vsSetPlace(k){
+  VS.place = VS.place === k ? null : k;
+  document.body.classList.toggle('vs-placing', !!VS.place);
+  if(VS.place) showToast(`Click on the deck to add ${k === 'dring' ? 'D-rings' : 'dollies'} · Esc when done`, 'ok');
+  _vsRenderLashing();
+}
+/* Snap a deck point to bay edges / mid-bays and to the deck edges / centre line */
+function _vsSnapPt(px, py, free){
+  px = Math.max(0, Math.min(TW, px)); py = Math.max(0, Math.min(CVH, py));
+  if(free) return [px, py];
+  let bx = px, bd = 7;
+  [0, TW].concat(...BL_.map((x, i) => [x, x + BW[i], x + Math.round(BW[i] / 2)])).forEach(c => { const dd = Math.abs(c - px); if(dd < bd){ bd = dd; bx = c; } });
+  let by = py, yd = 10;
+  [0, CVH, Math.round(CVH / 2)].forEach(c => { const dd = Math.abs(c - py); if(dd < yd){ yd = dd; by = c; } });
+  return [bx, by];
 }
 
 /* ── Zones ─────────────────────────────────────────────────────────── */
@@ -2696,11 +2950,22 @@ function _vsAddZone(type){
   else if(type === 'tiger')    z = { x: 0, y: 0, w: 1, h: W };
   else if(type === 'methanol') z = { x: 0, y: W * 0.27, w: Math.min(13, L), h: W * 0.73, r: 11 };
   else if(type === 'skip')     z = { x: L / 2 - 1.3, y: 0.2, w: 2.6, h: 2 };
+  else if(type === 'moonpool') z = { x: L / 2 - 1.5, y: W / 2 - 1.5, w: 3, h: 3, shape: 'circle' };
+  else if(type === 'hatch')    z = { x: L / 2 - 0.4, y: W / 2 - 0.4, w: 0.8, h: 0.8 };
+  else if(type === 'opening')  z = { x: L / 2 - 1.25, y: 0, w: 2.5, h: 0.35 };
+  else if(type === 'text')     z = { x: L / 2 - 2, y: W / 2 - 0.6, w: 4, h: 1.2, fs: 16 };
   else                         z = { x: L / 2 - 2.5, y: W / 2 - 1.25, w: 5, h: 2.5 };
   z = Object.assign({ id, type, label: ZONE_TYPES[type].label }, z);
   d.zones.push(z);
-  VS.sel = id;
+  VS.sel = id; VS.selPt = null;
   _vsApply();
+  const lb = document.querySelector('#vsZones .vs-zone-row.sel [data-k="label"]');
+  if(lb){ lb.scrollIntoView({ block:'nearest', behavior:'smooth' }); if(type === 'text'){ lb.focus(); lb.select(); } }
+}
+/* Live colour preview while the picker is open (no panel rebuild) */
+function _vsColorLive(z){
+  const zp = ZONES_PX.find(q => q.id === z.id);
+  if(zp){ zp.color = z.color; drawDeckStatics(); }
 }
 /* Copy a zone: mirrored across the centre line (workshop / hose bay on
    both sides) or placed right after it along the deck. */
@@ -2734,9 +2999,11 @@ function _vsDrawLayer(){
     layer = document.createElement('div');
     layer.id = 'vsLayer';
     layer.addEventListener('mousedown', _vsLayerDown);
+    layer.addEventListener('dblclick', _vsRenameOnDeck);
     cv.appendChild(layer);
   }
   layer.innerHTML = '';
+  layer.style.setProperty('--cvh', CVH + 'px');
   ZONES_PX.forEach(z => {
     const b = document.createElement('div');
     b.className = 'vs-zbox vs-zbox-' + z.type + (z.id === VS.sel ? ' sel' : '');
@@ -2751,6 +3018,172 @@ function _vsDrawLayer(){
     }
     layer.appendChild(b);
   });
+  /* lashing points */
+  VS.draft.lashing.points.forEach(q => {
+    const d = document.createElement('i');
+    d.className = 'vs-lp vs-lp-' + q.k + (q.id === VS.selPt ? ' sel' : '');
+    d.dataset.lp = q.id;
+    d.style.left = metersToDeckX(q.x) + 'px';
+    d.style.top = Math.max(0, Math.min(CVH, Math.round(q.y * YS))) + 'px';
+    d.title = (q.k === 'dring' ? 'D-ring' : 'Dolly') + ` · ${_vsF(q.x)} m from aft · ${_vsF(q.y)} m from port`;
+    layer.appendChild(d);
+  });
+  /* joint grips (above the deck) and the STBD-edge width grip */
+  for(let i = 0; i < BAY_COUNT; i++){
+    const last = i === BAY_COUNT - 1;
+    const g = document.createElement('div');
+    g.className = 'vs-jgrip' + (last ? ' vs-jgrip-bow' : '');
+    g.dataset.j = i;
+    g.style.left = (BL_[i] + BW[i] + (last ? 0 : JOINT_PX / 2)) + 'px';
+    g.title = last ? `Drag to change the length of Bay ${bayLabel(i)} (bow end)`
+                   : `Drag to move the joint between Bay ${bayLabel(i)} and Bay ${bayLabel(i + 1)} · Shift: Bay ${bayLabel(i)} only, the rest moves forward · Alt: 1 cm steps`;
+    layer.appendChild(g);
+  }
+  const wg = document.createElement('div');
+  wg.className = 'vs-wgrip';
+  wg.title = 'Drag to change the deck width (STBD edge) · Alt: 1 cm steps';
+  wg.innerHTML = '<span></span>';
+  layer.appendChild(wg);
+}
+function _vsPt(ev){
+  const cr = document.getElementById('cvDECK').getBoundingClientRect();
+  return { x: (ev.clientX - cr.left) / zoomLevel, y: (ev.clientY - cr.top) / zoomLevel };
+}
+function _vsChip(layer, cls){ const c = document.createElement('div'); c.className = 'vs-chip ' + (cls || ''); layer.appendChild(c); return c; }
+/* Drag a joint (or the bow edge) along the deck: live bay lengths, commit on release. */
+function _vsJointDrag(e, i){
+  const d = VS.draft, n = d.bays.length, last = i === n - 1;
+  const start = _vsBayStartM(i), l0 = d.bays[i].l, l1 = last ? 0 : d.bays[i + 1].l;
+  const layer = document.getElementById('vsLayer');
+  const guide = document.createElement('div'); guide.className = 'vs-jguide'; layer.appendChild(guide);
+  const cA = _vsChip(layer), cB = last ? null : _vsChip(layer);
+  const grip = layer.querySelector(`.vs-jgrip[data-j="${i}"]`); grip?.classList.add('drag');
+  document.body.classList.add('vs-dragging-x');
+  let nl = l0, shift = last;
+  const pxOf = m => m <= DECK_LENGTH_M ? metersToDeckX(m) : TW + (m - DECK_LENGTH_M) * M;
+  const show = () => {
+    const end = start + nl, gx = pxOf(end);
+    guide.style.left = gx + 'px';
+    if(grip) grip.style.left = gx + 'px';
+    const dl = nl - l0, sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + _vsF(Math.abs(v));
+    cA.innerHTML = `<b>Bay ${bayLabel(i)}</b> ${_vsF(nl)} m <em>${sgn(dl)}</em>`;
+    cA.style.left = ((BL_[i] + gx) / 2) + 'px';
+    if(cB){
+      if(shift){ cB.innerHTML = `<b>Deck</b> ${_vsF(DECK_LENGTH_M + dl)} m <em>${sgn(dl)}</em>`; cB.style.left = ((gx + TW + dl * M) / 2) + 'px'; }
+      else { cB.innerHTML = `<b>Bay ${bayLabel(i + 1)}</b> ${_vsF(l0 + l1 - nl)} m <em>${sgn(-dl)}</em>`; cB.style.left = ((gx + BL_[i + 1] + BW[i + 1]) / 2) + 'px'; }
+    } else cA.innerHTML += ` <span>· deck ${_vsF(DECK_LENGTH_M + dl)} m</span>`;
+  };
+  show();
+  const onMove = ev => {
+    const p = _vsPt(ev), step = ev.altKey ? 0.01 : 0.05;
+    const m = p.x <= TW ? deckXToMeters(Math.max(0, p.x)) : DECK_LENGTH_M + (p.x - TW) / M;
+    shift = last || ev.shiftKey;
+    const max = shift ? 30 : l0 + l1 - 0.5;
+    nl = _r4(Math.max(0.5, Math.min(max, Math.round((m - start) / step) * step)));
+    show();
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.classList.remove('vs-dragging-x');
+    if(!VS) return;
+    if(Math.abs(nl - l0) < 0.001){ _vsDrawLayer(); return; }
+    const lens = d.bays.map(b => b.l);
+    lens[i] = nl;
+    if(!shift) lens[i + 1] = _r4(l0 + l1 - nl);
+    _vsRemapBays(lens);
+    _vsApply();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+/* Drag the STBD edge: deck width */
+function _vsWidthDrag(e){
+  const layer = document.getElementById('vsLayer'), w0 = VS.draft.deckWidthM;
+  const guide = document.createElement('div'); guide.className = 'vs-wguide'; layer.appendChild(guide);
+  const chip = _vsChip(layer, 'vs-chip-w');
+  document.body.classList.add('vs-dragging-y');
+  let w = w0;
+  const show = () => {
+    const gy = w * YS;
+    guide.style.top = gy + 'px';
+    chip.style.top = (gy + 14) + 'px'; chip.style.left = (TW / 2) + 'px';
+    const dw = w - w0;
+    chip.innerHTML = `<b>Deck width</b> ${_vsF(w)} m <em>${(dw > 0 ? '+' : dw < 0 ? '−' : '±') + _vsF(Math.abs(dw))}</em>`;
+  };
+  show();
+  const onMove = ev => {
+    const p = _vsPt(ev), step = ev.altKey ? 0.01 : 0.1;
+    w = _r4(Math.max(4, Math.min(40, Math.round(p.y / YS / step) * step)));
+    show();
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.classList.remove('vs-dragging-y');
+    if(!VS) return;
+    if(Math.abs(w - w0) < 0.001){ _vsDrawLayer(); return; }
+    _vsSetWidth(w);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+/* Drag a lashing point (click = select) */
+function _vsPointDrag(e, id){
+  const q = VS.draft.lashing.points.find(p => p.id === id);
+  if(!q) return;
+  if(VS.selPt !== id || VS.sel){ VS.selPt = id; VS.sel = null; _vsDrawLayer(); _vsRenderPanel(); }
+  const el = document.querySelector(`#vsLayer .vs-lp[data-lp="${id}"]`);
+  const p0 = _vsPt(e);
+  let moved = false, cur = null;
+  const onMove = ev => {
+    const p = _vsPt(ev);
+    if(!moved && Math.abs(p.x - p0.x) < 2 && Math.abs(p.y - p0.y) < 2) return;
+    moved = true;
+    cur = _vsSnapPt(p.x, p.y, ev.altKey);
+    if(el){ el.style.left = cur[0] + 'px'; el.style.top = cur[1] + 'px'; el.title = `${_vsF(deckXToMeters(cur[0]))} m · ${_vsF(cur[1] / YS)} m`; }
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if(!moved || !cur || !VS) return;
+    q.x = _r4(deckXToMeters(cur[0])); q.y = _r4(Math.min(VS.draft.deckWidthM, cur[1] / YS));
+    _vsApply();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+function _vsPlacePoint(e){
+  const p = _vsPt(e), c = _vsSnapPt(p.x, p.y, e.altKey);
+  const id = 'lp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  VS.draft.lashing.points.push({ id, k: VS.place, x: _r4(deckXToMeters(c[0])), y: _r4(Math.min(VS.draft.deckWidthM, c[1] / YS)) });
+  VS.selPt = id; VS.sel = null;
+  _vsApply();
+}
+/* Double-click a zone on the deck: rename it in place */
+function _vsRenameOnDeck(e){
+  if(!VS) return;
+  const box = e.target.closest('.vs-zbox');
+  const z = box && VS.draft.zones.find(q => q.id === box.dataset.id);
+  if(!z) return;
+  e.preventDefault(); e.stopPropagation();
+  const inp = document.createElement('input');
+  inp.className = 'vs-zrename'; inp.maxLength = 40; inp.value = z.label || ''; inp.spellcheck = false;
+  box.appendChild(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const fin = ok => {
+    if(done) return; done = true;
+    if(ok && VS && inp.value.trim() !== (z.label || '')){ z.label = inp.value.trim(); _vsApply(); }
+    else inp.remove();
+  };
+  inp.addEventListener('keydown', ev => {
+    ev.stopPropagation();
+    if(ev.key === 'Enter'){ ev.preventDefault(); fin(true); }
+    else if(ev.key === 'Escape'){ ev.preventDefault(); fin(false); }
+  });
+  inp.addEventListener('blur', () => fin(true));
+  inp.addEventListener('mousedown', ev => ev.stopPropagation());
 }
 function _vsSizeTag(el, zpx){
   const x0 = deckXToMeters(zpx.x), x1 = deckXToMeters(zpx.x + zpx.w);
@@ -2772,12 +3205,19 @@ function _vsSnapY(py, free){
 }
 function _vsLayerDown(e){
   if(!VS || e.button !== 0) return;
+  if(e.target.classList && e.target.classList.contains('vs-zrename')) return;
   e.preventDefault(); e.stopPropagation();
+  const jg = e.target.closest('.vs-jgrip');
+  if(jg) return _vsJointDrag(e, +jg.dataset.j);
+  if(e.target.closest('.vs-wgrip')) return _vsWidthDrag(e);
+  if(VS.place) return _vsPlacePoint(e);
+  const lp = e.target.closest('.vs-lp');
+  if(lp) return _vsPointDrag(e, lp.dataset.lp);
   const box = e.target.closest('.vs-zbox');
-  if(!box){ if(VS.sel){ VS.sel = null; _vsDrawLayer(); _vsRenderPanel(); } return; }
+  if(!box){ if(VS.sel || VS.selPt){ VS.sel = null; VS.selPt = null; _vsDrawLayer(); _vsRenderPanel(); } return; }
   const id = box.dataset.id;
-  if(VS.sel !== id){
-    VS.sel = id; _vsDrawLayer(); _vsRenderPanel();
+  if(VS.sel !== id || VS.selPt){
+    VS.sel = id; VS.selPt = null; _vsDrawLayer(); _vsRenderPanel();
     document.querySelector(`#vsZones .vs-zone-row[data-id="${id}"]`)?.scrollIntoView({ block:'nearest', behavior:'smooth' });
   }
   const live = document.querySelector(`#vsLayer .vs-zbox[data-id="${id}"]`);
@@ -2891,23 +3331,15 @@ function _vsBind(){
     if(isFinite(v)) VS.draft[key] = int ? Math.round(v) : v;
     _vsApply();
   });
-  /* Deck width: zones on the STBD edge stay on it, full-width zones stretch */
-  on('vsWidth', 'change', e => {
-    const v = parseFloat(e.target.value);
-    if(!isFinite(v)) return _vsRenderPanel();
-    const oldW = VS.draft.deckWidthM, nw = Math.min(40, Math.max(4, v)), dW = nw - oldW;
-    VS.draft.zones.forEach(z => {
-      if(Math.abs(z.y + z.h - oldW) < 0.05){ if(z.y < 0.05) z.h += dW; else z.y += dW; }
-    });
-    VS.draft.deckWidthM = nw;
-    _vsApply();
-  });
+  on('vsWidth', 'change', e => _vsSetWidth(parseFloat(e.target.value)));
   numField('vsJoint', 'jointM');
   numField('vsMaxLoad', 'maxLoadT', true); numField('vsMaxP', 'maxPressureT'); numField('vsArea', 'deckAreaM2', true);
   document.querySelectorAll('#vsBay1At button').forEach(b => b.addEventListener('click', () => { VS.draft.bay1At = b.dataset.v; _vsApply(); }));
   on('vsAddStern', 'click', () => _vsAddBay(true));
   on('vsAddBow', 'click', () => _vsAddBay(false));
   on('vsAddZone', 'click', () => _vsAddZone(document.getElementById('vsZoneType').value || 'restricted'));
+  on('vsAddDolly', 'click', () => _vsSetPlace('dolly'));
+  on('vsAddDring', 'click', () => _vsSetPlace('dring'));
   on('vsExport', 'click', _vsExport);
   on('vsImport', 'click', _vsImport);
   on('vsImportFile', 'change', e => {
@@ -2952,17 +3384,21 @@ function _vsBind(){
      every other deck shortcut is held off while the mode is open. */
   document.addEventListener('keydown', e => {
     if(!VS) return;
+    if(e.target && e.target.classList && e.target.classList.contains('vs-zrename')) return;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
     if(e.key === 'Escape'){
       e.preventDefault(); e.stopImmediatePropagation();
       if(typing) e.target.blur();
-      else if(VS.sel){ VS.sel = null; _vsDrawLayer(); _vsRenderPanel(); }
+      else if(VS.place) _vsSetPlace(VS.place);
+      else if(VS.sel || VS.selPt){ VS.sel = null; VS.selPt = null; _vsDrawLayer(); _vsRenderPanel(); }
       else vesselSetupCancel();
       return;
     }
     if(typing) return;
-    if((e.key === 'Delete' || e.key === 'Backspace') && VS.sel){
-      e.preventDefault(); e.stopImmediatePropagation(); _vsDeleteZone(VS.sel); return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && (VS.sel || VS.selPt)){
+      e.preventDefault(); e.stopImmediatePropagation();
+      if(VS.selPt) _vsDeletePoint(VS.selPt); else _vsDeleteZone(VS.sel);
+      return;
     }
     const zoomCombo = (e.ctrlKey || e.metaKey) && /^[=+\-0]$/.test(e.key);
     if(!zoomCombo){ e.stopImmediatePropagation(); }
@@ -9719,7 +10155,7 @@ async function _renderReport(mode){
         'important') (plain assignment is a no-op). No data-URI (taints WKWebView). */
   const _zoneSaved = [];
 
-  dcv.querySelectorAll('.zone').forEach(el => {
+  dcv.querySelectorAll('.zone:not(.z-custom)').forEach(el => {
     const cls = el.className;
     const lbl = el.querySelector('.z-lbl');
     _zoneSaved.push({ el, cssText: el.style.cssText, lbl, lblCss: lbl ? lbl.style.cssText : null });
@@ -9753,7 +10189,7 @@ async function _renderReport(mode){
 
   /* Ship's Waste Skip — one-off .ships-skip fixture (not a .zone; its label
         is inline text on the element, so color is set on el, not a child). */
-  const _skipEl = dcv.querySelector('.ships-skip');
+  const _skipEl = dcv.querySelector('.ships-skip:not(.z-custom)');
   let _skipCss = '';
   if(_skipEl){
     _skipCss = _skipEl.style.cssText;
@@ -9763,7 +10199,15 @@ async function _renderReport(mode){
     _skipEl.style.setProperty('font-weight', '700', 'important');
   }
 
+  /* v3.18 — custom striped fills (zones, barrier openings) → flat stand-in */
+  const _flatSaved = [];
+  dcv.querySelectorAll('[data-flat]').forEach(el => {
+    _flatSaved.push([el, el.style.cssText]);
+    el.style.setProperty('background', el.dataset.flat, 'important');
+  });
+
   const restore = () => {
+    _flatSaved.forEach(([el, css]) => { el.style.cssText = css; });
     dzw.style.transform = savedTransform;
     dcv.style.overflow = savedDcvOv;
     if(deckOuter) deckOuter.style.overflow = savedOuterOv;
@@ -14083,8 +14527,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.17.0';
-const APP_VERSION   = '3.17.0';
+const CURRENT_BUILD = 'v3.18.0';
+const APP_VERSION   = '3.18.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

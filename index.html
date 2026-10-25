@@ -188,7 +188,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.17.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.18.0</div>
     </div>
   </div>
 </div>
@@ -210,7 +210,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.17.0<br>
+      Version 3.18.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -459,7 +459,7 @@
     </section>
 
     <div class="vs-edit" id="vsEditSecs">
-    <div class="vs-note">The deck updates live. Drag zones on the deck to move them, pull the handles to resize. Nothing is kept until you press Save.</div>
+    <div class="vs-note">The deck updates live. Drag zones on the deck to move them, pull the handles to resize, double-click to rename. Drag the tabs above the deck to move the joints between bays, the STBD edge to change the width. Nothing is kept until you press Save.</div>
 
     <section class="vs-sec">
       <div class="vs-sec-title">Vessel</div>
@@ -487,6 +487,7 @@
       <div class="vs-sec-title">Bays <span class="vs-sec-meta" id="vsBaysMeta"></span></div>
       <div class="vs-bay-head"><span>Bay</span><span>Length (m)</span><span title="Counts towards Deck Used %">Deck used</span><span></span></div>
       <div class="vs-bays" id="vsBays"></div>
+      <div class="vs-note vs-note-sm" id="vsUsedNote"></div>
       <div class="vs-btnrow">
         <button type="button" class="vs-btn" id="vsAddStern">+ Bay at stern</button>
         <button type="button" class="vs-btn" id="vsAddBow">+ Bay at bow</button>
@@ -494,11 +495,21 @@
     </section>
 
     <section class="vs-sec">
-      <div class="vs-sec-title">Zones <span class="vs-sec-meta" id="vsZonesMeta"></span></div>
+      <div class="vs-sec-title">Zones &amp; markings <span class="vs-sec-meta" id="vsZonesMeta"></span></div>
       <div class="vs-zones" id="vsZones"></div>
       <div class="vs-btnrow">
         <select class="vs-select" id="vsZoneType" aria-label="Zone type"></select>
-        <button type="button" class="vs-btn" id="vsAddZone">+ Add zone</button>
+        <button type="button" class="vs-btn" id="vsAddZone">+ Add</button>
+      </div>
+    </section>
+
+    <section class="vs-sec">
+      <div class="vs-sec-title">Lashing points <span class="vs-sec-meta" id="vsLpMeta"></span></div>
+      <div class="vs-note vs-note-sm">Drag points on the deck — they snap to bay edges, mid-bays and the deck edges (Alt: free). Click one and press Delete to remove it.</div>
+      <div class="vs-lp-sel" id="vsLpSel" hidden></div>
+      <div class="vs-btnrow">
+        <button type="button" class="vs-btn vs-btn-lp" id="vsAddDolly"><i class="vs-lp-ico vs-lp-ico-dolly"></i>Add dollies</button>
+        <button type="button" class="vs-btn vs-btn-lp" id="vsAddDring"><i class="vs-lp-ico vs-lp-ico-dring"></i>Add D-rings</button>
       </div>
     </section>
 
@@ -2069,17 +2080,15 @@
 <div class="admin-modal-ov" id="adminModalOv">
   <div class="admin-modal" id="adminModal">
     <div class="admin-modal-head">
-      <div class="admin-modal-icon">🔐</div>
-      <div class="admin-modal-title">Admin Access</div>
+      <div class="admin-modal-icon">⚙︎</div>
+      <div class="admin-modal-title">Confirm</div>
       <div class="admin-modal-close" id="adminModalClose">✕</div>
     </div>
     <div class="admin-modal-body">
-      <div class="admin-modal-lbl">Enter admin password to unlock editing</div>
-      <input class="admin-modal-input" id="adminPwInput" type="password" placeholder="Password" autocomplete="off">
-      <div class="admin-modal-err" id="adminPwErr">Incorrect password — please try again</div>
+      <div class="admin-modal-lbl">Continue?</div>
       <div class="admin-modal-actions">
         <button class="admin-modal-cancel" id="adminModalCancel">Cancel</button>
-        <button class="admin-modal-unlock" id="adminModalUnlock">Unlock Editing</button>
+        <button class="admin-modal-unlock" id="adminModalUnlock">Open</button>
       </div>
     </div>
   </div>

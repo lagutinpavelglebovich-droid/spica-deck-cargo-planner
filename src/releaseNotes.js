@@ -11,6 +11,24 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.18.0',
+    date: '2026-10-25',
+    highlights: [
+      'Deck editor 2.0',
+      'Vessel Setup without a password',
+    ],
+    changes: [
+      { type: 'improvement', text: 'Vessel Setup no longer asks for a password — a short confirmation instead (header editing too)' },
+      { type: 'feature', text: 'Drag the tabs above the deck to move the joint between two bays — both lengths shown live; Shift moves the rest of the deck forward, the last tab sets the bow bay. Drag the STBD edge to make the deck wider or narrower' },
+      { type: 'feature', text: 'Zones are styled one by one: stripes, solid colour, gradient or outline only, in any colour — the tiger strip and hose bays can be another colour or removed' },
+      { type: 'feature', text: 'Methanol zone as a shape: arc line, circle, semicircle, quarter circle or rectangle, turned any way, with its own line width and an optional fill' },
+      { type: 'feature', text: 'New on the deck: moonpool, hatches, openings in the crash barrier and free text labels anywhere' },
+      { type: 'feature', text: 'Lashing points can be moved, added (dollies and D-rings) and removed — they snap to bay edges, mid-bays and deck edges' },
+      { type: 'feature', text: 'Every zone chooses whether it counts in Deck Used; double-click a zone on the deck to rename it (Store → Bosun Workshop)' },
+      { type: 'improvement', text: 'Changing a bay length keeps zones and lashing points in their place within the bay' },
+    ],
+  },
+  {
     version: '3.17.0',
     date: '2026-10-24',
     highlights: [

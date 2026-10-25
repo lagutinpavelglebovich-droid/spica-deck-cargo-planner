@@ -17371,3 +17371,104 @@ body.vessel-setup .cb *{ pointer-events:none !important; }
 .dc-an-note{ font-size:11px; color:var(--txt3); }
 .dc-an-box{ fill:rgba(56,189,248,.10); stroke:#38bdf8; stroke-width:2; }
 .dc-an-t{ fill:#38bdf8; font:800 13px 'JetBrains Mono',monospace; paint-order:stroke; stroke:rgba(0,0,0,.7); stroke-width:3px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v3.18 — DECK EDITOR 2.0
+   Custom zone fills, drawn shapes, deck text, barrier openings, editable
+   lashing points, joint / width grips in Vessel Setup.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  --deck-text: rgba(49,51,44,.58);
+  --deck-open-lbl: rgba(120,90,0,.85);
+  --vs-chip-bg: rgba(15,23,42,.88);
+  --vs-chip-fg: #fff;
+  --vs-chip-em: #9cc4f0;
+}
+[data-theme="dark"]{
+  --deck-text: rgba(232,234,226,.55);
+  --deck-open-lbl: rgba(240,200,90,.85);
+  --vs-chip-bg: rgba(240,244,250,.94);
+  --vs-chip-fg: #0f172a;
+  --vs-chip-em: #2f6fb3;
+}
+/* custom fills: label colour follows the zone colour */
+.zone.z-custom .z-lbl, .ships-skip.z-custom{ color: var(--zc-d) !important; text-shadow: none !important; }
+[data-theme="dark"] .zone.z-custom .z-lbl, [data-theme="dark"] .ships-skip.z-custom{ color: var(--zc-l) !important; }
+[data-theme="dark"] .deck-shape text.zl{ fill: var(--zc-l); }
+
+.deck-text{ position:absolute; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:5;
+  font-family:'Manrope',sans-serif; font-weight:800; letter-spacing:.06em; line-height:1; color:var(--deck-text); }
+.deck-text > span{ display:inline-block; white-space:nowrap; }
+.deck-text.z-custom{ color:var(--zc-d); }
+[data-theme="dark"] .deck-text.z-custom{ color:var(--zc-l); }
+
+.deck-opening{ position:absolute; pointer-events:none; z-index:7; border-radius:2px; box-shadow:0 0 0 1px rgba(28,28,26,.35); }
+.deck-opening-lbl{ position:absolute; pointer-events:none; z-index:7; text-align:center; white-space:nowrap;
+  font:800 7.5px/10px 'Inter',sans-serif; letter-spacing:1px; text-transform:uppercase; color:var(--deck-open-lbl); }
+
+/* Vessel Setup — zone editor extras */
+.vs-sw-moonpool{ background:radial-gradient(circle,#2f5f8a 0 45%,#a9c2d8 46%); border-radius:50%; }
+.vs-sw-hatch{ background:linear-gradient(45deg,transparent 45%,#5e6058 46% 54%,transparent 55%),#d8d6cf; border:1px solid #5e6058; box-sizing:border-box; }
+.vs-sw-opening{ background:repeating-linear-gradient(45deg,#e0a800 0 3px,#222 3px 6px); }
+.vs-sw-text{ background:transparent; border:0; position:relative; }
+.vs-sw-text::after{ content:'T'; position:absolute; inset:0; font:900 12px/12px 'Manrope',sans-serif; text-align:center; color:var(--txt2); }
+.vs-color{ display:flex; gap:6px; align-items:center; }
+.vs-color input[type="color"]{ width:44px; height:30px; padding:2px; border-radius:8px; border:1px solid var(--vs-line); background:var(--vs-field); cursor:pointer; flex-shrink:0; }
+.vs-color .vs-btn{ height:30px; padding:0 9px; font-size:11px; }
+.vs-check{ grid-column:1 / -1; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11.5px; font-weight:600; color:var(--txt2); }
+.vs-check input{ position:absolute; opacity:0; pointer-events:none; }
+.vs-check i{ width:18px; height:18px; border-radius:5px; border:1.5px solid var(--vs-line); background:var(--vs-field); position:relative; flex-shrink:0; }
+.vs-check input:checked + i{ background:var(--acc); border-color:var(--acc); }
+.vs-check input:checked + i::after{ content:''; position:absolute; left:5px; top:1px; width:5px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+.vs-check input:focus-visible + i{ box-shadow:0 0 0 3px rgba(72,96,131,.25); }
+.vs-turn{ width:100%; }
+.vs-seg-sm{ height:30px; }
+.vs-seg-sm button{ font-size:13px; }
+.vs-zbox-text, .vs-zbox-opening{ background:transparent; }
+.vs-zrename{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:5; width:max(120px, 80%); height:24px; box-sizing:border-box;
+  padding:0 7px; border-radius:6px; border:2px solid var(--vs-zone); background:var(--surf); color:var(--txt); font:700 12px/1 'Inter',sans-serif; outline:none;
+  box-shadow:0 4px 14px rgba(10,22,40,.22); cursor:text; }
+
+/* lashing points while editing */
+.vs-lp{ position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; cursor:grab; z-index:3; box-sizing:border-box;
+  border:2px solid var(--vs-zone); background:rgba(47,111,179,.18); }
+.vs-lp-dring{ background:transparent; border-style:dashed; }
+.vs-lp:hover{ background:rgba(47,111,179,.35); }
+.vs-lp.sel{ width:18px; height:18px; margin:-9px 0 0 -9px; background:var(--vs-zone); box-shadow:0 0 0 3px rgba(47,111,179,.25); }
+body.vs-placing #vsLayer, body.vs-placing #vsLayer *{ cursor:crosshair !important; }
+.vs-lp-sel{ display:grid; grid-template-columns:auto 1fr 1fr 26px; gap:6px; align-items:end; padding:8px; border-radius:9px; background:var(--vs-field); border:1px solid var(--vs-line); }
+.vs-lp-sel .vs-seg{ min-width:118px; }
+.vs-btn-lp{ display:inline-flex; align-items:center; gap:7px; flex:1; justify-content:center; }
+.vs-btn-lp.on{ background:var(--acc); border-color:var(--acc); color:#fff; }
+.vs-lp-ico{ width:9px; height:9px; border-radius:50%; box-sizing:border-box; border:1.5px solid currentColor; }
+.vs-lp-ico-dolly{ background:currentColor; }
+
+/* joint grips above the deck, width grip on the STBD edge */
+.vs-jgrip{ position:absolute; top:-30px; width:14px; height:22px; margin-left:-7px; border-radius:5px; cursor:ew-resize; z-index:4;
+  background:var(--vs-zone); box-shadow:0 1px 4px rgba(10,22,40,.25); }
+.vs-jgrip::after{ content:''; position:absolute; left:4px; top:6px; width:6px; height:10px;
+  background:linear-gradient(90deg,#fff 0 1.5px,transparent 1.5px 4.5px,#fff 4.5px 6px); opacity:.9; }
+.vs-jgrip::before{ content:''; position:absolute; left:6px; top:22px; width:2px; height:calc(var(--cvh, 380px) + 8px);
+  background:var(--vs-zone); opacity:0; transition:opacity .12s; pointer-events:none; }
+.vs-jgrip:hover::before, .vs-jgrip.drag::before{ opacity:.55; }
+.vs-jgrip-bow{ border-radius:5px 5px 5px 0; }
+.vs-jguide{ position:absolute; top:0; bottom:0; width:0; border-left:2px dashed var(--vs-zone); pointer-events:none; z-index:5; }
+.vs-wgrip{ position:absolute; left:0; right:0; top:100%; height:14px; margin-top:-7px; cursor:ns-resize; z-index:4; }
+.vs-wgrip > span{ position:absolute; left:50%; top:50%; width:40px; height:12px; margin:-6px 0 0 -20px; border-radius:6px; background:var(--vs-zone);
+  box-shadow:0 1px 4px rgba(10,22,40,.25); }
+.vs-wgrip > span::after{ content:''; position:absolute; left:12px; right:12px; top:3.5px; height:5px;
+  background:linear-gradient(180deg,#fff 0 1.5px,transparent 1.5px 3.5px,#fff 3.5px 5px); opacity:.9; }
+.vs-wgrip:hover{ background:linear-gradient(180deg,transparent 5px,rgba(47,111,179,.35) 5px 9px,transparent 9px); }
+.vs-wguide{ position:absolute; left:0; right:0; height:0; border-top:2px dashed var(--vs-zone); pointer-events:none; z-index:5; }
+.vs-chip{ position:absolute; top:-58px; transform:translateX(-50%); white-space:nowrap; pointer-events:none; z-index:6;
+  padding:5px 9px; border-radius:7px; background:var(--vs-chip-bg); color:var(--vs-chip-fg);
+  font:600 11px/1 'JetBrains Mono',ui-monospace,monospace; box-shadow:0 4px 14px rgba(10,22,40,.25); }
+.vs-chip b{ font-family:'Inter',sans-serif; font-weight:800; margin-right:4px; }
+.vs-chip em{ font-style:normal; color:var(--vs-chip-em); margin-left:4px; }
+.vs-chip span{ opacity:.7; }
+.vs-chip-w{ transform:translateX(-50%); }
+body.vs-dragging-x, body.vs-dragging-x *{ cursor:ew-resize !important; }
+body.vs-dragging-y, body.vs-dragging-y *{ cursor:ns-resize !important; }
+/* v3.18 — admin password replaced by a plain confirmation: readable sentence */
+#adminModalOv .admin-modal-lbl{ font-size:12.5px; letter-spacing:0; text-transform:none; color:var(--txt2); font-weight:500; line-height:1.5; margin-bottom:0; }
