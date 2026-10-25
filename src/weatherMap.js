@@ -300,8 +300,9 @@ export function openWeatherMap(id, wantLayer){
   ov.focus();
   syncControls(); drawLegend();
   requestAnimationFrame(() => {
+    tIdx = nowIdx();               /* set the time first: the flow grid is built for it */
     resize(true);
-    tIdx = nowIdx(); syncTime();
+    syncTime();
     startLoop();
     load(false);
   });
@@ -380,7 +381,14 @@ function setTime(i){
   tIdx = Math.max(0, Math.min(DATA.times.length - 1, i));
   syncTime();
   drawColour(); tipAgain(); pinsValues();
-  if(motion() === 'off') drawArrows();
+  /* the streaks must take the new time's wind too — before v3.27.3 only
+     Play rebuilt the flow, so a jump kept the old speeds */
+  flowSoon();
+}
+let flowRaf = 0;
+function flowSoon(){
+  if(flowRaf) return;
+  flowRaf = requestAnimationFrame(() => { flowRaf = 0; buildFlowGrid(); if(motion() === 'off') drawArrows(); });
 }
 function syncTime(){
   if(!ov || !DATA || !DATA.times.length) return;
@@ -695,6 +703,8 @@ function frame(now){
     if(now - lastCol > 48 || !playing){ lastCol = now; drawColour(); pinsValues(); tipAgain(); }
     if(Math.abs(FG.t - tIdx) > 0.08) buildFlowGrid();
   }
+  /* safety net: whatever moved the time, the streaks follow it */
+  else if(DATA && FG.vx && FG.t !== tIdx && !flowRaf) buildFlowGrid();
   const m = motion();
   if(m !== 'off' && DATA && FG.vx){
     stepParticles(dt);

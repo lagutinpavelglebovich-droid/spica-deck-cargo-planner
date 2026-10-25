@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.3',
+    date: '2026-10-25',
+    highlights: [ 'Streaks follow the chosen time' ],
+    changes: [
+      { type: 'fix', text: 'Wind map: moving the time line (dragging, Now, ← →) now changes the streaks at once — before, only Play did, so a jump kept the previous time\'s speeds; the map also opens with the streaks of the current hour' },
+    ],
+  },
+  {
     version: '3.27.2',
     date: '2026-10-25',
     highlights: [ 'Calmer wind streaks' ],
