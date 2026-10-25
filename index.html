@@ -189,7 +189,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.20.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.21.0</div>
     </div>
   </div>
 </div>
@@ -211,7 +211,7 @@
     <h2 class="about-title">SPICA TIDE</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.20.0<br>
+      Version 3.21.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -396,26 +396,48 @@
         <label for="inspKind">Unit</label>
         <select id="inspKind">
           <option value="">Standard unit</option>
-          <option value="pipe">Pipe joint / bundle</option>
-          <option value="lifeboat">Non-standard · Lifeboat</option>
-          <option value="rescue">Non-standard · Rescue boat</option>
-          <option value="frame">Non-standard · Open frame</option>
-          <option value="reel">Non-standard · Cable reel</option>
-          <option value="oog">Non-standard · Out of gauge</option>
+          <option value="pipe">Pipe — joint or bundle</option>
+          <option value="oog">Non-standard unit</option>
         </select>
       </div>
-      <div class="insp-field-row insp-pipe-row" id="inspPipeRow" hidden>
-        <div class="insp-field">
-          <label for="inspPipeNps">Size (inch)</label>
-          <input type="number" id="inspPipeNps" min="1" max="60" step="0.125">
+      <div class="insp-pipe-row" id="inspPipeRow" hidden>
+        <div class="insp-field-row">
+          <div class="insp-field">
+            <label for="inspPipeNps">Size (inch)</label>
+            <input type="number" id="inspPipeNps" min="0.5" max="60" step="0.125">
+          </div>
+          <div class="insp-field">
+            <label for="inspPipeLen">Joint (m)</label>
+            <input type="number" id="inspPipeLen" min="1" max="30" step="0.1">
+          </div>
         </div>
-        <div class="insp-field">
-          <label for="inspPipeN">Pipes</label>
-          <select id="inspPipeN"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+        <div class="insp-field-row">
+          <div class="insp-field">
+            <label for="inspPipeN" title="1 = single joint">Pipes</label>
+            <input type="number" id="inspPipeN" min="1" max="500" step="1">
+          </div>
+          <div class="insp-field">
+            <label for="inspPipePl">Per layer</label>
+            <input type="number" id="inspPipePl" min="1" max="500" step="1" placeholder="auto">
+          </div>
         </div>
+      </div>
+      <div class="insp-sp-row" id="inspSpRow" hidden>
         <div class="insp-field">
-          <label for="inspPipeLen">Joint (m)</label>
-          <input type="number" id="inspPipeLen" min="1" max="30" step="0.1">
+          <label>Outline</label>
+          <div class="insp-sp-seg">
+            <button type="button" data-o="rect">Box</button><button type="button" data-o="round">Rounded</button><button type="button" data-o="ellipse">Round</button><button type="button" data-o="frame">Frame</button><button type="button" data-o="poly">Drawn</button>
+          </div>
+        </div>
+        <div class="insp-field-row">
+          <div class="insp-field">
+            <label for="inspSpHt" title="For the 3D view">Height (m)</label>
+            <input type="number" id="inspSpHt" min="0.1" max="30" step="0.1">
+          </div>
+          <div class="insp-field insp-field-btn">
+            <label>&nbsp;</label>
+            <button type="button" class="insp-sp-draw" id="inspSpDraw">✎ Draw outline on deck</button>
+          </div>
         </div>
       </div>
     </section>
@@ -2229,26 +2251,51 @@
         </div>
         <div class="cp-sec-body" id="cpSecBodyPipe">
           <div class="cp-pipe">
+            <div class="cp-pipe-mode" id="cpPipeMode" role="radiogroup">
+              <button type="button" data-v="joint">Single joint</button><button type="button" data-v="bundle">Bundle</button>
+            </div>
             <div class="cp-pipe-top">
               <div class="cp-pipe-prev" id="cpPipePrev" title="Drag onto the deck, or click to place"></div>
               <div class="cp-pipe-sum" id="cpPipeSum"></div>
             </div>
             <span class="cp-cf-l">Pipe size (inch)</span>
             <div class="cp-pipe-chips" id="cpPipeNps"></div>
-            <div class="cp-cf-row">
+            <div class="cp-cf-row" id="cpPipeBundleRow">
               <div class="cp-cf-g">
                 <span class="cp-cf-l">Pipes in bundle</span>
-                <div class="cp-pipe-seg" id="cpPipeN"></div>
+                <div class="cp-num" id="cpPipeNBox"><button type="button" data-d="-1">−</button><input type="number" class="cp-cf-i" id="cpPipeN" min="2" max="500" step="1"><button type="button" data-d="1">+</button></div>
               </div>
+              <div class="cp-cf-g">
+                <span class="cp-cf-l">Per layer</span>
+                <input type="number" class="cp-cf-i" id="cpPipePl" min="1" max="500" step="1" placeholder="auto">
+              </div>
+            </div>
+            <div class="cp-cf-row">
               <div class="cp-cf-g cp-pipe-lenbox">
                 <span class="cp-cf-l">Joint length (m)</span>
                 <input type="number" class="cp-cf-i" id="cpPipeLen" step="0.1" min="1" max="30">
               </div>
             </div>
-            <button class="cp-cf-add" id="cpPipePlace">Place pipe on deck</button>
+            <button class="cp-cf-add" id="cpPipePlace">Place on deck</button>
           </div>
-          <div class="cp-sp-title">Non-standard cargo</div>
-          <div id="cpSpecialList"></div>
+          <div class="cp-pipe cp-sp">
+            <div class="cp-sp-title">Non-standard unit</div>
+            <div class="cp-pipe-note">Anything without a standard shape — a plate, a turbine part, a frame, a spool. Name it, give its size, or draw its outline on the deck.</div>
+            <input type="text" class="cp-cf-i" id="cpSpName" maxlength="60" placeholder="Name, e.g. Turbine blade section" autocomplete="off" spellcheck="false">
+            <div class="cp-sp-shape" id="cpSpShape">
+              <button type="button" data-v="rect">Box</button><button type="button" data-v="round">Rounded</button><button type="button" data-v="ellipse">Round</button><button type="button" data-v="frame">Frame</button><button type="button" data-v="poly">✎ Draw</button>
+            </div>
+            <div class="cp-cf-row" id="cpSpSize">
+              <div class="cp-cf-g"><span class="cp-cf-l">Length (m)</span><input type="number" class="cp-cf-i" id="cpSpL" min="0.3" max="60" step="0.1"></div>
+              <div class="cp-cf-g"><span class="cp-cf-l">Width (m)</span><input type="number" class="cp-cf-i" id="cpSpW" min="0.3" max="40" step="0.1"></div>
+            </div>
+            <div class="cp-cf-row">
+              <div class="cp-cf-g"><span class="cp-cf-l">Weight (t)</span><input type="number" class="cp-cf-i" id="cpSpWt" min="0" step="0.1" placeholder="0"></div>
+              <div class="cp-cf-g"><span class="cp-cf-l">Height (m)</span><input type="number" class="cp-cf-i" id="cpSpHt" min="0.1" max="30" step="0.1"></div>
+            </div>
+            <button class="cp-cf-add" id="cpSpPlace">Place on deck</button>
+            <button type="button" class="cp-sp-keep" id="cpSpKeep">Keep in Custom Cargo</button>
+          </div>
         </div>
       </div>
 

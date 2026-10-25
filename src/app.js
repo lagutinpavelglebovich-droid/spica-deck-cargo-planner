@@ -1647,6 +1647,7 @@ function _rotateCargo(c){
   const cx = c.x + c.w/2, cy = c.y + c.h/2;
   c.length_m = W; c.width_m = L;
   c.w = m2px_w(W); c.h = m2px_h(L);
+  if(Array.isArray(c.poly)) c.poly = c.poly.map(([u, v]) => [+(1 - v).toFixed(4), +u.toFixed(4)]);   /* outline turns with the unit */
   c.x = Math.max(0, Math.min(cx - c.w/2, TW  - c.w));
   c.y = Math.max(0, Math.min(cy - c.h/2, CVH - c.h));
   c.rot = ((c.rot || 0) + 1) % 4;
@@ -1714,28 +1715,44 @@ const CLIB = CCU_PRESETS.map(p => ({
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════
-   v3.19 — PIPES & NON-STANDARD CARGO
-   cargo.pipe    = { nps, n, len }  nominal size (inch), pipes in the
-                   bundle (1 = single joint, up to 5), joint length (m).
-                   Footprint, stack height and an estimated weight
-                   (standard wall) come from pipeSpec().
-   cargo.special = lifeboat | rescue | frame | reel | oog — drawn as its
-                   own silhouette with a non-standard outline and tag.
-   Both are plain fields on the cargo, so save / undo / sync carry them.
+   v3.19 / v3.20 — PIPES & NON-STANDARD CARGO
+   cargo.pipe    = { nps, n, len, pl? }  nominal size (inch), number of
+                   pipes (1 = single joint, a bundle is 2 or more — no
+                   upper limit), joint length (m), pipes per layer (pl,
+                   optional — auto when absent). Layers nest like on deck:
+                   pl, pl-1, pl, pl-1 … Footprint, stack height and an
+                   estimated weight (standard wall) come from pipeSpec().
+   cargo.special = 'oog' — non-standard unit of any kind (plate, turbine
+                   part, frame…). cargo.outline = rect | round | ellipse |
+                   frame | poly; cargo.poly = [[u,v]…] (0–1 in the block)
+                   for an outline drawn on the deck. cargo.ht = height (m).
+   Plain fields on the cargo, so save / undo / sync carry them.
 ═══════════════════════════════════════════════════════════════════════ */
-const PIPE_NPS  = [4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 30];
+const PIPE_NPS  = [2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 30];
 const _PIPE_OD  = { 2:2.375, 3:3.5, 4:4.5, 5:5.563, 6:6.625, 8:8.625, 10:10.75, 12:12.75 };   /* NPS ≤ 12: OD ≠ NPS */
 const _PIPE_WALL = { 2:.154, 3:.216, 4:.237, 5:.258, 6:.280, 8:.322, 10:.365, 12:.375 };     /* standard wall, inch */
-const PIPE_ROWS = { 1:[1], 2:[2], 3:[2,1], 4:[2,2], 5:[3,2] };                               /* bottom row first */
+const PIPE_MAX = 500;
+function _pipeRows(n, pl){
+  if(n <= 1) return [1];
+  let b = pl > 0 ? Math.min(Math.round(pl), n) : Math.max(2, Math.min(n, Math.ceil(Math.sqrt(n * 1.6))));
+  const rows = [];
+  for(let rem = n, k = 0; rem > 0; k++){
+    const cap = k % 2 === 0 ? b : Math.max(1, b - 1);
+    const take = Math.min(cap, rem);
+    rows.push(take); rem -= take;
+  }
+  return rows;
+}
 function pipeSpec(p){
   p = p || {};
-  const nps = Math.max(1, Math.min(60, +p.nps || 10));
-  const n   = Math.max(1, Math.min(5, Math.round(+p.n || 1)));
+  const nps = Math.max(0.5, Math.min(60, +p.nps || 10));
+  const n   = Math.max(1, Math.min(PIPE_MAX, Math.round(+p.n || 1)));
   const len = Math.max(1, Math.min(30, +p.len || 12.2));
-  const odIn = _PIPE_OD[nps] || nps, tIn = _PIPE_WALL[nps] || .375;
-  const od = odIn * 0.0254, rows = PIPE_ROWS[n];
+  const pl  = n > 1 && +p.pl > 0 ? Math.min(n, Math.round(+p.pl)) : 0;
+  const odIn = _PIPE_OD[nps] || nps, tIn = _PIPE_WALL[nps] || (nps < 2 ? .133 : .375);
+  const od = odIn * 0.0254, rows = _pipeRows(n, pl);
   const kgPerM = 0.02466 * (tIn * 25.4) * (odIn * 25.4 - tIn * 25.4);
-  return { nps, n, len, od, odIn, rows, nb: rows[0], layers: rows.length,
+  return { nps, n, len, pl, od, odIn, rows, nb: rows[0], layers: rows.length,
     across: Math.max(0.3, +(rows[0] * od + 0.04).toFixed(2)),
     height: od * (1 + (rows.length - 1) * 0.866),
     wt: Math.max(0.1, Math.round(n * kgPerM * len / 100) / 10) };
@@ -1744,71 +1761,72 @@ function pipeName(p){
   const s = pipeSpec(p);
   return `${s.nps}" pipe ${s.n > 1 ? 'bundle ×' + s.n : 'joint'} · ${s.len.toFixed(1)} m`;
 }
-const SPECIAL_TYPES = {
-  lifeboat: { name:'Lifeboat',      L:8.5, W:3.0, wt:6.0, h:3.2 },
-  rescue:   { name:'Rescue boat',   L:6.5, W:2.6, wt:2.5, h:2.0 },
-  frame:    { name:'Open frame',    L:6.0, W:3.0, wt:4.0, h:2.5 },
-  reel:     { name:'Cable reel',    L:4.0, W:2.5, wt:8.0, h:4.0 },
-  oog:      { name:'Out of gauge',  L:5.0, W:3.5, wt:5.0, h:3.0 },
-};
-/* Top-view drawing inside a cargo block (pipes / special silhouettes).
-   viewBox = the block's px box, stretched with the block (PDF stretch). */
+/* Non-standard unit outlines */
+const SP_OUTLINES = { rect:'Box', round:'Rounded', ellipse:'Round', frame:'Frame', poly:'Drawn' };
+function _spOutline(c){
+  if(SP_OUTLINES[c.outline]) return c.outline === 'poly' && !(Array.isArray(c.poly) && c.poly.length >= 3) ? 'rect' : c.outline;
+  return ({ frame:'frame', lifeboat:'round', rescue:'round', reel:'rect' })[c.special] || 'rect';   /* v3.19 presets */
+}
+function isSpecial(c){ return !!(c && c.special); }
+
+/* Top-view drawing inside a cargo block (pipes / non-standard outlines).
+   viewBox = the block's px box (the PDF rebuilds it at the stretched size). */
 function _cargoArtSvg(c, fill){
   const w = Math.max(4, c.w), h = Math.max(4, c.h);
-  const vert = h > w;                                  /* long axis across the deck */
-  const L = vert ? h : w, D = vert ? w : h;
   const uid = 'ca' + String(c.id).replace(/[^0-9a-z]/gi, '');
   const dk = t => darken(fill, t), lt = t => lighten(fill, t);
-  let body = '', defs = '';
+  let body = '', defs = '', rotate = false;
   if(c.pipe){
-    const s = pipeSpec(c.pipe), band = D / s.nb, pad = Math.max(0.4, band * 0.06);
+    rotate = h > w;                                    /* pipes run across the deck */
+    const L = rotate ? h : w, D = rotate ? w : h;
+    const s = pipeSpec(c.pipe), band = D / s.nb, pad = Math.max(0.3, band * 0.06);
     defs = `<linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${dk(.5)}"/><stop offset=".3" stop-color="${lt(.3)}"/><stop offset=".48" stop-color="${lt(.62)}"/><stop offset=".7" stop-color="${lt(.12)}"/><stop offset="1" stop-color="${dk(.55)}"/></linearGradient>`;
     const cap = Math.max(2, Math.min(7, L * 0.025));
+    const thin = band < 4;
     const tube = (y, hh, top) => {
       let t = '';
-      if(top) t += `<rect x="2.5" y="${(y + 1.4).toFixed(2)}" width="${(L - 4).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="rgba(0,0,0,.28)"/>`;
-      t += `<rect x="1.5" y="${y.toFixed(2)}" width="${(L - 3).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="url(#${uid})" stroke="${dk(.45)}" stroke-width=".6"/>`;
-      t += `<rect x="1.5" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
-      t += `<rect x="${(L - 1.5 - cap).toFixed(2)}" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
+      if(top && !thin) t += `<rect x="2.5" y="${(y + 1.2).toFixed(2)}" width="${(L - 4).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="rgba(0,0,0,.26)"/>`;
+      t += `<rect x="1.5" y="${y.toFixed(2)}" width="${(L - 3).toFixed(2)}" height="${hh.toFixed(2)}" rx="${Math.min(2, hh / 2).toFixed(2)}" fill="url(#${uid})"${thin ? '' : ` stroke="${dk(.45)}" stroke-width=".6"`}/>`;
+      if(!thin){
+        t += `<rect x="1.5" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
+        t += `<rect x="${(L - 1.5 - cap).toFixed(2)}" y="${y.toFixed(2)}" width="${cap.toFixed(2)}" height="${hh.toFixed(2)}" fill="${dk(.6)}" opacity=".75"/>`;
+      }
       return t;
     };
-    for(let i = 0; i < s.nb; i++) body += tube(i * band + pad, band - 2 * pad, false);
-    const top = s.rows[1] || 0;
-    for(let i = 0; i < top; i++){
-      const y = (top === s.nb ? i * band : (i + 0.5) * band) + pad - (top === s.nb ? 1 : 0);
-      body += tube(y, band - 2 * pad, true);
-    }
+    s.rows.forEach((cnt, k) => {
+      const nested = k % 2 === 1 && cnt <= s.nb - 1;
+      const x0 = nested ? 0.5 * band : 0;
+      for(let i = 0; i < cnt; i++) body += tube(x0 + i * band + pad, band - 2 * pad, k > 0);
+    });
     if(s.n > 1) [0.14, 0.5, 0.86].forEach(f => { body += `<rect x="${(L * f - 1.5).toFixed(2)}" y="0" width="3" height="${D}" fill="rgba(25,25,25,.62)"/>`; });
-  } else if(c.special === 'lifeboat' || c.special === 'rescue'){
-    const r = D * 0.42;
-    const hull = `M${r} 1 H${(L * 0.68).toFixed(2)} Q${L - 1} 1 ${L - 1} ${D / 2} Q${L - 1} ${D - 1} ${(L * 0.68).toFixed(2)} ${D - 1} H${r} Q1 ${D - 1} 1 ${D / 2} Q1 1 ${r} 1 Z`;
-    if(c.special === 'lifeboat'){
-      body = `<path d="${hull}" fill="${fill}" stroke="${dk(.4)}" stroke-width="1.2"/>`
-        + `<rect x="${(L * 0.12).toFixed(2)}" y="${(D * 0.2).toFixed(2)}" width="${(L * 0.66).toFixed(2)}" height="${(D * 0.6).toFixed(2)}" rx="${(D * 0.28).toFixed(2)}" fill="${lt(.35)}" stroke="${dk(.3)}" stroke-width=".8"/>`
-        + `<circle cx="${(L * 0.3).toFixed(2)}" cy="${D / 2}" r="${(D * 0.1).toFixed(2)}" fill="${dk(.25)}"/><circle cx="${(L * 0.62).toFixed(2)}" cy="${D / 2}" r="${(D * 0.1).toFixed(2)}" fill="${dk(.25)}"/>`;
-    } else {
-      const tw = Math.max(2, D * 0.16);
-      body = `<path d="${hull}" fill="${lt(.55)}" stroke="${dk(.35)}" stroke-width="${tw.toFixed(2)}"/>`
-        + `<rect x="${(L * 0.42).toFixed(2)}" y="${(D * 0.34).toFixed(2)}" width="${(L * 0.14).toFixed(2)}" height="${(D * 0.32).toFixed(2)}" rx="2" fill="${dk(.15)}"/>`;
-    }
-  } else if(c.special === 'frame'){
-    const pw = Math.max(18, Math.min(D * 1.1, L / Math.max(1, Math.round(L / Math.max(18, D)))));
-    const n = Math.max(1, Math.round(L / pw)), step = L / n, e = dk(.4);
-    body = `<rect x="1.5" y="1.5" width="${L - 3}" height="${D - 3}" fill="none" stroke="${e}" stroke-width="3"/>`;
-    for(let i = 0; i < n; i++){
-      const x0 = i * step, x1 = x0 + step;
-      if(i) body += `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x0.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="2"/>`;
-      body += i % 2 ? `<line x1="${x0.toFixed(2)}" y1="${D - 1.5}" x2="${x1.toFixed(2)}" y2="1.5" stroke="${e}" stroke-width="1.4"/>`
-                    : `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x1.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="1.4"/>`;
-    }
-  } else if(c.special === 'reel'){
-    const f = Math.max(3, D * 0.13);
-    body = `<rect x="1" y="${f}" width="${L - 2}" height="${D - 2 * f}" fill="${lt(.25)}"/>`;
-    for(let y = f + 3; y < D - f - 1; y += 3.2) body += `<line x1="2" y1="${y.toFixed(2)}" x2="${L - 2}" y2="${y.toFixed(2)}" stroke="${dk(.3)}" stroke-width=".8" opacity=".7"/>`;
-    body += `<rect x="0.5" y="0.5" width="${L - 1}" height="${f}" rx="1.5" fill="${dk(.35)}"/><rect x="0.5" y="${(D - f - 0.5).toFixed(2)}" width="${L - 1}" height="${f}" rx="1.5" fill="${dk(.35)}"/>`;
+    if(rotate) body = `<g transform="translate(${w} 0) rotate(90)">${body}</g>`;
+  } else if(isSpecial(c)){
+    const o = _spOutline(c), e = dk(.4), acc = '#d97706';
+    const box = `<rect x=".75" y=".75" width="${w - 1.5}" height="${h - 1.5}" fill="none" stroke="${acc}" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>`;
+    if(o === 'poly'){
+      const pts = c.poly.map(([u, v]) => `${(u * w).toFixed(2)},${(v * h).toFixed(2)}`).join(' ');
+      body = box + `<polygon points="${pts}" fill="${fill}" stroke="${acc}" stroke-width="4" stroke-dasharray="6 4" stroke-linejoin="round" opacity=".9"/>`
+                 + `<polygon points="${pts}" fill="${fill}" stroke="${e}" stroke-width="1.4" stroke-linejoin="round"/>`;
+    } else if(o === 'ellipse'){
+      body = box + `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2 - 1.5}" ry="${h / 2 - 1.5}" fill="${fill}" stroke="${e}" stroke-width="1.4"/>`;
+    } else if(o === 'round'){
+      const r = Math.min(w, h) * 0.42;
+      body = box + `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="${r.toFixed(2)}" fill="${fill}" stroke="${e}" stroke-width="1.4"/>`;
+    } else if(o === 'frame'){
+      const L = Math.max(w, h), D = Math.min(w, h), vert = h > w;
+      const n = Math.max(1, Math.round(L / Math.max(18, D)));
+      const step = L / n;
+      let g = `<rect x="1.5" y="1.5" width="${L - 3}" height="${D - 3}" fill="${lt(.55)}" fill-opacity=".35" stroke="${e}" stroke-width="3"/>`;
+      for(let i = 0; i < n; i++){
+        const x0 = i * step, x1 = x0 + step;
+        if(i) g += `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x0.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="2"/>`;
+        g += i % 2 ? `<line x1="${x0.toFixed(2)}" y1="${D - 1.5}" x2="${x1.toFixed(2)}" y2="1.5" stroke="${e}" stroke-width="1.4"/>`
+                   : `<line x1="${x0.toFixed(2)}" y1="1.5" x2="${x1.toFixed(2)}" y2="${D - 1.5}" stroke="${e}" stroke-width="1.4"/>`;
+      }
+      body = vert ? `<g transform="translate(${w} 0) rotate(90)">${g}</g>` : g;
+    } else return '';
   } else return '';
-  const g = vert ? `<g transform="translate(${w} 0) rotate(90)">${body}</g>` : body;
-  return `<svg class="cb-art" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs>${defs}</defs>${g}</svg>`;
+  return `<svg class="cb-art" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs>${defs}</defs>${body}</svg>`;
 }
 
 /* ════════════════════════════════════
@@ -4387,7 +4405,12 @@ function _placeAtCore(cx,cy){
     priority:false,
     trDest:''};
   if(isC && it.pipe) c.pipe = Object.assign({}, it.pipe);
-  if(isC && it.special) c.special = it.special;
+  if(isC && it.special){
+    c.special = 'oog';
+    if(it.outline) c.outline = it.outline;
+    if(Array.isArray(it.poly)) c.poly = it.poly.map(q => q.slice());
+    if(it.ht) c.ht = it.ht;
+  }
   S.cargo.push(c);ensureLocActive(c.platform);renderAll();updateStats();buildActiveLocStrip();
   checkSeg();updateDGSummary();save();
   /* Hybrid stamp: the editor opens on every placement so the copy can be
@@ -4567,12 +4590,12 @@ function renderBlock(cv,cargo){
   b.appendChild(idEl);
 
   /* v3.19 — pipes and non-standard cargo: drawn from above inside the block */
-  if(cargo.pipe || (cargo.special && SPECIAL_TYPES[cargo.special])){
+  if(cargo.pipe || isSpecial(cargo)){
     const art = _cargoArtSvg(cargo, fill);
     if(art){
       b.insertAdjacentHTML('afterbegin', art);
       const [r,g,bb] = h2r(fill);
-      b.style.background = `rgba(${r},${g},${bb},${cargo.pipe || cargo.special === 'frame' ? .16 : .1})`;
+      b.style.background = `rgba(${r},${g},${bb},${cargo.pipe ? .16 : .07})`;
       b.classList.add('cb-has-art');
     }
     if(cargo.pipe){
@@ -4583,12 +4606,15 @@ function renderBlock(cv,cargo){
       b.style.setProperty('--pipe-l', lighten(fill, .5)); b.style.setProperty('--pipe-d', darken(fill, .5));
       b.title = pipeName(cargo.pipe) + ` · OD ${ps.odIn}"`;
     }
-    if(cargo.special && SPECIAL_TYPES[cargo.special]){
-      b.classList.add('cb-special', 'cb-sp-' + cargo.special);
+    if(isSpecial(cargo)){
+      const o = _spOutline(cargo);
+      b.classList.add('cb-special', 'cb-sp-' + o);
       b.style.setProperty('--sp-face', fill); b.style.setProperty('--sp-edge', darken(fill, .4));
-      const ring = document.createElement('div'); ring.className = 'cb-sp-ring'; b.appendChild(ring);
+      if(o !== 'poly'){ const ring = document.createElement('div'); ring.className = 'cb-sp-ring'; b.appendChild(ring); }
       const tag = document.createElement('div'); tag.className = 'cb-sp-tag';
-      tag.textContent = cargo.special === 'oog' ? 'OUT OF GAUGE' : 'NON-STD · ' + SPECIAL_TYPES[cargo.special].name.toUpperCase();
+      const nm = String(cargo.desc || '').trim();
+      tag.textContent = 'NON-STD' + (nm && nm.toLowerCase() !== 'non-standard unit' ? ' · ' + (nm.length > 26 ? nm.slice(0, 25) + '…' : nm) : '');
+      tag.title = 'Non-standard unit' + (cargo.desc ? ' · ' + cargo.desc : '');
       b.appendChild(tag);
     }
   }
@@ -4913,7 +4939,7 @@ function renderBlock(cv,cargo){
 const CARGO_3D_SCALE = 0.9;            /* slight vertical understatement keeps labels readable */
 function cargoHeightM(c){
   if(c.pipe) return Math.max(0.25, pipeSpec(c.pipe).height);
-  if(c.special && SPECIAL_TYPES[c.special]) return c.special === 'reel' ? Math.max(1, Math.max(c.length_m || 0, c.width_m || 0)) : SPECIAL_TYPES[c.special].h;
+  if(isSpecial(c)) return +c.ht > 0 ? +c.ht : 2.5;
   const t = ((c.desc || '') + ' ' + (c.ccu || '')).toLowerCase();
   if(/half[\s-]?height|open[\s-]?top|\bhh\b/.test(t))        return 1.3;
   if(/basket|rack|flat|bundle|pipe|frame|skid|pallet|tray/.test(t)) return 1.1;
@@ -6449,15 +6475,26 @@ function inspPopulate(cargo){
 
   /* v3.19 — kind of unit (pipe / non-standard) */
   const kind = document.getElementById('inspKind');
-  if(kind) kind.value = cargo.pipe ? 'pipe' : (cargo.special && SPECIAL_TYPES[cargo.special] ? cargo.special : '');
+  if(kind) kind.value = cargo.pipe ? 'pipe' : isSpecial(cargo) ? 'oog' : '';
   const prow = document.getElementById('inspPipeRow');
   if(prow){
     prow.hidden = !cargo.pipe;
     if(cargo.pipe){
       const ps = pipeSpec(cargo.pipe);
       document.getElementById('inspPipeNps').value = ps.nps;
-      document.getElementById('inspPipeN').value = String(ps.n);
+      document.getElementById('inspPipeN').value = ps.n;
+      document.getElementById('inspPipePl').value = ps.pl || '';
+      document.getElementById('inspPipePl').placeholder = 'auto · ' + ps.nb;
       document.getElementById('inspPipeLen').value = ps.len;
+    }
+  }
+  const srow = document.getElementById('inspSpRow');
+  if(srow){
+    srow.hidden = !isSpecial(cargo);
+    if(isSpecial(cargo)){
+      const o = _spOutline(cargo);
+      srow.querySelectorAll('[data-o]').forEach(b => { b.classList.toggle('sel', b.dataset.o === o); if(b.dataset.o === 'poly') b.hidden = !(Array.isArray(cargo.poly) && cargo.poly.length >= 3); });
+      document.getElementById('inspSpHt').value = +cargo.ht > 0 ? cargo.ht : 2.5;
     }
   }
 
@@ -6794,50 +6831,58 @@ function bindInspector(){
     el.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); commitSize(); } });
   });
 
-  /* v3.19 — kind of unit + pipe parameters */
+  /* v3.19 / v3.20 — kind of unit + pipe parameters + non-standard outline */
   const _applyPipe = (c, np) => {
     const old = c.pipe ? pipeSpec(c.pipe) : null, ns = pipeSpec(np);
     const vert = c.h > c.w, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
-    c.pipe = { nps: ns.nps, n: ns.n, len: ns.len };
+    c.pipe = { nps: ns.nps, n: ns.n, len: ns.len }; if(ns.pl) c.pipe.pl = ns.pl;
     c.length_m = vert ? ns.across : ns.len; c.width_m = vert ? ns.len : ns.across;
     c.w = m2px_w(c.length_m); c.h = m2px_h(c.width_m);
     c.x = Math.max(0, Math.min(cx - c.w / 2, TW - c.w));
     c.y = Math.max(0, Math.min(cy - c.h / 2, CVH - c.h));
     if(!(c.wt > 0) || (old && Math.abs(c.wt - old.wt) < 0.05)) c.wt = ns.wt;
-    const autoDesc = !c.desc || (old && c.desc === pipeName(old));
-    if(autoDesc) c.desc = pipeName(ns);
+    if(!c.desc || (old && c.desc === pipeName(old))) c.desc = pipeName(ns);
   };
+  const _selC = () => (inspSelId != null && isOperator()) ? S.cargo.find(x => x.id === inspSelId) : null;
   const _kindCommit = () => {
-    if(!isOperator() || inspSelId == null) return;
-    const c = S.cargo.find(x => x.id === inspSelId);
-    if(!c) return;
+    const c = _selC(); if(!c) return;
     renderAll(); kbSelect(inspSelId); inspPopulate(c);
     updateStats(); buildActiveLocStrip(); checkSeg(); save();
   };
   document.getElementById('inspKind')?.addEventListener('change', e => {
-    const c = inspSelId != null && S.cargo.find(x => x.id === inspSelId);
-    if(!c || !isOperator()) return;
+    const c = _selC(); if(!c) return;
     const v = e.target.value;
     if(v === 'pipe'){
-      delete c.special;
+      delete c.special; delete c.outline; delete c.poly;
       if(!c.pipe){
         const L = Math.max(c.length_m || c.w / M, c.width_m || c.h / YS);
         _applyPipe(c, { nps: 10, n: 1, len: Math.min(30, Math.max(1, +L.toFixed(2))) });
       }
-    } else {
-      delete c.pipe;
-      if(v) c.special = v; else delete c.special;
-    }
+    } else if(v === 'oog'){
+      delete c.pipe; c.special = 'oog'; if(!c.outline) c.outline = 'rect';
+    } else { delete c.pipe; delete c.special; delete c.outline; delete c.poly; delete c.ht; }
     _kindCommit();
   });
-  ['inspPipeNps','inspPipeN','inspPipeLen'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
-    const c = inspSelId != null && S.cargo.find(x => x.id === inspSelId);
-    if(!c || !c.pipe || !isOperator()) return;
+  ['inspPipeNps','inspPipeN','inspPipePl','inspPipeLen'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+    const c = _selC(); if(!c || !c.pipe) return;
     _applyPipe(c, { nps: parseFloat(document.getElementById('inspPipeNps').value) || c.pipe.nps,
                     n: parseInt(document.getElementById('inspPipeN').value, 10) || c.pipe.n,
+                    pl: parseInt(document.getElementById('inspPipePl').value, 10) || 0,
                     len: parseFloat(document.getElementById('inspPipeLen').value) || c.pipe.len });
     _kindCommit();
   }));
+  document.querySelectorAll('#inspSpRow [data-o]').forEach(b => b.addEventListener('click', () => {
+    const c = _selC(); if(!c) return;
+    c.outline = b.dataset.o; _kindCommit();
+  }));
+  document.getElementById('inspSpHt')?.addEventListener('change', e => {
+    const c = _selC(); if(!c) return;
+    const v = parseFloat(e.target.value); if(v > 0) c.ht = Math.min(30, v); _kindCommit();
+  });
+  document.getElementById('inspSpDraw')?.addEventListener('click', () => {
+    const c = _selC(); if(!c) return;
+    startOutlineDraw({ name: c.ccu || c.desc || 'the unit', targetId: c.id });
+  });
 
   const diffOk = document.getElementById('inspDiffDismiss');
   if(diffOk) diffOk.addEventListener('click', () => { if(inspSelId != null) clearImportDiff(inspSelId); });
@@ -11622,7 +11667,6 @@ function cpRenderFreq(){
   const stdItems = (typeof CLIB !== 'undefined') ? CLIB : [];
   const allItems = [
     ...stdItems,
-    ..._specialLibItems(),
     ...((S.customLib || []).map(c => ({ ...c, isCustom:true }))),
   ];
 
@@ -11641,91 +11685,229 @@ function cpRenderFreq(){
   favItems.forEach(it => body.appendChild(cpMakeLibCard(it, !!it.isCustom)));
 }
 
-/* ── v3.19 — Pipes & special: bundle builder + non-standard presets ── */
+/* ── v3.19 / v3.20 — Pipes & special: bundle builder + non-standard unit ── */
 const SPECIAL_ICON = {
-  lifeboat: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 4h7Q13 4 13 7t-3.5 3h-7Q1 10 1 7t1.5-3z" stroke="currentColor" stroke-width="1.3"/><rect x="3" y="5.6" width="6" height="2.8" rx="1.4" stroke="currentColor" stroke-width="1"/></svg>',
-  rescue:   '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 4h7Q13 4 13 7t-3.5 3h-7Q1 10 1 7t1.5-3z" stroke="currentColor" stroke-width="2"/></svg>',
-  frame:    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3.5" width="11" height="7" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 3.5l5.5 7 5.5-7M7 3.5v7" stroke="currentColor" stroke-width="1"/></svg>',
-  reel:     '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2" width="11" height="2" rx=".6" fill="currentColor"/><rect x="1.5" y="10" width="11" height="2" rx=".6" fill="currentColor"/><path d="M2.5 5.5h9M2.5 7h9M2.5 8.5h9" stroke="currentColor" stroke-width=".9"/></svg>',
-  oog:      '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2.5" y="3.5" width="9" height="7" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 1.5"/><path d="M1 7h1.5M11.5 7H13M7 1v2.5M7 10.5V13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  rect:    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="3.5" width="10" height="7" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 1.5"/></svg>',
+  round:   '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3.5" width="11" height="7" rx="3.5" stroke="currentColor" stroke-width="1.3"/></svg>',
+  ellipse: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><ellipse cx="7" cy="7" rx="5.5" ry="4.5" stroke="currentColor" stroke-width="1.3"/></svg>',
+  frame:   '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3.5" width="11" height="7" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 3.5l5.5 7 5.5-7M7 3.5v7" stroke="currentColor" stroke-width="1"/></svg>',
+  poly:    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 10.5L3.5 3l5 1.5L12 2.5l-1 8-4.5 1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
-function _specialLibItems(){
-  return Object.entries(SPECIAL_TYPES).map(([k, t]) => ({ cat:'Non-standard', name:t.name, key:'sp-' + k, length_m:t.L, width_m:t.W,
-    wt:t.wt, w:m2px_w(t.L), h:m2px_h(t.W), special:k }));
-}
-let PIPE_UI = { nps: 10, n: 1, len: 12.2 };
+let PIPE_UI = { nps: 10, n: 5, len: 12.2, pl: 0, mode: 'bundle' };
 try{ const v = JSON.parse(localStorage.getItem('spicaTide_pipeUi') || 'null'); if(v) PIPE_UI = Object.assign(PIPE_UI, v); }catch(e){}
-function _pipeUiSave(){ try{ localStorage.setItem('spicaTide_pipeUi', JSON.stringify(PIPE_UI)); }catch(e){} }
+if(!(PIPE_UI.n >= 2)) PIPE_UI.n = 5;
+let SP_UI = { name: '', L: 6, W: 3, wt: 0, ht: 2.5, outline: 'rect' };
+try{ const v = JSON.parse(localStorage.getItem('spicaTide_spUi') || 'null'); if(v) SP_UI = Object.assign(SP_UI, v); }catch(e){}
+function _pipeUiSave(){ try{ localStorage.setItem('spicaTide_pipeUi', JSON.stringify(PIPE_UI)); localStorage.setItem('spicaTide_spUi', JSON.stringify(SP_UI)); }catch(e){} }
+function _pipeCur(){ return { nps: PIPE_UI.nps, n: PIPE_UI.mode === 'joint' ? 1 : Math.max(2, PIPE_UI.n), len: PIPE_UI.len, pl: PIPE_UI.mode === 'joint' ? 0 : PIPE_UI.pl }; }
 function _pipePending(){
-  const s = pipeSpec(PIPE_UI);
-  const name = pipeName(PIPE_UI);
-  return { type:'cargo', item:{ cat:'Pipe', name, key:'pipe-builder', w:m2px_w(s.len), h:m2px_h(s.across), wt:s.wt,
-    length_m:s.len, width_m:s.across, pipe:{ nps:s.nps, n:s.n, len:s.len } } };
+  const cur = _pipeCur(), s = pipeSpec(cur);
+  const pipe = { nps: s.nps, n: s.n, len: s.len }; if(s.pl) pipe.pl = s.pl;
+  return { type:'cargo', item:{ cat:'Pipe', name: pipeName(cur), key:'pipe-builder', w:m2px_w(s.len), h:m2px_h(s.across), wt:s.wt,
+    length_m:s.len, width_m:s.across, pipe } };
+}
+function _spPending(){
+  const L = Math.max(0.3, Math.min(DECK_LENGTH_M, +SP_UI.L || 3)), W = Math.max(0.3, Math.min(CVH / YS, +SP_UI.W || 2));
+  return { type:'cargo', item:{ cat:'Non-standard', name: (SP_UI.name || '').trim() || 'Non-standard unit', key:'sp-builder',
+    w:m2px_w(L), h:m2px_h(W), wt:+SP_UI.wt || 0, length_m:L, width_m:W, special:'oog', outline:SP_UI.outline, ht:+SP_UI.ht || 2.5 } };
 }
 /* End view of the bundle (circles) for the builder */
 function _pipeEndSvg(spec, W, H){
-  const r = Math.min((W - 8) / (2 * spec.nb), (H - 8) / (2 + (spec.layers - 1) * 1.732)) ;
+  const r = Math.min((W - 8) / (2 * spec.nb), (H - 8) / (2 + (spec.layers - 1) * 1.732));
   const cx0 = W / 2 - (spec.nb - 1) * r, base = H - 4 - r;
   let out = `<line x1="4" y1="${H - 3.5}" x2="${W - 4}" y2="${H - 3.5}" stroke="currentColor" stroke-width="1" opacity=".35"/>`;
-  const ring = (x, y) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r - 0.6).toFixed(1)}" fill="url(#pipeEndG)" stroke="currentColor" stroke-width="1.1"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 0.72).toFixed(1)}" fill="var(--pipe-bore)"/>`;
-  for(let i = 0; i < spec.nb; i++) out += ring(cx0 + i * 2 * r, base);
-  const top = spec.rows[1] || 0;
-  for(let i = 0; i < top; i++){
-    const x = top === spec.nb ? cx0 + i * 2 * r : cx0 + (i + 0.5) * 2 * r;
-    out += ring(x, top === spec.nb ? base - 2 * r : base - 1.732 * r);
-  }
+  const sw = r > 3 ? 1.1 : 0.5;
+  const ring = (x, y) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(0.6, r - 0.5).toFixed(2)}" fill="url(#pipeEndG)" stroke="currentColor" stroke-width="${sw}"/>` +
+    (r > 2.5 ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r * 0.72).toFixed(2)}" fill="var(--pipe-bore)"/>` : '');
+  spec.rows.forEach((cnt, k) => {
+    const nested = k % 2 === 1 && cnt <= spec.nb - 1;
+    const y = base - k * 1.732 * r;
+    for(let i = 0; i < cnt; i++) out += ring(cx0 + (nested ? r : 0) + i * 2 * r, y);
+  });
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><defs><radialGradient id="pipeEndG" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="var(--pipe-hi)"/><stop offset="1" stop-color="var(--pipe-lo)"/></radialGradient></defs>${out}</svg>`;
+}
+function _cpArm(pi){
+  if(!isOperator()) return;
+  document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
+  S.pending = pi; _cpEnterPlacing();
+  cpShowHint('<b>' + escHtml(pi.item.name) + '</b> → click deck to place');
+}
+function _cpPipeBind(){
+  const nps = document.getElementById('cpPipeNps');
+  if(!nps || nps.dataset.bound) return;
+  nps.dataset.bound = '1';
+  const upd = () => { _pipeUiSave(); cpRenderPipe(); };
+  nps.innerHTML = PIPE_NPS.map(v => `<button type="button" data-v="${v}">${v}"</button>`).join('') +
+    '<input type="number" class="cp-pipe-own" id="cpPipeOwn" min="0.5" max="60" step="0.125" placeholder="other" title="Other size, inch">';
+  nps.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { PIPE_UI.nps = +b.dataset.v; upd(); }));
+  const own = document.getElementById('cpPipeOwn');
+  own.addEventListener('change', () => { const v = parseFloat(own.value); if(v >= 0.5 && v <= 60) PIPE_UI.nps = Math.round(v * 8) / 8; upd(); });
+  document.querySelectorAll('#cpPipeMode button').forEach(b => b.addEventListener('click', () => { PIPE_UI.mode = b.dataset.v; upd(); }));
+  const n = document.getElementById('cpPipeN');
+  n.addEventListener('change', () => { const v = parseInt(n.value, 10); if(v >= 2) PIPE_UI.n = Math.min(PIPE_MAX, v); upd(); });
+  document.querySelectorAll('#cpPipeNBox [data-d]').forEach(b => b.addEventListener('click', () => {
+    PIPE_UI.n = Math.max(2, Math.min(PIPE_MAX, (PIPE_UI.n || 2) + +b.dataset.d)); upd();
+  }));
+  const pl = document.getElementById('cpPipePl');
+  pl.addEventListener('change', () => { const v = parseInt(pl.value, 10); PIPE_UI.pl = v >= 1 ? v : 0; upd(); });
+  const len = document.getElementById('cpPipeLen');
+  len.addEventListener('change', () => { const v = parseFloat(len.value); if(v >= 1 && v <= 30) PIPE_UI.len = Math.round(v * 100) / 100; upd(); });
+  document.getElementById('cpPipePlace').addEventListener('click', () => _cpArm(_pipePending()));
+  const prev = document.getElementById('cpPipePrev');
+  prev.addEventListener('mousedown', e => { const pi = _pipePending(); _libDragFromCard(e, pi, pi.item.name, pi.item.w, pi.item.h); });
+  prev.addEventListener('click', () => _cpArm(_pipePending()));
+  /* non-standard unit */
+  const spF = { cpSpName:'name', cpSpL:'L', cpSpW:'W', cpSpWt:'wt', cpSpHt:'ht' };
+  Object.entries(spF).forEach(([id, k]) => document.getElementById(id)?.addEventListener('change', e => {
+    const v = e.target.value;
+    SP_UI[k] = k === 'name' ? v.trim().slice(0, 60) : (parseFloat(v) >= 0 ? parseFloat(v) : SP_UI[k]);
+    upd();
+  }));
+  document.querySelectorAll('#cpSpShape button').forEach(b => b.addEventListener('click', () => { SP_UI.outline = b.dataset.v; upd(); }));
+  document.getElementById('cpSpPlace').addEventListener('click', () => {
+    if(!isOperator()) return;
+    if(SP_UI.outline === 'poly') startOutlineDraw({ name: (SP_UI.name || '').trim() || 'Non-standard unit', wt: +SP_UI.wt || 0, ht: +SP_UI.ht || 2.5 });
+    else _cpArm(_spPending());
+  });
+  document.getElementById('cpSpKeep').addEventListener('click', () => {
+    if(!isOperator()) return;
+    if(SP_UI.outline === 'poly') return;
+    const pi = _spPending().item;
+    if(!(SP_UI.name || '').trim()){ document.getElementById('cpSpName')?.focus(); showToast('Give the unit a name first', 'warn'); return; }
+    S.customLib.push({ cat:'Non-standard', name: pi.name, sz: pi.length_m.toFixed(2) + 'x' + pi.width_m.toFixed(2), wt: pi.wt,
+      length_m: pi.length_m, width_m: pi.width_m, w: pi.w, h: pi.h, special:'oog', outline: pi.outline, ht: pi.ht });
+    save(); cpRender();
+    showToast(`${pi.name} kept in Custom Cargo`, 'ok');
+  });
 }
 function cpRenderPipe(){
   const body = document.getElementById('cpSecBodyPipe');
   if(!body) return;
   const hdr = document.getElementById('cpSecHdrPipe');
   if(hdr){ const open = CP_SECTIONS.pipe !== false; hdr.classList.toggle('collapsed', !open); body.classList.toggle('hidden', !open); }
-  const hide = CP_FILTER === 'ondk' || (CP_Q && !/pipe|joint|bundle|tubular|casing|boat|life|rescue|frame|reel|gauge|oog|special|non/.test(CP_Q));
+  const hide = CP_FILTER === 'ondk' || (CP_Q && !/pipe|joint|bundle|tubular|casing|special|non|odd|frame|plate|oog|gauge|outline/.test(CP_Q));
   const sec = document.getElementById('cpSecPipe'); if(sec) sec.hidden = hide;
   if(hide) return;
-  const s = pipeSpec(PIPE_UI);
-  const nps = document.getElementById('cpPipeNps');
-  if(nps && !nps.dataset.bound){
-    nps.dataset.bound = '1';
-    nps.innerHTML = PIPE_NPS.map(v => `<button type="button" data-v="${v}">${v}"</button>`).join('') +
-      '<input type="number" class="cp-pipe-own" id="cpPipeOwn" min="1" max="60" step="1" placeholder="other" title="Other size, inch">';
-    nps.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { PIPE_UI.nps = +b.dataset.v; _pipeUiSave(); cpRenderPipe(); }));
-    const own = document.getElementById('cpPipeOwn');
-    own.addEventListener('change', () => { const v = parseFloat(own.value); if(v >= 1 && v <= 60){ PIPE_UI.nps = Math.round(v * 8) / 8; _pipeUiSave(); } cpRenderPipe(); });
-    const seg = document.getElementById('cpPipeN');
-    seg.innerHTML = [1,2,3,4,5].map(v => `<button type="button" data-v="${v}">${v}</button>`).join('');
-    seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { PIPE_UI.n = +b.dataset.v; _pipeUiSave(); cpRenderPipe(); }));
-    const len = document.getElementById('cpPipeLen');
-    len.addEventListener('change', () => { const v = parseFloat(len.value); if(v >= 1 && v <= 30){ PIPE_UI.len = Math.round(v * 100) / 100; _pipeUiSave(); } cpRenderPipe(); });
-    const place = document.getElementById('cpPipePlace');
-    const arm = () => {
-      if(!isOperator()) return;
-      const pi = _pipePending();
-      document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
-      S.pending = pi; _cpEnterPlacing();
-      cpShowHint('<b>' + escHtml(pi.item.name) + '</b> → click deck to place');
-    };
-    place.addEventListener('click', arm);
-    const prev = document.getElementById('cpPipePrev');
-    prev.addEventListener('mousedown', e => { const pi = _pipePending(); _libDragFromCard(e, pi, pi.item.name, pi.item.w, pi.item.h); });
-    prev.addEventListener('click', arm);
-  }
-  nps && nps.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === s.nps));
+  _cpPipeBind();
+  const cur = _pipeCur(), s = pipeSpec(cur), bundle = PIPE_UI.mode !== 'joint';
+  document.querySelectorAll('#cpPipeMode button').forEach(b => b.classList.toggle('on', b.dataset.v === (bundle ? 'bundle' : 'joint')));
+  document.getElementById('cpPipeBundleRow').hidden = !bundle;
+  document.querySelectorAll('#cpPipeNps button').forEach(b => b.classList.toggle('on', +b.dataset.v === s.nps));
   const own = document.getElementById('cpPipeOwn');
   if(own && document.activeElement !== own) own.value = PIPE_NPS.includes(s.nps) ? '' : s.nps;
-  document.querySelectorAll('#cpPipeN button').forEach(b => b.classList.toggle('on', +b.dataset.v === s.n));
-  const len = document.getElementById('cpPipeLen'); if(len && document.activeElement !== len) len.value = s.len;
+  const set = (id, v) => { const el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
+  set('cpPipeN', Math.max(2, PIPE_UI.n)); set('cpPipePl', PIPE_UI.pl || ''); set('cpPipeLen', s.len);
+  const plI = document.getElementById('cpPipePl'); if(plI) plI.placeholder = 'auto · ' + s.nb;
+  document.getElementById('cpPipePlace').textContent = bundle ? 'Place bundle on deck' : 'Place joint on deck';
   const prev = document.getElementById('cpPipePrev'); if(prev) prev.innerHTML = _pipeEndSvg(s, 92, 60);
   const sum = document.getElementById('cpPipeSum');
-  if(sum) sum.innerHTML = `<div class="cp-pipe-name">${escHtml(pipeName(PIPE_UI))}</div>
+  if(sum) sum.innerHTML = `<div class="cp-pipe-name">${escHtml(pipeName(cur))}</div>
     <div class="cp-pipe-meta">OD ${s.odIn}" · ${s.len.toFixed(2)} × ${s.across.toFixed(2)} m · ≈ ${s.wt.toFixed(1)} t</div>
-    <div class="cp-pipe-note">Weight estimated for standard wall — check against the manifest</div>`;
-  const list = document.getElementById('cpSpecialList');
-  if(list){
-    list.innerHTML = '';
-    _specialLibItems().forEach(it => list.appendChild(cpMakeLibCard(it)));
+    <div class="cp-pipe-note">${s.n > 1 ? `${s.rows.length} layer${s.rows.length > 1 ? 's' : ''} (${s.rows.join(' + ')}) · ` : ''}weight estimated for standard wall — check the manifest</div>`;
+  /* non-standard */
+  set('cpSpName', SP_UI.name || ''); set('cpSpL', SP_UI.L); set('cpSpW', SP_UI.W); set('cpSpWt', SP_UI.wt || ''); set('cpSpHt', SP_UI.ht);
+  const draw = SP_UI.outline === 'poly';
+  document.querySelectorAll('#cpSpShape button').forEach(b => b.classList.toggle('on', b.dataset.v === SP_UI.outline));
+  document.getElementById('cpSpSize').hidden = draw;
+  document.getElementById('cpSpPlace').textContent = draw ? '✎ Draw outline on deck' : 'Place on deck';
+  document.getElementById('cpSpKeep').hidden = draw;
+}
+
+/* ── Draw a non-standard outline on the deck ─────────────────────────
+   Click the corners, Enter / double-click / click the first point to
+   finish, Backspace removes the last point, Esc cancels. Shift keeps
+   the edge square to the deck. Creates a new unit, or (targetId) gives
+   an existing unit this outline and footprint.                         */
+let SPDRAW = null;
+function startOutlineDraw(opts){
+  if(!isOperator()) return;
+  if(SPDRAW) stopOutlineDraw(false);
+  if(document.body.classList.contains('view-3d')) toggle3D(false);
+  if(typeof CP_OPEN !== 'undefined' && CP_OPEN) cpClose();
+  if(typeof cancelPending === 'function') cancelPending();
+  const cv = document.getElementById('cvDECK');
+  const layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  layer.id = 'spDrawLayer';
+  layer.setAttribute('width', TW); layer.setAttribute('height', CVH);
+  cv.appendChild(layer);
+  const tip = document.createElement('div');
+  tip.className = 'sp-draw-tip';
+  tip.innerHTML = `<b>Outline of ${escHtml(opts.name || 'the unit')}</b> — click the corners on the deck · <kbd>Enter</kbd> or double-click to finish · <kbd>Backspace</kbd> undo point · <kbd>Shift</kbd> square edges · <kbd>Esc</kbd> cancel <span id="spDrawDim"></span>`;
+  document.body.appendChild(tip);
+  document.body.classList.add('sp-drawing');
+  SPDRAW = { opts, pts: [], hover: null, layer, tip };
+  const pt = ev => {
+    const r = cv.getBoundingClientRect();
+    let x = Math.max(0, Math.min(TW, (ev.clientX - r.left) / zoomLevel)), y = Math.max(0, Math.min(CVH, (ev.clientY - r.top) / zoomLevel));
+    const last = SPDRAW.pts[SPDRAW.pts.length - 1];
+    if(last && ev.shiftKey){ if(Math.abs(x - last[0]) > Math.abs(y - last[1])) y = last[1]; else x = last[0]; }
+    return [Math.round(x * 2) / 2, Math.round(y * 2) / 2];
+  };
+  const nearFirst = p => SPDRAW.pts.length >= 3 && Math.hypot(p[0] - SPDRAW.pts[0][0], p[1] - SPDRAW.pts[0][1]) * zoomLevel < 9;
+  SPDRAW.onMove = ev => { SPDRAW.hover = pt(ev); _drawOutlinePreview(); };
+  SPDRAW.onDown = ev => {
+    if(ev.button !== 0) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const p = pt(ev);
+    if(nearFirst(p)) return stopOutlineDraw(true);
+    if(ev.detail >= 2){ if(SPDRAW.pts.length >= 3) stopOutlineDraw(true); return; }
+    SPDRAW.pts.push(p); _drawOutlinePreview();
+  };
+  SPDRAW.onKey = ev => {
+    if(!SPDRAW) return;
+    if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopImmediatePropagation(); stopOutlineDraw(false); }
+    else if(ev.key === 'Enter'){ ev.preventDefault(); ev.stopImmediatePropagation(); stopOutlineDraw(SPDRAW.pts.length >= 3); }
+    else if(ev.key === 'Backspace' || ev.key === 'Delete'){ ev.preventDefault(); ev.stopImmediatePropagation(); SPDRAW.pts.pop(); _drawOutlinePreview(); }
+    else if(!ev.metaKey && !ev.ctrlKey) ev.stopImmediatePropagation();
+  };
+  layer.addEventListener('mousemove', SPDRAW.onMove);
+  layer.addEventListener('mousedown', SPDRAW.onDown);
+  document.addEventListener('keydown', SPDRAW.onKey, true);
+  _drawOutlinePreview();
+}
+function _drawOutlinePreview(){
+  if(!SPDRAW) return;
+  const P = SPDRAW.pts.slice(); if(SPDRAW.hover) P.push(SPDRAW.hover);
+  const pts = P.map(p => p.join(',')).join(' ');
+  let h = '';
+  if(P.length >= 3) h += `<polygon points="${pts}" class="sp-draw-fill"/>`;
+  if(P.length >= 2) h += `<polyline points="${pts}" class="sp-draw-line"/>`;
+  SPDRAW.pts.forEach((p, i) => { h += `<circle cx="${p[0]}" cy="${p[1]}" r="${i === 0 ? 4.5 : 3}" class="sp-draw-pt${i === 0 ? ' first' : ''}"/>`; });
+  SPDRAW.layer.innerHTML = h;
+  const dim = document.getElementById('spDrawDim');
+  if(dim){
+    if(P.length >= 2){
+      const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+      dim.textContent = `· ${((Math.max(...xs) - Math.min(...xs)) / M).toFixed(2)} × ${((Math.max(...ys) - Math.min(...ys)) / YS).toFixed(2)} m`;
+    } else dim.textContent = '';
   }
+}
+function stopOutlineDraw(commit){
+  const D = SPDRAW; if(!D) return;
+  SPDRAW = null;
+  D.layer.remove(); D.tip.remove();
+  document.body.classList.remove('sp-drawing');
+  document.removeEventListener('keydown', D.onKey, true);
+  if(!commit || D.pts.length < 3) return;
+  const xs = D.pts.map(p => p[0]), ys = D.pts.map(p => p[1]);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const w = Math.max(6, Math.max(...xs) - x0), h = Math.max(6, Math.max(...ys) - y0);
+  const poly = D.pts.map(p => [+((p[0] - x0) / w).toFixed(4), +((p[1] - y0) / h).toFixed(4)]);
+  const geo = { x: x0, y: y0, w, h, length_m: +(w / M).toFixed(3), width_m: +(h / YS).toFixed(3), poly, outline: 'poly', special: 'oog' };
+  let c = D.opts.targetId != null ? S.cargo.find(q => q.id === D.opts.targetId) : null;
+  if(c){
+    delete c.pipe;
+    Object.assign(c, geo, { rot: 0 });
+  } else {
+    c = Object.assign({ id: Date.now() + Math.random(), side:'DECK', rot:0, ccu:'', desc: D.opts.name || 'Non-standard unit',
+      wt: D.opts.wt || 0, platform: S.selLoc || (S.activeLocs[0] || _defaultLocId()), status:'L', dgClasses:[], priority:false, trDest:'',
+      ht: D.opts.ht || 2.5 }, geo);
+    S.cargo.push(c); ensureLocActive(c.platform);
+  }
+  renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  playSound && playSound('drop');
+  if(D.opts.targetId != null){ kbSelect(c.id); if(typeof inspOpen === 'function') inspOpen(c.id); }
+  else openModal(c.id);
 }
 
 function cpRenderLib(){
@@ -11836,7 +12018,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
   const icon = document.createElement('div');
   icon.className = 'cp-lc-icon';
   if(item.special){
-    icon.innerHTML = SPECIAL_ICON[item.special] || SPECIAL_ICON.oog;
+    icon.innerHTML = SPECIAL_ICON[item.outline] || SPECIAL_ICON.rect;
     icon.classList.add('cp-lc-icon-sp');
   } else if(isCustom){
     icon.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.8 2.8l1.4 1.4M9.8 9.8l1.4 1.4M11.2 2.8l-1.4 1.4M4.2 9.8l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
@@ -11926,7 +12108,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
   const pendingItem = {
     type: 'cargo',
     item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:parseFloat(wt)||0, length_m:item.length_m, width_m:item.width_m,
-            pipe:item.pipe, special:item.special }
+            pipe:item.pipe, special:item.special, outline:item.outline, ht:item.ht }
   };
 
   card.addEventListener('mousedown', e => {
@@ -14846,8 +15028,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.20.0';
-const APP_VERSION   = '3.20.0';
+const CURRENT_BUILD = 'v3.21.0';
+const APP_VERSION   = '3.21.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

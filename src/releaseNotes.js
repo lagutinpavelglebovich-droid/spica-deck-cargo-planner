@@ -11,6 +11,21 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.21.0',
+    date: '2026-10-25',
+    highlights: [
+      'Pipe bundles of any size',
+      'Non-standard units: your own name, size and outline',
+    ],
+    changes: [
+      { type: 'improvement', text: 'Pipes: Single joint or Bundle. A bundle is 2 pipes or more, with no upper limit — type the number; pipes per layer is automatic or your own (layers nest like on deck). 2" and 3" added for small tubulars' },
+      { type: 'feature', text: 'Non-standard unit: give it a name, size, weight and height, and pick an outline — Box, Rounded, Round, Frame — or ✎ Draw: click its corners on the deck and the unit takes exactly that shape (Enter to finish, Shift for square edges)' },
+      { type: 'feature', text: 'Keep in Custom Cargo saves a non-standard unit as a template for next time' },
+      { type: 'feature', text: 'Inspector → Kind of unit → Non-standard: change the outline, the height, or draw the outline of any unit already on deck' },
+      { type: 'improvement', text: 'The ready-made lifeboat / rescue boat / cable reel presets are gone — a non-standard unit covers them and anything else' },
+    ],
+  },
+  {
     version: '3.20.0',
     date: '2026-10-25',
     highlights: [
