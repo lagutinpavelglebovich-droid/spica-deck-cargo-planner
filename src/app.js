@@ -13,6 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
+import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon } from './fieldWeather.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
@@ -859,6 +860,9 @@ function _normaliseLocations(list){
         .map(a => String(a).replace(/\s+/g, ' ').trim().toUpperCase()).filter(Boolean).slice(0, 12) };
     if(l.fixed) o.fixed = true;
     if(l.grp) o.grp = String(l.grp).slice(0, 16);
+    /* v3.20 — position for field weather (decimal degrees) */
+    const la = parseFloat(l.lat), lo = parseFloat(l.lon);
+    if(isFinite(la) && isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180){ o.lat = +la.toFixed(5); o.lon = +lo.toFixed(5); }
     out.push(o);
   });
   return out.length ? out : spicaTideLocations();
@@ -2746,10 +2750,22 @@ function _vsRenderLocs(){
         <label class="vs-chk" title="Always grey (like Bleo Holm)"><input type="checkbox" class="vs-loc-grey" ${l.fixed ? 'checked' : ''}><i></i></label>
         <button type="button" class="vs-del" title="${used ? used + ' cargo on deck — cannot delete' : 'Delete location'}" ${used ? 'disabled' : ''}>×</button>
       </div>
-      <input type="text" class="vs-loc-alias" placeholder="ASCO names, e.g. ${escHtml((l.name || 'NAME').toUpperCase())}" aria-label="ASCO names">`;
+      <input type="text" class="vs-loc-alias" placeholder="ASCO names, e.g. ${escHtml((l.name || 'NAME').toUpperCase())}" aria-label="ASCO names">
+      <div class="vs-loc-posrow"><input type="text" class="vs-loc-pos" placeholder="Position, e.g. 58 27.4N 000 15.2E" aria-label="Position" spellcheck="false"><span class="vs-loc-posok"></span></div>`;
     const nm = row.querySelector('.vs-loc-name'), ty = row.querySelector('.vs-loc-type'),
           gr = row.querySelector('.vs-loc-grey'), al = row.querySelector('.vs-loc-alias');
     nm.value = l.name; ty.value = l.type; al.value = (l.aliases || []).join(', ');
+    const po = row.querySelector('.vs-loc-pos'), pok = row.querySelector('.vs-loc-posok');
+    const showPos = L => { const has = L && isFinite(L.lat); po.value = has ? formatLatLon(L.lat, L.lon) : ''; pok.textContent = has ? '✓' : ''; po.classList.remove('bad'); };
+    showPos(l);
+    po.addEventListener('change', () => {
+      const L = loc(); if(!L) return;
+      const v = po.value.trim();
+      if(!v){ delete L.lat; delete L.lon; showPos(L); _vsApply({ keepPanel:true }); return; }
+      const ll = parseLatLon(v);
+      if(!ll){ po.classList.add('bad'); pok.textContent = '?'; showToast('Position not understood — e.g. 58 27.4N 000 15.2E or 58.4567, 0.2535', 'warn'); return; }
+      L.lat = ll.lat; L.lon = ll.lon; showPos(L); _vsApply({ keepPanel:true });
+    });
     const loc = () => VS && VS.draft.locations[i];
     nm.addEventListener('change', () => { const L = loc(); if(L && nm.value.trim()){ L.name = nm.value.trim(); _vsApply({ keepPanel:true }); } else nm.value = L ? L.name : ''; });
     ty.addEventListener('change', () => { const L = loc(); if(L){ L.type = ty.value; _vsApply({ keepPanel:true }); } });
@@ -3897,6 +3913,18 @@ function buildActiveLocStrip(){
 
       head.appendChild(icon);
       head.appendChild(nameLbl);
+      /* v3.20 — field weather at this location (needs a position) */
+      const wx = fieldWxSummary(id);
+      if(wx){
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'loc-wx loc-wx-' + wx.level + (wx.stale ? ' stale' : '');
+        chip.title = `Weather at ${loc.name}: wind ${wx.ws} kn ${wx.dir}, gusts ${wx.wg} kn` + (wx.hs != null ? `, Hs ${wx.hs.toFixed(1)} m` : '') + ' — click for the forecast';
+        chip.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><g transform="rotate(${(wx.wd + 180) % 360} 8 8)"><path d="M8 1.5 L12 9 L8.9 8 L8.9 14.5 L7.1 14.5 L7.1 8 L4 9 Z" fill="currentColor"/></g></svg>${wx.ws}<small>kn</small>` +
+          (wx.hs != null ? `<i></i>${wx.hs.toFixed(1)}<small>m</small>` : '');
+        chip.addEventListener('click', e => { e.stopPropagation(); openFieldWeather(id); });
+        head.appendChild(chip);
+      }
 
       /* Status pill strip — only present statuses */
       const pillStrip=document.createElement('div');
@@ -12628,6 +12656,8 @@ function _cmdpActions(){
       run: () => toggle3D() },
     { group:'View',      label:'Deck camera…',
       run: () => openDeckCamera() },
+    { group:'View',      label:'Field weather (wind, waves at the locations)…',
+      run: () => openFieldWeather() },
     { group:'View',      label:'Vessel setup…',
       guard: () => isOperator(), run: () => vesselSetupRequest() },
     { group:'View',      label:'Charterer (PDF)…',
@@ -14816,8 +14846,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.19.0';
-const APP_VERSION   = '3.19.0';
+const CURRENT_BUILD = 'v3.20.0';
+const APP_VERSION   = '3.20.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15077,6 +15107,7 @@ function bindMenuBar(){
     editCharterer: () => { bindCharterModal(); charterOpenModal(); },
     vesselSetup:   () => vesselSetupRequest(),
     deckCamera:    () => openDeckCamera(),
+    fieldWeather:  () => openFieldWeather(),
     markLifted:    () => {
       if(!isOperator() || !KB_SEL) return;
       const ids = KB_SEL_SET.size > 0 ? Array.from(KB_SEL_SET) : [KB_SEL];
@@ -17972,6 +18003,21 @@ function bindAutosaveToggle(){
 
 /* v3.16 — Deck camera workspace (calibration / overlay). The module only
    sees the planner through this API. */
+/* v3.20 — weather at the working locations (positions from Vessel Setup) */
+initFieldWeather({
+  locations: () => LOC_ALL.map(l => ({ id: l.id, name: l.name, c: getLocBase(l.id), lat: l.lat, lon: l.lon })),
+  activeIds: () => S.activeLocs.slice(),
+  onUpdate:  () => { if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip(); },
+  openUrl:   async url => {
+    if(_isTauri()){
+      try{ const { openUrl } = await import('@tauri-apps/plugin-opener'); await openUrl(url); return; }
+      catch(e){ console.warn('[fieldWeather] openUrl', e); showToast('Could not open the browser — ' + url, 'warn'); return; }
+    }
+    window.open(url, '_blank', 'noopener');
+  },
+  openSetup: () => vesselSetupRequest(),
+});
+
 initDeckCamera({
   geo: () => ({ bays: BAY_LENGTHS_M.slice(), joint: JOINT_WIDTH_M, width: (VESSEL && VESSEL.deckWidthM) || 15,
                 length: DECK_LENGTH_M, labels: BAY_LENGTHS_M.map((_, i) => bayLabel(i)) }),

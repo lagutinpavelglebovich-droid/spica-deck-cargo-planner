@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.20.0',
+    date: '2026-10-25',
+    highlights: [
+      'Weather at the working locations',
+    ],
+    changes: [
+      { type: 'feature', text: 'View → Field Weather: wind, gusts, wave height (Hs), wind sea, swell height / period / direction, rain, air temperature and visibility at each platform\'s own position — now and the next 48 hours' },
+      { type: 'feature', text: 'Your limits for wind and Hs: the forecast turns amber at 85 % and red at the limit; the location cards on the plan show wind and Hs right now in the same colours' },
+      { type: 'feature', text: 'Vessel Setup → Locations → Position: type or paste it the way the ECDIS shows it (58 27.4N 000 15.2E), or in decimals' },
+      { type: 'feature', text: 'Windy / Windy · waves opens windy.com at that position in the browser' },
+      { type: 'improvement', text: 'Data from Open-Meteo, refreshed every 30 minutes; only the coordinates of the locations are sent' },
+    ],
+  },
+  {
     version: '3.19.0',
     date: '2026-10-25',
     highlights: [
