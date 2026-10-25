@@ -13,7 +13,8 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
-import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, windyUrl, refresh as fieldWxRefresh } from './fieldWeather.js';
+import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, refresh as fieldWxRefresh } from './fieldWeather.js';
+import { initWeatherMap, openWeatherMap } from './weatherMap.js';
 import { checkPositionOnMap } from './locMap.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
@@ -15225,8 +15226,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.26.3';
-const APP_VERSION   = '3.26.3';
+const CURRENT_BUILD = 'v3.27.0';
+const APP_VERSION   = '3.27.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18424,7 +18425,7 @@ function bindAutosaveToggle(){
 /* v3.16 — Deck camera workspace (calibration / overlay). The module only
    sees the planner through this API. */
 /* ══ v3.23 — LOCATION POPOVER ══════════════════════════════════════════
-   Click a location card: weather there now, the 48 h forecast, Windy, and
+   Click a location card: weather there now, the 48 h forecast, the wind & waves map, and
    its position — typed or pasted from the ECDIS, checked on a map, saved
    straight into the vessel profile (no Vessel Setup needed). */
 let _locPopId = null;
@@ -18479,7 +18480,7 @@ function openLocPop(id){
           <span class="lp-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit} ${wx.dir}<br>gust ${wx.wg}</span></span>
           ${wx.hs != null ? `<span class="lp-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}
         </div>
-        <div class="lp-btns"><button type="button" class="lp-btn lp-fc">48 h forecast</button><button type="button" class="lp-btn lp-windy">Windy ↗</button></div>`
+        <div class="lp-btns"><button type="button" class="lp-btn lp-fc">48 h forecast</button><button type="button" class="lp-btn lp-map">Wind &amp; waves map</button></div>`
       : `<div class="lp-none">${has ? 'Loading the weather…' : 'No position yet — enter it below and the weather for this spot appears here and in the header.'}</div>`}
       <div class="lp-pos">
         <label for="lpPosIn">Position</label>
@@ -18499,10 +18500,7 @@ function openLocPop(id){
     }
     pop.querySelector('.lp-x').addEventListener('click', closeLocPop);
     pop.querySelector('.lp-fc')?.addEventListener('click', () => { closeLocPop(); openFieldWeather(id); });
-    pop.querySelector('.lp-windy')?.addEventListener('click', () => {
-      const LL = locById(id); if(!LL || !isFinite(LL.lat)) return;
-      import('./fieldWeather.js').then(() => _fwxOpenUrl(windyUrl(LL.lat, LL.lon, false)));
-    });
+    pop.querySelector('.lp-map')?.addEventListener('click', () => { closeLocPop(); openWeatherMap(id); });
     const inp = pop.querySelector('#lpPosIn');
     const set = async () => {
       if(!isOperator()) return;
@@ -18553,6 +18551,7 @@ function updateHeaderFieldWx(){
   /* v3.24 — the port weather is gone from the header: this block carries
      the location's sky icon and temperature as well */
   blk.hidden = !wx;
+  const mapBtn = document.getElementById('hdrMap'); if(mapBtn) mapBtn.hidden = !wx;
   const city = document.querySelector('.info-peterhead'); if(city) city.hidden = !!wx;
   if(key === _hfwKey) return;
   _hfwKey = key;
@@ -18606,7 +18605,15 @@ initFieldWeather({
     window.open(url, '_blank', 'noopener');
   },
   openSetup: () => vesselSetupRequest(),
+  openMap:   id => openWeatherMap(id),
 });
+/* v3.27 — wind & waves map of the working area */
+initWeatherMap({
+  locations: () => [...LOC_ALL, ...S.customLocs].map(l => ({ id: l.id, name: l.name, c: getLocBase(l.id), lat: l.lat, lon: l.lon })),
+  activeIds: () => S.activeLocs.slice(),
+  openForecast: id => openFieldWeather(id),
+});
+document.getElementById('hdrMap')?.addEventListener('click', () => openWeatherMap(_workingLocId()));
 
 initDeckCamera({
   geo: () => ({ bays: BAY_LENGTHS_M.slice(), joint: JOINT_WIDTH_M, width: (VESSEL && VESSEL.deckWidthM) || 15,

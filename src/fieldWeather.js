@@ -8,7 +8,7 @@
    direction). One batched request per API for every location that has
    a position. Cached in localStorage; refreshed every 30 min while the
    planner is open. Only the coordinates of the locations are sent.
-   "Windy" opens windy.com at the same point in the browser.
+   "Map" opens the animated wind & waves map of the working area (v3.27).
 ════════════════════════════════════════════════════════════ */
 
 import { wmoToCondition } from './weather/api.js';
@@ -102,10 +102,6 @@ export function formatLatLon(lat, lon){
     return `${String(d).padStart(w, '0')}°${mi.toFixed(2).padStart(5, '0')}'${v < 0 ? neg : pos}`;
   };
   return `${f(lat, 'N', 'S', 2)} ${f(lon, 'E', 'W', 3)}`;
-}
-export function windyUrl(lat, lon, waves){
-  const p = `${lat.toFixed(3)},${lon.toFixed(3)},8`;
-  return waves ? `https://www.windy.com/-Waves-waves?waves,${p}` : `https://www.windy.com/?${p}`;
 }
 
 /* ── Fetching ─────────────────────────────────────────────────── */
@@ -233,6 +229,7 @@ function ensurePanel(){
           <div class="fwx-meta" id="fwxMeta"></div>
         </div>
         <div class="fwx-unit" role="radiogroup" aria-label="Wind unit"><button type="button" data-u="kn">kn</button><button type="button" data-u="ms">m/s</button></div>
+        <button type="button" class="fwx-btn fwx-mapbtn" id="fwxMap" title="Animated wind and waves map of the area"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 7h10a3 3 0 1 0-3-3M2 11h14a3 3 0 1 1-3 3M2 15h6"/></svg>Map</button>
         <button type="button" class="fwx-btn" id="fwxRefresh">Refresh</button>
         <button type="button" class="fwx-x" id="fwxClose" title="Close (Esc)">✕</button>
       </div>
@@ -263,11 +260,12 @@ function ensurePanel(){
   ov.addEventListener('mousedown', e => { if(e.target === ov) close(); });
   ov.querySelector('#fwxClose').addEventListener('click', close);
   ov.querySelector('#fwxRefresh').addEventListener('click', () => refresh(true));
+  ov.querySelector('#fwxMap').addEventListener('click', () => { ov.classList.remove('open'); API && API.openMap && API.openMap(focusId); });
   ov.addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); close(); } });
   ov.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => setWindUnit(b.dataset.u)));
   ov.addEventListener('click', e => {
-    const a = e.target.closest('[data-url]');
-    if(a){ e.preventDefault(); API.openUrl(a.dataset.url); }
+    const a = e.target.closest('[data-map]');
+    if(a){ e.preventDefault(); ov.classList.remove('open'); API.openMap && API.openMap(a.dataset.map); }
     const s = e.target.closest('[data-setup]');
     if(s){ ov.classList.remove('open'); API.openSetup(); }
   });
@@ -384,8 +382,7 @@ function card(l, isActive, u){
   const rows = DATA && DATA.loc && DATA.loc[l.id];
   const r = nowRow(l.id);
   const U = windLbl(u);
-  const links = `<button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, false))}">Windy</button>
-    <button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, true))}">Windy · waves</button>`;
+  const links = `<button type="button" class="fwx-link" data-map="${esc(l.id)}">Wind &amp; waves map</button>`;
   const pill = (val, c, unit) => `<b class="fw-pill" style="background:${c.bg};color:${c.fg}">${val}${unit ? `<small>${unit}</small>` : ''}</b>`;
   const now = r ? `<div class="fw-nowline"><span class="fw-nowk">Now</span>
       ${pill(fmt0(windVal(r.ws, u)), windColor(r.ws), U)}<span class="fw-nowt">gust</span>${pill(fmt0(windVal(r.wg, u)), windColor(r.wg))}

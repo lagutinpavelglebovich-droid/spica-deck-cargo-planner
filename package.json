@@ -1,6 +1,6 @@
 {
   "name": "spica-tide",
-  "version": "3.26.3",
+  "version": "3.27.0",
   "description": "SPICA TIDE — Deck Cargo Planning Tool for PSV SPICA TIDE",
   "private": true,
   "type": "module",

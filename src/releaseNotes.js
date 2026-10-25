@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.0',
+    date: '2026-10-25',
+    highlights: [ 'Animated wind & waves map', 'No more Windy links' ],
+    changes: [
+      { type: 'feature', text: 'Wind & waves map of the working area: colour field and flowing streaks for the wind (with gusts in the read-out) or the sea (Hs, period, direction), the locations as pins with their values, a time line over the next 4 days with Play, zoom and pan, legend, and a read-out under the cursor' },
+      { type: 'feature', text: 'Open it from the new tile right of the header weather, from the forecast window (Map) or from a location card' },
+      { type: 'ui', text: 'The Windy links are gone — the planner has its own map and tables now' },
+      { type: 'improvement', text: 'Works offline once loaded: the coastline is built in, the forecast grid (Open-Meteo, every 3 h, ~0.4°) is kept for later; only the grid coordinates are sent' },
+      { type: 'ui', text: 'Animations → Off shows still arrows instead of moving streaks; Calm uses fewer streaks' },
+    ],
+  },
+  {
     version: '3.26.3',
     date: '2026-10-25',
     highlights: [ 'Neater position field' ],
