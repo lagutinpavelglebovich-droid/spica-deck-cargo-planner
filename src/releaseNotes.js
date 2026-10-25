@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.26.3',
+    date: '2026-10-25',
+    highlights: [ 'Neater position field' ],
+    changes: [
+      { type: 'ui', text: 'Location card: the Map / Set button now sits inside the position field — one clean control, centred, with a clear frame and focus ring' },
+    ],
+  },
+  {
     version: '3.26.2',
     date: '2026-10-25',
     highlights: [ 'Forecast tables slide smoothly', 'Softer time slice' ],
