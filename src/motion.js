@@ -277,53 +277,105 @@ export function motionRemove(el, { y = -4 } = {}){
   a.finished.then(end, end);
 }
 
-/* ── Panels fly out of / into their header button ─────────────── */
-const PANELS = [
-  { ov: '#cpOverlay', panel: '.cp', icon: '#btnLibOpen', triggers: '#btnLibOpen, #cpClose', keys: ['l', 'L', 'Escape'] },
-  { ov: '#stOv', panel: '.st-panel', icon: '#btnSmartTools', triggers: '#btnSmartTools, #stClose, #stBackdrop', keys: ['Escape'] },
+/* ── The right-hand workspace: Library, Smart Tools, Inspector ──
+   • Opened / closed with its own header button (or L / Esc): the panel
+     flies out of / back into that button.
+   • One panel replacing another (picking a block while the Library is
+     open, pressing L while the Inspector is open …): no double slide —
+     the old one fades out in place while the new one fades in, so the
+     right side reads as one workspace whose content changes.
+   One observer for all three, so a close + open in the same task are
+   seen together. */
+const RAILS = [
+  { key: 'lib',  ov: '#cpOverlay', panel: '.cp',       icon: '#btnLibOpen',    triggers: '#btnLibOpen, #cpClose', keys: ['l', 'L', 'Escape'] },
+  { key: 'st',   ov: '#stOv',      panel: '.st-panel', icon: '#btnSmartTools', triggers: '#btnSmartTools, #stClose, #stBackdrop', keys: ['Escape'] },
+  { key: 'insp', ov: '#inspRail',  panel: null },
 ];
 let LAST_PRESS = { el: null, at: 0 };
-function byTheButton(p){
+function byTheButton(r){
+  if(!r.icon) return false;
   const t = now();
-  if(LAST_PRESS.el && t - LAST_PRESS.at < 700 && LAST_PRESS.el.closest(p.triggers)) return true;
-  if(t - LAST_KEY.at < 500 && p.keys.includes(LAST_KEY.key)) return true;
+  if(LAST_PRESS.el && t - LAST_PRESS.at < 700 && LAST_PRESS.el.closest(r.triggers)) return true;
+  if(t - LAST_KEY.at < 500 && r.keys.includes(LAST_KEY.key)) return true;
   return false;
 }
-function watchPanel(p){
-  const ov = document.querySelector(p.ov);
-  if(!ov || ov._mpn) return;
-  ov._mpn = { open: ov.classList.contains('open'), settle: null };
-  new MutationObserver(() => {
-    const st = ov._mpn, open = ov.classList.contains('open');
-    if(open === st.open) return;
-    st.open = open;
-    const panel = ov.querySelector(p.panel), icon = document.querySelector(p.icon);
-    if(st.settle){ const f = st.settle; st.settle = null; f(); }
-    if(!panel || !icon || MODE !== 'full' || !byTheButton(p)) return;
-    const ir = icon.getBoundingClientRect();
-    if(ir.width < 2) return;
-    /* stop the panel's own slide so the flight is the only motion */
-    panel.style.setProperty('transition', 'none', 'important');
-    panel.getAnimations().forEach(a => { if(a.constructor && a.constructor.name === 'CSSTransition') try{ a.cancel(); }catch(e){} });
-    const shown = panel.getBoundingClientRect();
-    /* closing: the panel is already at its closed transform — measure where it was */
-    let pr = shown;
-    if(!open){
-      const keep = panel.style.transform;
-      panel.style.transform = 'none';
-      pr = panel.getBoundingClientRect();
-      panel.style.transform = keep;
+const railHost = r => document.querySelector(r.ov);
+const railPanel = r => { const h = railHost(r); return h && (r.panel ? h.querySelector(r.panel) : h); };
+function railSettle(r){ if(r.settle){ const f = r.settle; r.settle = null; f(); } }
+function freeze(panel){
+  panel.style.setProperty('transition', 'none', 'important');
+  panel.getAnimations().forEach(a => { if(a.constructor && a.constructor.name === 'CSSTransition') try{ a.cancel(); }catch(e){} });
+}
+function flyPanel(r, open){
+  const panel = railPanel(r), icon = document.querySelector(r.icon);
+  if(!panel || !icon) return;
+  const ir = icon.getBoundingClientRect();
+  if(ir.width < 2) return;
+  freeze(panel);                                   /* the flight is the only motion */
+  let pr = panel.getBoundingClientRect();
+  if(!open){                                       /* closing: measure where it was */
+    const keep = panel.style.transform;
+    panel.style.transform = 'none';
+    pr = panel.getBoundingClientRect();
+    panel.style.transform = keep;
+  }
+  const g = geometry(ir, pr);
+  const flown = `translate(${g.dx}px, ${g.dy}px) scale(${g.s})`;
+  const frames = open
+    ? [{ transform: flown, opacity: 0, borderRadius: '40px' }, { opacity: 1, offset: 0.35 }, { transform: 'none', opacity: 1, borderRadius: getComputedStyle(panel).borderRadius }]
+    : [{ transform: 'none', opacity: 1 }, { opacity: 1, offset: 0.45 }, { transform: flown, opacity: 0, borderRadius: '40px' }];
+  const a = panel.animate(frames, { duration: open ? 340 : 260, easing: open ? EASE_OUT : EASE_IN, fill: open ? 'none' : 'forwards' });
+  const done = r.settle = track(() => { panel.style.removeProperty('transition'); try{ a.cancel(); }catch(e){} });
+  const end = () => { if(r.settle === done){ r.settle = null; done(); } };
+  a.finished.then(end, end);
+}
+function handoff(out, inn){
+  const po = railPanel(out), pi = railPanel(inn);
+  if(!po || !pi) return;
+  freeze(po); freeze(pi);
+  /* the outgoing panel stays where it was while it fades */
+  po.style.setProperty('transform', 'none', 'important');
+  po.style.setProperty('pointer-events', 'none', 'important');
+  const calm = MODE === 'calm';
+  const ao = po.animate([{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '14px 0' }],
+    { duration: calm ? 90 : 150, easing: EASE_IN, fill: 'forwards' });
+  const ai = pi.animate([{ opacity: 0, translate: '18px 0' }, { opacity: 1, translate: '0 0' }],
+    { duration: calm ? 110 : 220, delay: calm ? 0 : 60, easing: EASE_OUT, fill: 'backwards' });
+  const doneO = out.settle = track(() => {
+    po.style.removeProperty('transform'); po.style.removeProperty('pointer-events');
+    try{ ao.cancel(); }catch(e){}
+    void getComputedStyle(po).transform;       /* commit the parked (closed) position while transitions are off… */
+    po.style.removeProperty('transition');     /* …then give them back: nothing left to slide */
+  });
+  const doneI = inn.settle = track(() => { try{ ai.cancel(); }catch(e){} pi.style.removeProperty('transition'); });
+  ao.finished.then(() => { if(out.settle === doneO){ out.settle = null; doneO(); } }, () => {});
+  ai.finished.then(() => { if(inn.settle === doneI){ inn.settle = null; doneI(); } }, () => {});
+}
+function watchRails(){
+  const hosts = RAILS.map(r => { r.host = railHost(r); r.open = !!(r.host && r.host.classList.contains('open')); r.settle = null; return r.host; });
+  const mo = new MutationObserver(() => {
+    const opened = [], closed = [];
+    for(const r of RAILS){
+      if(!r.host) continue;
+      const o = r.host.classList.contains('open');
+      if(o === r.open) continue;
+      r.open = o; (o ? opened : closed).push(r);
     }
-    const g = geometry(ir, pr);
-    const flown = `translate(${g.dx}px, ${g.dy}px) scale(${g.s})`;
-    const frames = open
-      ? [{ transform: flown, opacity: 0, borderRadius: '40px' }, { opacity: 1, offset: 0.35 }, { transform: 'none', opacity: 1, borderRadius: getComputedStyle(panel).borderRadius }]
-      : [{ transform: 'none', opacity: 1 }, { opacity: 1, offset: 0.45 }, { transform: flown, opacity: 0, borderRadius: '40px' }];
-    const a = panel.animate(frames, { duration: open ? 340 : 260, easing: open ? EASE_OUT : EASE_IN, fill: open ? 'none' : 'forwards' });
-    const done = st.settle = track(() => { panel.style.removeProperty('transition'); try{ a.cancel(); }catch(e){} });
-    const end = () => { if(st.settle === done){ st.settle = null; done(); } };
-    a.finished.then(end, end);
-  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+    if(!opened.length && !closed.length) return;
+    [...opened, ...closed].forEach(railSettle);
+    if(MODE === 'off') return;
+    if(opened.length && closed.length){ handoff(closed[0], opened[0]); return; }
+    if(MODE !== 'full') return;
+    for(const r of [...opened, ...closed]) if(byTheButton(r)) flyPanel(r, opened.includes(r));
+  });
+  hosts.forEach(h => h && mo.observe(h, { attributes: true, attributeFilter: ['class'] }));
+}
+
+/* Content of a panel changes in place (Inspector switching to another block) */
+export function motionSwap(el){
+  if(!el || MODE === 'off') return;
+  el.animate([{ opacity: 0.25, translate: '0 6px' }, { opacity: 1, translate: '0 0' }],
+    { duration: MODE === 'calm' ? 90 : 180, easing: EASE_OUT });
 }
 
 /* ── Theme: the new theme spreads in a circle from the button ───── */
@@ -460,7 +512,7 @@ export function initMotion(){
   const scan = () => {
     document.querySelectorAll(OV_SEL).forEach(watchOverlay);
     POPOVERS.forEach(([h, t]) => document.querySelectorAll(h).forEach(el => watchPopover(el, t)));
-    PANELS.forEach(watchPanel);
+    watchRails();
   };
   scan();
   /* overlays created later (field weather, position map, …) */

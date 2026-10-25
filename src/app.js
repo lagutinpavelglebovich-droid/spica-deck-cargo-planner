@@ -35,7 +35,7 @@ import { DEFAULT_CONDITION } from './weather/presets.js';
    generic in app.js scope). */
 import { searchCities } from './weather/api.js';
 import { iconForCondition } from './weather/iconMap.js';
-import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck } from './motion.js';
+import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck, motionSwap } from './motion.js';
 import {
   setLocation             as _wxSetLocation,
   getLocation             as _wxGetLocation,
@@ -6629,6 +6629,7 @@ function inspOpen(id){
     setTimeout(() => {
       if(isMulti) inspPopulateMulti(); else inspPopulate(cargo);
       headText.classList.remove('swap');
+      motionSwap(document.getElementById('inspBody'));   /* v3.26 — the whole card changes in place, not just the title */
       /* After populate rewrites ccu.value, ensure cursor is at end */
       if(!isMulti){
         const ccuEl = document.getElementById('inspCCU');
@@ -11362,8 +11363,16 @@ function cpInitSectionOrder(){
   document.querySelectorAll('#cpBody > .cp-sec > .cp-sec-hdr').forEach(hdr => {
     if(hdr.querySelector('.cp-sec-grip')) return;
     const g = document.createElement('span');
-    g.className = 'cp-sec-grip'; g.title = 'Hold and drag to move this section';
-    g.setAttribute('aria-hidden', 'true');
+    g.className = 'cp-sec-grip'; g.title = 'Hold and drag to move this section (or focus it and use ↑ ↓)';
+    g.tabIndex = 0; g.setAttribute('role', 'button');
+    g.setAttribute('aria-label', 'Move section ' + (hdr.querySelector('.cp-sec-title')?.textContent || '').trim() + ' — arrow up or down');
+    g.addEventListener('keydown', e => {
+      if(e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault(); e.stopPropagation();
+      _cpSecMoveBy(hdr.parentElement, e.key === 'ArrowUp' ? -1 : 1);
+      g.focus();
+    });
+    g.addEventListener('click', e => e.stopPropagation());
     g.innerHTML = '<svg viewBox="0 0 10 16" width="8" height="12"><g fill="currentColor"><circle cx="3" cy="3" r="1.3"/><circle cx="7" cy="3" r="1.3"/><circle cx="3" cy="8" r="1.3"/><circle cx="7" cy="8" r="1.3"/><circle cx="3" cy="13" r="1.3"/><circle cx="7" cy="13" r="1.3"/></g></svg>';
     hdr.insertBefore(g, hdr.firstChild);
     g.addEventListener('pointerdown', e => _cpSecDragStart(e, hdr.parentElement, hdr));
@@ -11393,14 +11402,35 @@ function _cpSecDragStart(e, sec, hdr){
     if(!moved) return;
     sec.classList.remove('cp-sec-dragging'); body.classList.remove('cp-sec-sorting');
     hdr._justDragged = true; setTimeout(() => { hdr._justDragged = false; }, 0);
-    const order = [...body.querySelectorAll(':scope > .cp-sec')].map(el => el.id).filter(id => CP_ORDER_DEFAULT.includes(id));
-    try{ localStorage.setItem(CP_ORDER_KEY, JSON.stringify(order)); }catch(err){}
+    _cpOrderSave();
   };
   window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp);
 }
+function _cpOrderSave(){
+  const body = document.getElementById('cpBody'); if(!body) return;
+  const order = [...body.querySelectorAll(':scope > .cp-sec')].map(el => el.id).filter(id => CP_ORDER_DEFAULT.includes(id));
+  try{ localStorage.setItem(CP_ORDER_KEY, JSON.stringify(order)); }catch(err){}
+}
+/* move a section up / down among the visible ones, neighbours glide (FLIP) */
+function _cpFlip(body, fn){
+  const secs = [...body.querySelectorAll(':scope > .cp-sec')];
+  const before = new Map(secs.map(el => [el, el.getBoundingClientRect().top]));
+  fn();
+  if(!motionMode || motionMode() === 'off') return;
+  secs.forEach(el => { const dy = before.get(el) - el.getBoundingClientRect().top; if(dy) el.animate([{ transform:`translateY(${dy}px)` }, { transform:'none' }], { duration:200, easing:'cubic-bezier(.16,1,.3,1)' }); });
+}
+function _cpSecMoveBy(sec, dir){
+  const body = document.getElementById('cpBody'); if(!body || !sec) return;
+  const vis = [...body.querySelectorAll(':scope > .cp-sec:not([hidden])')];
+  const i = vis.indexOf(sec), j = i + dir;
+  if(i < 0 || j < 0 || j >= vis.length) return;
+  _cpFlip(body, () => { if(dir < 0) vis[j].before(sec); else vis[j].after(sec); });
+  _cpOrderSave();
+}
 function cpResetSectionOrder(){
   try{ localStorage.removeItem(CP_ORDER_KEY); }catch(e){}
-  _cpOrderApply(CP_ORDER_DEFAULT);
+  const body = document.getElementById('cpBody');
+  if(body) _cpFlip(body, () => _cpOrderApply(CP_ORDER_DEFAULT)); else _cpOrderApply(CP_ORDER_DEFAULT);
 }
 
 /* ── Filter pills ── */
@@ -12636,6 +12666,7 @@ function kbHandleKey(e){
   /* Ignore when typing in an input, select, or modal */
   const tag = document.activeElement ? document.activeElement.tagName : '';
   if(['INPUT','SELECT','TEXTAREA'].includes(tag)) return;
+  if(document.activeElement && document.activeElement.closest && document.activeElement.closest('.cp-sec-grip')) return;   /* v3.26 — arrows move the focused library section */
   if(document.getElementById('ov').classList.contains('open')) return;
   if(document.getElementById('ascoOv').classList.contains('open')) return;
   if(document.getElementById('kbCheatOv')?.classList.contains('open')) return;
@@ -14452,6 +14483,9 @@ function bindSmartTools(){
     }
   });
 
+  document.getElementById('stLibOrderReset')?.addEventListener('click', () => {
+    cpResetSectionOrder(); showToast('Cargo Library sections back in the standard order', 'ok');
+  });
   document.querySelectorAll('#stMotionSeg button').forEach(b => b.addEventListener('click', () => {
     setMotionMode(b.dataset.m);
     if(typeof playSound === 'function') playSound('select');
@@ -15191,8 +15225,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.25.0';
-const APP_VERSION   = '3.25.0';
+const CURRENT_BUILD = 'v3.26.0';
+const APP_VERSION   = '3.26.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15937,6 +15971,16 @@ function bindContextMenu(){
 function bindAboutModal(){
   const ov = document.getElementById('aboutOverlay');
   if(!ov) return;
+  /* v3.26 — Esc closes About and Update History like every other window.
+     On window, capture phase: runs before every document-level Esc handler
+     (Inspector, Library, 3D view), so one Esc closes only the window on top. */
+  window.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    for(const id of ['aboutOverlay', 'rhOverlay']){
+      const o = document.getElementById(id);
+      if(o && o.classList.contains('open')){ o.classList.remove('open'); e.stopImmediatePropagation(); e.preventDefault(); return; }
+    }
+  }, true);
   document.getElementById('aboutClose').addEventListener('click', () => ov.classList.remove('open'));
   ov.addEventListener('click', e => { if(e.target === ov) ov.classList.remove('open'); });
 

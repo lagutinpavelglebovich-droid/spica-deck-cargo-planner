@@ -18113,3 +18113,9 @@ html[data-motion="off"] .skel-card{ animation-duration:1400ms !important; animat
 #stMotionSeg{ display:flex; }
 /* positions read in the system face too — no dotted / slashed zeros that look like 8 */
 .lp-posrow input, #lpPosIn, .vs-loc-pos, #pmPos, .pm-pos b{ font-family:var(--fw-font) !important; font-variant-numeric:tabular-nums; letter-spacing:0; }
+
+/* v3.26 — small text button in Smart Tools rows; grip focus ring */
+.st-mini-btn{ height:28px; padding:0 12px; border-radius:14px; border:1px solid var(--brd); background:var(--surf2, transparent); color:var(--txt2);
+  font:700 11.5px/1 'Inter',sans-serif; cursor:pointer; flex-shrink:0; }
+.st-mini-btn:hover{ border-color:var(--acc); color:var(--acc); }
+.cp-sec-grip:focus-visible{ outline:2px solid var(--acc); outline-offset:1px; opacity:1; }

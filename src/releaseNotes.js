@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.26.0',
+    date: '2026-10-25',
+    highlights: [ 'Right side works as one workspace', 'Library sections movable from the keyboard' ],
+    changes: [
+      { type: 'ui', text: 'Library, Inspector and Smart Tools share the right side: when one replaces another (picking a block with the Library open, opening the Library from the Inspector) the old one fades out in place and the new one fades in — no more double slide' },
+      { type: 'ui', text: 'Inspector: switching to another block refreshes the whole card in place, not only the title' },
+      { type: 'feature', text: 'Cargo Library: the ⋮⋮ grip can be focused with Tab and moved with ↑ ↓; Smart Tools → Cargo Library order → Reset puts the sections back' },
+      { type: 'fix', text: 'Esc closes About and Update History — and only them, the Inspector or 3D view behind stays as it was' },
+    ],
+  },
+  {
     version: '3.25.0',
     date: '2026-10-25',
     highlights: [ 'Windows grow out of the button that opened them', 'Theme switch spreads from the button', 'Animations: Full / Calm / Off' ],
