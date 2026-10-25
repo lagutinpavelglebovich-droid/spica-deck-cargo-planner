@@ -21,6 +21,8 @@ const URL_FC = 'https://api.open-meteo.com/v1/forecast';
 const URL_MAR = 'https://marine-api.open-meteo.com/v1/marine';
 const LS_DATA = 'spicaTide_wxMap';
 const LS_LAYER = 'spicaTide_wxMapLayer';
+const LS_VALS = 'spicaTide_wxMapValues';
+const showVals = () => lsGet(LS_VALS, true) !== false;
 const FRESH_MS = 90 * 60 * 1000;
 const DAYS = 4;
 const CHUNK = 150;               /* points per request (URL stays < 2 KB) */
@@ -48,8 +50,10 @@ const invMercY = y => (2 * Math.atan(Math.exp(y * D2R)) - Math.PI / 2) / D2R;
    metres; no data (land, sheltered coast) stays transparent. */
 const WIND_PAL = [[0,[98,113,183]],[1,[57,97,159]],[3,[74,148,169]],[5,[77,141,123]],[7,[83,165,83]],[9,[53,159,53]],[11,[167,157,81]],
   [13,[159,127,58]],[15,[161,108,92]],[17,[129,58,78]],[19,[175,80,136]],[21,[117,74,147]],[25,[109,70,170]],[30,[150,72,190]],[36,[215,190,225]]];
-const WAVE_PAL = [[0,[47,62,128]],[0.5,[49,96,164]],[1,[51,133,178]],[1.5,[54,160,160]],[2,[84,170,112]],[2.5,[163,170,72]],[3,[205,152,60]],
-  [4,[212,104,64]],[5,[196,64,92]],[6,[160,58,140]],[8,[122,70,170]],[11,[214,206,228]]];
+/* waves: the sea-state ramp of Ventusky — blue calm, green / yellow
+   moderate, orange 4 m, red 6 m, deep maroon 9–10 m and up */
+const WAVE_PAL = [[0,[38,70,170]],[0.5,[40,112,205]],[1,[45,160,215]],[1.5,[60,190,175]],[2,[110,200,105]],[2.5,[195,210,70]],[3,[232,192,58]],
+  [4,[228,140,48]],[5,[214,96,56]],[6,[196,62,78]],[8,[156,34,72]],[10,[108,20,52]],[12,[74,12,40]]];
 function lut(pal, max){
   const out = new Uint8ClampedArray(256 * 3);
   for(let i = 0; i < 256; i++){
@@ -60,7 +64,7 @@ function lut(pal, max){
   }
   return out;
 }
-const WIND_MAX = 36, WAVE_MAX = 11;          /* m/s, m */
+const WIND_MAX = 36, WAVE_MAX = 12;          /* m/s, m */
 const LUT = { wind: lut(WIND_PAL, WIND_MAX), waves: lut(WAVE_PAL, WAVE_MAX) };
 const cssOf = (pal, v) => {
   let k = 1; while(k < pal.length - 1 && v > pal[k][0]) k++;
@@ -229,11 +233,12 @@ function ensurePanel(){
       <div class="wxm-stage" id="wxmStage">
         <canvas class="wxm-c wxm-col"></canvas>
         <canvas class="wxm-c wxm-land"></canvas>
+        <canvas class="wxm-c wxm-val"></canvas>
         <canvas class="wxm-c wxm-flow"></canvas>
         <div class="wxm-pins" id="wxmPins"></div>
         <div class="wxm-tip" id="wxmTip" hidden></div>
         <div class="wxm-legend" id="wxmLegend"></div>
-        <div class="wxm-zoom"><button type="button" data-z="1" title="Zoom in">+</button><button type="button" data-z="-1" title="Zoom out">−</button><button type="button" data-z="0" title="Whole area">⤢</button></div>
+        <div class="wxm-zoom"><button type="button" data-z="1" title="Zoom in">+</button><button type="button" data-z="-1" title="Zoom out">−</button><button type="button" data-z="0" title="Whole area">⤢</button><button type="button" class="wxm-valbtn" id="wxmVals" title="Values on the map (metres / knots)">12</button></div>
         <div class="wxm-state" id="wxmState" hidden></div>
       </div>
       <div class="wxm-time">
@@ -253,7 +258,8 @@ function ensurePanel(){
   $('#wxmRefresh').addEventListener('click', () => load(true));
   $('#wxmTable').addEventListener('click', () => { const id = focusId; closeMap(); API && API.openForecast && API.openForecast(id); });
   ov.querySelectorAll('[data-layer]').forEach(b => b.addEventListener('click', () => setLayer(b.dataset.layer)));
-  ov.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => { setWindUnit(b.dataset.u); syncControls(); drawLegend(); tipAgain(); }));
+  ov.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => { setWindUnit(b.dataset.u); syncControls(); drawLegend(); drawValues(); pinsValues(); tipAgain(); }));
+  $('#wxmVals').addEventListener('click', () => { lsSet(LS_VALS, !showVals()); syncControls(); drawValues(); });
   ov.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => {
     const z = +b.dataset.z;
     if(!z){ fitView(); } else { VIEW.s *= z > 0 ? 1.5 : 1 / 1.5; clampView(); }
@@ -328,6 +334,7 @@ function syncControls(){
   ov.querySelectorAll('[data-u]').forEach(b => b.classList.toggle('on', b.dataset.u === u));
   ov.querySelector('.wxm-unit').style.visibility = layer === 'wind' ? '' : 'hidden';
   ov.querySelector('.wxm').dataset.layer = layer;
+  const vb = ov.querySelector('#wxmVals'); vb.classList.toggle('on', showVals()); vb.setAttribute('aria-pressed', String(showVals()));
   const r = ov.querySelector('#wxmRefresh'); r.disabled = loading; r.textContent = loading ? 'Updating…' : 'Refresh';
   const meta = ov.querySelector('#wxmMeta');
   meta.textContent = loading && !DATA ? 'Loading the forecast grid…'
@@ -433,8 +440,8 @@ let CV = null;
 function canvases(){
   if(CV) return CV;
   const st = ov.querySelector('#wxmStage');
-  const [col, land, flow] = st.querySelectorAll('canvas');
-  CV = { st, col, land, flow, cx: col.getContext('2d'), lx: land.getContext('2d'), fx: flow.getContext('2d'),
+  const [col, land, val, flow] = st.querySelectorAll('canvas');
+  CV = { st, col, land, val, flow, cx: col.getContext('2d'), lx: land.getContext('2d'), vx: val.getContext('2d'), fx: flow.getContext('2d'),
          off: document.createElement('canvas') };
   CV.ox = CV.off.getContext('2d');
   return CV;
@@ -447,14 +454,14 @@ function resize(refit){
   const changed = W !== VIEW.W || H !== VIEW.H || dpr !== VIEW.dpr;
   const oldW = VIEW.W, oldH = VIEW.H;
   VIEW.W = W; VIEW.H = H; VIEW.dpr = dpr;
-  for(const cv of [c.col, c.land, c.flow]){ cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
+  for(const cv of [c.col, c.land, c.val, c.flow]){ cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
   if(refit || !oldW){ fitView(); }
   else if(changed && DATA){ const k = Math.min(W / oldW, H / oldH); VIEW.fit *= k; VIEW.s *= k; clampView(); }
   viewChanged(true);
 }
 let vcRaf = 0;
 function viewChanged(now){
-  const run = () => { vcRaf = 0; drawColour(); drawLand(); buildFlowGrid(); placePins(); resetParticles(true); if(motion() === 'off') drawArrows(); };
+  const run = () => { vcRaf = 0; placePins(); drawColour(); drawLand(); buildFlowGrid(); resetParticles(true); if(motion() === 'off') drawArrows(); };
   if(now){ cancelAnimationFrame(vcRaf); run(); }
   else if(!vcRaf) vcRaf = requestAnimationFrame(run);
 }
@@ -489,6 +496,46 @@ function drawColour(){
   ox.putImageData(img, 0, 0);
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
   cx.drawImage(off, 0, 0, w, h, 0, 0, w * q * VIEW.dpr, h * q * VIEW.dpr);
+  drawValues();
+}
+
+/* numbers on the map, as on Ventusky: a staggered lattice of the value
+   under each point (Hs in m, wind in kn or m/s), dark on light colours,
+   white on dark ones; places with no data stay empty */
+function drawValues(){
+  if(!CV) return;
+  const { val, vx } = CV, d = VIEW.dpr;
+  vx.setTransform(1, 0, 0, 1, 0, 0);
+  vx.clearRect(0, 0, val.width, val.height);
+  if(!DATA || !FIELD || !showVals()) return;
+  const F = fieldAt(tIdx), wind = layer === 'wind', u = windUnit();
+  const gx = 96, gy = 50;
+  vx.font = `500 ${12 * d}px system-ui, "Segoe UI", sans-serif`;
+  vx.textAlign = 'center'; vx.textBaseline = 'middle';
+  const pins = [...(ov.querySelectorAll('.wxm-pin') || [])].map(b => { const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(b.style.transform || ''); return m ? [+m[1], +m[2]] : null; }).filter(Boolean);
+  /* keep clear of the legend and the zoom buttons */
+  const sr = CV.st.getBoundingClientRect();
+  const keep = [...ov.querySelectorAll('.wxm-legend, .wxm-zoom')].map(e => { const r = e.getBoundingClientRect(); return [r.left - sr.left - 10, r.top - sr.top - 10, r.right - sr.left + 10, r.bottom - sr.top + 10]; });
+  let row = 0;
+  for(let y = gy / 2 + 18; y < VIEW.H - 6; y += gy, row++){
+    for(let x = (row % 2 ? gx : gx / 2); x < VIEW.W - 8; x += gx){
+      if(pins.some(p => Math.abs(p[0] - x) < 60 && Math.abs(p[1] - y) < 16)) continue;   /* the pins keep their label */
+      if(keep.some(k => x > k[0] && x < k[2] && y > k[1] && y < k[3])) continue;
+      const lon = toLon(x), lat = toLat(y);
+      let v, t, c;
+      if(wind){
+        const ws = Math.hypot(sample(F.U, lon, lat), sample(F.V, lon, lat)); if(!(ws === ws)) continue;
+        v = ws * KN2MS; t = String(Math.round(u === 'ms' ? ws * KN2MS : ws)); c = WIND_PAL;
+      } else {
+        v = sample(F.H, lon, lat); if(!(v === v)) continue;
+        t = v.toFixed(1); c = WAVE_PAL;
+      }
+      const rgb = cssOf(c, v).match(/\d+/g).map(Number);
+      const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+      vx.fillStyle = lum > 0.58 ? 'rgba(22,26,32,.72)' : 'rgba(255,255,255,.86)';
+      vx.fillText(t, x * d, y * d);
+    }
+  }
 }
 
 /* land, coastline, graticule */
@@ -538,7 +585,7 @@ const FG = { step: 5, w: 0, h: 0, vx: null, vy: null, ok: null, t: -1 };
 function buildFlowGrid(){
   if(!DATA || !FIELD) return;
   const F = fieldAt(tIdx), q = FG.step, w = Math.ceil(VIEW.W / q) + 1, h = Math.ceil(VIEW.H / q) + 1;
-  if(FG.w !== w || FG.h !== h){ FG.w = w; FG.h = h; FG.vx = new Float32Array(w * h); FG.vy = new Float32Array(w * h); FG.ok = new Uint8Array(w * h); }
+  if(FG.w !== w || FG.h !== h){ FG.w = w; FG.h = h; FG.vx = new Float32Array(w * h); FG.vy = new Float32Array(w * h); FG.ok = new Uint8Array(w * h); FG.hs = new Float32Array(w * h); }
   const lons = new Float32Array(w), lats = new Float32Array(h), sec = new Float32Array(h);
   for(let x = 0; x < w; x++) lons[x] = toLon(x * q);
   for(let y = 0; y < h; y++){ lats[y] = toLat(y * q); sec[y] = 1 / Math.cos(lats[y] * D2R); }
@@ -564,7 +611,8 @@ function buildFlowGrid(){
         const per = sample(F.P, lons[x], lats[y]);
         /* the sea runs with its period (deep water: faster for longer waves) — illustrative */
         const spd = (per === per ? Math.max(4, per) : 7) * 0.9;
-        ex = hh > 0 ? hx / hh * spd : NaN; ny = hh > 0 ? hy / hh * spd : NaN; k = kW * sec[y];
+        ex = hh > 0 ? hx / hh * spd : NaN; ny = hh > 0 ? hy / hh * spd : NaN; k = kW * sec[y] * 1.6;
+        FG.hs[i] = sample(F.H, lons[x], lats[y]);
       }
       if(ex === ex && ny === ny){ FG.vx[i] = ex * k; FG.vy[i] = -ny * k; FG.ok[i] = 1; }
       else { FG.vx[i] = FG.vy[i] = 0; FG.ok[i] = 0; }
@@ -592,7 +640,7 @@ const HK = 16, HSTEP = 0.09;                 /* history points, seconds between 
 const PT = { n: 0, x: null, y: null, age: null, life: null, hx: null, hy: null, len: null, cap: 0, head: 0, acc: 0, budget: 1 };
 function targetCount(){
   const area = VIEW.W * VIEW.H, m = motion();
-  const base = layer === 'wind' ? Math.min(2600, area / 320) : Math.min(1000, area / 950);
+  const base = layer === 'wind' ? Math.min(2600, area / 320) : Math.min(700, area / 1700);
   return Math.max(250, Math.round(base * (m === 'calm' ? 0.55 : 1) * PT.budget));
 }
 function spawn(i, anyAge){
@@ -601,7 +649,7 @@ function spawn(i, anyAge){
     const x = Math.random() * VIEW.W, y = Math.random() * VIEW.H;
     if(flowAt(x, y, _v)){ PT.x[i] = x; PT.y[i] = y; break; }
   }
-  PT.life[i] = layer === 'wind' ? 3 + Math.random() * 4 : 4 + Math.random() * 4;
+  PT.life[i] = layer === 'wind' ? 3 + Math.random() * 4 : 2.6 + Math.random() * 2.4;
   PT.age[i] = anyAge ? Math.random() * PT.life[i] : 0;
   PT.len[i] = 0;
 }
@@ -640,6 +688,7 @@ function stepParticles(dt){
   fx.setTransform(1, 0, 0, 1, 0, 0);
   fx.clearRect(0, 0, flow.width, flow.height);
   const wind = layer === 'wind';
+  if(!wind){ drawCrescents(); return; }
   fx.lineWidth = (wind ? 1.2 : 2.2) * d; fx.lineCap = 'round'; fx.lineJoin = 'round';
   const per = Math.ceil(HK / BUCKETS), h = PT.head;
   for(let b = 0; b < BUCKETS; b++){
@@ -664,6 +713,34 @@ function stepParticles(dt){
     fx.strokeStyle = `rgba(255,255,255,${a})`;
     fx.stroke();
   }
+}
+/* Waves as Ventusky draws them: crescent wave fronts, bowed the way the
+   sea runs, bigger where the sea is higher, fading in and out as they
+   travel — direction, height and colour read together at a glance. */
+function drawCrescents(){
+  const { fx } = CV, d = VIEW.dpr, n = PT.n, X = PT.x, Y = PT.y, A = PT.age, Lf = PT.life;
+  const zoom = Math.sqrt(VIEW.s / VIEW.fit);
+  const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  for(let i = 0; i < n; i++){
+    if(X[i] < 0 || !flowAt(X[i], Y[i], _v)) continue;
+    const m = Math.hypot(_v[0], _v[1]); if(!m) continue;
+    const ux = _v[0] / m, uy = _v[1] / m;
+    const q = FG.step, gi = Math.min(FG.w * FG.h - 1, ((Y[i] / q) | 0) * FG.w + ((X[i] / q) | 0));
+    const hs = FG.hs[gi] === FG.hs[gi] ? FG.hs[gi] : 1;
+    const R = Math.min(36, (6 + hs * 2.6) * zoom) * d;
+    const t = A[i] / Lf[i], a = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));    /* fade in, fade out */
+    const b = a > 0.8 ? 0 : a > 0.55 ? 1 : a > 0.3 ? 2 : 3;
+    const th = Math.atan2(uy, ux), cx = X[i] * d, cy = Y[i] * d, sw = 1.05;
+    const p = paths[b];
+    /* outer edge: an arc bowed forward; inner edge: the same arc set back */
+    p.moveTo(cx + Math.cos(th - sw) * R, cy + Math.sin(th - sw) * R);
+    p.arc(cx, cy, R, th - sw, th + sw);
+    const bx = cx - ux * R * 0.34, by = cy - uy * R * 0.34;
+    p.arc(bx, by, R * 0.97, th + sw * 0.93, th - sw * 0.93, true);
+    p.closePath();
+  }
+  const alpha = [0.8, 0.56, 0.34, 0.15];
+  for(let b = 0; b < 4; b++){ fx.fillStyle = `rgba(255,255,255,${alpha[b]})`; fx.fill(paths[b]); }
 }
 /* Animations → Off: a still field of arrows instead of streaks */
 function drawArrows(){
@@ -769,9 +846,10 @@ function tipAgain(){
     const ue = sample(F.U, lon, lat), vn = sample(F.V, lon, lat), g = sample(F.G, lon, lat);
     const h = sample(F.H, lon, lat), hx = sample(F.WX, lon, lat), hy = sample(F.WY, lon, lat), p = sample(F.P, lon, lat);
     const ws = Math.hypot(ue, vn), wfrom = (Math.atan2(-ue, -vn) / D2R + 360) % 360, hfrom = (Math.atan2(-hx, -hy) / D2R + 360) % 360;
+    const arr = from => `<svg class="wxm-ta" viewBox="0 0 16 16" aria-hidden="true"><g transform="rotate(${(from + 180) % 360} 8 8)"><path d="M8 1.5 L12 9 L8.9 8 L8.9 14.5 L7.1 14.5 L7.1 8 L4 9 Z" fill="currentColor"/></g></svg>`;
     const pos = `${Math.abs(lat).toFixed(2)}°N ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
-    const wind = ws === ws ? `<div class="wxm-tr${layer === 'wind' ? ' on' : ''}"><i style="background:${cssOf(WIND_PAL, ws * KN2MS)}"></i><b>${Math.round(cv(ws))}</b> ${U}${g === g ? ` · gust ${Math.round(cv(g))}` : ''} · from ${compass(wfrom)}</div>` : '';
-    const sea = h === h ? `<div class="wxm-tr${layer === 'waves' ? ' on' : ''}"><i style="background:${cssOf(WAVE_PAL, h)}"></i>Hs <b>${h.toFixed(1)}</b> m · max ≈ ${(h * HMAX_K).toFixed(1)}${p === p ? ` · ${Math.round(p)} s` : ''} · from ${compass(hfrom)}</div>`
+    const wind = ws === ws ? `<div class="wxm-tr${layer === 'wind' ? ' on' : ''}"><i style="background:${cssOf(WIND_PAL, ws * KN2MS)}"></i><b>${Math.round(cv(ws))}</b> ${U}${g === g ? ` · gust ${Math.round(cv(g))}` : ''} · ${arr(wfrom)} from ${compass(wfrom)}</div>` : '';
+    const sea = h === h ? `<div class="wxm-tr${layer === 'waves' ? ' on' : ''}"><i style="background:${cssOf(WAVE_PAL, h)}"></i>Hs <b>${h.toFixed(1)}</b> m · max ≈ ${(h * HMAX_K).toFixed(1)}${p === p ? ` · ${Math.round(p)} s` : ''} · ${arr(hfrom)} from ${compass(hfrom)}</div>`
       : `<div class="wxm-tr wxm-tr-na${layer === 'waves' ? ' on' : ''}">no sea-state data here</div>`;
     if(!wind && h !== h){ tip.hidden = true; return; }
     tip.innerHTML = `${wind}${sea}<div class="wxm-tpos">${pos}</div>`;
@@ -833,7 +911,7 @@ function drawLegend(){
     const stops = WIND_PAL.map(([v, c]) => `rgb(${c.join(',')}) ${(v / WIND_MAX * 100).toFixed(1)}%`).join(',');
     el.innerHTML = `<div class="wxm-lk">Wind, ${windLbl(u)}</div><div class="wxm-lbar" style="background:linear-gradient(to right,${stops})">${ticks.filter(t => t <= maxU).map(t => `<span style="left:${(t / maxU * 100).toFixed(1)}%">${t}</span>`).join('')}</div>`;
   } else {
-    const ticks = [0, 1, 2, 3, 4, 6, 8, 10];
+    const ticks = [0, 1, 2, 3, 4, 6, 8, 10, 12];
     const stops = WAVE_PAL.map(([v, c]) => `rgb(${c.join(',')}) ${(v / WAVE_MAX * 100).toFixed(1)}%`).join(',');
     el.innerHTML = `<div class="wxm-lk">Waves Hs, m</div><div class="wxm-lbar" style="background:linear-gradient(to right,${stops})">${ticks.map(t => `<span style="left:${(t / WAVE_MAX * 100).toFixed(1)}%">${t}</span>`).join('')}</div>`;
   }

@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.4',
+    date: '2026-10-25',
+    highlights: [ 'Waves drawn as wave fronts', 'Values on the map' ],
+    changes: [
+      { type: 'ui', text: 'Waves map in the style of Ventusky: crescent wave fronts bowed the way the sea runs, larger where it is higher, fading in and out as they travel; sea-state colours from blue through yellow and orange to deep red' },
+      { type: 'feature', text: 'Values on the map: Hs in metres (or the wind in kn / m/s) written across the sea on a regular lattice, dark on light colours and white on dark; the "12" button by the zoom turns them off' },
+      { type: 'ui', text: 'The cursor read-out shows the wind and the sea direction with small arrows' },
+    ],
+  },
+  {
     version: '3.27.3',
     date: '2026-10-25',
     highlights: [ 'Streaks follow the chosen time' ],
