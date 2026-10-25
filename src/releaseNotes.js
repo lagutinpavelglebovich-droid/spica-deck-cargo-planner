@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.25.0',
+    date: '2026-10-25',
+    highlights: [ 'Windows grow out of the button that opened them', 'Theme switch spreads from the button', 'Animations: Full / Calm / Off' ],
+    changes: [
+      { type: 'ui', text: 'One motion system for the whole app: windows launch from the control you pressed (a menu, a header pill, a button) and return into it when closed — no more instant vanishing' },
+      { type: 'ui', text: 'Library and Smart Tools fly out of their header button and back into it' },
+      { type: 'ui', text: 'Light / dark: the new theme spreads in a circle from the theme button' },
+      { type: 'ui', text: 'Menus and popovers fade out instead of disappearing; they are frosted glass now, data panels stay solid' },
+      { type: 'ui', text: 'Buttons give a small press; Cargo Library sections open and close smoothly; when several cargo blocks appear at once (opening a plan, sync, undo) they land in a quick wave from stern to bow' },
+      { type: 'feature', text: 'Smart Tools → Animations: Full, Calm (short fades only, no moving sky — for the night watch) or Off. The first start follows the "reduce motion" setting of Windows' },
+      { type: 'fix', text: 'Positions (location card, Vessel Setup, map) in the normal typeface — no zeros that read as 8' },
+    ],
+  },
+  {
     version: '3.24.1',
     date: '2026-10-25',
     highlights: [ 'Forecast numbers as light as on Windy' ],

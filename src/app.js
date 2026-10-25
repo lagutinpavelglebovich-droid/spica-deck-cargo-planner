@@ -35,6 +35,7 @@ import { DEFAULT_CONDITION } from './weather/presets.js';
    generic in app.js scope). */
 import { searchCities } from './weather/api.js';
 import { iconForCondition } from './weather/iconMap.js';
+import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck } from './motion.js';
 import {
   setLocation             as _wxSetLocation,
   getLocation             as _wxGetLocation,
@@ -4464,6 +4465,7 @@ function renderAll(){
     else   { if(typeof kbDeselect==='function') kbDeselect(); }
   }
   if(typeof cpReapplyHl==='function') cpReapplyHl();
+  motionAfterRender(S.cargo, cv);   /* v3.25 — several new blocks land in a wave */
 }
 
 /* Edge-aware side for the selection action buttons (×/↻/+). They live in a
@@ -5105,7 +5107,8 @@ function animateCargoExit(ids){
    Both are visual only — S.cargo is already updated by the caller.
 ════════════════════════════════════════════════════════════ */
 function _motionOK(){
-  try{ return !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return true; }
+  /* v3.25 — Smart Tools → Animations (Full / Calm / Off); first run follows the OS setting */
+  return motionFull();
 }
 function animateCargoLift(ids){
   if(!ids) return;
@@ -5492,7 +5495,7 @@ function updateStats(){
         _du.anim = null;
       } else {
         _du.anim = motionAnimate(fromVal, toVal, {
-          duration: 1.2,
+          duration: motionMode() === 'full' ? 1.2 : motionMode() === 'calm' ? 0.3 : 0.001,
           ease: 'easeOut',
           onUpdate: paint,
           onComplete: () => { paint(toVal); _du.anim = null; },
@@ -10415,6 +10418,7 @@ function _stretchDeckClone(cdoc, k){
 async function _renderReport(mode){
   if(_isReportRendering){ return; }
   _isReportRendering = true;
+  motionSettleDeck();   /* v3.25 — a landing wave must not be half-transparent in the PDF */
 
   showToast(t('toast_preparing'), 'ok');
 
@@ -11324,8 +11328,9 @@ function cpBindSections(){
     hdr.addEventListener('click', e=>{
       if(e.target.closest('.cp-sec-grip') || hdr._justDragged) return;
       CP_SECTIONS[key] = !CP_SECTIONS[key];
-      body.classList.toggle('hidden', !CP_SECTIONS[key]);
-      hdr.classList.toggle('collapsed', !CP_SECTIONS[key]);
+      const open = CP_SECTIONS[key];
+      hdr.classList.toggle('collapsed', !open);
+      motionCollapse(body, open, () => body.classList.toggle('hidden', !open));
     });
   });
 }
@@ -13345,7 +13350,8 @@ function bindThemeToggle(){
   const btn = document.getElementById('themeToggle');
   if(btn) btn.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') || 'light';
-    applyTheme(current === 'light' ? 'dark' : 'light');
+    /* v3.25 — the new theme spreads in a circle from this button */
+    motionThemeSwitch(() => applyTheme(current === 'light' ? 'dark' : 'light'), btn);
   });
 
   /* Restore saved preference */
@@ -14446,6 +14452,11 @@ function bindSmartTools(){
     }
   });
 
+  document.querySelectorAll('#stMotionSeg button').forEach(b => b.addEventListener('click', () => {
+    setMotionMode(b.dataset.m);
+    if(typeof playSound === 'function') playSound('select');
+  }));
+  setMotionMode(motionMode(), false);
   document.querySelectorAll('#stGlassSeg button').forEach(b => b.addEventListener('click', () => {
     SMART.glass = b.dataset.g; applyGlass(); saveSmartSettings();
     if(typeof playSound === 'function') playSound('select');
@@ -15180,8 +15191,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.24.1';
-const APP_VERSION   = '3.24.1';
+const CURRENT_BUILD = 'v3.25.0';
+const APP_VERSION   = '3.25.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -17618,6 +17629,7 @@ function init(){
   bindContextMenu();
   bindSyncSettings();
 
+  initMotion();        /* v3.25 — motion mode + window / panel / popover motion */
   bindThemeToggle();   /* apply saved theme immediately, before any render */
   initResponsiveHeader();  /* apply body.hdr-compact / body.hdr-tight */
   bindSmartTools();        /* load and apply smart tool settings */
@@ -18393,7 +18405,7 @@ function _setLocPosition(id, ll){
 }
 function closeLocPop(){
   _locPopId = null;
-  document.getElementById('locPop')?.remove();
+  motionRemove(document.getElementById('locPop'));
   document.removeEventListener('mousedown', _locPopOutside, true);
 }
 function _locPopOutside(e){

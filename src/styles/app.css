@@ -18037,3 +18037,79 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
 .fw-dir .fwx-arr{ color:var(--fw-arrow); }
 .fw-pill{ font-weight:500 !important; font-size:13.5px !important; }
 .fw-nowt b{ font-weight:600; }
+
+/* ═══ v3.25 — MOTION SYSTEM (see src/motion.js) ═══════════════════
+   html[data-motion] = full | calm | off  (Smart Tools → Animations) */
+:root{
+  --mo-ease-out: cubic-bezier(.16,1,.3,1);
+  --mo-ease-in:  cubic-bezier(.4,0,1,1);
+  --mo-fast: 120ms; --mo-ui: 180ms; --mo-panel: 260ms; --mo-hero: 320ms;
+  /* elevation: deck → cargo → selection → panels → popovers → windows */
+  --elev-1: 0 1px 2px rgba(15,23,42,.06), 0 1px 1px rgba(15,23,42,.04);
+  --elev-2: 0 4px 12px rgba(15,23,42,.08), 0 1px 3px rgba(15,23,42,.06);
+  --elev-3: 0 12px 32px rgba(15,23,42,.14), 0 3px 8px rgba(15,23,42,.08);
+  --elev-4: 0 28px 70px rgba(15,23,42,.22), 0 8px 20px rgba(15,23,42,.10);
+  --glass-pop: rgba(255,255,255,.80);
+  --glass-pop-brd: rgba(15,23,42,.10);
+  --glass-pop-hi: inset 0 1px 0 rgba(255,255,255,.7);
+}
+[data-theme="dark"]{
+  --elev-1: 0 1px 2px rgba(0,0,0,.30);
+  --elev-2: 0 4px 14px rgba(0,0,0,.34), 0 1px 3px rgba(0,0,0,.24);
+  --elev-3: 0 14px 36px rgba(0,0,0,.46), 0 3px 10px rgba(0,0,0,.28);
+  --elev-4: 0 30px 80px rgba(0,0,0,.55), 0 8px 24px rgba(0,0,0,.30);
+  --glass-pop: rgba(30,34,41,.80);
+  --glass-pop-brd: rgba(255,255,255,.09);
+  --glass-pop-hi: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+/* Theme switch: the new theme is revealed by a growing circle (JS drives
+   the clip-path); no default cross-fade under it. */
+html.mo-theme-vt::view-transition-old(root),
+html.mo-theme-vt::view-transition-new(root){ animation:none; mix-blend-mode:normal; }
+html.mo-theme-vt::view-transition-new(root){ z-index:2; }
+html.mo-theme-vt::view-transition-old(root){ z-index:1; }
+
+/* Glass, dosed: only on small floating chrome — menus and popovers.
+   Data (tables, inspector, cargo) stays opaque. */
+html body .menu-dropdown,
+html body .saveas-dropdown,
+html body .ctx-menu,
+html body .locpop,
+html body .cal-popup{
+  background:var(--glass-pop) !important;
+  -webkit-backdrop-filter:blur(18px) saturate(1.6) !important;
+  backdrop-filter:blur(18px) saturate(1.6) !important;
+  border:1px solid var(--glass-pop-brd) !important;
+  box-shadow:var(--elev-3), var(--glass-pop-hi) !important;
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html body .menu-dropdown, html body .saveas-dropdown, html body .ctx-menu, html body .locpop, html body .cal-popup{
+    background:var(--surf) !important; }
+}
+
+/* Calm: no decorative loops (sky, shimmer, breathing), status stays
+   visible by colour / outline. Off: no motion at all. */
+html:is([data-motion="calm"],[data-motion="off"]) .wx-scene :is(.wx-cloud-a,.wx-cloud-b,.wx-cloud-c,.wx-cloud-d,.wx-stars,.wx-fog,.wx-sun,.wx-moon,.wx-lightning),
+html:is([data-motion="calm"],[data-motion="off"]) .wx-scene .wx-precip::before,
+html:is([data-motion="calm"],[data-motion="off"]) .wx-scene .wx-precip::after,
+html:is([data-motion="calm"],[data-motion="off"]) :is(.feature-badge,.viewer-banner-dot,.admin-mode-bar-dot,.htc-shimmer,.empty-deck-hint .edh-art,.brand-name,.dc-rec-dot){
+  animation:none !important;
+}
+html:is([data-motion="calm"],[data-motion="off"]) .cb:is(.dg-violation,.dg-violation-warn),
+html:is([data-motion="calm"],[data-motion="off"]) .cb:is(.dg-violation,.dg-violation-warn)::before,
+html:is([data-motion="calm"],[data-motion="off"]) .cb:is(.dg-violation,.dg-violation-warn)::after{ animation:none !important; }
+html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after{
+  transition-duration:1ms !important; transition-delay:0s !important;
+  animation-duration:1ms !important; animation-delay:0s !important; animation-iteration-count:1 !important;
+  scroll-behavior:auto !important;
+}
+/* …except the few that say "working on it" */
+html[data-motion="off"] .save-dot--saving .save-dot__spinner{ animation-duration:1200ms !important; animation-iteration-count:infinite !important; }
+html[data-motion="off"] .wx-chip-refresh.is-spinning svg{ animation-duration:900ms !important; animation-iteration-count:infinite !important; }
+html[data-motion="off"] .skel-card{ animation-duration:1400ms !important; animation-iteration-count:infinite !important; }
+
+/* Smart Tools → Animations segment (same look as Glass) */
+#stMotionSeg{ display:flex; }
+/* positions read in the system face too — no dotted / slashed zeros that look like 8 */
+.lp-posrow input, #lpPosIn, .vs-loc-pos, #pmPos, .pm-pos b{ font-family:var(--fw-font) !important; font-variant-numeric:tabular-nums; letter-spacing:0; }
