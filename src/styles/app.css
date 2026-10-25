@@ -17727,4 +17727,10 @@ body:is(.view-3d,.view-3d-leaving):not(.pdf-capture) .cb-sp-poly .cb3:not(.cb3-s
 .fwx-c.fwx-s small{ opacity:.7; font-size:9px; }
 .fwx-tl-k > div{ justify-content:center; }
 
-#hdrFwxDiv[hidden]{ display:none !important; }
+
+/* v3.22.3 — header field-weather block keeps its natural width (no overlap) */
+.info-block.info-fieldwx{ flex-shrink:0; margin-right:2px; }
+.hfw-row{ gap:9px; }
+.hfw-sub{ line-height:1.2; font-size:10px; }
+.info-date-btn{ white-space:nowrap; }
+.header-info-strip:has(.info-fieldwx:not([hidden])){ gap:18px; }

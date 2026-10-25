@@ -3931,19 +3931,6 @@ function buildActiveLocStrip(){
 
       head.appendChild(icon);
       head.appendChild(nameLbl);
-      /* v3.20 — field weather at this location (needs a position) */
-      const wx = fieldWxSummary(id);
-      if(wx){
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'loc-wx' + (wx.stale ? ' stale' : '');
-        chip.title = `Weather at ${loc.name}: wind ${wx.ws} ${wx.unit} ${wx.dir}, gusts ${wx.wg} ${wx.unit}` + (wx.hs != null ? `, Hs ${wx.hs.toFixed(1)} m, Hmax ≈ ${wx.hmax.toFixed(1)} m` : '') + ' — click for the forecast';
-        chip.innerHTML = `<span class="loc-wx-w" style="background:${wx.wc.bg};color:${wx.wc.fg}">${arrowSvg(wx.wd, 10)}${wx.ws}<small>${wx.unit}</small></span>` +
-          (wx.hs != null ? `<span class="loc-wx-h" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}<small>m</small></span>` : '');
-        chip.addEventListener('click', e => { e.stopPropagation(); openFieldWeather(id); });
-        head.appendChild(chip);
-      }
-
       /* Status pill strip — only present statuses */
       const pillStrip=document.createElement('div');
       pillStrip.className='loc-card-pills';
@@ -15028,8 +15015,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.22.2';
-const APP_VERSION   = '3.22.2';
+const CURRENT_BUILD = 'v3.22.3';
+const APP_VERSION   = '3.22.3';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18186,12 +18173,13 @@ function bindAutosaveToggle(){
 /* v3.16 — Deck camera workspace (calibration / overlay). The module only
    sees the planner through this API. */
 /* v3.22 — header shows the weather at the location being worked: the
-   selected unit's location, else the selected location card, else the
-   first location of the trip that has a position. Falls back to the
-   port / city weather when none has a position. */
+   selected unit's location, else the location card you clicked, else the
+   first location in the strip that has a position. The location cards
+   themselves carry no weather (v3.22.3). */
 function _workingLocId(){
   const sel = (typeof KB_SEL !== 'undefined' && KB_SEL != null) ? S.cargo.find(c => c.id === KB_SEL) : null;
-  return [sel && sel.platform, S.selLoc, ...S.activeLocs].find(id => id && fieldWxSummary(id)) || null;
+  const clicked = S.selLoc && S.activeLocs.includes(S.selLoc) ? S.selLoc : null;
+  return [sel && sel.platform, clicked, ...S.activeLocs].find(id => id && fieldWxSummary(id)) || null;
 }
 let _hfwKey = '';
 function updateHeaderFieldWx(){
@@ -18201,7 +18189,6 @@ function updateHeaderFieldWx(){
   const key = wx ? [id, wx.ws, wx.wg, wx.wd, wx.hs, wx.unit, wx.at].join('|') : '';
   /* v3.22.2 — the port / city weather stays next to it (both shown) */
   blk.hidden = !wx;
-  const dv = document.getElementById('hdrFwxDiv'); if(dv) dv.hidden = !wx;
   if(key === _hfwKey) return;
   _hfwKey = key;
   if(!wx){ blk.innerHTML = ''; return; }
@@ -18211,8 +18198,8 @@ function updateHeaderFieldWx(){
   blk.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
     <div class="hfw-row">
       <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>
-      <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">gust ${wx.wg} ${wx.unit}</span></span>
-      ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs · max ${wx.hmax.toFixed(1)} m</span></span>` : ''}
+      <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit}<br>G ${wx.wg}</span></span>
+      ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}
     </div>`;
 }
 let _hfwRaf = 0;

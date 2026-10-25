@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.22.3',
+    date: '2026-10-25',
+    highlights: [ 'Field weather only in the header' ],
+    changes: [
+      { type: 'improvement', text: 'The location cards no longer carry weather; the header shows it for the first location in the strip, or the one you click (or the location of the selected unit)' },
+      { type: 'fix', text: 'Header weather no longer runs into the divider and the port weather; the date stays on one line' },
+    ],
+  },
+  {
     version: '3.22.2',
     date: '2026-10-25',
     highlights: [ 'Port and field weather side by side' ],
