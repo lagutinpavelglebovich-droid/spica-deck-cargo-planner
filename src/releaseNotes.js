@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.24.1',
+    date: '2026-10-25',
+    highlights: [ 'Forecast numbers as light as on Windy' ],
+    changes: [
+      { type: 'ui', text: 'Field weather table uses the same type as Windy — the system face (Segoe UI on Windows) at regular weight: wind, gusts and waves are no longer heavy and read cleaner on the colour bands; wind arrows in Windy\'s blue-grey' },
+    ],
+  },
+  {
     version: '3.24.0',
     date: '2026-10-25',
     highlights: [ 'Field weather looks like Windy "Compare forecasts"', 'Header never overlaps', 'Cargo Library sections can be dragged' ],

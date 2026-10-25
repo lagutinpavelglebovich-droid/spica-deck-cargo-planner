@@ -18017,3 +18017,23 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
 [data-theme="dark"] .cp-sec-icon.s-sp{ color:#fbbf24; }
 .cp-sp .cp-sp-title{ display:none; }
 #cpSecSp[hidden], #cpSecPipe[hidden]{ display:none !important; }
+
+/* v3.24.1 — weather table typography as on Windy: the system face
+   (Segoe UI on Windows, SF on the Mac — Windy's own stack) at regular
+   weight, 14 px values, 11–12 px secondary rows, blue-grey wind arrows. */
+:root{ --fw-font: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; --fw-ink:#202226; --fw-arrow:#5b7e9e; }
+[data-theme="dark"]{ --fw-arrow:#9db6cc; }
+.fw-tbl, .fw-c, .fw-l, .fw-day, .fw-nowline, .fw-pill{ font-family:var(--fw-font) !important; -webkit-font-smoothing:antialiased; }
+.fw-c{ font-weight:400 !important; font-size:13px !important; letter-spacing:0; }
+.fw-wind .fw-c, .fw-hs .fw-c{ font-size:14px !important; font-weight:400 !important; }
+.fw-gust .fw-c, .fw-hmax .fw-c, .fw-period .fw-c{ font-size:12px !important; font-weight:400 !important; }
+.fw-swell .fw-c{ font-size:12.5px !important; }
+.fw-band .fw-c{ color:var(--fw-ink); }
+.fw-temp .fw-c{ font-size:15px !important; font-weight:400 !important; }
+.fw-hour .fw-c{ font-size:13px !important; color:var(--fw-ctxt2); }
+.fw-hour .fw-c.on{ font-weight:600 !important; }
+.fw-day{ font-size:14px; font-weight:400; }
+.fw-l{ font-size:12px; font-weight:400; }
+.fw-dir .fwx-arr{ color:var(--fw-arrow); }
+.fw-pill{ font-weight:500 !important; font-size:13.5px !important; }
+.fw-nowt b{ font-weight:600; }
