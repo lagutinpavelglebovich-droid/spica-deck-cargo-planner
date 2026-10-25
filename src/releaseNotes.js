@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.2',
+    date: '2026-10-25',
+    highlights: [ 'Calmer wind streaks' ],
+    changes: [
+      { type: 'ui', text: 'Wind map: the streaks move about three times slower (≈ 14 px/s at 20 kn), creep in light air and still run in a gale; each streak is a crisp line from bright head to faint tail, its length showing the speed' },
+    ],
+  },
+  {
     version: '3.27.1',
     date: '2026-10-25',
     highlights: [ 'Streaks show the wind strength', 'PDF names with or without the white plate' ],

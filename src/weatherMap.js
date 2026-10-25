@@ -535,9 +535,10 @@ function buildFlowGrid(){
   for(let x = 0; x < w; x++) lons[x] = toLon(x * q);
   for(let y = 0; y < h; y++){ lats[y] = toLat(y * q); sec[y] = 1 / Math.cos(lats[y] * D2R); }
   /* conformal: a north/east metre is the same number of pixels; the
-     scale grows by 1/cos(lat). Wind: 1 kn ≈ 0.024 deg/s on screen at the
-     fit zoom, so 20 kn flows about 40 px/s across the whole area. */
-  const kW = 0.024 * VIEW.s * Math.sqrt(VIEW.fit / VIEW.s);
+     scale grows by 1/cos(lat). Calm and slow, as on Windy: at the fit
+     zoom 20 kn drifts about 14 px/s (green areas), a 45 kn gale about
+     45 px/s, 8 kn barely creeps. */
+  const kW = 0.0082 * VIEW.s * Math.sqrt(VIEW.fit / VIEW.s);
   for(let y = 0; y < h; y++){
     for(let x = 0; x < w; x++){
       const i = y * w + x;
@@ -574,53 +575,87 @@ function flowAt(x, y, out){
   return true;
 }
 
-/* ── Particles ─────────────────────────────────────────────── */
-const PT = { n: 0, x: null, y: null, age: null, life: null, cap: 0, budget: 1, slow: 0 };
+/* ── Particles ─────────────────────────────────────────────
+   Each streak is its own short history (the last ~1.4 s of positions,
+   sampled at a fixed rate), drawn fresh every frame from bright head to
+   faint tail. No fading buffer, so slow streaks stay crisp and leave no
+   ghost lines, and a streak's length shows its speed. */
+const HK = 16, HSTEP = 0.09;                 /* history points, seconds between them */
+const PT = { n: 0, x: null, y: null, age: null, life: null, hx: null, hy: null, len: null, cap: 0, head: 0, acc: 0, budget: 1 };
 function targetCount(){
   const area = VIEW.W * VIEW.H, m = motion();
-  const base = layer === 'wind' ? Math.min(3600, area / 230) : Math.min(1100, area / 900);
+  const base = layer === 'wind' ? Math.min(2600, area / 320) : Math.min(1000, area / 950);
   return Math.max(250, Math.round(base * (m === 'calm' ? 0.55 : 1) * PT.budget));
 }
 function spawn(i, anyAge){
+  PT.x[i] = -1;
   for(let tries = 0; tries < 12; tries++){
     const x = Math.random() * VIEW.W, y = Math.random() * VIEW.H;
     if(flowAt(x, y, _v)){ PT.x[i] = x; PT.y[i] = y; break; }
-    PT.x[i] = -1;
   }
-  PT.life[i] = layer === 'wind' ? 1.6 + Math.random() * 2.6 : 2.8 + Math.random() * 3.4;
+  PT.life[i] = layer === 'wind' ? 3 + Math.random() * 4 : 4 + Math.random() * 4;
   PT.age[i] = anyAge ? Math.random() * PT.life[i] : 0;
+  PT.len[i] = 0;
 }
 const _v = [0, 0];
 function resetParticles(clear){
   if(!CV) return;
   const n = targetCount();
-  if(!PT.x || PT.cap < n){ PT.cap = Math.max(n, 600); PT.x = new Float32Array(PT.cap); PT.y = new Float32Array(PT.cap); PT.age = new Float32Array(PT.cap); PT.life = new Float32Array(PT.cap); }
+  if(!PT.x || PT.cap < n){
+    PT.cap = Math.max(n, 600);
+    PT.x = new Float32Array(PT.cap); PT.y = new Float32Array(PT.cap); PT.age = new Float32Array(PT.cap); PT.life = new Float32Array(PT.cap);
+    PT.hx = new Float32Array(PT.cap * HK); PT.hy = new Float32Array(PT.cap * HK); PT.len = new Uint8Array(PT.cap);
+  }
   PT.n = n;
   for(let i = 0; i < n; i++) spawn(i, true);
   if(clear){ const { fx, flow } = CV; fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, flow.width, flow.height); }
 }
+const BUCKETS = 4;                            /* head → tail in 4 shades */
 function stepParticles(dt){
   const { fx, flow } = CV, d = VIEW.dpr;
-  /* trails: fade what is there, by time (not by frame) */
-  const keep = layer === 'wind' ? Math.pow(0.86, dt * 60) : Math.pow(0.9, dt * 60);
-  fx.setTransform(1, 0, 0, 1, 0, 0);
-  fx.globalCompositeOperation = 'destination-in';
-  fx.fillStyle = `rgba(0,0,0,${keep.toFixed(3)})`;
-  fx.fillRect(0, 0, flow.width, flow.height);
-  fx.globalCompositeOperation = 'source-over';
-  fx.beginPath();
-  const n = PT.n, X = PT.x, Y = PT.y, A = PT.age, Lf = PT.life;
+  const n = PT.n, X = PT.x, Y = PT.y, A = PT.age, Lf = PT.life, HX = PT.hx, HY = PT.hy, LEN = PT.len;
+  /* move */
   for(let i = 0; i < n; i++){
     A[i] += dt;
-    if(A[i] > Lf[i] || X[i] < 0){ spawn(i, false); continue; }
-    if(!flowAt(X[i], Y[i], _v)){ spawn(i, false); continue; }
-    const nx = X[i] + _v[0] * dt, ny = Y[i] + _v[1] * dt;
-    fx.moveTo(X[i] * d, Y[i] * d); fx.lineTo(nx * d, ny * d);
-    X[i] = nx; Y[i] = ny;
+    if(A[i] > Lf[i] || X[i] < 0 || !flowAt(X[i], Y[i], _v)){ spawn(i, false); continue; }
+    X[i] += _v[0] * dt; Y[i] += _v[1] * dt;
   }
-  if(layer === 'wind'){ fx.strokeStyle = 'rgba(255,255,255,.82)'; fx.lineWidth = 1.15 * d; }
-  else { fx.strokeStyle = 'rgba(255,255,255,.5)'; fx.lineWidth = 2.1 * d; fx.lineCap = 'round'; }
-  fx.stroke();
+  /* remember a point every HSTEP seconds (one shared ring head) */
+  PT.acc += dt;
+  if(PT.acc >= HSTEP){
+    PT.acc %= HSTEP;
+    PT.head = (PT.head + 1) % HK;
+    const h = PT.head;
+    for(let i = 0; i < n; i++){ HX[i * HK + h] = X[i]; HY[i * HK + h] = Y[i]; if(LEN[i] < HK) LEN[i]++; }
+  }
+  /* draw */
+  fx.setTransform(1, 0, 0, 1, 0, 0);
+  fx.clearRect(0, 0, flow.width, flow.height);
+  const wind = layer === 'wind';
+  fx.lineWidth = (wind ? 1.2 : 2.2) * d; fx.lineCap = 'round'; fx.lineJoin = 'round';
+  const per = Math.ceil(HK / BUCKETS), h = PT.head;
+  for(let b = 0; b < BUCKETS; b++){
+    fx.beginPath();
+    for(let i = 0; i < n; i++){
+      if(X[i] < 0) continue;
+      const L = LEN[i]; if(!L) continue;
+      const j0 = b * per, j1 = Math.min(L, j0 + per);
+      if(j0 >= j1) continue;
+      /* segment j joins point j-1 (j = 0: the live head) to history point j */
+      let px = j0 === 0 ? X[i] : HX[i * HK + ((h - j0 + 1 + HK * 2) % HK)];
+      let py = j0 === 0 ? Y[i] : HY[i * HK + ((h - j0 + 1 + HK * 2) % HK)];
+      fx.moveTo(px * d, py * d);
+      for(let j = j0; j < j1; j++){
+        const k = i * HK + ((h - j + HK * 2) % HK);
+        const qx = HX[k], qy = HY[k];
+        if(Math.abs(qx - px) > 60 || Math.abs(qy - py) > 60) break;   /* never draw across a respawn */
+        fx.lineTo(qx * d, qy * d); px = qx; py = qy;
+      }
+    }
+    const a = wind ? [0.92, 0.6, 0.34, 0.14][b] : [0.62, 0.42, 0.24, 0.1][b];
+    fx.strokeStyle = `rgba(255,255,255,${a})`;
+    fx.stroke();
+  }
 }
 /* Animations → Off: a still field of arrows instead of streaks */
 function drawArrows(){
