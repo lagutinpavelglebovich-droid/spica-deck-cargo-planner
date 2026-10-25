@@ -13,7 +13,7 @@ import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
-import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon } from './fieldWeather.js';
+import { initFieldWeather, openFieldWeather, fieldWxSummary, parseLatLon, formatLatLon, arrowSvg } from './fieldWeather.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
@@ -3936,10 +3936,10 @@ function buildActiveLocStrip(){
       if(wx){
         const chip = document.createElement('button');
         chip.type = 'button';
-        chip.className = 'loc-wx loc-wx-' + wx.level + (wx.stale ? ' stale' : '');
-        chip.title = `Weather at ${loc.name}: wind ${wx.ws} kn ${wx.dir}, gusts ${wx.wg} kn` + (wx.hs != null ? `, Hs ${wx.hs.toFixed(1)} m` : '') + ' — click for the forecast';
-        chip.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><g transform="rotate(${(wx.wd + 180) % 360} 8 8)"><path d="M8 1.5 L12 9 L8.9 8 L8.9 14.5 L7.1 14.5 L7.1 8 L4 9 Z" fill="currentColor"/></g></svg>${wx.ws}<small>kn</small>` +
-          (wx.hs != null ? `<i></i>${wx.hs.toFixed(1)}<small>m</small>` : '');
+        chip.className = 'loc-wx' + (wx.stale ? ' stale' : '');
+        chip.title = `Weather at ${loc.name}: wind ${wx.ws} ${wx.unit} ${wx.dir}, gusts ${wx.wg} ${wx.unit}` + (wx.hs != null ? `, Hs ${wx.hs.toFixed(1)} m, Hmax ≈ ${wx.hmax.toFixed(1)} m` : '') + ' — click for the forecast';
+        chip.innerHTML = `<span class="loc-wx-w" style="background:${wx.wc.bg};color:${wx.wc.fg}">${arrowSvg(wx.wd, 10)}${wx.ws}<small>${wx.unit}</small></span>` +
+          (wx.hs != null ? `<span class="loc-wx-h" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}<small>m</small></span>` : '');
         chip.addEventListener('click', e => { e.stopPropagation(); openFieldWeather(id); });
         head.appendChild(chip);
       }
@@ -15028,8 +15028,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.21.0';
-const APP_VERSION   = '3.21.0';
+const CURRENT_BUILD = 'v3.22.0';
+const APP_VERSION   = '3.22.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18185,11 +18185,47 @@ function bindAutosaveToggle(){
 
 /* v3.16 — Deck camera workspace (calibration / overlay). The module only
    sees the planner through this API. */
+/* v3.22 — header shows the weather at the location being worked: the
+   selected unit's location, else the selected location card, else the
+   first location of the trip that has a position. Falls back to the
+   port / city weather when none has a position. */
+function _workingLocId(){
+  const sel = (typeof KB_SEL !== 'undefined' && KB_SEL != null) ? S.cargo.find(c => c.id === KB_SEL) : null;
+  return [sel && sel.platform, S.selLoc, ...S.activeLocs].find(id => id && fieldWxSummary(id)) || null;
+}
+let _hfwKey = '';
+function updateHeaderFieldWx(){
+  const blk = document.getElementById('hdrFwx');
+  if(!blk) return;
+  const id = _workingLocId(), wx = id && fieldWxSummary(id);
+  const key = wx ? [id, wx.ws, wx.wg, wx.wd, wx.hs, wx.unit, wx.at].join('|') : '';
+  const city = document.querySelector('.info-peterhead');
+  blk.hidden = !wx; if(city) city.hidden = !!wx;
+  if(key === _hfwKey) return;
+  _hfwKey = key;
+  if(!wx){ blk.innerHTML = ''; return; }
+  const loc = locById(id);
+  blk.dataset.loc = id;
+  blk.title = `Weather at ${loc ? loc.name : id} now — click for the 48 h forecast`;
+  blk.innerHTML = `<span class="info-label">${escHtml(loc ? loc.name : id)}</span>
+    <div class="hfw-row">
+      <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>
+      <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">gust ${wx.wg} ${wx.unit}</span></span>
+      ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs · max ${wx.hmax.toFixed(1)} m</span></span>` : ''}
+    </div>`;
+}
+let _hfwRaf = 0;
+const _hfwSoon = () => { cancelAnimationFrame(_hfwRaf); _hfwRaf = requestAnimationFrame(updateHeaderFieldWx); };
+document.addEventListener('mouseup', _hfwSoon, true);
+document.addEventListener('keyup', _hfwSoon, true);
+document.getElementById('hdrFwx')?.addEventListener('click', e => openFieldWeather(e.currentTarget.dataset.loc));
+document.getElementById('hdrFwx')?.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openFieldWeather(e.currentTarget.dataset.loc); } });
+
 /* v3.20 — weather at the working locations (positions from Vessel Setup) */
 initFieldWeather({
   locations: () => LOC_ALL.map(l => ({ id: l.id, name: l.name, c: getLocBase(l.id), lat: l.lat, lon: l.lon })),
   activeIds: () => S.activeLocs.slice(),
-  onUpdate:  () => { if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip(); },
+  onUpdate:  () => { if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip(); _hfwKey = ''; updateHeaderFieldWx(); },
   openUrl:   async url => {
     if(_isTauri()){
       try{ const { openUrl } = await import('@tauri-apps/plugin-opener'); await openUrl(url); return; }

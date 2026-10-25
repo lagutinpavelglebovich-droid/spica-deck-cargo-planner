@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════
-   FIELD WEATHER — v3.20
+   FIELD WEATHER — v3.20 / v3.22
    Weather and sea state at the working locations, by their own
    coordinates (Vessel Setup → Locations → Position), not at the port.
 
@@ -14,7 +14,7 @@
 const URL_FC = 'https://api.open-meteo.com/v1/forecast';
 const URL_MAR = 'https://marine-api.open-meteo.com/v1/marine';
 const LS_CACHE = 'spicaTide_fieldWx';
-const LS_LIMITS = 'spicaTide_fieldWxLimits';
+const LS_UNIT = 'spicaTide_fieldWxUnit';
 const MAX_AGE_MS = 30 * 60 * 1000;
 const TIMEOUT_MS = 12000;
 
@@ -24,10 +24,41 @@ const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v == nu
 const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 
-export function limits(){
-  const l = lsGet(LS_LIMITS, null) || {};
-  return { wind: +l.wind > 0 ? +l.wind : 30, hs: +l.hs > 0 ? +l.hs : 3.0 };
+/* ── Units: wind in knots (as fetched) or m/s ─────────────────── */
+export function windUnit(){ return lsGet(LS_UNIT, 'kn') === 'ms' ? 'ms' : 'kn'; }
+export function setWindUnit(u){ lsSet(LS_UNIT, u === 'ms' ? 'ms' : 'kn'); render(); API && API.onUpdate && API.onUpdate(); }
+const KN2MS = 0.514444;
+export function windVal(kn, unit){ if(kn == null || !isFinite(kn)) return null; return (unit || windUnit()) === 'ms' ? kn * KN2MS : kn; }
+export function windLbl(unit){ return (unit || windUnit()) === 'ms' ? 'm/s' : 'kn'; }
+
+/* ── Colour scales in the Windy style ────────────────────────────
+   Wind: Windy's wind palette by speed in m/s — blue → cyan → green →
+   yellow → orange / brown → red → magenta → purple. Waves use the same
+   colour order by significant wave height (m), so a look at the table
+   reads the same way for wind and sea. */
+const WIND_STOPS = [[0,[98,113,183]],[1,[57,97,159]],[3,[74,148,169]],[5,[77,141,123]],[7,[83,165,83]],[9,[53,159,53]],
+  [11,[167,157,81]],[13,[159,127,58]],[15,[161,108,92]],[17,[129,58,78]],[19,[175,80,136]],[21,[117,74,147]],
+  [24,[109,97,163]],[27,[68,105,141]],[29,[92,144,152]],[36,[125,68,165]],[46,[231,215,215]],[51,[219,212,135]],[77,[205,202,112]]];
+const WAVE_STOPS = [[0,[57,97,159]],[0.5,[74,148,169]],[1,[77,141,123]],[1.5,[83,165,83]],[2,[167,157,81]],[2.5,[159,127,58]],
+  [3,[161,108,92]],[4,[129,58,78]],[5,[175,80,136]],[6,[117,74,147]],[8,[109,97,163]],[10,[125,68,165]],[14,[231,215,215]]];
+function ramp(stops, v){
+  if(v == null || !isFinite(v)) return null;
+  if(v <= stops[0][0]) return stops[0][1];
+  for(let i = 1; i < stops.length; i++){
+    if(v <= stops[i][0]){
+      const [a, ca] = stops[i - 1], [b, cb] = stops[i], t = (v - a) / (b - a);
+      return ca.map((c, k) => Math.round(c + (cb[k] - c) * t));
+    }
+  }
+  return stops[stops.length - 1][1];
 }
+const rgb = c => c ? `rgb(${c[0]},${c[1]},${c[2]})` : 'transparent';
+const ink = c => !c ? 'inherit' : (c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114) > 170 ? '#16181c' : '#fff';
+/* Colour (bg + text) for a wind speed in knots / a wave height in m */
+export function windColor(kn){ const c = ramp(WIND_STOPS, kn == null ? null : kn * KN2MS); return { bg: rgb(c), fg: ink(c) }; }
+export function waveColor(m){ const c = ramp(WAVE_STOPS, m); return { bg: rgb(c), fg: ink(c) }; }
+/* Most probable maximum of ~1000 waves (≈ 3 h): Hmax ≈ 1.86 · Hs */
+export const HMAX_K = 1.86;
 
 /* ── Coordinates: parse what an officer types or copies from ECDIS ── */
 export function parseLatLon(str){
@@ -144,29 +175,25 @@ function nowRow(id){
   for(const r of rows){ if(r.t <= t + 30 * 60000) best = r; else break; }
   return best;
 }
-function level(r, L){
-  if(!r) return 'none';
-  const w = Math.max(r.ws || 0, (r.wg || 0) * 0.85), h = r.hs || 0;
-  if(w >= L.wind || h >= L.hs) return 'red';
-  if(w >= L.wind * 0.85 || h >= L.hs * 0.85) return 'amber';
-  return 'ok';
-}
-/* Short line for the location card */
+/* Short summary for the location card and the header */
 export function fieldWxSummary(id){
   const r = nowRow(id);
   if(!r) return null;
-  return { ws: Math.round(r.ws), wg: Math.round(r.wg), dir: compass(r.wd), wd: r.wd,
-           hs: r.hs != null ? r.hs : null, level: level(r, limits()), stale: Date.now() - DATA.at > 3 * 3600000 };
+  const u = windUnit();
+  return { ws: Math.round(windVal(r.ws, u)), wg: Math.round(windVal(r.wg, u)), unit: windLbl(u), dir: compass(r.wd), wd: r.wd,
+           hs: r.hs != null ? r.hs : null, hmax: r.hs != null ? r.hs * HMAX_K : null,
+           wc: windColor(r.ws), hc: waveColor(r.hs), stale: Date.now() - DATA.at > 3 * 3600000, at: DATA.at };
 }
 export function hasPosition(id){ return located().some(l => l.id === id); }
 
 const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 function compass(d){ return d == null || !isFinite(d) ? '—' : COMPASS[Math.round(((d % 360) + 360) % 360 / 22.5) % 16]; }
-/* Arrow pointing where the wind / sea goes (downwind), like on a chart */
-function arrow(d, size){
+/* Arrow pointing where the wind / sea goes (downwind), like on Windy */
+export function arrowSvg(d, size){
   if(d == null || !isFinite(d)) return '';
   return `<svg class="fwx-arr" width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true"><g transform="rotate(${(d + 180) % 360} 8 8)"><path d="M8 1.5 L12 9 L8.9 8 L8.9 14.5 L7.1 14.5 L7.1 8 L4 9 Z" fill="currentColor"/></g></svg>`;
 }
+const arrow = arrowSvg;
 const fmt1 = v => v == null || !isFinite(v) ? '—' : (+v).toFixed(1);
 const fmt0 = v => v == null || !isFinite(v) ? '—' : String(Math.round(v));
 const hhmm = t => new Date(t).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', hour12:false });
@@ -186,15 +213,12 @@ function ensurePanel(){
           <div class="fwx-title" id="fwxTitle">Weather at the working locations</div>
           <div class="fwx-meta" id="fwxMeta"></div>
         </div>
-        <div class="fwx-limits" title="Your own limits — cells turn amber at 85 % and red at the limit">
-          <label>Wind <input type="number" id="fwxLimW" min="5" max="80" step="1"> kn</label>
-          <label>Hs <input type="number" id="fwxLimH" min="0.5" max="10" step="0.1"> m</label>
-        </div>
+        <div class="fwx-unit" role="radiogroup" aria-label="Wind unit"><button type="button" data-u="kn">kn</button><button type="button" data-u="ms">m/s</button></div>
         <button type="button" class="fwx-btn" id="fwxRefresh">Refresh</button>
         <button type="button" class="fwx-x" id="fwxClose" title="Close (Esc)">✕</button>
       </div>
       <div class="fwx-body" id="fwxBody"></div>
-      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · times are this computer's local time · only the coordinates of the locations are sent</div>
+      <div class="fwx-foot">Forecast: Open-Meteo (ECMWF, DWD, Met Office and other national models) · Hmax ≈ 1.86 × Hs, the highest of about 1000 waves (≈ 3 h) · colours as on Windy · times are this computer's local time · only the coordinates of the locations are sent</div>
     </div>`;
   document.body.appendChild(ov);
   const close = () => { ov.classList.remove('open'); };
@@ -202,15 +226,7 @@ function ensurePanel(){
   ov.querySelector('#fwxClose').addEventListener('click', close);
   ov.querySelector('#fwxRefresh').addEventListener('click', () => refresh(true));
   ov.addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); close(); } });
-  const L = limits();
-  const lw = ov.querySelector('#fwxLimW'), lh = ov.querySelector('#fwxLimH');
-  lw.value = L.wind; lh.value = L.hs;
-  const saveL = () => {
-    const w = parseFloat(lw.value), h = parseFloat(lh.value);
-    lsSet(LS_LIMITS, { wind: w > 0 ? w : 30, hs: h > 0 ? h : 3 });
-    render(); API && API.onUpdate && API.onUpdate();
-  };
-  lw.addEventListener('change', saveL); lh.addEventListener('change', saveL);
+  ov.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => setWindUnit(b.dataset.u)));
   ov.addEventListener('click', e => {
     const a = e.target.closest('[data-url]');
     if(a){ e.preventDefault(); API.openUrl(a.dataset.url); }
@@ -237,60 +253,70 @@ function render(){
   const all = API.locations(), active = new Set(API.activeIds());
   const withPos = all.filter(l => isFinite(l.lat) && isFinite(l.lon));
   const noPos = all.filter(l => !(isFinite(l.lat) && isFinite(l.lon)));
+  const u = windUnit();
+  ov.querySelectorAll('[data-u]').forEach(b => b.classList.toggle('on', b.dataset.u === u));
   ov.querySelector('#fwxRefresh').disabled = busy || !withPos.length;
   ov.querySelector('#fwxRefresh').textContent = busy ? 'Updating…' : 'Refresh';
   meta.textContent = busy ? 'Updating from Open-Meteo…'
     : DATA ? `Updated ${hhmm(DATA.at)}${Date.now() - DATA.at > 3 * 3600000 ? ' — old, check the connection' : ''}${lastErr ? ' · ' + lastErr : ''}`
     : lastErr || (withPos.length ? 'Not loaded yet' : '');
-  const L = limits();
   if(!withPos.length){
     body.innerHTML = `<div class="fwx-empty"><b>No positions yet.</b> Add the position of each platform / FPSO in
       Vessel Setup → Locations (e.g. <code>58 27.4N 000 15.2E</code> straight from the ECDIS), then the weather and sea state
-      for that exact spot show up here and on the location cards.
+      for that exact spot show up here, on the location cards and in the header.
       <div><button type="button" class="fwx-btn" data-setup="1">Open Vessel Setup</button></div></div>`;
     return;
   }
-  const order = withPos.slice().sort((a, b) => (active.has(b.id) - active.has(a.id)) || (b.id === focusId) - (a.id === focusId));
-  body.innerHTML = order.map(l => card(l, L, active.has(l.id))).join('') +
+  const order = withPos.slice().sort((a, b) => ((b.id === focusId) - (a.id === focusId)) || (active.has(b.id) - active.has(a.id)));
+  body.innerHTML = order.map(l => card(l, active.has(l.id), u)).join('') +
     (noPos.length ? `<div class="fwx-nopos">No position: ${noPos.map(l => esc(l.name)).join(', ')} — <a href="#" data-setup="1">add in Vessel Setup</a></div>` : '');
 }
 
-function card(l, L, isActive){
+const cell = (txt, c, cls) => `<div class="fwx-c${cls ? ' ' + cls : ''}" style="background:${c.bg};color:${c.fg}">${txt}</div>`;
+function card(l, isActive, u){
   const rows = DATA && DATA.loc && DATA.loc[l.id];
   const r = nowRow(l.id);
+  const U = windLbl(u);
   const links = `<button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, false))}">Windy</button>
     <button type="button" class="fwx-link" data-url="${esc(windyUrl(l.lat, l.lon, true))}">Windy · waves</button>`;
   const head = `<div class="fwx-loc-head"><span class="fwx-dot" style="background:${esc(l.c || '#9aa0a8')}"></span>
     <span class="fwx-name">${esc(l.name)}</span>${isActive ? '<span class="fwx-act">on this trip</span>' : ''}
     <span class="fwx-pos">${esc(formatLatLon(l.lat, l.lon))}</span><span class="fwx-sp"></span>${links}</div>`;
   if(!r) return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}<div class="fwx-wait">${busy ? 'Loading…' : 'No data yet — press Refresh'}</div></section>`;
-  const lv = level(r, L);
-  const now = `<div class="fwx-now fwx-${lv}">
-      <div class="fwx-big">${arrow(r.wd, 22)}<span><b>${fmt0(r.ws)}</b> kn ${compass(r.wd)}</span><em>gusts ${fmt0(r.wg)} kn</em></div>
-      <div class="fwx-big"><span>Hs <b>${fmt1(r.hs)}</b> m</span><em>${r.tp != null ? 'period ' + fmt0(r.tp) + ' s' : ''}</em></div>
-      <div class="fwx-kv"><span>Swell</span><b>${r.sw != null ? fmt1(r.sw) + ' m · ' + fmt0(r.sp) + ' s' : '—'}</b>${r.sd != null ? `<i>${arrow(r.sd, 12)} from ${compass(r.sd)}</i>` : ''}</div>
-      <div class="fwx-kv"><span>Wind sea</span><b>${r.ww != null ? fmt1(r.ww) + ' m' : '—'}</b></div>
-      <div class="fwx-kv"><span>Air</span><b>${fmt0(r.ta)}°C</b><i>${r.pr > 0 ? 'rain ' + fmt1(r.pr) + ' mm/h' : 'dry'}</i></div>
-      <div class="fwx-kv"><span>Visibility</span><b>${r.vis != null ? (r.vis >= 10000 ? '10+ km' : (r.vis / 1000).toFixed(1) + ' km') : '—'}</b></div>
+  const wc = windColor(r.ws), gc = windColor(r.wg), hc = waveColor(r.hs), mc = waveColor(r.hs != null ? r.hs * HMAX_K : null);
+  const now = `<div class="fwx-now">
+      <div class="fwx-tile"><span class="fwx-k">Wind</span><span class="fwx-v" style="background:${wc.bg};color:${wc.fg}">${fmt0(windVal(r.ws, u))} <small>${U}</small></span>
+        <span class="fwx-k">Gusts</span><span class="fwx-v fwx-v2" style="background:${gc.bg};color:${gc.fg}">${fmt0(windVal(r.wg, u))} <small>${U}</small></span></div>
+      <div class="fwx-tile fwx-dir"><span class="fwx-k">Direction</span>${arrow(r.wd, 30)}<span class="fwx-dirtx">${compass(r.wd)} · ${fmt0(r.wd)}°</span></div>
+      <div class="fwx-tile"><span class="fwx-k">Hs</span><span class="fwx-v" style="background:${hc.bg};color:${hc.fg}">${fmt1(r.hs)} <small>m</small></span>
+        <span class="fwx-k">Hmax ≈</span><span class="fwx-v fwx-v2" style="background:${mc.bg};color:${mc.fg}">${r.hs != null ? fmt1(r.hs * HMAX_K) : '—'} <small>m</small></span></div>
+      <div class="fwx-side">
+        <div class="fwx-kv"><span>Swell</span><b>${r.sw != null ? fmt1(r.sw) + ' m · ' + fmt0(r.sp) + ' s' : '—'}</b>${r.sd != null ? `<i>${arrow(r.sd, 12)} from ${compass(r.sd)}</i>` : ''}</div>
+        <div class="fwx-kv"><span>Wind sea</span><b>${r.ww != null ? fmt1(r.ww) + ' m' : '—'}</b><i>${r.tp != null ? 'period ' + fmt0(r.tp) + ' s' : ''}</i></div>
+        <div class="fwx-kv"><span>Air</span><b>${fmt0(r.ta)}°C</b><span>Visibility</span><b>${r.vis != null ? (r.vis >= 10000 ? '10+ km' : (r.vis / 1000).toFixed(1) + ' km') : '—'}</b></div>
+      </div>
     </div>`;
-  /* next 48 h every 3 h */
+  /* next 48 h every 3 h — Windy-style rows */
   const t0 = Date.now() - 60 * 60000;
   const steps = (rows || []).filter(x => x.t >= t0).filter((x, k) => k % 3 === 0).slice(0, 17);
   let lastDay = '';
   const cols = steps.map(x => {
     const d = dayLbl(x.t), nd = d !== lastDay; lastDay = d;
-    const lw = Math.max(x.ws || 0, (x.wg || 0) * 0.85) >= L.wind ? 'red' : Math.max(x.ws || 0, (x.wg || 0) * 0.85) >= L.wind * 0.85 ? 'amber' : 'ok';
-    const lh = (x.hs || 0) >= L.hs ? 'red' : (x.hs || 0) >= L.hs * 0.85 ? 'amber' : 'ok';
+    const hm = x.hs != null ? x.hs * HMAX_K : null;
     return `<div class="fwx-col${nd ? ' nd' : ''}">
-      <div class="fwx-t">${nd ? `<span>${esc(d)}</span>` : ''}${hhmm(x.t)}</div>
-      <div class="fwx-c fwx-${lw}">${arrow(x.wd, 12)}<b>${fmt0(x.ws)}</b><small>${fmt0(x.wg)}</small></div>
-      <div class="fwx-c fwx-${lh}"><b>${fmt1(x.hs)}</b></div>
-      <div class="fwx-c fwx-r">${x.pr >= 0.1 ? fmt1(x.pr) : ''}</div>
+      <div class="fwx-t">${nd ? `<span>${esc(d)}</span>` : '<span>&nbsp;</span>'}${hhmm(x.t)}</div>
+      ${cell(fmt0(windVal(x.ws, u)), windColor(x.ws))}
+      ${cell(fmt0(windVal(x.wg, u)), windColor(x.wg), 'fwx-g')}
+      <div class="fwx-c fwx-d" title="${compass(x.wd)} ${fmt0(x.wd)}°">${arrow(x.wd, 16)}</div>
+      ${cell(fmt1(x.hs), waveColor(x.hs), 'fwx-h')}
+      ${cell(hm != null ? fmt1(hm) : '—', waveColor(hm), 'fwx-g')}
+      <div class="fwx-c fwx-s">${x.sw != null ? fmt1(x.sw) + '<small>' + fmt0(x.sp) + 's</small>' : ''}</div>
     </div>`;
   }).join('');
-  const tl = `<div class="fwx-tl"><div class="fwx-tl-k"><div class="fwx-t">&nbsp;</div><div>Wind kn<br><small>gust</small></div><div>Hs m</div><div>Rain</div></div><div class="fwx-tl-cols">${cols}</div></div>`;
-  return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}${now}${tl}</section>`;
+  const keys = `<div class="fwx-tl-k"><div class="fwx-t">&nbsp;</div><div>Wind <small>${U}</small></div><div>Gusts <small>${U}</small></div><div>Direction</div>
+    <div>Hs <small>m</small></div><div>Hmax <small>m</small></div><div>Swell <small>m · s</small></div></div>`;
+  return `<section class="fwx-loc${l.id === focusId ? ' focus' : ''}" data-id="${esc(l.id)}">${head}${now}<div class="fwx-tl">${keys}<div class="fwx-tl-cols">${cols}</div></div></section>`;
 }
 
 /* test hooks */
-export const _fwx = { parseLatLon, formatLatLon, state: () => DATA, set: d => { DATA = d; }, render };
+export const _fwx = { parseLatLon, formatLatLon, state: () => DATA, set: d => { DATA = d; }, render, windColor, waveColor };

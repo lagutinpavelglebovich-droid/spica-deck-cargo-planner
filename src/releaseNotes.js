@@ -11,6 +11,21 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.22.0',
+    date: '2026-10-25',
+    highlights: [
+      'Field weather like Windy',
+      'Weather of the location you work on, in the header',
+    ],
+    changes: [
+      { type: 'improvement', text: 'Field Weather in the Windy layout: Wind, then Gusts, then a separate Direction row of arrows; Hs and below it Hmax; swell height and period' },
+      { type: 'improvement', text: 'Windy colours: wind from blue through cyan, green, yellow, orange and red to magenta and purple as it grows; sea state in the same order by wave height. No more red for an ordinary day' },
+      { type: 'feature', text: 'Wind in knots or m/s — switch in the Field Weather window; the header and the location cards follow' },
+      { type: 'feature', text: 'The header shows the weather where you are working: the location of the selected unit, else the selected location, else the first one of the trip with a position (instead of the port). Click it for the 48 h forecast' },
+      { type: 'improvement', text: 'Hmax ≈ 1.86 × Hs (the highest of about 1000 waves, ≈ 3 h); the rain row and the red limit colouring are gone' },
+    ],
+  },
+  {
     version: '3.21.0',
     date: '2026-10-25',
     highlights: [
