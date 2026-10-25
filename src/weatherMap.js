@@ -640,7 +640,7 @@ const HK = 16, HSTEP = 0.09;                 /* history points, seconds between 
 const PT = { n: 0, x: null, y: null, age: null, life: null, hx: null, hy: null, len: null, cap: 0, head: 0, acc: 0, budget: 1 };
 function targetCount(){
   const area = VIEW.W * VIEW.H, m = motion();
-  const base = layer === 'wind' ? Math.min(2600, area / 320) : Math.min(700, area / 1700);
+  const base = layer === 'wind' ? Math.min(900, area / 950) : Math.min(700, area / 1700);   /* v3.27.5 — ~3× fewer wind streaks, calmer to the eye */
   return Math.max(250, Math.round(base * (m === 'calm' ? 0.55 : 1) * PT.budget));
 }
 function spawn(i, anyAge){

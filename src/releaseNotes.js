@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.5',
+    date: '2026-10-25',
+    highlights: [ 'Calmer wind map' ],
+    changes: [
+      { type: 'ui', text: 'Wind map: about three times fewer streaks, so the flow reads at a glance without the shimmer' },
+    ],
+  },
+  {
     version: '3.27.4',
     date: '2026-10-25',
     highlights: [ 'Waves drawn as wave fronts', 'Values on the map' ],
