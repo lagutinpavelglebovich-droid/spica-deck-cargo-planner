@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.27.1',
+    date: '2026-10-25',
+    highlights: [ 'Streaks show the wind strength', 'PDF names with or without the white plate' ],
+    changes: [
+      { type: 'improvement', text: 'Wind map: the streaks now race in a gale and barely drift in a calm (speed grows faster than the wind), so strong and light areas read at a glance' },
+      { type: 'feature', text: 'Export → "PDF: names on white plate" — on: each cargo name on a light plate (as before); off: the names as on screen, same print size, no plate. Remembered on this computer' },
+    ],
+  },
+  {
     version: '3.27.0',
     date: '2026-10-25',
     highlights: [ 'Animated wind & waves map', 'No more Windy links' ],

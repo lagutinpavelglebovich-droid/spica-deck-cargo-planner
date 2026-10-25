@@ -542,7 +542,14 @@ function buildFlowGrid(){
     for(let x = 0; x < w; x++){
       const i = y * w + x;
       let ex, ny, k;
-      if(layer === 'wind'){ ex = sample(F.U, lons[x], lats[y]); ny = sample(F.V, lons[x], lats[y]); k = kW * sec[y]; }
+      if(layer === 'wind'){
+        ex = sample(F.U, lons[x], lats[y]); ny = sample(F.V, lons[x], lats[y]);
+        /* streak speed grows faster than the wind (speed^1.5, equal at
+           20 kn): 10 kn drifts, 40 kn races — 8× apart, not 4×, so the
+           eye reads calm and gale at once, as on Windy */
+        const m = Math.hypot(ex, ny);
+        k = kW * sec[y] * Math.sqrt(Math.max(1.5, m) / 20);
+      }
       else {
         const hx = sample(F.WX, lons[x], lats[y]), hy = sample(F.WY, lons[x], lats[y]), hh = Math.hypot(hx, hy);
         const per = sample(F.P, lons[x], lats[y]);

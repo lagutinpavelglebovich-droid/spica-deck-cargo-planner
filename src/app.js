@@ -10369,6 +10369,20 @@ function _pdfDeckStretch(activeLocs){
   const natural = 277 * (CVH / TW);
   return Math.max(1, Math.min(1.5, avail / natural));
 }
+/* v3.27.1 — the light plate under the cargo names in the PDF is a choice
+   (Export → PDF: names on white plate). Off: the names keep their print
+   size and weight but their on-screen colour, with no plate. */
+const LS_PDF_PLATE = 'spicaTide_pdfLabelPlate';
+function pdfLabelPlate(set){
+  if(set !== undefined){ try{ localStorage.setItem(LS_PDF_PLATE, set ? '1' : '0'); }catch(e){} _syncPdfPlateMenu(); }
+  try{ return localStorage.getItem(LS_PDF_PLATE) !== '0'; }catch(e){ return true; }
+}
+function _syncPdfPlateMenu(){
+  const el = document.getElementById('menuPdfPlate'); if(!el) return;
+  const on = pdfLabelPlate();
+  el.classList.toggle('on', on); el.setAttribute('aria-checked', String(on));
+}
+_syncPdfPlateMenu();
 function _stretchDeckClone(cdoc, k){
   if(!(k > 1.001)) return;
   const dcv = cdoc.querySelector('.dcv');
@@ -10402,14 +10416,16 @@ function _stretchDeckClone(cdoc, k){
     const fill = opColor(c.platform, c.status) || getLocBase(loc.id);
     svg.outerHTML = _cargoArtSvg(Object.assign({}, c, { h: c.h * k }), fill);
   });
-  /* Cargo labels: print size for the taller block + light plate. */
+  /* Cargo labels: print size for the taller block (+ light plate when chosen). */
+  const plate = pdfLabelPlate();
   dcv.querySelectorAll('.cb').forEach(cb => {
     const c = S.cargo.find(x => String(x.id) === cb.dataset.id);
     const lbl = cb.querySelector('.cb-id');
     if(!c || !lbl || !lbl.textContent) return;
     lbl.style.fontSize     = cbLabelFontPx({ ccu: c.ccu, w: c.w, h: c.h*k - 4 }, 22) + 'px';
-    lbl.style.color        = '#0a0800';
     lbl.style.fontWeight   = '800';
+    if(!plate) return;
+    lbl.style.color        = '#0a0800';
     lbl.style.textShadow   = 'none';
     lbl.style.background   = 'rgba(255,255,255,.88)';
     lbl.style.borderRadius = '3px';
@@ -15226,8 +15242,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.27.0';
-const APP_VERSION   = '3.27.0';
+const CURRENT_BUILD = 'v3.27.1';
+const APP_VERSION   = '3.27.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15478,6 +15494,7 @@ function bindMenuBar(){
     exportExcel:   () => menuExportExcel(),
     print:         () => printDeckPlan(),
     exportJSON:    () => menuSaveAs(),
+    pdfLabelPlate: () => { pdfLabelPlate(!pdfLabelPlate()); showToast(pdfLabelPlate() ? 'PDF: cargo names on a white plate' : 'PDF: cargo names without the plate', 'ok'); },
     exit:          () => { try{ window.close(); }catch(e){} },
     undo:          () => undo(),
     redo:          () => redo(),
