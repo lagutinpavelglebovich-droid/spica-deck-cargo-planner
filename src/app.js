@@ -14510,7 +14510,7 @@ function bindSmartTools(){
     const subPanel = document.getElementById('sndSubPanel');
     if(subPanel) subPanel.classList.toggle('disabled', !SMART.soundEnabled);
     if(_sndMaster) _sndMaster.gain.setTargetAtTime(SMART.soundEnabled ? SMART.soundVolume/100 : 0, _sndCtx?.currentTime||0, 0.05);
-    if(SMART.soundEnabled) playSound('save');
+    if(SMART.soundEnabled) _sndPreview('save');   /* confirmation cue, no save sweep */
   });
   if(soundVolSlider) soundVolSlider.addEventListener('input', () => {
     SMART.soundVolume = parseInt(soundVolSlider.value);
@@ -15208,8 +15208,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.31.0';
-const APP_VERSION   = '3.31.0';
+const CURRENT_BUILD = 'v3.32.0';
+const APP_VERSION   = '3.32.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16988,7 +16988,19 @@ function _sndPreview(id){
   try{ _sndInit(); if(!_sndPlayBuf(id)) _sndRenderAll().then(() => _sndPlayBuf(id)); }catch(e){}
 }
 const soundFns = new Proxy({}, { get: (_, id) => () => _sndPreview(id) });
+/* v3.32 — one light sweep down the role bar after a finished save,
+   export or import (Full motion only; coalesced) */
+let _brandSweepAt = 0;
+function _brandSweep(){
+  const now = performance.now(); if(now - _brandSweepAt < 1500) return; _brandSweepAt = now;
+  const h = document.documentElement;
+  if(h.getAttribute('data-motion') === 'calm' || h.getAttribute('data-motion') === 'off' || h.getAttribute('data-perf') === 'reduced') return;
+  const el = document.querySelector('.brand-accent'); if(!el) return;
+  el.classList.remove('sweep'); void el.offsetWidth; el.classList.add('sweep');
+  setTimeout(() => el.classList.remove('sweep'), 1300);
+}
 function playSound(type){
+  if(type === 'save' || type === 'export' || type === 'import') _brandSweep();
   if(!canPlaySound(type)) return;
   const now = performance.now();
   if(now - (_sndLast[type] || -1e9) < (SND_GAP[type] || 60)) return;

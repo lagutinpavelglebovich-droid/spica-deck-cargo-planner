@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.32.0',
+    date: '2026-10-26',
+    highlights: [ 'Living role bar' ],
+    changes: [
+      { type: 'ui', text: 'The orange / blue bar next to the vessel name now flows slowly top to bottom in a seamless loop; switching Operator ↔ Viewer crossfades the colours. It holds still in Calm and Off animations, with reduced motion and in Performance mode' },
+      { type: 'ui', text: 'A single soft light sweep runs down the bar when a save, export or import finishes' },
+    ],
+  },
+  {
     version: '3.31.0',
     date: '2026-10-26',
     highlights: [ 'Simpler DG warning' ],
