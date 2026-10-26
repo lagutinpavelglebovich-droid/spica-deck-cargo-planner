@@ -1928,122 +1928,50 @@ function _migrateDgClasses(cargoArr){
 
 /* ════════════════════════════════════
    FULL UKCS DG SEGREGATION MATRIX
-   Source: UKCS Supplement §2.3, Rev 2 (2017)
-   X=0 (none), A=1 (away from / 1 MINI),
+   Source: GOMO UKCS Supplement §2.3 "Dangerous Goods General Segregation
+   Provisions", Revision 3, August 2026 (page 11) — transcribed cell by
+   cell in v3.37.1; both triangles of the printed table agree (symmetric).
+   Replaces the Rev 2 (2017) values, 19 pairs changed.
+   X=0 (no segregation), A=1 (away from / 1 MINI),
    B=2 (separated from / 2 MINI),
    C=3 (separated by complete compartment / 3 MINI)
-   * = see Class 1 intro (treated as C for planning)
-   Matrix is symmetric — stored upper-triangle only,
-   lookup always sorts [a,b] ascending.
+   * = "see introduction of Class 1" (segregation within the explosives
+   group) — not a number in the table; kept at 0 here, as before.
+   Stored upper-triangle only; lookup sorts [a,b] ascending.
 ════════════════════════════════════ */
 const SEG_FULL = {
-  /* Explosives 1.1/1.2/1.5 row */
-  '1.1': {
-    '1.3':0,'1.4':0,               /* * entries within group */
-    '2.1':3,'2.2':2,'2.3':2,
-    '3':3,'4.1':3,'4.2':3,'4.3':3,
-    '5.1':3,'5.2':3,
-    '6.1':2,'6.2':3,
-    '7':2,'8':2,'9':0,
-  },
-  /* Explosives 1.3/1.6 row */
-  '1.3': {
-    '1.4':0,
-    '2.1':3,'2.2':2,'2.3':2,
-    '3':3,'4.1':3,'4.2':3,'4.3':3,
-    '5.1':3,'5.2':3,
-    '6.1':2,'6.2':3,
-    '7':2,'8':2,'9':0,
-  },
-  /* Explosives 1.4 row */
-  '1.4': {
-    '2.1':2,'2.2':1,'2.3':1,
-    '3':2,'4.1':2,'4.2':2,'4.3':2,
-    '5.1':2,'5.2':2,
-    '6.1':0,'6.2':2,
-    '7':2,'8':2,'9':0,
-  },
+  /* Explosives 1.1/1.2/1.5 */
+  '1.1': { '1.3':0,'1.4':0,'2.1':3,'2.2':2,'2.3':2,'3':3,'4.1':3,'4.2':3,'4.3':3,'5.1':3,'5.2':3,'6.1':2,'6.2':3,'7':2,'8':3,'9':0 },
+  /* Explosives 1.3/1.6 */
+  '1.3': { '1.4':0,'2.1':3,'2.2':2,'2.3':2,'3':3,'4.1':3,'4.2':3,'4.3':3,'5.1':3,'5.2':3,'6.1':2,'6.2':3,'7':2,'8':2,'9':0 },
+  /* Explosives 1.4 */
+  '1.4': { '2.1':2,'2.2':1,'2.3':1,'3':2,'4.1':2,'4.2':2,'4.3':2,'5.1':2,'5.2':2,'6.1':0,'6.2':3,'7':2,'8':2,'9':0 },
   /* Flammable Gases 2.1 */
-  '2.1': {
-    '2.2':0,'2.3':0,
-    '3':2,'4.1':1,'4.2':2,'4.3':1,
-    '5.1':2,'5.2':2,
-    '6.1':0,'6.2':3,
-    '7':2,'8':1,'9':0,
-  },
+  '2.1': { '2.2':0,'2.3':0,'3':2,'4.1':1,'4.2':2,'4.3':0,'5.1':2,'5.2':2,'6.1':0,'6.2':3,'7':2,'8':1,'9':0 },
   /* Non-Toxic Non-Flammable Gases 2.2 */
-  '2.2': {
-    '2.3':0,
-    '3':1,'4.1':0,'4.2':1,'4.3':0,
-    '5.1':0,'5.2':1,
-    '6.1':1,'6.2':3,
-    '7':1,'8':0,'9':0,
-  },
+  '2.2': { '2.3':0,'3':1,'4.1':0,'4.2':1,'4.3':0,'5.1':0,'5.2':1,'6.1':0,'6.2':2,'7':1,'8':0,'9':0 },
   /* Poisonous Gases 2.3 */
-  '2.3': {
-    '3':0,'4.1':0,'4.2':2,'4.3':0,
-    '5.1':0,'5.2':1,
-    '6.1':2,'6.2':3,
-    '7':1,'8':1,'9':0,
-  },
+  '2.3': { '3':2,'4.1':0,'4.2':2,'4.3':0,'5.1':0,'5.2':2,'6.1':0,'6.2':2,'7':1,'8':0,'9':0 },
   /* Flammable Liquids 3 */
-  '3': {
-    '4.1':0,'4.2':2,'4.3':0,
-    '5.1':2,'5.2':2,
-    '6.1':0,'6.2':3,
-    '7':2,'8':0,'9':0,
-  },
+  '3': { '4.1':0,'4.2':2,'4.3':1,'5.1':2,'5.2':2,'6.1':0,'6.2':3,'7':2,'8':0,'9':0 },
   /* Flammable Solids 4.1 */
-  '4.1': {
-    '4.2':1,'4.3':0,
-    '5.1':1,'5.2':2,
-    '6.1':0,'6.2':3,
-    '7':2,'8':1,'9':0,
-  },
+  '4.1': { '4.2':1,'4.3':0,'5.1':1,'5.2':2,'6.1':0,'6.2':3,'7':2,'8':1,'9':0 },
   /* Spontaneously combustible 4.2 */
-  '4.2': {
-    '4.3':0,
-    '5.1':2,'5.2':2,
-    '6.1':1,'6.2':3,
-    '7':2,'8':1,'9':0,
-  },
+  '4.2': { '4.3':1,'5.1':2,'5.2':2,'6.1':1,'6.2':3,'7':2,'8':1,'9':0 },
   /* Dangerous when wet 4.3 */
-  '4.3': {
-    '5.1':2,'5.2':2,
-    '6.1':0,'6.2':3,
-    '7':1,'8':1,'9':0,
-  },
+  '4.3': { '5.1':2,'5.2':2,'6.1':0,'6.2':2,'7':2,'8':1,'9':0 },
   /* Oxidizing substances 5.1 */
-  '5.1': {
-    '5.2':2,
-    '6.1':1,'6.2':3,
-    '7':1,'8':2,'9':0,
-  },
+  '5.1': { '5.2':2,'6.1':1,'6.2':3,'7':1,'8':2,'9':0 },
   /* Organic Peroxides 5.2 */
-  '5.2': {
-    '6.1':2,'6.2':3,
-    '7':2,'8':2,'9':0,
-  },
-  /* Poisons 6.1
-     NOTE: 6.1 × 8 is an X cell per UKCS Supplement §2.3 (and IMDG
-     segregation table 7.2.4) — no segregation required. Previously
-     stored as 1 which incorrectly displayed "1 MINI" to users. */
-  '6.1': {
-    '6.2':3,
-    '7':1,'8':0,'9':0,
-  },
+  '5.2': { '6.1':1,'6.2':3,'7':2,'8':2,'9':0 },
+  /* Poisons 6.1 */
+  '6.1': { '6.2':1,'7':0,'8':0,'9':0 },
   /* Infectious 6.2 */
-  '6.2': {
-    '7':0,'8':2,'9':0,
-  },
+  '6.2': { '7':3,'8':3,'9':0 },
   /* Radioactive 7 */
-  '7': {
-    '8':2,'9':0,
-  },
+  '7': { '8':2,'9':0 },
   /* Corrosives 8 */
-  '8': {
-    '9':0,
-  },
+  '8': { '9':0 },
 };
 
 /* ── DG class canonicalisation ──────────────────────────────────────
@@ -9671,7 +9599,8 @@ function renderAscoContent(sheets, stats){
       else badges += `<span class="asco-badge size">${item.dims.length_m.toFixed(2)}×${item.dims.width_m.toFixed(2)} m</span>`;
       if(item.wt > 0) badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} t</span>`;
       if(item.autoAssigned) badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
-      if(item.corrected) badges += `<span class="asco-badge ocr" title="Read as ${escHtml(item.corrected)} — matched to a known unit">read ${escHtml(item.corrected)}</span>`;
+      if(item.suggest) badges += `<span class="asco-badge ocr" title="Scanned as ${escHtml(item.ccu)} — one character off ${escHtml(item.suggest)}, which is already on deck or in Imported. Check the paper.">same as ${escHtml(item.suggest)}?</span>`;
+      if(item.wtCheck) badges += `<span class="asco-badge ocr" title="Scanned weight — a decimal point may have been lost. Check against the paper.">check weight</span>`;
       if(item.note) badges += `<span class="asco-badge note" title="${escHtml(item.note)}">${escHtml(item.note.length > 34 ? item.note.slice(0, 33) + '…' : item.note)}</span>`;
 
       el.innerHTML = `
@@ -10340,19 +10269,26 @@ function _genericSheets(res){
     const loc = locId ? locById(locId) : null;
     const status = sec.direction || 'BL';
     const items = [];
-    /* scanned weights: a lost decimal point ("14" among 1.4 / 1.9 / 2.4) */
+    /* scanned weights: a whole 10–99 t among mostly small weights may be a
+       lost decimal point ("14" among 1.4 / 1.9 / 2.4) — or a real heavy
+       lift. v3.37.1: never change the number (it divided 12 000 kg to 1.2 t);
+       flag it so the officer checks it against the paper. */
+    const wtSuspect = new Set();
     if(res.scanned){
       const ws = sec.rows.map(r => r.wt).filter(w => w > 0);
       const small = ws.filter(w => w < 10).length;
-      sec.rows.forEach(r => { if(r.wt >= 10 && r.wt < 100 && Number.isInteger(r.wt) && small >= ws.length / 2) r.wt = r.wt / 10; });
+      sec.rows.forEach(r => { if(r.wt >= 10 && r.wt < 100 && Number.isInteger(r.wt) && small >= ws.length / 2) wtSuspect.add(r); });
     }
     sec.rows.forEach(r => {
       let ccu = String(r.ccu || '').toUpperCase().replace(/\s+/g, ' ').trim();
-      let corrected = '';
+      /* v3.37.1 — a scanned CCU one character off a known unit is only a
+         SUGGESTION: rewriting it made a genuinely new unit look "on deck"
+         and Select all skipped it. */
+      let suggest = '';
       if(res.scanned && ccu){
         const k = ccuKey(ccu);
         const hit = !known.includes(k) && known.find(x => _near1(x, k));
-        if(hit){ corrected = ccu; ccu = knownRaw[hit] || hit; }
+        if(hit) suggest = knownRaw[hit] || hit;
       }
       let desc = String(r.desc || '').trim();
       if(r.contents && !desc.toUpperCase().includes(r.contents.toUpperCase())) desc = desc ? desc + ' — ' + r.contents : r.contents;
@@ -10372,7 +10308,7 @@ function _genericSheets(res){
         dims, autoAssigned, sizeDetected,
         platform: loc ? loc.name : (sec.platformHint[0] || ''), loadlistId: sec.manifestNo || '',
         location: loc ? loc.name : '', sheetName: sec.sheetName,
-        ocr: !!res.scanned, corrected, note: [r.dest, r.landing].filter(Boolean).join(' · '),
+        ocr: !!res.scanned, suggest, wtCheck: wtSuspect.has(r), note: [r.dest, r.landing].filter(Boolean).join(' · '),
       });
     });
     return {
@@ -15694,8 +15630,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.37.0';
-const APP_VERSION   = '3.37.0';
+const CURRENT_BUILD = 'v3.37.1';
+const APP_VERSION   = '3.37.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

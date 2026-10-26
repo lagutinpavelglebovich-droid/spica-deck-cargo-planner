@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.37.1',
+    date: '2026-10-26',
+    highlights: [ 'Fixes the broken layout after 3.37.0', 'DG segregation per GOMO UKCS Rev 3' ],
+    changes: [
+      { type: 'fix', text: 'The deck, library and panels display correctly again — 3.37.0 showed a tiny deck and a loose card list on Windows. Your plan was never affected' },
+      { type: 'improvement', text: 'DG segregation table updated to GOMO UKCS Supplement §2.3, Revision 3 (August 2026): 19 class pairs changed' },
+      { type: 'fix', text: 'Scanned load lists: a weight of 10–99 t is no longer silently divided by 10 — it is kept and marked "check weight"' },
+      { type: 'fix', text: 'Scanned load lists: a CCU one character off a unit already on deck is no longer renamed — it is marked "same as …?" and imports as read' },
+    ],
+  },
+  {
     version: '3.37.0',
     date: '2026-10-26',
     highlights: [ 'Safer plans and sync', 'Faster and calmer on the bridge PC', 'Double-click a plan to open it' ],

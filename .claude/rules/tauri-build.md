@@ -34,6 +34,7 @@ Adding a new Tauri plugin? Add its permissions here or save/open will silently f
 | `proc macro panicked` on icons | Any referenced PNG is not RGBA | Check ALL PNGs in icons/, not just icon.png |
 | NSIS config invalid | Wrong keys in `bundle.windows.nsis` | Check Tauri v2 schema — only `installerIcon`, `installMode`, `languages`, `startMenuFolder` |
 | `plugins.dialog: invalid type` | Empty object `{}` not accepted | Remove plugins block from tauri.conf.json entirely |
+| Whole layout broken on Windows after enabling CSP (tiny deck, unstyled panels) — fine in browser tests | Tauri appends a nonce/hash to `style-src`; any nonce/hash makes browsers IGNORE `'unsafe-inline'`, so every `style="…"` attribute is refused (v3.37.0) | Keep `app.security.dangerousDisableAssetCspModification: ["style-src"]`. Any browser-side CSP test must emulate Tauri's nonce injection, or it proves nothing |
 
 ## Rust Commands
 
