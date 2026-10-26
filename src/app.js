@@ -5574,25 +5574,99 @@ const SEG_LEVEL_DESC = {
    same DG conflict, the warning fires fresh.
 ════════════════════════════════════════════════════════════ */
 
-let DG_ACK_PAIRS = new Set(); /* Set of "idA::idB" keys — acknowledged conflict pairs */
+let DG_ACK_PAIRS = new Set(); /* Set of "idA::idB" keys — reviewed conflict pairs */
+/* v3.31 — what a pair looked like when it was reviewed: a reviewed pair
+   warns again only when it gets materially worse (closer by 0.5 m+ or a
+   stricter rule). */
+const DG_ACK_INFO = new Map();
+const DG_WORSE_M = 0.5;
 
 /* Canonical pair key — always sorted so A::B === B::A */
 function dgPairKey(idA, idB){
   return [String(idA), String(idB)].sort().join('::');
 }
 
-/* Acknowledge: store ALL currently-shown violation pairs into the ack set,
-   clear highlights, close modal, hide legacy bar.                          */
+/* ════════════════════════════════════════════════════════════
+   v3.31 — DG WARNING CARD
+   First glance: one sentence (the rule), the two placards and how far
+   apart the units are against what is required. "Details" opens the full
+   breakdown in the same card. "Got it" = reviewed: it records awareness
+   only — the units keep a steady outline and the DG ON BOARD line shows a
+   conflict chip until they are apart. × / Esc only closes the card.
+════════════════════════════════════════════════════════════ */
+let _dgWarnList = [];      /* pairs on the card */
+let _dgWarnAll  = false;   /* opened from DG ON BOARD (every conflict) */
+
+const _dgRuleWord = { 1: 'away from', 2: 'separated from', 3: 'separated by a compartment from' };
+function _dgBadge(cls){
+  const d = DG_DATA.find(x => x.cls === cls);
+  const st = d ? `background:${dgChipBg(d)};color:${d.tc};border-color:${d.bc}` : '';
+  return `<span class="dgc-badge" style="${st}">◆ ${escHtml(String(cls))}</span>`;
+}
+function _dgUnitName(c){ return escHtml(c.ccu || c.name || 'Unit'); }
+function _dgSort(list){
+  return list.slice().sort((x, y) => (y.level - x.level) || ((x.distM / x.requiredM) - (y.distM / y.requiredM)));
+}
+function _dgFmt(m){ return (Math.round(m * 100) / 100).toFixed(2) + ' m'; }
+
+function _dgWarnEl(){ return document.getElementById('dgWarn'); }
+function _dgWarnHide(){
+  const el = _dgWarnEl(); if(!el) return;
+  el.classList.remove('open', 'det');
+}
+
+/* Shared renderer: new conflicts (on drop) or every current conflict
+   (opened from DG ON BOARD). */
+function _renderDGCheckModal(list, all){
+  const el = _dgWarnEl();
+  if(!el || !list || !list.length){ _dgWarnHide(); return; }
+  _dgWarnList = _dgSort(list); _dgWarnAll = !!all;
+  const v = _dgWarnList[0];
+  const lvl = v.level;
+  const title = all
+    ? `${list.length} DG conflict${list.length === 1 ? '' : 's'} on deck`
+    : lvl >= 3 ? 'Needs a separate compartment' : lvl === 2 ? 'Too close — keep these apart' : 'Keep these a little further apart';
+  el.dataset.level = String(lvl);
+  el.querySelector('.dgc-title').textContent = title;
+  el.querySelector('.dgc-rule').innerHTML =
+    `${_dgBadge(v.worstA)} <span>${_dgRuleWord[lvl] || 'separated from'}</span> ${_dgBadge(v.worstB)}`;
+  const pct = Math.max(3, Math.min(100, v.distM / v.requiredM * 100));
+  el.querySelector('.dgc-fill').style.width = pct + '%';
+  el.querySelector('.dgc-now').innerHTML = `<b>${_dgFmt(v.distM)}</b> apart`;
+  el.querySelector('.dgc-req').textContent = `${_dgFmt(v.requiredM)} required`;
+  const more = el.querySelector('.dgc-more');
+  more.textContent = list.length > 1 ? `+${list.length - 1} more` : '';
+  more.hidden = list.length < 2;
+
+  const mini = miniM();
+  el.querySelector('.dgc-det').innerHTML = _dgWarnList.map((p, i) => {
+    const nA = DG_CLASS_NAMES[p.worstA] || p.worstA, nB = DG_CLASS_NAMES[p.worstB] || p.worstB;
+    const rule = SEG_LEVEL_LABEL[p.level] || 'Separated from';
+    const comp = p.level >= 3
+      ? `<div class="dgc-note">Needs a complete compartment or hold between them. On open deck ${Math.round(p.requiredM * 100) / 100} m (3 MINI) is only a guide — check the stowage with the Master.</div>` : '';
+    return `<div class="dgc-pair">
+      <div class="dgc-pair-h"><b>${_dgUnitName(p.a)}</b> ${_dgBadge(p.worstA)} <span class="dgc-x2">↔</span> <b>${_dgUnitName(p.b)}</b> ${_dgBadge(p.worstB)}<button class="dgc-link" data-show="${i}">Show</button></div>
+      <table>
+        <tr><td>Units</td><td>${escHtml(p.a.desc || '')}${p.a.desc && p.b.desc ? ' · ' : ''}${escHtml(p.b.desc || '')}</td></tr>
+        <tr><td>Classes</td><td>${escHtml(String(p.worstA))} ${escHtml(nA)} · ${escHtml(String(p.worstB))} ${escHtml(nB)}</td></tr>
+        <tr><td>Rule</td><td><b>${rule}</b> — IMDG Code segregation table (7.2.4)</td></tr>
+        <tr><td>Distance</td><td><b class="dgc-bad">${_dgFmt(p.distM)}</b> edge to edge · required ${_dgFmt(p.requiredM)} (${p.level} MINI × ${mini.toFixed(2)} m)</td></tr>
+        <tr><td>Short by</td><td><b>${_dgFmt(Math.max(0, p.requiredM - p.distM))}</b> more clearance</td></tr>
+      </table>${comp}</div>`;
+  }).join('') + `<div class="dgc-foot">Flagging aid only — not a compliance determination.<button class="dgc-btn pri" data-k="ok">Mark reviewed</button></div>`;
+
+  el.classList.toggle('det', !!all);
+  el.querySelector('[data-k="det"]').textContent = all ? 'Less ▴' : 'Details ▾';
+  el.classList.add('open');
+}
+
+/* Reviewed: remember every pair on the card, keep a steady outline. */
 function acknowledgeDGCheck(){
-  /* Collect pair keys from modal cards currently shown */
-  document.querySelectorAll('.dg-viol-locate').forEach(btn => {
-    const idA = btn.dataset.idA;
-    const idB = btn.dataset.idB;
-    if(idA && idB) DG_ACK_PAIRS.add(dgPairKey(idA, idB));
-  });
-  const ov = document.getElementById('dgCheckOv');
-  if(ov) ov.classList.remove('open');
-  clearDGViolationHighlights();
+  _dgWarnList.forEach(v => { DG_ACK_PAIRS.add(v.key); DG_ACK_INFO.set(v.key, { d: v.distM, level: v.level }); });
+  _dgWarnHide();
+  _dgApplyHighlights(_lastDGViolations, new Set());
+  const chip = document.getElementById('dgConfChip');
+  if(chip){ chip.classList.remove('dgc-chip-pop'); void chip.offsetWidth; chip.classList.add('dgc-chip-pop'); }
 }
 
 /* When a cargo block is deleted: evict all pairs that reference its ID
@@ -5600,39 +5674,83 @@ function acknowledgeDGCheck(){
 function dgEvictDeletedCargo(id){
   const sid = String(id);
   DG_ACK_PAIRS.forEach(key => {
-    if(key.split('::').includes(sid)) DG_ACK_PAIRS.delete(key);
+    if(key.split('::').includes(sid)){ DG_ACK_PAIRS.delete(key); DG_ACK_INFO.delete(key); }
   });
 }
 
-/* Visual-only close — does NOT acknowledge */
-function closeDGCheckModal(){
-  const ov = document.getElementById('dgCheckOv');
-  if(ov) ov.classList.remove('open');
-}
+/* Visual-only close — does NOT mark reviewed */
+function closeDGCheckModal(){ _dgWarnHide(); }
 
-/* Clear pulsing outlines from all cargo blocks */
+/* Clear outlines from all cargo blocks */
 function clearDGViolationHighlights(){
-  document.querySelectorAll('.cb.dg-violation,.cb.dg-violation-warn').forEach(el => {
-    el.classList.remove('dg-violation','dg-violation-warn');
+  document.querySelectorAll('.cb.dg-violation,.cb.dg-violation-warn,.cb.dg-conflict,.cb.dg-conflict-warn').forEach(el => {
+    el.classList.remove('dg-violation','dg-violation-warn','dg-conflict','dg-conflict-warn');
+  });
+}
+/* New (unreviewed) pairs pulse; reviewed but unresolved pairs keep a
+   steady outline — closing the card never hides the conflict. */
+function _dgApplyHighlights(all, newKeys){
+  clearDGViolationHighlights();
+  const mark = (id, cls) => { const el = document.querySelector(`.cb[data-id="${id}"]`); if(el) el.classList.add(cls); };
+  all.filter(v => !newKeys.has(v.key)).forEach(v => {
+    const c = v.level >= 2 ? 'dg-conflict' : 'dg-conflict-warn';
+    mark(v.a.id, c); mark(v.b.id, c);
+  });
+  all.filter(v => newKeys.has(v.key)).forEach(v => {
+    const c = v.level >= 2 ? 'dg-violation' : 'dg-violation-warn';
+    [v.a.id, v.b.id].forEach(id => {
+      const el = document.querySelector(`.cb[data-id="${id}"]`);
+      if(el){ el.classList.remove('dg-conflict', 'dg-conflict-warn'); el.classList.add(c); }
+    });
+  });
+}
+/* Conflict chip on the DG ON BOARD line — stays while any conflict is on deck */
+function _dgSyncConflictChip(){
+  const line = document.getElementById('dgOnBoardLine'); if(!line) return;
+  let chip = document.getElementById('dgConfChip');
+  const n = SMART.dgSeg ? _lastDGViolations.length : 0;
+  if(!n){ if(chip) chip.remove(); line.classList.remove('has-conflict'); return; }
+  if(!chip){ chip = document.createElement('span'); chip.id = 'dgConfChip'; chip.className = 'dgc-chip'; line.insertBefore(chip, line.firstChild); }
+  chip.textContent = `⚠ ${n} conflict${n === 1 ? '' : 's'}`;
+  line.classList.add('has-conflict');
+}
+
+function _dgShowPair(p){
+  if(!p) return;
+  if(typeof flyToCargo === 'function') flyToCargo(p.a.id, { select:false });
+  [p.a.id, p.b.id].forEach(id => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(!el) return;
+    el.classList.add('cp-hl');
+    setTimeout(() => el.classList.remove('cp-hl'), 4500);
   });
 }
 
-/* Bind modal controls — called once from init() */
+/* Bind card controls — called once from init() */
 function bindDGAutoCheck(){
-  const ov       = document.getElementById('dgCheckOv');
-  const closeBtn = document.getElementById('dgCheckClose');
-  const dismiss  = document.getElementById('dgCheckDismiss');
-  if(closeBtn) closeBtn.addEventListener('click', closeDGCheckModal);
-  if(dismiss)  dismiss.addEventListener('click', acknowledgeDGCheck);
+  const el = _dgWarnEl(); if(!el) return;
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-k],[data-show]'); if(!b) return;
+    if(b.dataset.show != null){ _dgShowPair(_dgWarnList[+b.dataset.show]); return; }
+    const k = b.dataset.k;
+    if(k === 'ok') acknowledgeDGCheck();
+    else if(k === 'close') _dgWarnHide();
+    else if(k === 'show') _dgShowPair(_dgWarnList[0]);
+    else if(k === 'det'){
+      const open = !el.classList.contains('det');
+      el.classList.toggle('det', open);
+      el.querySelector('[data-k="det"]').textContent = open ? 'Less ▴' : 'Details ▾';
+    }
+  });
   document.addEventListener('keydown', e => {
-    if(e.key === 'Escape' && ov && ov.classList.contains('open')) closeDGCheckModal();
+    if(e.key === 'Escape' && el.classList.contains('open')){
+      const t = e.target; if(t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      _dgWarnHide();
+    }
   });
 }
 
-/* Phase 27 — previous-violation snapshot for resolved detection.
-   Tracks which cargo ids were participating in a violation on the last
-   check. When the current check finds any of them NOT in any violation
-   anymore, they get the "resolved" pulse + sound fires once. */
+/* Phase 27 — previous-violation snapshot for resolved detection. */
 let _phase27PrevViolationIds = new Set();
 let _lastDGViolations = [];
 
@@ -5641,9 +5759,7 @@ function checkSeg(){
   const dgs = S.cargo.filter(c => c.dgClasses && c.dgClasses.length > 0);
 
   /* ── 2. Compute ALL violations (geometry check) ── */
-  const legacyWarns = [];
   const violations  = [];
-
   for(let i = 0; i < dgs.length; i++){
     for(let j = i+1; j < dgs.length; j++){
       const a = dgs[i], b = dgs[j];
@@ -5660,20 +5776,21 @@ function checkSeg(){
       const requiredM = segClearanceM(level);
       const distM     = cargoEdgeDistM(a, b);
       if(distM < requiredM - SEG_EPS_M){
-        legacyWarns.push(`DG${worstA}↔DG${worstB}: ${SEG_LEVEL_LABEL[level]||level+' MINI'}`);
         violations.push({ a, b, level, worstA, worstB, distM, requiredM, key: dgPairKey(a.id, b.id) });
       }
     }
   }
-
   _lastDGViolations = violations;   /* v3.10 — for DG ON BOARD click */
-  /* ── 3. Split into acknowledged vs new ── */
-  const newViolations = violations.filter(v => !DG_ACK_PAIRS.has(v.key));
-  const ackViolations = violations.filter(v =>  DG_ACK_PAIRS.has(v.key));
 
-  /* Phase 27 — detect resolved violations. Anything in the previous set
-     that no longer appears in the current violation set is "cleared".
-     Fire the resolved feedback once per check, then rotate the snapshot. */
+  /* ── 3. New = never reviewed, or reviewed but materially worse now ── */
+  const isNew = v => {
+    if(!DG_ACK_PAIRS.has(v.key)) return true;
+    const k = DG_ACK_INFO.get(v.key);
+    return !!k && (v.level > k.level || v.distM < k.d - DG_WORSE_M);
+  };
+  const newViolations = violations.filter(isNew);
+
+  /* Phase 27 — resolved detection: ids that were in a conflict and no longer are. */
   const currentViolationIds = new Set();
   violations.forEach(v => { currentViolationIds.add(String(v.a.id)); currentViolationIds.add(String(v.b.id)); });
   const resolvedIds = [];
@@ -5685,124 +5802,28 @@ function checkSeg(){
   }
   _phase27PrevViolationIds = currentViolationIds;
 
-  /* Legacy DG warning bar removed */
+  _dgSyncConflictChip();
 
-  /* ── 5. Feature disabled → clear and exit ── */
-  if(!SMART.dgSeg){
-    clearDGViolationHighlights();
-    return;
-  }
+  /* ── 4. Feature disabled → clear and exit ── */
+  if(!SMART.dgSeg){ clearDGViolationHighlights(); _dgWarnHide(); return; }
 
-  /* ── 6. No violations at all → full clean state ── */
-  if(violations.length === 0){
-    clearDGViolationHighlights();
-    const ov = document.getElementById('dgCheckOv');
-    if(ov) ov.classList.remove('open');
-    return;
-  }
+  _dgApplyHighlights(violations, new Set(newViolations.map(v => v.key)));
 
-  /* ── 7. No NEW violations → silently clear highlights, keep modal closed ── */
+  /* ── 5. Card ── */
+  if(violations.length === 0){ _dgWarnHide(); return; }
   if(newViolations.length === 0){
-    clearDGViolationHighlights();
-    const ov = document.getElementById('dgCheckOv');
-    if(ov) ov.classList.remove('open');
+    /* nothing new: an "all conflicts" card opened from DG ON BOARD stays
+       current; a warning about pairs that are gone or reviewed closes */
+    const el = _dgWarnEl();
+    if(el && el.classList.contains('open')){
+      if(_dgWarnAll) _renderDGCheckModal(violations, true); else _dgWarnHide();
+    }
     return;
   }
-
-  /* ── 8. Apply highlights ONLY to new (unacknowledged) violating blocks ── */
-  clearDGViolationHighlights();
-  const highlightedIds = new Set();
-  newViolations.forEach(v => {
-    const cls = v.level >= 2 ? 'dg-violation' : 'dg-violation-warn';
-    [v.a.id, v.b.id].forEach(id => {
-      if(!highlightedIds.has(id)){
-        highlightedIds.add(id);
-        const el = document.querySelector(`.cb[data-id="${id}"]`);
-        if(el) el.classList.add(cls);
-      }
-    });
-  });
-
-  /* Play DG warning sound if new violations found */
-  if(newViolations.length > 0) playSound('warning');
-
-  /* ── 9. Build and show modal for NEW violations only ── */
+  playSound('warning');
   _renderDGCheckModal(newViolations, false);
 }
 
-/* v3.10 — shared renderer: new conflicts (auto) or every current conflict
-   (opened from DG ON BOARD). */
-function _renderDGCheckModal(list, all){
-  const ov   = document.getElementById('dgCheckOv');
-  const body = document.getElementById('dgCheckBody');
-  const sub  = document.getElementById('dgCheckSub');
-  if(!ov || !body) return;
-
-  body.innerHTML = '';
-
-  const totalPairs = list.length;
-  const maxLvl     = Math.max(...list.map(v => v.level));
-  if(sub) sub.textContent = all
-    ? `${totalPairs} segregation conflict${totalPairs!==1?'s':''} on deck — IMDG Code`
-    : `${totalPairs} new violation${totalPairs!==1?'s':''} — IMDG Code`;
-
-  /* Summary banner */
-  const sevLabel = maxLvl >= 3 ? 'CRITICAL' : maxLvl >= 2 ? 'HIGH' : 'CAUTION';
-  const sevIcon  = maxLvl >= 3 ? '🔴' : maxLvl >= 2 ? '🟠' : '🟡';
-  const summDiv  = document.createElement('div');
-  summDiv.className = 'dg-check-summary';
-  summDiv.innerHTML = `
-    <div class="dg-check-summary-icon">${sevIcon}</div>
-    <div class="dg-check-summary-text">
-      <b>${sevLabel}:</b> ${totalPairs} ${all ? '' : 'new '}DG segregation conflict${totalPairs!==1?'s':''}${all ? ' currently on deck' : ''}.
-      ${all ? 'Includes conflicts already acknowledged. Flagging aid only — not a compliance determination.'
-            : "Acknowledge to confirm you have noted this. Acknowledged conflicts won't be repeated."}
-    </div>`;
-  body.appendChild(summDiv);
-
-  list.forEach(v => {
-    const { a, b, level, worstA, worstB, distM, requiredM } = v;
-    const dgA = DG_DATA.find(d => d.cls === (worstA||a.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
-    const dgB = DG_DATA.find(d => d.cls === (worstB||b.dgClasses[0])) || { bg:'#888', tc:'#fff', bc:'#888' };
-    const clsLblA = worstA || a.dgClasses[0] || '?';
-    const clsLblB = worstB || b.dgClasses[0] || '?';
-    const reqLabel = SEG_LEVEL_LABEL[level] || `${level} MINI`;
-    const descHtml = (SEG_LEVEL_DESC[level] || (() => ''))(clsLblA, clsLblB);
-
-    const card = document.createElement('div');
-    card.className = 'dg-viol-card';
-    card.innerHTML = `
-      <div class="dg-viol-head">
-        <span class="dg-viol-sev sev-${level}">${reqLabel.toUpperCase()}</span>
-        <div class="dg-viol-pair">
-          <span class="dg-viol-badge" style="background:${dgA.bg};color:${dgA.tc};border:1px solid ${dgA.bc};">◆ ${clsLblA}</span>
-          <span class="dg-viol-arrow">⟷</span>
-          <span class="dg-viol-badge" style="background:${dgB.bg};color:${dgB.tc};border:1px solid ${dgB.bc};">◆ ${clsLblB}</span>
-        </div>
-        <span class="dg-viol-req">${distM.toFixed(2)} m / ${requiredM.toFixed(2)} m req.</span>
-      </div>
-      <div class="dg-viol-body">
-        <div class="dg-viol-desc">${descHtml}</div>
-        <button class="dg-viol-locate" data-id-a="${a.id}" data-id-b="${b.id}">Locate ↗</button>
-      </div>`;
-
-    /* Locate: acknowledge this specific pair, flash blocks */
-    card.querySelector('.dg-viol-locate').addEventListener('click', () => {
-      acknowledgeDGCheck();
-      if(typeof flyToCargo === 'function') flyToCargo(a.id, { select:false });   /* v3.10 */
-      [a.id, b.id].forEach(id => {
-        const el = document.querySelector(`.cb[data-id="${id}"]`);
-        if(!el) return;
-        el.classList.add('cp-hl');
-        setTimeout(() => el.classList.remove('cp-hl'), 4500);
-      });
-    });
-
-    body.appendChild(card);
-  });
-
-  if(!ov.classList.contains('open')) ov.classList.add('open');
-}
 function updateDGZones(){
   const ovl=document.getElementById('dgExclOverlay');if(!ovl)return;ovl.innerHTML='';
   const pc=S.pending&&S.pending.type==='dg'?S.pending.item.cls:null;
@@ -14435,7 +14456,7 @@ function bindSmartTools(){
     updateSmartDot();
     if(SMART.dgSeg){
       /* Re-enable: clear acknowledged pairs so existing violations show fresh */
-      DG_ACK_PAIRS.clear();
+      DG_ACK_PAIRS.clear(); DG_ACK_INFO.clear();
       checkSeg();
     } else {
       clearDGViolationHighlights();
@@ -15187,8 +15208,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.30.0';
-const APP_VERSION   = '3.30.0';
+const CURRENT_BUILD = 'v3.31.0';
+const APP_VERSION   = '3.31.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

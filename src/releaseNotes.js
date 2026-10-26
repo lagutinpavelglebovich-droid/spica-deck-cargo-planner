@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.31.0',
+    date: '2026-10-26',
+    highlights: [ 'Simpler DG warning' ],
+    changes: [
+      { type: 'improvement', text: 'DG segregation warning is now a short card: one line with the rule and the two placards, how far apart the units are against what is required, and Got it / Show / Details. Details open the full breakdown in the same card — units, class names, IMDG rule, actual and required distance, how much more clearance is needed' },
+      { type: 'improvement', text: '“Got it” means reviewed, not resolved: the units keep a steady outline and the DG ON BOARD line shows a conflict chip until they are apart. A reviewed pair warns again only if it gets clearly worse (0.5 m closer or a stricter rule)' },
+      { type: 'ui', text: 'Esc or × just closes the card; clicking DG ON BOARD opens every current conflict' },
+    ],
+  },
+  {
     version: '3.30.0',
     date: '2026-10-26',
     highlights: [ 'Deck gets its width back while you place' ],
