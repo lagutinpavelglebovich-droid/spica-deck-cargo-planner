@@ -16,6 +16,14 @@ const OCR_FILES = {
   'ppocr-det.onnx':                     'node_modules/@gutenye/ocr-models/assets/ch_PP-OCRv4_det_infer.onnx',
   'ppocr-rec.onnx':                     'node_modules/@gutenye/ocr-models/assets/ch_PP-OCRv4_rec_infer.onnx',
   'ppocr-keys.txt':                     'node_modules/@gutenye/ocr-models/assets/ppocr_keys_v1.txt',
+  /* v3.37.2 — pdf.js image decoders: CCITT G4 / JBIG2 / JPEG 2000 scans
+     (what most black-and-white office scanners produce) decode only when
+     wasmUrl points at these; without them the page OCRs as blank. */
+  'pdfjs/jbig2.wasm':                   'node_modules/pdfjs-dist/wasm/jbig2.wasm',
+  'pdfjs/openjpeg.wasm':                'node_modules/pdfjs-dist/wasm/openjpeg.wasm',
+  'pdfjs/qcms_bg.wasm':                 'node_modules/pdfjs-dist/wasm/qcms_bg.wasm',
+  'pdfjs/jbig2_nowasm_fallback.js':     'node_modules/pdfjs-dist/wasm/jbig2_nowasm_fallback.js',
+  'pdfjs/openjpeg_nowasm_fallback.js':  'node_modules/pdfjs-dist/wasm/openjpeg_nowasm_fallback.js',
 };
 const OCR_TYPE = n => n.endsWith('.wasm') ? 'application/wasm'
   : /\.m?js$/.test(n) ? 'application/javascript'

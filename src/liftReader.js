@@ -33,10 +33,17 @@ function digitKey(ccu){
   const g = String(ccu || '').toUpperCase().replace(/CCT\s*23\s*-?/, 'CCT23 ').match(/\d{3,}/g);
   return g ? g[g.length - 1] : '';
 }
+/* the digits of a unit's id that come before its key group ("CCT23-820" → "23") */
+function digitsBefore(ccu, key){
+  const all = N(ccu).replace(/\D/g, '');
+  return key && all.endsWith(key) ? all.slice(0, all.length - key.length) : '';
+}
+/* stencilled weights and capacities are not unit numbers */
+const WEIGHT_WORDS = /\b(MGW|MAX\s*GROSS|GROSS|TARE|PAYLOAD|NET|KGS?|LBS?|SWL|WLL|MAX)\b/i;
 /* Candidates → matcher. A reading votes for the best unit within cost 0.8,
    or by a unique digit group (≥ 3 digits) found in it. */
 export function makeMatcher(cands){
-  const list = cands.map(c => Object.assign({}, c, { n: N(c.ccu), d: digitKey(c.ccu) })).filter(c => c.n.length >= 3);
+  const list = cands.map(c => { const d = digitKey(c.ccu); return Object.assign({}, c, { n: N(c.ccu), d, pre: digitsBefore(c.ccu, d) }); }).filter(c => c.n.length >= 3);
   /* digit groups that point at exactly one candidate */
   const keys = list.filter(c => c.d && list.filter(o => o.d && (o.d.endsWith(c.d) || c.d.endsWith(o.d))).length === 1);
   return text => {
@@ -53,19 +60,41 @@ export function makeMatcher(cands){
         }
       }
     }
-    if(best && best.cost <= (best.c.n.length >= 6 ? 1.0 : 0.8) && r.length >= best.c.n.length - 1) return { c: best.c, how: 'text' };
-    /* a digit group that ends with a candidate's number: "23820" → CCT23-820 */
-    const dg = (r.replace(/O/g, '0').match(/\d{3,}/g) || []);
-    for(const g of dg){ const c = keys.find(k => g.endsWith(k.d) && g.length - k.d.length <= 3); if(c) return { c, how: 'digits' }; }
+    /* v3.37.2 — only look-alike substitutions (1/I, 0/O, 8/B…) count as a
+       reading of the unit; one plainly wrong character ("ABC129" for
+       ABC123) is a weaker "near" vote that alone cannot make a lift Sure */
+    if(best && r.length >= best.c.n.length - 1){
+      if(best.cost <= 0.8) return { c: best.c, how: 'text', cost: best.cost };
+      /* an ISO id read without its check digit ("ABCU 123456" for ABCU 123456-7) */
+      const cn = best.c.n;
+      if(cn.length >= 8 && /\d$/.test(cn) && r.includes(cn.slice(0, -1))) return { c: best.c, how: 'text', cost: best.cost };
+      if(best.c.n.length >= 6 && best.cost <= 1.0) return { c: best.c, how: 'near', cost: best.cost };
+    }
+    /* a digit group that ends with a candidate's number: "23820" → CCT23-820.
+       v3.37.2: at least 4 digits, the extra leading digits must be the
+       unit's own ("5820" is not CCT23-820), and weight stencils
+       ("MGW 5820 KG", "TARE 1820") never vote. */
+    if(WEIGHT_WORDS.test(String(text || ''))) return null;
+    const dg = (r.replace(/O/g, '0').match(/\d{4,}/g) || []);
+    for(const g of dg){
+      const c = keys.find(k => g.endsWith(k.d) && g.length - k.d.length <= 3 && k.pre.endsWith(g.slice(0, g.length - k.d.length)));
+      if(c) return { c, how: 'digits' };
+    }
     return null;
   };
 }
 
 /* ── frames ───────────────────────────────────────────────── */
+/* resolves true when the frame is there, false on a decode error or after
+   3 s (a released or broken video used to hang the analysis forever) */
 function seek(v, t){
   return new Promise(res => {
-    const done = () => { v.removeEventListener('seeked', done); res(); };
-    v.addEventListener('seeked', done);
+    let to = 0;
+    const end = ok => { clearTimeout(to); v.removeEventListener('seeked', onOk); v.removeEventListener('error', onErr); res(ok); };
+    const onOk = () => end(true), onErr = () => end(false);
+    v.addEventListener('seeked', onOk);
+    v.addEventListener('error', onErr);
+    to = setTimeout(() => end(false), 3000);
     v.currentTime = Math.min(Math.max(0, t), Math.max(0, v.duration - 0.05));
   });
 }
@@ -139,12 +168,16 @@ export async function analyseVideo(video, opts){
   await loadOcr();
   const match = makeMatcher(candidates);
   const W = video.videoWidth, H = video.videoHeight, dur = video.duration;
+  /* a WebM recorded in the app can report Infinity until fully indexed */
+  if(!Number.isFinite(dur) || dur <= 0) throw new Error('The video length is unknown — save the recording again or convert it to MP4');
   const SW = 270, SH = Math.round(SW * H / W);
   const samples = [];
-  let prev = null, lastOcr = -1;
+  let prev = null, lastOcr = -1, seekFails = 0;
+  const src0 = video.currentSrc;
   for(let t = 0; t < dur; t += stepS){
+    if(shouldStop() || video.currentSrc !== src0) break;
+    if(!(await seek(video, t))){ if(++seekFails >= 3) throw new Error('The video stopped decoding at ' + t.toFixed(1) + ' s'); continue; }
     if(shouldStop()) break;
-    await seek(video, t);
     const small = grayOf(grab(video, SW, SH));
     let blob = null;
     if(prev){
@@ -161,7 +194,10 @@ export async function analyseVideo(video, opts){
       const k = Math.max(1, Math.min(3, 800 / Math.max(cw, ch)));
       const crop = document.createElement('canvas'); crop.width = Math.round(cw * k); crop.height = Math.round(ch * k);
       crop.getContext('2d').drawImage(video, x0, y0, cw, ch, 0, 0, crop.width, crop.height);
-      s.thumb = crop;
+      /* keep a small thumbnail per sample, not the full crop (≈8 MB each at 1080p) */
+      { const tk = Math.min(1, 240 / Math.max(crop.width, crop.height)); const th = document.createElement('canvas');
+        th.width = Math.max(1, Math.round(crop.width * tk)); th.height = Math.max(1, Math.round(crop.height * tk));
+        th.getContext('2d').drawImage(crop, 0, 0, th.width, th.height); s.thumb = th; }
       const rot = document.createElement('canvas'); rot.width = crop.height; rot.height = crop.width;
       const rx = rot.getContext('2d'); rx.translate(rot.width, 0); rx.rotate(Math.PI / 2); rx.drawImage(crop, 0, 0);
       /* the crop has a margin around the load; text centred in the margin
@@ -226,13 +262,15 @@ function buildEvents(samples, stepS){
         const sRel = spread(g.votes.map(v => [v.fx - v.bx, v.fy - v.by]));
         if(sAbs < 0.6 * sRel) w = 0.2;
       }
-      g.n = g.votes.reduce((a, v) => a + (v.how === 'text' ? 1 : 0.8), 0) * w;
+      g.n = g.votes.reduce((a, v) => a + (v.how === 'text' ? 1 : v.how === 'near' ? 0.4 : 0.8), 0) * w;
+      g.textVotes = g.votes.filter(v => v.how === 'text').length;
       g.static = w < 1;
       tally.set(k, g);
     });
     const ranked = [...tally.values()].sort((a, b) => b.n - a.n);
     const top = ranked[0], second = ranked[1];
-    const conf = !top ? 'none' : (top.n >= 4 && (!second || top.n >= 2.5 * second.n)) ? 'high' : top.n >= 2 ? 'low' : 'none';
+    /* "Sure" needs real readings of the unit's id, not only near misses or digit groups */
+    const conf = !top ? 'none' : (top.n >= 4 && top.textVotes >= 2 && (!second || top.n >= 2.5 * second.n)) ? 'high' : top.n >= 2 ? 'low' : 'none';
     const first = e.samples[0], last = e.samples[e.samples.length - 1];
     const ctr = s => [s.blob.x + s.blob.w / 2, s.blob.y + s.blob.h];   /* bottom-centre */
     const still = arr => arr.length >= 3 && arr.every((s, i) => i === 0 || Math.hypot(ctr(s)[0] - ctr(arr[i - 1])[0], ctr(s)[1] - ctr(arr[i - 1])[1]) < 0.012);

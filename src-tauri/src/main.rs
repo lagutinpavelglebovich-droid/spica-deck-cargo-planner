@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
 /// Get the app data directory for storing recent files list
@@ -340,6 +341,16 @@ fn plan_arg<I: IntoIterator<Item = String>>(args: I, cwd: Option<&str>) -> Optio
 
 static LAUNCH_TAKEN: AtomicBool = AtomicBool::new(false);
 
+/// Plans handed over by a second launch. Kept here until the page takes them,
+/// so a double-click while the window is still starting is never lost (an
+/// event alone is dropped when nothing listens yet).
+static PENDING_OPEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+#[tauri::command]
+fn take_open_files() -> Vec<String> {
+    PENDING_OPEN.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+}
+
 /// The file this process was started with — handed out once, so a WebView
 /// reload does not open it again over the officer's work.
 #[tauri::command]
@@ -362,7 +373,10 @@ fn main() {
                 let _ = w.set_focus();
             }
             if let Some(p) = plan_arg(argv.into_iter().skip(1), Some(&cwd)) {
-                let _ = app.emit("decargo://open-file", p);
+                if let Ok(mut q) = PENDING_OPEN.lock() {
+                    q.push(p);
+                }
+                let _ = app.emit("decargo://open-file", ());
             }
         }))
         // window size / position / maximised survive a restart; visibility is
@@ -400,6 +414,7 @@ fn main() {
             backups_list,
             backup_read,
             launch_file,
+            take_open_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

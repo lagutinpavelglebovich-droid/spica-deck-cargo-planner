@@ -11,6 +11,19 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.37.2',
+    date: '2026-10-26',
+    highlights: [ 'Safer reading of scanned load lists and deck videos' ],
+    changes: [
+      { type: 'fix', text: 'Scanned PDFs from black-and-white office scanners (CCITT / JBIG2) are now read — they used to come out as "No cargo rows"' },
+      { type: 'fix', text: 'Scanned weights: two agreeing readings are no longer overruled by one with a decimal point (14 t stays 14 t, 2350 kg stays 2.35 t) — doubtful ones are marked "check weight"' },
+      { type: 'fix', text: 'Scanned cells keep short code prefixes and units: "AB 1234" stays AB 1234, "850 kg" is 0.85 t (was 850 t), ".85" is 0.85, "4 x 2.5 te" is 2.5 t per unit' },
+      { type: 'fix', text: 'Deck video: stencilled weights ("MGW 5820 KG", "TARE 1820") no longer match a unit; one wrong character is only a "Maybe", never "Sure"' },
+      { type: 'fix', text: 'Deck video: a damaged or closed video stops the reading with a message instead of hanging; memory use on long clips cut sharply' },
+      { type: 'fix', text: 'A plan double-clicked while Decargo is still starting is opened once it is ready, not lost' },
+    ],
+  },
+  {
     version: '3.37.1',
     date: '2026-10-26',
     highlights: [ 'Fixes the broken layout after 3.37.0', 'DG segregation per GOMO UKCS Rev 3' ],

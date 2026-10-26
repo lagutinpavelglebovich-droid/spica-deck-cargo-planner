@@ -142,7 +142,9 @@ export function parseNumberLocale(raw, preferThousands){
    (manifests without units are usually kg; no PSV deck lift weighs 60 t+).
    Negative or unreadable → 0 (shown as "no weight", never silently flipped). */
 export function parseWeightTonnes(raw, headerText, unknownKgAbove = 60){
-  const str = String(raw == null ? '' : raw).trim();
+  /* "4 x 2.5 te" = four units of 2.5 t: the quantity has its own column,
+     the weight is the per-unit figure (was read as 42.5 t) */
+  const str = String(raw == null ? '' : raw).trim().replace(/^\d+\s*[x×]\s*(?=\d)/i, '');
   if(!str) return 0;
   const unitTxt = str.replace(/[\d.,\s+-]/g, ' ');
   const cellKg = /kg/i.test(unitTxt);
@@ -398,9 +400,15 @@ function cleanScan(ctx, W, H){
 function cleanOcrCell(t){
   let s = String(t || '').replace(/[|\[\]{}~_`'"“”‘’]/g, ' ').replace(/\s+/g, ' ').trim();
   const toks = s.split(' ').filter(Boolean);
-  const real = toks.filter(x => x.length >= 3 || /^\d+([.,]\d+)?$/.test(x));
-  if(real.length && real.length < toks.length) s = toks.filter(x => x.length >= 3 || /^\d+([.,]\d+)?$/.test(x) || /^[A-Za-z]{2}$/.test(x) && false).join(' ');
-  s = s.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9.)]+$/g, '');
+  /* v3.37.2 — keep what carries meaning even when short: upper-case code
+     prefixes ("AB 1234", "TK 15"), unit words ("850 kg", "2.5 te") and
+     leading-decimal numbers (".85"). Dropping them turned "850 kg" into
+     850 t under a tonnes header and "AB 1234" into the wrong CCU. Only
+     lower-case 1–2 letter debris ("oo", "i") is removed. */
+  const keep = x => x.length >= 3 || /^[.,]?\d+([.,]\d+)?$/.test(x) || /^[A-Z]{1,2}$/.test(x) || /^[\/(]\d(\.\d)?\)?$/.test(x) || /^(kg|kgs|t|te|mt|x)$/i.test(x);
+  const real = toks.filter(keep);
+  if(real.length && real.length < toks.length) s = real.join(' ');
+  s = s.replace(/^[^A-Za-z0-9.,]+|[^A-Za-z0-9.)]+$/g, '').replace(/^[.,](?=\d)/, '0.').replace(/^[.,]+(?!\d)/, '');
   /* "cM1482" → "CM1482" (lower-case first letter of an upper-case code) */
   if(/^[a-z][A-Z]+\d/.test(s)) s = s.charAt(0).toUpperCase() + s.slice(1);
   return s;
@@ -447,9 +455,12 @@ async function ocrRuledTable(worker, canvas, scan){
         const tally = {};
         votes.forEach(v => { tally[v] = (tally[v] || 0) + 1; });
         let win = Object.keys(tally).sort((a, b) => tally[b] - tally[a] || votes.indexOf(a) - votes.indexOf(b))[0];
-        /* "14" vs "1.4": a reading that only adds the decimal point wins */
+        /* "14" vs "1.4": the dotted reading wins only when there is no
+           majority — it used to beat two agreeing reads (["14","14","1.4"]
+           gave 1.4 t, ["2350","2350","23.50"] gave 23.5 t). Suspect whole
+           weights are flagged "check weight" in the import preview. */
         const dotted = votes.find(v => v.includes('.') && v.replace('.', '') === win);
-        if(dotted) win = dotted;
+        if(dotted && tally[win] < 2) win = dotted;
         row.push(win);
       } else row.push(first);
     }
@@ -460,7 +471,11 @@ async function ocrRuledTable(worker, canvas, scan){
 
 async function gridsFromPdf(buf, onProgress){
   const pdfjs = await loadPdfjs();
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buf), isEvalSupported:false }).promise;
+  /* wasmUrl: decoders for CCITT/JBIG2/JPX scans (served offline from /ocr/pdfjs/) */
+  const task = pdfjs.getDocument({ data: new Uint8Array(buf), isEvalSupported:false,
+    wasmUrl: new URL('ocr/pdfjs/', document.baseURI).href });
+  try{
+  const pdf = await task.promise;
   const grids = [];
   let scanned = false;
   for(let p = 1; p <= pdf.numPages; p++){
@@ -500,6 +515,10 @@ async function gridsFromPdf(buf, onProgress){
     grids.push({ name: 'Page ' + p, rows: gridFromWords(words, canvas.width), ocr: true });
   }
   return { grids, scanned };
+  }finally{
+    /* one pdf.js worker + parsed document per import were never released */
+    try{ await task.destroy(); }catch(e){}
+  }
 }
 
 /* ── Direction / manifest helpers ───────────────────────────────────── */

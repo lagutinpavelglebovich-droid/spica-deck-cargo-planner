@@ -8278,25 +8278,38 @@ async function openPlanFromFile() {
    overwrite it), and a plan double-clicked while Decargo is already running
    arrives from the single-instance plugin and opens in this window. The
    plan on deck is backed up first, as for File → Open. */
-const _launchOpen = { ready: false, queue: [] };
+const _launchOpen = { ready: false, busy: null };
 async function _launchOpenIt(p){
   if(!p) return;
   try{ await _openPlanPath(p); }
   catch(e){ showToast('Could not open ' + String(p).split(/[/\\]/).pop() + ' \u2014 ' + (e && e.message || e), 'warn'); }
 }
-/* the listener is registered at start-up (events are not replayed to late
-   listeners); paths that arrive before recovery has finished wait in a queue */
+/* plans from a second launch wait in the shell (take_open_files) until the
+   page is ready, so one that arrives while Decargo is still starting is
+   not lost; the event only says "there is something to take" */
+async function _launchDrain(){
+  if(!_launchOpen.ready) return;
+  if(_launchOpen.busy) return _launchOpen.busy;
+  _launchOpen.busy = (async () => {
+    try{
+      for(let guard = 0; guard < 5; guard++){
+        const list = await invoke('take_open_files').catch(() => []);
+        if(!list || !list.length) break;
+        for(const p of list) await _launchOpenIt(p);
+      }
+    } finally { _launchOpen.busy = null; }
+  })();
+  return _launchOpen.busy;
+}
 if(_isTauri()){
-  import('@tauri-apps/api/event').then(({ listen }) => listen('decargo://open-file', ev => {
-    const p = ev && ev.payload;
-    if(_launchOpen.ready) _launchOpenIt(p); else _launchOpen.queue.push(p);
-  })).catch(e => console.warn('[launch] listen', e));
+  import('@tauri-apps/api/event').then(({ listen }) => listen('decargo://open-file', () => _launchDrain()))
+    .catch(e => console.warn('[launch] listen', e));
 }
 async function _openLaunchFile(){
   if(!_isTauri()) return;
   try{ await _launchOpenIt(await invoke('launch_file')); }catch(e){ /* older shell without the command */ }
   _launchOpen.ready = true;
-  while(_launchOpen.queue.length) await _launchOpenIt(_launchOpen.queue.shift());
+  await _launchDrain();
 }
 
 async function _openPlanPath(filePath) {
@@ -15630,8 +15643,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.37.1';
-const APP_VERSION   = '3.37.1';
+const CURRENT_BUILD = 'v3.37.2';
+const APP_VERSION   = '3.37.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
