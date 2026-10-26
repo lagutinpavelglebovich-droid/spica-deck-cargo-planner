@@ -1,6 +1,6 @@
 {
   "productName": "SPICA TIDE Deck Cargo Planner",
-  "version": "3.27.7",
+  "version": "3.28.0",
   "identifier": "com.spicatide.app",
   "build": {
     "beforeBuildCommand": "npm run build",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "SPICA TIDE - Deck Cargo Planner",
+        "title": "Decargo — Deck Cargo Planner",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -36,21 +36,21 @@
       "icons/icon.ico"
     ],
     "resources": [],
-    "copyright": "\u00a9 2026 SPICA TIDE. Developed by Pavlo Lagutin. All rights reserved.",
+    "copyright": "\u00a9 2026 Decargo. Developed by Pavlo Lagutin. All rights reserved.",
     "category": "Productivity",
-    "shortDescription": "Deck cargo planning tool for PSV SPICA TIDE",
-    "longDescription": "Professional deck cargo planning application for Platform Supply Vessel SPICA TIDE. Plan, visualise and export cargo placement for North Sea operations.",
+    "shortDescription": "Deck cargo planner for offshore supply vessels",
+    "longDescription": "Deck cargo planning for offshore supply vessels: plan, check and export cargo placement on deck.",
     "licenseFile": "EULA.txt",
     "fileAssociations": [
       {
         "ext": ["spica"],
         "mimeType": "application/x-spica-tide",
-        "description": "SPICA TIDE Project"
+        "description": "Decargo Plan"
       },
       {
         "ext": ["json"],
         "mimeType": "application/json",
-        "description": "SPICA TIDE Project (JSON)"
+        "description": "Decargo Project (JSON)"
       }
     ],
     "windows": {

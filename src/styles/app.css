@@ -8108,6 +8108,18 @@ body.hdr-tight .save-state-text{ display:none; }
 .sync-input:focus{border-color:var(--acc);outline:none;}
 [data-theme="dark"] .sync-input{background:var(--surf3);border-color:var(--brd2);color:var(--txt);}
 
+/* v3.28 — sync transport switch (Ship network / Cloud) + folder row */
+.sync-mode{display:flex;gap:2px;padding:2px;margin-bottom:6px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);}
+.sync-mode-btn{flex:1;padding:4px 6px;border:0;border-radius:calc(var(--r-xs) - 1px);background:transparent;color:var(--txt3);font:600 9px 'Inter',sans-serif;letter-spacing:.2px;cursor:pointer;}
+.sync-mode-btn.on{background:var(--surf);color:var(--acc);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.sync-folder-row{display:flex;gap:4px;align-items:flex-start;}
+.sync-folder-row .sync-input{flex:1;min-width:0;}
+.sync-pick{flex:none;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font:600 9px 'Inter',sans-serif;cursor:pointer;}
+.sync-note{font:400 9px/1.4 'Inter',sans-serif;color:var(--txt3);margin:0 0 4px;}
+[data-theme="dark"] .sync-mode{background:var(--surf2);border-color:var(--brd2);}
+[data-theme="dark"] .sync-mode-btn.on{background:var(--surf3);color:var(--acc);box-shadow:none;}
+[data-theme="dark"] .sync-pick{background:var(--surf3);border-color:var(--brd2);color:var(--txt2);}
+
 /* ── Sync connected summary view ── */
 .sync-connected{font-size:10px;font-family:'Inter',sans-serif;color:var(--txt2);}
 .sync-info-row{padding:2px 0;display:flex;gap:6px;align-items:baseline;}

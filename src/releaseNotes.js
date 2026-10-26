@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.28.0',
+    date: '2026-10-26',
+    highlights: [ 'Sync over the ship network', 'Now called Decargo' ],
+    changes: [
+      { type: 'sync', text: 'Sync through a shared folder on the ship\'s network drive — no servers, nothing leaves the vessel. Both bridge computers point at the same folder (Smart Tools → Sync → Ship network); the Operator publishes, the other computer picks the plan up within a couple of seconds' },
+      { type: 'sync', text: 'Safe by design: writes are locked and atomic, a change made on the other computer while you had unpublished edits asks Keep mine / Use theirs, linking to a folder that already holds a plan asks first, and the last 30 versions are kept in the folder\'s history' },
+      { type: 'sync', text: 'Cloud sync stays available as the second option and is fully off while the ship network is used' },
+      { type: 'ui', text: 'The app is now Decargo — Deck Cargo Planner: window title, About, splash, PDF footer and EULA. Exports and project files are named after the active vessel' },
+    ],
+  },
+  {
     version: '3.27.7',
     date: '2026-10-25',
     highlights: [ 'Box-select on the deck works' ],

@@ -7,7 +7,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import * as Sync from './sync.js';
+import * as Sync from './syncHub.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
@@ -7912,12 +7912,19 @@ async function _tauriWriteBytes(path, uint8arr) {
   await invoke('write_file_bytes', { path, bytes: Array.from(uint8arr) });
 }
 
+/* v3.28 — export and project file names carry the active vessel's name
+   (the plan belongs to that vessel); the product name is Decargo. */
+function _fileVessel(){
+  const n = String((typeof VESSEL !== 'undefined' && VESSEL && VESSEL.name) || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return n || 'Decargo';
+}
+
 function _updateWindowTitle(filePath) {
   if (filePath) {
     const name = filePath.split(/[/\\]/).pop();
-    document.title = 'SPICA TIDE - ' + name;
+    document.title = 'Decargo — ' + name;
   } else {
-    document.title = 'SPICA TIDE - Deck Cargo Planner';
+    document.title = 'Decargo — Deck Cargo Planner';
   }
 }
 
@@ -7936,7 +7943,7 @@ async function savePlanToFile(path) {
       targetPath = await dlg.save({
         title: 'Save Cargo Plan',
         defaultPath: (document.getElementById('voyIn').value || 'cargo-plan').replace(/[^a-zA-Z0-9_\-. ]/g, '_') + '.spica',
-        filters: [{ name: 'SPICA Plan', extensions: ['spica'] }]
+        filters: [{ name: 'Decargo Plan', extensions: ['spica'] }]
       });
     }
     if (!targetPath) return; /* user cancelled */
@@ -7964,7 +7971,7 @@ async function openPlanFromFile() {
     const dlg = await import('@tauri-apps/plugin-dialog');
     const selected = await dlg.open({
       title: 'Open Cargo Plan',
-      filters: [{ name: 'SPICA Plan', extensions: ['spica'] }],
+      filters: [{ name: 'Decargo Plan', extensions: ['spica'] }],
       multiple: false
     });
     if (!selected) return; /* user cancelled */
@@ -8076,10 +8083,10 @@ async function saveProjectFile() {
   const dd = String(selDate.getDate()).padStart(2,'0');
   const mm = String(selDate.getMonth()+1).padStart(2,'0');
   const yyyy = selDate.getFullYear();
-  const fileName = 'SPICA TIDE Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
+  const fileName = _fileVessel() + ' Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
 
   if (_isTauri()) {
-    const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
+    const targetPath = await _nativeSaveDialog(fileName, 'Decargo Project', ['json']);
     if (!targetPath) return;
     try {
       await invoke('write_file', { path: targetPath, contents: json });
@@ -10343,7 +10350,7 @@ async function printDeckPlan(){
       const { tempDir } = await import('@tauri-apps/api/path');
       const tmp = await tempDir();
       const sep = tmp.endsWith('\\') || tmp.endsWith('/') ? '' : '/';
-      window._pendingPdfPath = tmp + sep + 'spica-tide-print-' + Date.now() + '.pdf';
+      window._pendingPdfPath = tmp + sep + 'decargo-print-' + Date.now() + '.pdf';
       _renderReport('save');
     } catch(e){
       console.error('[print] temp path error:', e);
@@ -11028,7 +11035,7 @@ async function buildPDF(deckCanvas, data, opts){
   const ts  = `${dd} ${mon} ${yyyy} \u00B7 ${hh}:${mi}`;
   /* Left: Generated ts + brand wordmark + version. */
   doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.footerInk); doc.setCharSpace(0.2);
-  doc.text('Generated ' + ts + '  \u00B7  SPICA TIDE v' + APP_VERSION, ML, fy + 4);
+  doc.text('Generated ' + ts + '  \u00B7  Decargo v' + APP_VERSION, ML, fy + 4);
   /* Right: page indicator + brand. Single-page output for now (multi-page work is post-Stage-2). */
   doc.text('Page 1 / 1' + (charterer ? '  \u00B7  ' + charterer : ''), ML + CW, fy + 4, {align:'right'});
   doc.setCharSpace(0);
@@ -11069,7 +11076,7 @@ async function buildPDF(deckCanvas, data, opts){
     const dd = String(selDate.getDate()).padStart(2,'0');
     const mm = String(selDate.getMonth()+1).padStart(2,'0');
     const yyyy = selDate.getFullYear();
-    doc.save('SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf');
+    doc.save(_fileVessel() + ' Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf');
     showToast(t('toast_pdf_ok'), 'ok');
     _phase27ExportComplete();
   }
@@ -13805,7 +13812,7 @@ async function exportExcel(){
   const pris = S.cargo.filter(c=>c.priority).length;
 
   const sumRows = [
-    ['SPICA TIDE — Voyage Summary',''],
+    [_fileVessel() + ' — Voyage Summary',''],
     ['Voyage',voyageNum],
     ['Date',dateStr],
     ['Generated',ts],
@@ -13876,7 +13883,7 @@ async function _saveWorkbook(wb){
     const dd = String(selDate.getDate()).padStart(2,'0');
     const mm = String(selDate.getMonth()+1).padStart(2,'0');
     const yyyy = selDate.getFullYear();
-    XLSX.writeFile(wb, 'SPICA TIDE Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx');
+    XLSX.writeFile(wb, _fileVessel() + ' Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx');
     showToast(t('toast_xlsx_ok'),'ok');
     if(typeof _phase27ExportComplete === 'function') _phase27ExportComplete();
   }
@@ -15250,8 +15257,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.27.7';
-const APP_VERSION   = '3.27.7';
+const CURRENT_BUILD = 'v3.28.0';
+const APP_VERSION   = '3.28.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15339,7 +15346,7 @@ async function menuSaveAs(){
   try {
     const dlg = await import('@tauri-apps/plugin-dialog');
     const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
-    const path = await dlg.save({ title:'Save Project As', defaultPath:'SPICA TIDE Project - '+dd+'.'+mm+'.'+yyyy+'.json', filters:[{name:'SPICA Project',extensions:['json']}] });
+    const path = await dlg.save({ title:'Save Project As', defaultPath:_fileVessel()+' Project - '+dd+'.'+mm+'.'+yyyy+'.json', filters:[{name:'Decargo Project',extensions:['json']}] });
     if(!path) return;
     const envelope = _buildEnvelope();
     await invoke('write_file', { path, contents: JSON.stringify(envelope,null,2) });
@@ -15372,7 +15379,7 @@ async function menuExportPDF(){
   try {
     const dlg = await import('@tauri-apps/plugin-dialog');
     const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
-    const path = await dlg.save({ title:'Export PDF', defaultPath:'SPICA TIDE Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf', filters:[{name:'PDF Document',extensions:['pdf']}] });
+    const path = await dlg.save({ title:'Export PDF', defaultPath:_fileVessel()+' Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf', filters:[{name:'PDF Document',extensions:['pdf']}] });
     if(!path) return;
     window._pendingPdfPath = path;
     exportPDF();
@@ -15386,7 +15393,7 @@ async function menuExportExcel(){
   try {
     const dlg = await import('@tauri-apps/plugin-dialog');
     const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
-    const path = await dlg.save({ title:'Export Excel', defaultPath:'SPICA TIDE Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx', filters:[{name:'Excel Spreadsheet',extensions:['xlsx']}] });
+    const path = await dlg.save({ title:'Export Excel', defaultPath:_fileVessel()+' Manifest - '+dd+'.'+mm+'.'+yyyy+'.xlsx', filters:[{name:'Excel Spreadsheet',extensions:['xlsx']}] });
     if(!path) return;
     window._pendingXlsxPath = path;
     exportExcel();
@@ -17234,13 +17241,16 @@ function _syncPushDebounced(){
   clearTimeout(_syncPushTimer);
   _syncPushTimer = setTimeout(() => {
     _syncPushTimer = null;             /* nothing pending once the push is out */
-    const envelope = _buildEnvelope();
-    /* v3.23.1 — the active vessel profile travels with the plan (locations
-       and their positions, deck layout…); the camera calibration stays on
-       the computer the camera is connected to */
-    if(VESSEL){ const vp = Object.assign({}, VESSEL); delete vp.camera; envelope.plan.vesselProfile = vp; }
-    Sync.pushState(envelope.plan);
-  }, 3000); // debounce 3s — don't push on every keystroke
+    Sync.pushState(_syncPlanForPush());
+  }, Sync.getMode() === 'folder' ? 1200 : 3000); // debounce — don't push on every keystroke
+}
+/* The plan as it is shared with the other computer. v3.23.1 — the active
+   vessel profile travels with it (locations and their positions, deck
+   layout…); the camera calibration stays on the computer it belongs to. */
+function _syncPlanForPush(){
+  const envelope = _buildEnvelope();
+  if(VESSEL){ const vp = Object.assign({}, VESSEL); delete vp.camera; envelope.plan.vesselProfile = vp; }
+  return envelope.plan;
 }
 
 /* ── Replication activity indicators ── */
@@ -17287,31 +17297,38 @@ function _syncHandleConflict(conflict){
   bar = document.createElement('div');
   bar.id = 'syncConflictBar';
   bar.className = 'sync-conflict-bar';
-  bar.innerHTML = '<span>⚠ Sync conflict — another device changed the plan</span>' +
+  const who = conflict.remoteWriter ? ' (' + conflict.remoteWriter + ')' : '';
+  const msg = conflict.damaged ? 'The plan file in the shared folder is damaged — publish yours?'
+    : conflict.firstLink ? 'The shared folder already holds a plan' + who + ' — which one do we keep?'
+    : 'Sync conflict — the other computer' + who + ' changed the plan';
+  bar.innerHTML = '<span></span>' +
     '<button id="conflictKeepLocal">Keep Mine</button>' +
-    '<button id="conflictUseRemote">Use Remote</button>';
+    (conflict.remoteState ? '<button id="conflictUseRemote">' + (conflict.firstLink ? 'Use Folder' : 'Use Remote') + '</button>' : '');
+  bar.querySelector('span').textContent = '⚠ ' + msg;
   document.body.appendChild(bar);
 
   document.getElementById('conflictKeepLocal').addEventListener('click', async () => {
     bar.remove();
     _syncLog('info', 'Conflict resolved: keeping local state');
     const envelope = _buildEnvelope();
-    await conflict.resolve(envelope.plan);
-    showToast('Local changes pushed to cloud', 'ok');
+    await conflict.resolve(_syncPlanForPush());
+    showToast('Your plan is now the shared one', 'ok');
   });
-  document.getElementById('conflictUseRemote').addEventListener('click', () => {
+  document.getElementById('conflictUseRemote')?.addEventListener('click', () => {
     bar.remove();
     _syncLog('info', 'Conflict resolved: using remote state');
+    if(conflict.accept) conflict.accept();
     _syncApplyRemote(conflict.remoteState);
   });
 
-  // Auto-dismiss after 30s (default to keeping local)
+  /* Folder sync waits for the officer's decision (nothing is lost while it
+     waits: edits stay local and unpublished). Cloud: keep local after 30 s. */
+  if(conflict.accept) return;
   setTimeout(() => {
     if(document.getElementById('syncConflictBar')){
       document.getElementById('syncConflictBar').remove();
       _syncLog('info', 'Conflict auto-resolved: keeping local (timeout)');
-      const envelope = _buildEnvelope();
-      conflict.resolve(envelope.plan);
+      conflict.resolve(_syncPlanForPush());
     }
   }, 30000);
 }
@@ -17324,12 +17341,15 @@ function _syncUpdateUI(status){
   const secBp = document.getElementById('bpSyncSection');
   const labels = {
     synced:'Synced', syncing:'Syncing...', offline:'Offline',
-    error:'Error', disabled:'Sync', auth_failed:'Auth Failed'
+    error:'Error', disabled:'Sync', auth_failed:'Auth Failed',
+    pending:'Pending', conflict:'Conflict'
   };
   const colors = {
     synced:'#3ea36a', syncing:'#c89a38', offline:'#888',
-    error:'#c0392b', disabled:'#888', auth_failed:'#c0392b'
+    error:'#c0392b', disabled:'#888', auth_failed:'#c0392b',
+    pending:'#c89a38', conflict:'#c0392b'
   };
+  const folder = Sync.getMode() === 'folder';
   if(dotBp) dotBp.className = 'sync-dot-bp ' + status;
   if(textBp) textBp.textContent = labels[status] || status;
   if(secBp) secBp.style.display = status === 'disabled' ? 'none' : '';
@@ -17342,9 +17362,11 @@ function _syncUpdateUI(status){
     const timeStr = t ? new Date(t).toLocaleTimeString() : '';
     const errCount = Sync.getErrorCount();
     const errSuffix = errCount > 0 ? ' · ' + errCount + ' error' + (errCount>1?'s':'') : '';
-    if(status==='synced') descSt.textContent = 'Connected' + (timeStr ? ' · Last: ' + timeStr : '');
+    if(status==='synced') descSt.textContent = (folder ? 'Ship network folder' : 'Connected') + (timeStr ? ' · Last: ' + timeStr : '');
     else if(status==='syncing') descSt.textContent = 'Syncing...';
-    else if(status==='offline') descSt.textContent = 'Offline — local only' + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
+    else if(status==='pending') descSt.textContent = 'Changes waiting to be published';
+    else if(status==='conflict') descSt.textContent = 'Conflict — choose which plan to keep';
+    else if(status==='offline') descSt.textContent = (folder ? 'Folder not reachable — working locally' : 'Offline — local only') + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
     else if(status==='error') descSt.textContent = 'Sync error — will retry' + errSuffix;
     else if(status==='auth_failed') descSt.textContent = 'Authentication failed — check credentials';
     else if(status==='disabled') descSt.textContent = 'Not configured';
@@ -17372,7 +17394,7 @@ function _syncApplyRemoteVessel(rp){
   return true;
 }
 
-function _syncApplyRemote(remoteState){
+function _syncApplyRemote(remoteState, meta){
   if(!remoteState) return;
   if(remoteState.cargo){ S.cargo = remoteState.cargo; _normalizeCargoGeometry(S.cargo); }
   if(remoteState.customLib) S.customLib = remoteState.customLib;
@@ -17393,12 +17415,15 @@ function _syncApplyRemote(remoteState){
   /* Remote state is the new baseline; undo must not revert (and re-sync)
      another device's change. */
   seedHistoryBaseline(); checkSeg();
-  showToast('Plan updated from another device', 'ok');
+  /* keep the received plan in this computer's autosave (no push back) so a
+     restart opens what the sync layer already considers current */
+  try{ savePlan(); }catch(e){}
+  showToast('Plan updated from ' + (meta && meta.writer ? meta.writer : 'the other computer'), 'ok');
 }
 
 /* ── Sync config storage — password stored separately in encrypted store ── */
 async function _syncSaveConfig(cfg){
-  const publicCfg = { url:cfg.url, db:cfg.db, username:cfg.username, enabled:true };
+  const publicCfg = { mode:cfg.mode || 'cloud', dir:cfg.dir || '', url:cfg.url || '', db:cfg.db || '', username:cfg.username || '', enabled:true };
   try {
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
@@ -17425,7 +17450,7 @@ async function _syncLoadConfig(){
       cfg = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
       pwd = localStorage.getItem('spicaTide_syncAuth') || '';
     }
-    if(cfg && cfg.url) return { ...cfg, password: pwd };
+    if(cfg && (cfg.url || (cfg.mode === 'folder' && cfg.dir))) return { ...cfg, mode: cfg.mode || 'cloud', password: pwd };
     return null;
   } catch(e){ return null; }
 }
@@ -17470,8 +17495,12 @@ function _syncShowConnected(cfg){
     const dbEl = document.getElementById('syncInfoDb');
     const userEl = document.getElementById('syncInfoUser');
     const timeEl = document.getElementById('syncInfoTime');
-    if(dbEl) dbEl.textContent = cfg.db || 'spica_tide';
-    if(userEl) userEl.textContent = cfg.username || '—';
+    const folder = cfg.mode === 'folder';
+    const dbL = document.getElementById('syncInfoDbLbl'), userL = document.getElementById('syncInfoUserLbl');
+    if(dbL) dbL.textContent = folder ? 'Folder:' : 'Database:';
+    if(userL) userL.textContent = folder ? 'Last written by:' : 'User:';
+    if(dbEl){ dbEl.textContent = folder ? cfg.dir : (cfg.db || 'spica_tide'); dbEl.title = folder ? cfg.dir : ''; }
+    if(userEl) userEl.textContent = folder ? (Sync.getLastWriter() || '—') : (cfg.username || '—');
     _syncUpdateConnectedTime();
   }
 }
@@ -17486,19 +17515,23 @@ function _syncUpdateConnectedTime(){
   if(!timeEl) return;
   const t = Sync.getLastSyncTime();
   timeEl.textContent = t ? new Date(t).toLocaleTimeString() : 'not yet';
+  if(Sync.getMode() === 'folder'){
+    const u = document.getElementById('syncInfoUser');
+    if(u && Sync.getSyncStatus() !== 'disabled') u.textContent = Sync.getLastWriter() || '—';
+  }
 }
 
 function _syncWireCallbacks(){
   Sync.onStatusChange(s => { _syncUpdateUI(s); _syncLog('status', s); });
-  Sync.onRemoteUpdate(state => {
+  Sync.onRemoteUpdate((state, meta) => {
     /* Local edits still waiting in the 3 s push debounce must not be wiped
        silently: ask the operator which version wins instead. */
     if(_syncPushTimer && isOperator()){
       clearTimeout(_syncPushTimer); _syncPushTimer = null;
-      _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, resolve: plan => Sync.pushState(plan) });
+      _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, remoteWriter: meta && meta.writer, resolve: plan => Sync.pushState(plan) });
       return;
     }
-    _syncApplyRemote(state); _syncLog('pull', 'Remote state applied');
+    _syncApplyRemote(state, meta); _syncLog('pull', 'Remote state applied' + (meta && meta.writer ? ' (' + meta.writer + ')' : ''));
   });
   Sync.onActivity((dir, detail) => { _syncShowActivity(dir, detail); _syncLog(dir, detail); });
   Sync.onConflict(_syncHandleConflict);
@@ -17513,7 +17546,7 @@ function _syncDoBackup(){
   const a = document.createElement('a');
   a.href = url;
   const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-  a.download = 'spica-tide-backup-' + ts + '.json';
+  a.download = 'decargo-backup-' + ts + '.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -17558,11 +17591,39 @@ async function _syncDoForcePull(){
   if(remote){
     _syncApplyRemote(remote);
     _syncLog('pull', 'Force pull applied');
-    showToast('Latest plan pulled from cloud', 'ok');
+    showToast('Latest plan pulled', 'ok');
   } else {
     showToast('No remote data available', 'err');
     _syncLog('warn', 'Force pull: no data');
   }
+}
+
+/* v3.28 — Sync transport chosen in the form: 'folder' (ship network, the
+   default) or 'cloud' (CouchDB). */
+let _syncFormMode = 'folder';
+function _syncSetFormMode(mode){
+  _syncFormMode = mode === 'cloud' ? 'cloud' : 'folder';
+  document.querySelectorAll('#syncModeSeg .sync-mode-btn').forEach(b => {
+    const on = b.dataset.mode === _syncFormMode;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  const ff = document.getElementById('syncFolderFields'), cf = document.getElementById('syncCloudFields');
+  if(ff) ff.style.display = _syncFormMode === 'folder' ? '' : 'none';
+  if(cf) cf.style.display = _syncFormMode === 'cloud' ? '' : 'none';
+  const r = document.getElementById('syncResult'); if(r) r.textContent = '';
+}
+function _syncFormConfig(){
+  if(_syncFormMode === 'folder') return { mode:'folder', dir:document.getElementById('syncDir').value.trim() };
+  return { mode:'cloud', url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
+}
+async function _syncPickFolder(){
+  if(!_isTauri()){ showToast('Choosing a folder works in the desktop app', 'warn'); return; }
+  try{
+    const dlg = await import('@tauri-apps/plugin-dialog');
+    const cur = document.getElementById('syncDir').value.trim();
+    const dir = await dlg.open({ directory:true, multiple:false, title:'Shared folder for the plan', defaultPath: cur || undefined });
+    if(typeof dir === 'string' && dir) document.getElementById('syncDir').value = dir;
+  }catch(e){ showToast('Could not open the folder dialog: ' + (e && e.message || e), 'err'); }
 }
 
 function bindSyncSettings(){
@@ -17574,30 +17635,40 @@ function bindSyncSettings(){
   const resultEl = document.getElementById('syncResult');
   if(!toggle) return;
 
+  window.__decargoVersion = APP_VERSION;
+  Sync.setStateProvider(_syncPlanForPush);
+  document.querySelectorAll('#syncModeSeg .sync-mode-btn').forEach(b => b.addEventListener('click', () => _syncSetFormMode(b.dataset.mode)));
+  document.getElementById('syncPickDir')?.addEventListener('click', _syncPickFolder);
+  _syncSetFormMode('folder');
+
   /* ── Load saved config and auto-connect ── */
   (async () => {
     try {
       const saved = await _syncLoadConfig();
-      if (saved && saved.url) {
+      if (saved) {
         /* Populate form fields (in case user clicks Edit) */
+        document.getElementById('syncDir').value = saved.dir || '';
         document.getElementById('syncUrl').value = saved.url || '';
         document.getElementById('syncDb').value = saved.db || '';
         document.getElementById('syncUser').value = saved.username || '';
         document.getElementById('syncPass').value = saved.password || '';
+        _syncSetFormMode(saved.mode);
         toggle.checked = true;
 
-        /* Show connected summary, not form */
-        _syncShowConnected(saved);
-
-        _syncLog('info', 'Config loaded. Auto-connecting to ' + saved.url);
+        _syncLog('info', 'Config loaded. Connecting to ' + (saved.mode === 'folder' ? saved.dir : saved.url));
         Sync.setSyncConfig(saved);
         _syncWireCallbacks();
+        _syncShowConnected(saved);
         Sync.startSync();
-        _syncUpdateUI('offline');
+        _syncUpdateUI(Sync.getSyncStatus());
 
-        const remote = await Sync.pullState();
-        if(remote) { _syncLog('pull', 'Initial pull ok'); }
-        else { _syncLog('info', 'No remote data or offline'); }
+        /* Cloud: note the current revision. Folder: the watcher's first
+           read does the reconciliation (adopt / publish / ask). */
+        if(saved.mode !== 'folder'){
+          const remote = await Sync.pullState();
+          if(remote) { _syncLog('pull', 'Initial pull ok'); }
+          else { _syncLog('info', 'No remote data or offline'); }
+        }
       }
     } catch (e) { _syncLog('error', 'Config load failed: ' + e.message); }
   })();
@@ -17605,14 +17676,8 @@ function bindSyncSettings(){
   /* ── Toggle: on → show form (if no saved config) or connected view; off → disconnect ── */
   toggle.addEventListener('change', () => {
     if(toggle.checked){
-      /* Check if already configured */
-      const hasUrl = document.getElementById('syncUrl').value.trim();
-      if(hasUrl && Sync.getSyncStatus() !== 'disabled'){
-        /* Already configured — show connected view */
-        _syncShowConnected({
-          db: document.getElementById('syncDb').value,
-          username: document.getElementById('syncUser').value
-        });
+      if(Sync.getSyncStatus() !== 'disabled'){
+        _syncShowConnected(_syncFormConfig());
       } else {
         _syncShowEditForm();
       }
@@ -17633,18 +17698,21 @@ function bindSyncSettings(){
 
   /* ── Test connection ── */
   if(testBtn) testBtn.addEventListener('click', async () => {
-    const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
+    const cfg = _syncFormConfig();
+    if(cfg.mode === 'folder' && !cfg.dir){ resultEl.textContent = 'Choose the shared folder first'; resultEl.style.color = '#c0392b'; return; }
     Sync.setSyncConfig(cfg);
     resultEl.textContent = 'Testing...';
     resultEl.style.color = 'var(--txt3)';
     _syncLog('info', 'Testing connection...');
     const r = await Sync.testConnection();
     if(r.ok){
-      resultEl.textContent = '\u2713 Connected — ' + r.dbName + ' (' + r.docCount + ' docs)';
+      resultEl.textContent = cfg.mode === 'folder'
+        ? '✓ Folder reachable' + (r.writable ? ', writable' : ' (read-only check)') + (r.hasPlan ? ' — a plan is already there' : ' — empty')
+        : '✓ Connected — ' + r.dbName + ' (' + r.docCount + ' docs)';
       resultEl.style.color = '#3ea36a';
-      _syncLog('info', 'Test OK: ' + r.dbName);
+      _syncLog('info', 'Test OK');
     } else {
-      resultEl.textContent = '\u2717 ' + r.error;
+      resultEl.textContent = '✗ ' + r.error;
       resultEl.style.color = '#c0392b';
       _syncLog('error', 'Test failed: ' + r.error);
     }
@@ -17652,20 +17720,26 @@ function bindSyncSettings(){
 
   /* ── Save & Enable → persist, connect, switch to connected view ── */
   if(saveBtn) saveBtn.addEventListener('click', async () => {
-    const cfg = { url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
-    if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
+    const cfg = _syncFormConfig();
+    if(cfg.mode === 'folder'){
+      if(!cfg.dir){ resultEl.textContent='Choose the shared folder first'; resultEl.style.color='#c0392b'; return; }
+      Sync.setSyncConfig(cfg);
+      const t = await Sync.testConnection();
+      if(!t.ok){ resultEl.textContent='✗ ' + t.error; resultEl.style.color='#c0392b'; return; }
+    } else if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
     await _syncSaveConfig(cfg);
     Sync.setSyncConfig(cfg);
     _syncWireCallbacks();
 
-    const envelope = _buildEnvelope();
-    const remote = await Sync.migrateIfNeeded(envelope.plan);
-    if(remote) _syncApplyRemote(remote);
+    if(cfg.mode !== 'folder'){
+      const remote = await Sync.migrateIfNeeded(_syncPlanForPush());
+      if(remote) _syncApplyRemote(remote);
+    }
 
     Sync.startSync();
-    _syncUpdateUI('synced');
+    _syncUpdateUI(Sync.getSyncStatus());
     _syncLog('info', 'Sync enabled and started');
-    showToast('Cloud sync enabled', 'ok');
+    showToast(cfg.mode === 'folder' ? 'Ship network sync on' : 'Cloud sync enabled', 'ok');
 
     /* Switch to connected summary view */
     _syncShowConnected(cfg);
@@ -18001,10 +18075,10 @@ async function saveProjectAs(){
   const dd = String(selDate.getDate()).padStart(2,'0');
   const mm = String(selDate.getMonth()+1).padStart(2,'0');
   const yyyy = selDate.getFullYear();
-  const fileName = 'SPICA TIDE Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
+  const fileName = _fileVessel() + ' Project - ' + dd + '.' + mm + '.' + yyyy + '.json';
 
   if(_isTauri()){
-    const targetPath = await _nativeSaveDialog(fileName, 'SPICA Project', ['json']);
+    const targetPath = await _nativeSaveDialog(fileName, 'Decargo Project', ['json']);
     if(!targetPath) return;
     try {
       await invoke('write_file', { path: targetPath, contents: json });

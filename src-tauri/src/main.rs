@@ -1,6 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod shared_sync;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -244,6 +246,34 @@ fn chrono_now() -> String {
     format!("{}", d.as_secs())
 }
 
+/* v3.28 — local sync through a shared folder (see shared_sync.rs). File work
+   on a network share can block, so it runs off the main thread. */
+#[tauri::command]
+async fn shared_read(dir: String) -> Result<shared_sync::ReadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || shared_sync::read_plan(&dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn shared_commit(dir: String, expected: Option<String>, doc: String, force: bool) -> Result<shared_sync::CommitResult, String> {
+    tauri::async_runtime::spawn_blocking(move || shared_sync::commit_plan(&dir, expected, &doc, force))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn shared_probe(dir: String, write: bool) -> Result<shared_sync::ProbeResult, String> {
+    tauri::async_runtime::spawn_blocking(move || shared_sync::probe(&dir, write))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn computer_name() -> String {
+    shared_sync::computer_name()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -263,6 +293,10 @@ fn main() {
             read_file_bytes,
             ensure_dir,
             outlook_scan,
+            shared_read,
+            shared_commit,
+            shared_probe,
+            computer_name,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
