@@ -10625,10 +10625,12 @@ body.cp-panel-open .deck-area{ padding-left:28px !important; margin-right:0 !imp
 /* ── Zoom-tier "liveness" — grain stays barely perceptible at every
    zoom level. 4th pass micro-tune: nudged up by ~.01 so the surface
    feels a touch less chalky while remaining imperceptible at a glance. */
-body.zoom-high    .dcv{ --deck-grain-alpha: .075; }
-body.zoom-mid     .dcv{ --deck-grain-alpha: .060; }
-body.zoom-low     .dcv{ --deck-grain-alpha: .045; }
-body.zoom-minimum .dcv{ --deck-grain-alpha: .030; }
+/* v3.37 perf — set on the grain layer itself: a variable changed on .dcv
+   restyled the whole deck subtree at every zoom-tier crossing */
+body.zoom-high    .dcv::before{ opacity: .075; }
+body.zoom-mid     .dcv::before{ opacity: .060; }
+body.zoom-low     .dcv::before{ opacity: .045; }
+body.zoom-minimum .dcv::before{ opacity: .030; }
 
 /* ── Bay dividers + centre line — micro-polished for a touch more
      definition at mid zoom levels. Still calm, still integrated. */
@@ -18288,3 +18290,27 @@ html[data-perf="reduced"] .bp-update-dot{ animation:none !important; }
 .bk-when small, .bk-what small{ font-size:11px; color:var(--txt3); font-weight:400; }
 .bk-muted{ color:var(--txt3); font-style:italic; }
 .bk-empty{ padding:22px 14px; font-size:12px; line-height:1.5; color:var(--txt2); font-family:'Inter',sans-serif; text-align:center; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.37 PERFORMANCE
+   ════════════════════════════════════════════════════════════ */
+/* Idle CPU: the wind lines on the Wind & waves button animate a
+   non-composited property (stroke-dashoffset) forever — ~12 % of a core
+   at idle, ~42 % on a slow PC. Still in Performance mode / calm / off
+   motion / reduced motion (in Performance mode they still flow on hover). */
+html[data-perf="reduced"] .hfw-map:not(:hover) .hfw-map-ic path,
+html:is([data-motion="calm"],[data-motion="off"]) .hfw-map-ic path{ animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce){ .hfw-map-ic path{ animation: none !important; } }
+
+/* Selection controls exist only on the selected unit: 8 resize handles +
+   3 buttons per block were ~70 % of the deck's style work and hit-testing
+   (renderAll 900 ms → about a third at 400 cargo on a slow PC). The fade-in
+   is kept with @starting-style; the fade-out with allow-discrete. */
+.cb:not(.kb-sel) :is(.rh, .cb-del, .cb-rot, .cb-copy){ display: none; }
+.rh, .cb-del, .cb-rot, .cb-copy{ transition-behavior: allow-discrete; }
+@starting-style{
+  .cb.kb-sel .rh{ opacity: 0; }
+  .cb.kb-sel .cb-del{ opacity: 0; transform: translateY(calc(-50% - 26px)) scale(.8); }
+  .cb.kb-sel .cb-rot{ opacity: 0; transform: translateY(-50%) scale(.8); }
+  .cb.kb-sel .cb-copy{ opacity: 0; transform: translateY(calc(-50% + 26px)) scale(.8); }
+}

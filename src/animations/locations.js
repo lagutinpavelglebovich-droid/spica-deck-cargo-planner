@@ -39,6 +39,13 @@ export function flipLayout(container, renderFn, opts = {}) {
     overlay = document.createElement('div');
     overlay.style.cssText =
       'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:9999;';
+    /* v3.37 perf — read every computed style BEFORE writing any clone:
+       interleaving forced one style flush per pill */
+    const styles = new Map();
+    snapshot.forEach(({ el }, id) => {
+      const cs = getComputedStyle(el);
+      styles.set(id, { background: cs.background, borderRadius: cs.borderRadius, border: cs.border, boxShadow: cs.boxShadow });
+    });
     document.body.appendChild(overlay);
 
     snapshot.forEach(({ rect, el }, id) => {
@@ -50,7 +57,7 @@ export function flipLayout(container, renderFn, opts = {}) {
         `margin:0;pointer-events:none;box-sizing:border-box;` +
         `transition:none;`;
       // Copy computed styles that affect visual appearance
-      const cs = getComputedStyle(el);
+      const cs = styles.get(id);
       clone.style.background   = cs.background;
       clone.style.borderRadius = cs.borderRadius;
       clone.style.border       = cs.border;

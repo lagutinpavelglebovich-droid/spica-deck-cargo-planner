@@ -19,7 +19,7 @@ import { checkPositionOnMap } from './locMap.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
-import { interRegularB64, interBoldB64, manropeExtraBoldB64, jetBrainsMonoRegularB64, jetBrainsMonoMediumB64 } from './inter-fonts.js';
+/* v3.37 perf — the PDF fonts (≈1.9 MB, half the bundle) load on the first PDF export, not at launch */
 import { flipLayout } from './animations/locations.js';
 import { animateLangDropdownIn, animateLangDropdownOut, getLangState } from './animations/langDropdown.js';
 import { animateLocPickerIn, animateLocPickerOut, getLocPickerState } from './animations/locPicker.js';
@@ -35,7 +35,7 @@ import { DEFAULT_CONDITION } from './weather/presets.js';
    readable (e.g. _wxSetLocation rather than `setLocation`, which is too
    generic in app.js scope). */
 import { searchCities } from './weather/api.js';
-import { iconForCondition, inlineIconForCondition } from './weather/iconMap.js';
+import { iconForCondition, inlineIconForCondition, staticIconForCondition } from './weather/iconMap.js';
 import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck, motionSwap } from './motion.js';
 import {
   setLocation             as _wxSetLocation,
@@ -277,7 +277,7 @@ function _trackRibbonBottom(){
   if(!rib) return;
   const apply = () => {
     const b = Math.round(rib.getBoundingClientRect().bottom);
-    if(b > 0) document.documentElement.style.setProperty('--ribbon-bottom', b + 'px');
+    if(b > 0) _setRootVar('--ribbon-bottom', b + 'px');
   };
   apply();
   if(window.ResizeObserver) new ResizeObserver(apply).observe(rib);
@@ -2203,68 +2203,66 @@ function dragCandidateRect(clientX, clientY, ox, oy, cargo){
 function showDragSegOverlay(dragCls, excludeId, cand){
   const ovl = document.getElementById('dgDragOverlay');
   if(!ovl) return 0;
-  /* Clear previous zones + violation classes before redrawing */
-  ovl.innerHTML = '';
-  document.querySelectorAll('.cb.dg-violation').forEach(el => {
-    el.classList.remove('dg-violation', 'dg-violation-1', 'dg-violation-2', 'dg-violation-3');
-  });
-
-  if(!dragCls) return 0;
   const dragArr = Array.isArray(dragCls) ? dragCls : (dragCls ? [dragCls] : []);
-  if(dragArr.length === 0) return 0;
+  if(dragArr.length === 0){ clearDragSegOverlay(); return 0; }
+
+  /* v3.37 perf — placed cargo does not move during a drag: build the
+     clearance zones ONCE per drag and per frame only flip the halo on the
+     units the candidate infringes (was: rebuild every zone every frame,
+     66 ms median frames with 150 cargo). */
+  const key = dragArr.join(',') + '|' + excludeId + '|' + S.cargo.length;
+  let cache = ovl._dragCache;
+  if(!cache || cache.key !== key){
+    clearDragSegOverlay();
+    const byId = new Map();
+    document.querySelectorAll('#cvDECK .cb').forEach(el => byId.set(el.dataset.id, el));
+    cache = ovl._dragCache = { key, items: [] };
+    S.cargo.forEach(placed => {
+      const placedArr = placed.dgClasses || [];
+      if(placed.id === excludeId || placedArr.length === 0) return;
+      /* Most restrictive level across all class pairs. */
+      let level = 0;
+      for(const dc of dragArr) for(const pc of placedArr) level = Math.max(level, getSeg(dc, pc));
+      if(level < 1) return;
+      /* ── Clearance zone (dotted, muted) ── */
+      const { x: padX, y: padY } = segPadPx(level);
+      const zx  = Math.max(0,   placed.x - padX);
+      const zy  = Math.max(0,   placed.y - padY);
+      const zx2 = Math.min(TW,  placed.x + placed.w + padX);
+      const zy2 = Math.min(CVH, placed.y + placed.h + padY);
+      const z = document.createElement('div');
+      z.className = 'dg-drag-zone dg-drag-zone-' + level;
+      z.style.left   = zx  + 'px';
+      z.style.top    = zy  + 'px';
+      z.style.width  = (zx2 - zx) + 'px';
+      z.style.height = (zy2 - zy) + 'px';
+      z.style.borderRadius = padX + 'px / ' + padY + 'px';
+      /* Small corner badge — replaces the old centered pill */
+      const lbl = document.createElement('span');
+      lbl.className = 'dg-drag-zone-badge';
+      lbl.textContent = level + ' MINI · DG ' + placedArr.join(', ');
+      z.appendChild(lbl);
+      ovl.appendChild(z);
+      cache.items.push({ placed, level, el: byId.get(String(placed.id)) || null, on: false });
+    });
+  }
 
   let violationCount = 0;
-
-  S.cargo.forEach(placed => {
-    const placedArr = placed.dgClasses || [];
-    if(placed.id === excludeId || placedArr.length === 0) return;
-
-    /* Most restrictive level across all class pairs. */
-    let level = 0;
-    for(const dc of dragArr){
-      for(const pc of placedArr){
-        level = Math.max(level, getSeg(dc, pc));
-      }
-    }
-    if(level < 1) return;
-    const infringed = !!cand && cargoEdgeDistM(cand, placed) < segClearanceM(level) - SEG_EPS_M;
+  cache.items.forEach(it => {
+    const infringed = !!cand && cargoEdgeDistM(cand, it.placed) < segClearanceM(it.level) - SEG_EPS_M;
     if(infringed) violationCount++;
-
-    /* ── Clearance zone (dotted, muted) ─────────────────────────── */
-    const { x: padX, y: padY } = segPadPx(level);
-    const zx  = Math.max(0,   placed.x - padX);
-    const zy  = Math.max(0,   placed.y - padY);
-    const zx2 = Math.min(TW,  placed.x + placed.w + padX);
-    const zy2 = Math.min(CVH, placed.y + placed.h + padY);
-
-    const z = document.createElement('div');
-    z.className = 'dg-drag-zone dg-drag-zone-' + level;
-    z.style.left   = zx  + 'px';
-    z.style.top    = zy  + 'px';
-    z.style.width  = (zx2 - zx) + 'px';
-    z.style.height = (zy2 - zy) + 'px';
-    z.style.borderRadius = padX + 'px / ' + padY + 'px';
-
-    /* Small corner badge — replaces the old centered pill */
-    const lbl = document.createElement('span');
-    lbl.className = 'dg-drag-zone-badge';
-    lbl.textContent = level + ' MINI · DG ' + placedArr.join(', ');
-    z.appendChild(lbl);
-    ovl.appendChild(z);
-
-    /* ── Halo on the infringed cargo block itself ──────────────── */
-    const cbEl = infringed ? document.querySelector(`.cb[data-id="${placed.id}"]`) : null;
-    if(cbEl){
-      cbEl.classList.add('dg-violation', 'dg-violation-' + level);
+    if(infringed !== it.on && it.el){
+      /* ── Halo on the infringed cargo block itself ── */
+      it.el.classList.toggle('dg-violation', infringed);
+      it.el.classList.toggle('dg-violation-' + it.level, infringed);
+      it.on = infringed;
     }
   });
-
   return violationCount;
 }
-
 function clearDragSegOverlay(){
   const ovl = document.getElementById('dgDragOverlay');
-  if(ovl) ovl.innerHTML = '';
+  if(ovl){ ovl.innerHTML = ''; ovl._dragCache = null; }
   /* Remove halos from any cargo that was marked during the drag. */
   document.querySelectorAll('.cb.dg-violation').forEach(el => {
     el.classList.remove('dg-violation', 'dg-violation-1', 'dg-violation-2', 'dg-violation-3');
@@ -3850,10 +3848,14 @@ function buildActiveLocStrip(){
   cnt.textContent=S.activeLocs.length;
   if(!S.activeLocs.length){
     strip.innerHTML='<div style="display:flex;align-items:center;padding:0 20px;font-size:11px;color:var(--txt3);">No locations — click ⊕ to add</div>';
+    strip._sig = '';
     return;
   }
-  flipLayout(strip, () => {
-    strip.innerHTML='';
+  /* v3.37 perf — build off-screen first; when nothing visible changed (the
+     usual case after a drag or rotate) skip the FLIP animation and its
+     forced layouts entirely (17–73 ms per edit). */
+  const box = document.createElement('div');
+  {
     S.activeLocs.forEach(id=>{
       const loc=locById(id);if(!loc)return;
 
@@ -3962,9 +3964,14 @@ function buildActiveLocStrip(){
         /* v3.23 — the card opens its weather + position popover */
         if(popWasOpen) closeLocPop(); else openLocPop(id);
       });
-      strip.appendChild(el);
+      box.appendChild(el);
     });
-  });
+  }
+  const sig = box.innerHTML;
+  if(sig !== strip._sig){
+    strip._sig = sig;
+    flipLayout(strip, () => { strip.replaceChildren(...box.childNodes); });
+  }
 
   /* Re-apply filter highlight if a filter is currently active */
   if(LOC_FILTER){
@@ -5736,7 +5743,12 @@ function clearDGViolationHighlights(){
    steady outline — closing the card never hides the conflict. */
 function _dgApplyHighlights(all, newKeys){
   clearDGViolationHighlights();
-  const mark = (id, cls) => { const el = document.querySelector(`.cb[data-id="${id}"]`); if(el) el.classList.add(cls); };
+  if(!all.length) return;
+  /* v3.37 perf — one pass over the deck instead of a document-wide
+     attribute query per unit per pair (425 of 559 ms at 400 cargo) */
+  const byId = new Map();
+  document.querySelectorAll('#cvDECK .cb').forEach(el => byId.set(el.dataset.id, el));
+  const mark = (id, cls) => { const el = byId.get(String(id)); if(el) el.classList.add(cls); };
   all.filter(v => !newKeys.has(v.key)).forEach(v => {
     const c = v.level >= 2 ? 'dg-conflict' : 'dg-conflict-warn';
     mark(v.a.id, c); mark(v.b.id, c);
@@ -5744,7 +5756,7 @@ function _dgApplyHighlights(all, newKeys){
   all.filter(v => newKeys.has(v.key)).forEach(v => {
     const c = v.level >= 2 ? 'dg-violation' : 'dg-violation-warn';
     [v.a.id, v.b.id].forEach(id => {
-      const el = document.querySelector(`.cb[data-id="${id}"]`);
+      const el = byId.get(String(id));
       if(el){ el.classList.remove('dg-conflict', 'dg-conflict-warn'); el.classList.add(c); }
     });
   });
@@ -5871,6 +5883,7 @@ function checkSeg(){
   _dgApplyHighlights(violations, new Set(newViolations.map(v => v.key)));
 
   /* ── 5. Card ── */
+  if(!newViolations.length){ checkSeg._lastSig = ''; checkSeg._lastKeys = ''; }
   if(violations.length === 0){ _dgWarnHide(); return; }
   if(newViolations.length === 0){
     /* nothing new: an "all conflicts" card opened from DG ON BOARD stays
@@ -5881,7 +5894,14 @@ function checkSeg(){
     }
     return;
   }
-  playSound('warning');
+  /* v3.37 — same unreviewed set already on the card: just refresh the
+     numbers quietly (no re-render storm, no repeated warning sound) */
+  const sig = newViolations.map(v => v.key + ':' + v.level + ':' + v.distM.toFixed(2)).sort().join('|');
+  const cardEl = _dgWarnEl();
+  if(sig === checkSeg._lastSig && cardEl && cardEl.classList.contains('open') && !_dgWarnAll) return;
+  const keysSig = newViolations.map(v => v.key).sort().join('|');
+  if(keysSig !== checkSeg._lastKeys) playSound('warning');
+  checkSeg._lastSig = sig; checkSeg._lastKeys = keysSig;
   _renderDGCheckModal(newViolations, false);
 }
 
@@ -8643,6 +8663,14 @@ function computeFitScale(){
   return Math.min(availW / inner.offsetWidth, availH / inner.offsetHeight);
 }
 
+/* v3.37 perf — a custom property written on <html> restyles every element
+   (12k at 400 cargo). Write it only when the value changes. */
+const _rootVarLast = {};
+function _setRootVar(name, value){
+  if(_rootVarLast[name] === value) return;
+  _rootVarLast[name] = value;
+  document.documentElement.style.setProperty(name, value);
+}
 function updateVesselBgOpacity(){
   const fit = computeFitScale();
   const VESSEL_BG_MAX = 0.85;
@@ -8655,7 +8683,12 @@ function updateVesselBgOpacity(){
     const eased = t * t;                                /* ease-in quad */
     op = eased * VESSEL_BG_MAX;
   }
-  document.documentElement.style.setProperty('--vessel-bg-opacity', op.toFixed(3));
+  /* v3.37 perf — on the one element that uses it, not on <html> (every zoom
+     step out used to restyle the whole document: up to 2 s on 400 cargo) */
+  const v = op.toFixed(3);
+  if(v === updateVesselBgOpacity._last) return;
+  updateVesselBgOpacity._last = v;
+  document.querySelectorAll('.vessel-bg').forEach(el => el.style.setProperty('--vessel-bg-opacity', v));
 }
 /* ════════════════════════════════════════════════════════════
    v3.10 — SIDE PANELS MAKE ROOM
@@ -8689,7 +8722,7 @@ let _atFit = true;
   const g = document.querySelector('.loc-ctrl-group');
   if(!g || typeof ResizeObserver === 'undefined') return;
   new ResizeObserver(() => {
-    document.documentElement.style.setProperty('--loc-ctrl-w', Math.round(g.getBoundingClientRect().width) + 'px');
+    _setRootVar('--loc-ctrl-w', Math.round(g.getBoundingClientRect().width) + 'px');
   }).observe(g);
 })();
 
@@ -8742,7 +8775,7 @@ document.getElementById('deckArea').addEventListener('touchend',()=>{_pinchStart
   if(!area) return;
   function sync(){
     const topPx = Math.round(area.getBoundingClientRect().top + 6); /* 6 px float above deck edge */
-    document.documentElement.style.setProperty('--dg-top', topPx + 'px');
+    _setRootVar('--dg-top', topPx + 'px');
     /* FIT scale depends on viewport size; keep the silhouette fade in
        lockstep with any resize by recomputing whenever the deck-area
        box changes. */
@@ -10885,6 +10918,7 @@ async function buildPDF(deckCanvas, data, opts){
 
   /* Register Inter TTF — embedded at build time via inter-fonts.js.
      addFileToVFS + addFont is the standard jsPDF custom-font pattern. */
+  const { interRegularB64, interBoldB64, manropeExtraBoldB64, jetBrainsMonoRegularB64, jetBrainsMonoMediumB64 } = await import('./inter-fonts.js');
   doc.addFileToVFS('Inter-Regular.ttf', interRegularB64);
   doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
   doc.addFileToVFS('Inter-Bold.ttf', interBoldB64);
@@ -17044,7 +17078,9 @@ function _wxApply(){
   /* Icon — always rendered. iconForCondition falls back to 'cloudy'
      for unmapped keys, so the plate never has a missing visual. */
   if(iconEl){
-    const url = iconForCondition(baseCondition);
+    /* v3.37 perf — a SMIL-animated SVG inside <img> repaints forever and
+       cannot be paused; the chip shows the still artwork */
+    const url = staticIconForCondition(baseCondition);
     iconEl.innerHTML = '<img src="' + url + '" alt="" />';
   }
 
@@ -18966,12 +19002,21 @@ function updateHeaderFieldWx(){
     </div>`;
 }
 /* Animations → Off pauses the header sky; Full / Calm let it play */
+/* v3.37 perf — the animated header sky (SMIL) repainted the page ~90 times a
+   second forever (≈6 % of a core at idle, measured; ~13× the rest of the idle
+   work). It now runs only in full motion, not in Performance mode, calm/off
+   motion, reduced motion, or while Decargo is in the background. */
 function _hfwSkySync(){
   const svg = document.querySelector('#hdrFwx .hfw-sky svg');
   if(!svg || typeof svg.pauseAnimations !== 'function') return;
-  if(document.documentElement.getAttribute('data-motion') === 'off') svg.pauseAnimations(); else svg.unpauseAnimations();
+  const de = document.documentElement;
+  const still = de.getAttribute('data-motion') === 'off' || de.getAttribute('data-motion') === 'calm'
+    || de.getAttribute('data-perf') === 'reduced' || document.hidden
+    || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if(still) svg.pauseAnimations(); else svg.unpauseAnimations();
 }
-new MutationObserver(_hfwSkySync).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
+new MutationObserver(_hfwSkySync).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion', 'data-perf'] });
+document.addEventListener('visibilitychange', _hfwSkySync);
 let _hfwRaf = 0;
 const _hfwSoon = () => { cancelAnimationFrame(_hfwRaf); _hfwRaf = requestAnimationFrame(updateHeaderFieldWx); };
 document.addEventListener('mouseup', _hfwSoon, true);
