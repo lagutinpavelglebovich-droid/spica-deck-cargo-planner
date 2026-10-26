@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.33.0',
+    date: '2026-10-26',
+    highlights: [ 'Delete several locations in a row' ],
+    changes: [
+      { type: 'fix', text: 'Add Location: confirming Delete no longer closes the location picker — you can remove several locations one after another' },
+      { type: 'ui', text: 'Saved, exported or imported: the role bar lights up bright green with a short glow and a light running down it, then returns to its colour' },
+    ],
+  },
+  {
     version: '3.32.0',
     date: '2026-10-26',
     highlights: [ 'Living role bar' ],

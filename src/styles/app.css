@@ -14620,15 +14620,38 @@ html:not([data-motion="calm"]):not([data-motion="off"]):not([data-perf="reduced"
 html[data-motion="calm"] .brand-accent::before, html[data-motion="calm"] .brand-accent::after { transition-duration: .12s; }
 html[data-motion="off"] .brand-accent::before, html[data-motion="off"] .brand-accent::after,
 html[data-perf="reduced"] .brand-accent::before, html[data-perf="reduced"] .brand-accent::after { transition: none; }
-/* one soft light sweep after a finished save / export / import */
+/* v3.33 — "done" flash after a finished save / export / import: the bar
+   lights up bright green with a short glow, a light band runs down it, then
+   it fades back to the role colour. Calm: colour flash only, no band.
+   Off / Performance: the green shows for a second without animation. */
 .brand-accent .brand-sweep {
-  position: absolute; left: 0; right: 0; top: -40%; height: 40%; z-index: 1;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,.75) 50%, rgba(255,255,255,0) 100%);
-  opacity: 0; pointer-events: none;
+  position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,.85) 50%, rgba(255,255,255,0) 100%) 0 -60% / 100% 45% no-repeat,
+    linear-gradient(to bottom, #1aa865 0%, #6ff0a8 50%, #1aa865 100%);
 }
-.brand-accent.sweep .brand-sweep { animation: brandAccentSweep 1.1s cubic-bezier(.4,0,.2,1) 1; }
-@keyframes brandAccentSweep { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(350%); opacity: 0; } }
-[data-theme="dark"] .brand-accent .brand-sweep { background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 100%); }
+.brand-accent.flash .brand-sweep { animation: brandDoneFlash 1.8s cubic-bezier(.3,0,.2,1) 1 both; }
+.brand-accent.flash { animation: brandDoneGlow 1.8s ease-out 1 both; }
+@keyframes brandDoneFlash {
+  0%   { opacity: 0; background-position: 0 -60%, 0 0; }
+  10%  { opacity: 1; }
+  62%  { opacity: 1; background-position: 0 170%, 0 0; }
+  100% { opacity: 0; background-position: 0 170%, 0 0; }
+}
+@keyframes brandDoneGlow {
+  0%   { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+  15%  { box-shadow: 0 0 12px 2px rgba(46, 204, 113, .75); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+}
+html[data-motion="calm"] .brand-accent.flash .brand-sweep { animation-name: brandDoneFlashCalm; }
+@keyframes brandDoneFlashCalm { 0% { opacity: 0; background-position: 0 -60%, 0 0; } 12%, 55% { opacity: 1; background-position: 0 -60%, 0 0; } 100% { opacity: 0; background-position: 0 -60%, 0 0; } }
+html:is([data-motion="off"], [data-perf="reduced"]) .brand-accent.flash .brand-sweep { animation: none; opacity: 1; background-position: 0 -60%, 0 0; }
+html:is([data-motion="off"], [data-perf="reduced"]) .brand-accent.flash { animation: none; }
+[data-theme="dark"] .brand-accent .brand-sweep {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,.7) 50%, rgba(255,255,255,0) 100%) 0 -60% / 100% 45% no-repeat,
+    linear-gradient(to bottom, #22b872 0%, #7af5b0 50%, #22b872 100%);
+}
 
 .brand-role {
   font-size: 15px;
@@ -14664,7 +14687,8 @@ html[data-perf="reduced"] .brand-accent::before, html[data-perf="reduced"] .bran
   .brand-accent::after {
     animation-play-state: paused !important;
   }
-  .brand-accent.sweep .brand-sweep { animation: none; }
+  .brand-accent.flash .brand-sweep { animation: none; opacity: 1; background-position: 0 -60%, 0 0; }
+  .brand-accent.flash { animation: none; }
   .brand-block,
   .brand-role-hint {
     transition: none;

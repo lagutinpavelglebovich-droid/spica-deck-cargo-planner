@@ -4313,7 +4313,16 @@ function bindLocDrawer(){
     }
   });
   document.getElementById('locDrawerClose').addEventListener('click',()=>{btn.classList.remove('is-open');animateLocPickerOut(drawer);});
-  document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!btn.contains(e.target)){btn.classList.remove('is-open');animateLocPickerOut(drawer);}});
+  /* Click outside closes the picker — but not a click in a dialog it opened
+     (delete confirmation, toast actions) and not a click on a card that a
+     re-render just removed (v3.33: deleting several locations in a row). */
+  document.addEventListener('click',e=>{
+    const t=e.target;
+    if(!t || !t.isConnected) return;
+    if(drawer.contains(t)||btn.contains(t)) return;
+    if(t.closest('#locDelOv, .loc-del-ov, .toast-stack, .toast, [role="dialog"]')) return;
+    btn.classList.remove('is-open');animateLocPickerOut(drawer);
+  });
   window.addEventListener('resize',()=>{if(drawer.classList.contains('open'))positionDrawer();});
 }
 
@@ -15208,8 +15217,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.32.0';
-const APP_VERSION   = '3.32.0';
+const CURRENT_BUILD = 'v3.33.0';
+const APP_VERSION   = '3.33.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16988,16 +16997,16 @@ function _sndPreview(id){
   try{ _sndInit(); if(!_sndPlayBuf(id)) _sndRenderAll().then(() => _sndPlayBuf(id)); }catch(e){}
 }
 const soundFns = new Proxy({}, { get: (_, id) => () => _sndPreview(id) });
-/* v3.32 — one light sweep down the role bar after a finished save,
-   export or import (Full motion only; coalesced) */
+/* v3.33 — the role bar flashes green after a finished save, export or
+   import (coalesced). Every motion level shows it; Calm / Off / Performance
+   just animate less (see .brand-accent.flash in app.css). */
 let _brandSweepAt = 0;
 function _brandSweep(){
-  const now = performance.now(); if(now - _brandSweepAt < 1500) return; _brandSweepAt = now;
-  const h = document.documentElement;
-  if(h.getAttribute('data-motion') === 'calm' || h.getAttribute('data-motion') === 'off' || h.getAttribute('data-perf') === 'reduced') return;
+  const now = performance.now(); if(now - _brandSweepAt < 1200) return; _brandSweepAt = now;
   const el = document.querySelector('.brand-accent'); if(!el) return;
-  el.classList.remove('sweep'); void el.offsetWidth; el.classList.add('sweep');
-  setTimeout(() => el.classList.remove('sweep'), 1300);
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  clearTimeout(_brandSweep._t);
+  _brandSweep._t = setTimeout(() => el.classList.remove('flash'), 1900);
 }
 function playSound(type){
   if(type === 'save' || type === 'export' || type === 'import') _brandSweep();
