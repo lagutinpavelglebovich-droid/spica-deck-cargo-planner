@@ -36,6 +36,7 @@ let _errorCount = 0;
 let _conflictOpen = false;
 let _active = false;
 let _timer = null;
+let _gen = 0;                 /* v3.37 (R-17) — bumps on every start/stop; a poll from an older run never re-arms or adopts */
 let _busy = false;            /* one read/commit in flight at a time */
 let _stateProvider = null;
 let _pendingProvider = null;  /* app: "an edit is waiting in my push debounce" */
@@ -236,11 +237,13 @@ export async function pullState(){
 
 async function _poll(){
   if(!_active || !_cfg) return;
+  const gen = _gen;
   let next = POLL_MS;
   if(!_busy && !_conflictOpen){
     _busy = true;
     try{
       const res = await _read();
+      if(gen !== _gen) return;          /* stopped / restarted / folder changed while reading */
       const doc = res.doc;
       if(res.empty){
         /* empty folder: the Operator seeds it with the current plan */
@@ -282,16 +285,18 @@ async function _poll(){
       if(_pending) await _publish(false);
     }
   }
-  if(_active) _timer = setTimeout(_poll, next);
+  if(_active && gen === _gen){ clearTimeout(_timer); _timer = setTimeout(_poll, next); }
 }
 
 export function startSync(){
   if(_active || !_cfg || !tauri()) return;
+  _gen++;
   _active = true;
   log('watching', _cfg.dir);
   _poll();
 }
 export function stopSync(){
+  _gen++;
   _active = false;
   clearTimeout(_timer); _timer = null;
 }

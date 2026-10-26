@@ -491,6 +491,15 @@ _computeGeometry(SPICA_TIDE_BAYS_M, 0.15, 15);
    falls inside a joint is reported as the bay to its LEFT (the bay
    whose right edge is the joint's left edge). Returns -1 for x < 0.
    Out-of-range x past the deck is clamped to the last bay. */
+function _dominantBayIndex(c){
+  const x0 = c.x, x1 = c.x + c.w;
+  let best = -1, bestOv = 0;
+  for(let i = 0; i < BAY_COUNT; i++){
+    const ov = Math.min(x1, BL_[i] + BW[i]) - Math.max(x0, BL_[i]);
+    if(ov > bestOv){ bestOv = ov; best = i; }
+  }
+  return best >= 0 ? best : bayIndexFromX(c.x);
+}
 function bayIndexFromX(x){
   if(x < 0) return -1;
   for(let i = 0; i < BAY_COUNT; i++){
@@ -2163,11 +2172,12 @@ function dragTrailStart(cargo, block){
       const l = line.querySelector('line'), c = line.querySelector('circle');
       l.setAttribute('x1', ocx); l.setAttribute('y1', ocy); l.setAttribute('x2', ncx); l.setAttribute('y2', ncy);
       c.setAttribute('cx', ocx); c.setAttribute('cy', ocy);
-      const r = ghostEl.getBoundingClientRect();
-      /* fading echoes behind the moving ghost */
+      /* fading echoes behind the moving ghost (layout read only when an
+         echo is actually spawned — not on every mousemove) */
       const now = performance.now();
       if(motion && now - lastEcho > 45){
         lastEcho = now;
+        const r = ghostEl.getBoundingClientRect();
         const e = document.createElement('div');
         e.className = 'dgt-echo';
         e.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`;
@@ -5145,7 +5155,13 @@ function markLifted(ids){
   renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
   playSound('redo');
   const msg = list.length === 1 ? `${names[0] || 'Cargo'} lifted` : `${list.length} lifts lifted off`;
-  showUndoToast(msg, 'Undo', () => undo());
+  /* v3.37 (R-16) — the toast undoes THIS lift only. If anything else was
+     changed since, a blind undo() would revert that change instead. */
+  const _hLen = _undoStack.length, _hTop = _undoStack[_hLen - 1];
+  showUndoToast(msg, 'Undo', () => {
+    if(_undoStack.length === _hLen && _undoStack[_hLen - 1] === _hTop) undo();
+    else showToast('The plan changed since the lift — use Ctrl+Z to step back', 'info');
+  });
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -7648,6 +7664,12 @@ let _planAdapter = LocalStorageAdapter;
 let _currentFilePath = null;   /* path of currently open .spica file (Tauri only) */
 /* _isTauri is a function, not a const — window.__TAURI__ may not exist
    at module load time in Tauri v2 (injected after ES module executes). */
+/* v3.37 — guarded localStorage write (R-14). A full or blocked store must
+   never abort the caller half-way (e.g. mode switched in logic but not UI). */
+function _lsSet(k, v){
+  try{ localStorage.setItem(k, v); return true; }
+  catch(e){ console.warn('[storage] not saved:', k, e && e.name); return false; }
+}
 function _isTauri(){ return typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__); }
 let _dirty = false;            /* true when unsaved changes exist */
 let _autosaveEnabled = true;   /* user-togglable autosave */
@@ -8323,6 +8345,25 @@ async function openPlanFromFile() {
 /* v3.36 — one way to open a plan file: read → keep a backup of the plan
    being replaced → validate + apply → only then adopt the file path, so a
    bad file can never become the target of the next Ctrl+S. */
+/* v3.37 — double-click on a plan file / "Open with Decargo": the file given
+   at launch opens after the durable-autosave check (so recovery can never
+   overwrite it), and a plan double-clicked while Decargo is already running
+   arrives from the single-instance plugin and opens in this window. The
+   plan on deck is backed up first, as for File → Open. */
+async function _openLaunchFile(){
+  if(!_isTauri()) return;
+  const openIt = async p => {
+    if(!p) return;
+    try{ await _openPlanPath(p); }
+    catch(e){ showToast('Could not open ' + String(p).split(/[/\\]/).pop() + ' \u2014 ' + (e && e.message || e), 'warn'); }
+  };
+  try{
+    const { listen } = await import('@tauri-apps/api/event');
+    await listen('decargo://open-file', ev => openIt(ev && ev.payload));
+  }catch(e){ console.warn('[launch] listen', e); }
+  try{ await openIt(await invoke('launch_file')); }catch(e){ /* older shell without the command */ }
+}
+
 async function _openPlanPath(filePath) {
   const contents = await invoke('read_file', { path: filePath });
   const name = filePath.split(/[/\\]/).pop();
@@ -10357,6 +10398,7 @@ async function _processGenericFile(file, ascoBody){
     renderAscoContent(sheets, stats);
   }catch(err){
     if(ascoBody) ascoBody.innerHTML = '';
+    if(sub) sub.textContent = 'Select a load list or backload file to import';   /* v3.37 (R-19) */
     showToast(t('toast_read_err', err.message), 'warn');
     console.error('Manifest read error:', err);
   }
@@ -10395,6 +10437,14 @@ function processASCOFile(file){
       showToast(t('toast_read_err', err.message), 'warn');
       console.error('ASCO parse error:', err);
     }
+  };
+  /* v3.37 (R-19) — a read error (file moved, locked by Excel, network share
+     gone) must not leave the skeleton shimmer spinning forever. */
+  reader.onerror = () => {
+    if(ascoBody) ascoBody.innerHTML = '';
+    const sub = document.getElementById('ascoSubtitle');
+    if(sub) sub.textContent = 'Select a load list or backload file to import';
+    showToast(t('toast_read_err', (reader.error && reader.error.message) || 'the file could not be read'), 'warn');
   };
   reader.readAsArrayBuffer(file);
 }
@@ -10631,7 +10681,9 @@ function _restoreExportPollutants(stash){
   });
 }
 
-function exportPDF(){ return _renderReport('save'); }
+/* v3.37 (R-15) — the target path travels with the render request instead of a
+   shared global, so Print during an Export can no longer steal its path. */
+function exportPDF(pdfPath){ return _renderReport('save', pdfPath ? { pdfPath } : {}); }
 async function printDeckPlan(){
   /* WKWebView print() is silently broken — save to OS temp dir silently,
      then shell.open() so user gets a native print dialog in system viewer.
@@ -10641,8 +10693,7 @@ async function printDeckPlan(){
       const { tempDir } = await import('@tauri-apps/api/path');
       const tmp = await tempDir();
       const sep = tmp.endsWith('\\') || tmp.endsWith('/') ? '' : '/';
-      window._pendingPdfPath = tmp + sep + 'decargo-print-' + Date.now() + '.pdf';
-      _renderReport('save');
+      _renderReport('save', { pdfPath: tmp + sep + 'decargo-print-' + Date.now() + '.pdf', openAfter: true });
     } catch(e){
       console.error('[print] temp path error:', e);
       /* Fallback: show Save As dialog via menuExportPDF */
@@ -10739,8 +10790,9 @@ function _stretchDeckClone(cdoc, k){
   });
 }
 
-async function _renderReport(mode){
-  if(_isReportRendering){ return; }
+async function _renderReport(mode, out){
+  out = out || {};
+  if(_isReportRendering){ showToast('A report is already being prepared — try again in a moment', 'info'); return; }
   _isReportRendering = true;
   motionSettleDeck();   /* v3.25 — a landing wave must not be half-transparent in the PDF */
 
@@ -10917,7 +10969,7 @@ async function _renderReport(mode){
       onclone: cdoc => _stretchDeckClone(cdoc, _deckK),
     });
     restore();
-    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, trCount, dgEntries, activeLocs }, { mode })
+    buildPDF(deckCanvas, { voyageNum, dateStr, lifts, weightStr, loadCount, blCount, robCount, trCount, dgEntries, activeLocs }, { mode, pdfPath: out.pdfPath || null, openAfter: !!out.openAfter })
       .catch(err => {
         console.error('[PDF] buildPDF error:', err);
         showToast('PDF build error: ' + (err && err.message || err), 'warn');
@@ -11342,8 +11394,7 @@ async function buildPDF(deckCanvas, data, opts){
   }
 
   /* Save mode — use pre-chosen path from menu dialog, or browser fallback */
-  const pdfPath = window._pendingPdfPath;
-  window._pendingPdfPath = null;
+  const pdfPath = (opts && opts.pdfPath) || null;
 
   if(pdfPath){
     /* Path was chosen by user via native Save As dialog in _menuExportPDF */
@@ -11353,8 +11404,10 @@ async function buildPDF(deckCanvas, data, opts){
       await invoke('write_file_bytes', { path: pdfPath, bytes });
       showToast(t('toast_pdf_ok') + ' \u2014 ' + pdfPath.split(/[/\\]/).pop(), 'ok');
       _phase27ExportComplete();
-      /* Auto-open in system viewer so user can print via native dialog */
-      try {
+      /* Print only: open the temp PDF in the system viewer for its print
+         dialog. A user-chosen export stays where it was saved (the opener
+         scope only allows decargo-print-*.pdf anyway). */
+      if(opts && opts.openAfter) try {
         const { openPath } = await import('@tauri-apps/plugin-opener');
         await openPath(pdfPath);
       } catch(openErr){
@@ -11447,7 +11500,7 @@ function bindSaveAs(){
   });
   document.getElementById('saveAsPDF').addEventListener('click', ()=>{
     dd.classList.remove('open');
-    try { exportPDF(); } catch(err) {
+    try { if(_isTauri()) menuExportPDF(); else exportPDF(); } catch(err) {
       console.error('[PDF] exportPDF threw:', err);
       showToast('PDF error: ' + (err && err.message || err), 'warn');
     }
@@ -14122,9 +14175,10 @@ async function exportExcel(){
   S.cargo.forEach(c=>{
     const loc = locById(c.platform);
     const trLoc = c.trDest ? locById(c.trDest) : null;
-    /* Estimate bay from x position — uses the central bayIndexFromX()
-       helper so joint gaps are attributed to the bay on their left. */
-    const _bi = bayIndexFromX(c.x);
+    /* v3.37 (D-07) — the bay holding the largest share of the unit's
+       length (was: the bay under its aft edge, so a unit starting on a
+       joint or 1 px into the previous bay was reported one bay aft). */
+    const _bi = _dominantBayIndex(c);
     const bayNum = (_bi >= 0 && _bi < BAY_COUNT) ? bayLabel(_bi) : '—';
     rows.push([
       c.ccu||'',
@@ -14209,6 +14263,18 @@ async function exportExcel(){
       const lWt=cl.reduce((a,c)=>a+(parseFloat(c.wt)||0),0);
       if(cl.length>0) sumRows.push([loc.name,lL,lBL,lROB,lTR,parseFloat(lWt.toFixed(1))]);
     });
+    /* v3.37 — units whose location is not on the active list (cleared,
+       hidden or unknown after an import) still count, so the breakdown adds
+       up to the totals above. */
+    {
+      const act = new Set((S.activeLocs || []).map(String));
+      const rest = S.cargo.filter(c => !act.has(String(c.platform || '')) || !locById(c.platform));
+      if(rest.length){
+        const n = st => rest.filter(c => c.status === st).length;
+        sumRows.push(['Other / unassigned', n('L'), n('BL'), n('ROB'), n('TR'),
+          parseFloat(rest.reduce((a,c)=>a+(parseFloat(c.wt)||0),0).toFixed(1))]);
+      }
+    }
     /* Rebuild wsSummary with location data */
     const wsSummary2 = XLSX.utils.aoa_to_sheet(sumRows);
     wsSummary2['!cols'] = [{wch:22},{wch:10},{wch:10},{wch:10},{wch:10},{wch:14}];
@@ -15748,8 +15814,7 @@ async function menuExportPDF(){
     const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
     const path = await dlg.save({ title:'Export PDF', defaultPath:_fileVessel()+' Deck Plan - '+dd+'.'+mm+'.'+yyyy+'.pdf', filters:[{name:'PDF Document',extensions:['pdf']}] });
     if(!path) return;
-    window._pendingPdfPath = path;
-    exportPDF();
+    exportPDF(path);
   } catch(e){
     console.error('[ExportPDF]', e);
     showToast('PDF export failed: '+(e&&e.message||e),'warn');
@@ -15976,7 +16041,10 @@ function _computeBlockLengthM(){
   let aft = Infinity, fore = -Infinity;
   for(const c of S.cargo){
     const leftM  = deckXToMeters(c.x);
-    const rightM = leftM + (c.length_m || (c.w / M));
+    /* v3.37 (D-09) — both edges through the same segmented walk; adding a
+       uniform-scale length to a segmented position read past the bow
+       (55.0 m on a 54.92 m deck). */
+    const rightM = deckXToMeters(c.x + c.w);
     if(leftM  < aft)  aft  = leftM;
     if(rightM > fore) fore = rightM;
   }
@@ -16494,7 +16562,7 @@ function _checkWhatsNew(){
 
   /* Fresh install — no stored value: skip modal, just record */
   if(!lastSeen){
-    localStorage.setItem('spicaTideLastSeenVersion', current);
+    _lsSet('spicaTideLastSeenVersion', current);
     return;
   }
 
@@ -16505,7 +16573,7 @@ function _checkWhatsNew(){
   const entry = _getReleaseEntry(current);
   if(!entry){
     /* No registry entry for this version: silently mark as seen */
-    localStorage.setItem('spicaTideLastSeenVersion', current);
+    _lsSet('spicaTideLastSeenVersion', current);
     return;
   }
 
@@ -16566,7 +16634,7 @@ function _wnEscHandler(e){
 function _closeWhatsNew(){
   const ov = document.getElementById('wnOverlay');
   if(ov) ov.classList.remove('open');
-  localStorage.setItem('spicaTideLastSeenVersion', APP_VERSION);
+  _lsSet('spicaTideLastSeenVersion', APP_VERSION);
   document.removeEventListener('keydown', _wnEscHandler);
 }
 
@@ -17443,7 +17511,7 @@ function _maybeTriggerDailyReveal(){
     const today = new Date().toISOString().slice(0, 10);   /* YYYY-MM-DD */
     const last  = localStorage.getItem('spicaTide_lastIdReveal');
     if(last === today) return;
-    localStorage.setItem('spicaTide_lastIdReveal', today);
+    _lsSet('spicaTide_lastIdReveal', today);
     if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const brand = document.getElementById('brandName');
     if(!brand) return;
@@ -17799,7 +17867,15 @@ function _syncApplyRemote(remoteState, meta){
     showToast('The plan from ' + (meta && meta.writer ? meta.writer : 'the other computer') + ' could not be read \u2014 yours is unchanged', 'warn');
     return false;
   }
-  _backupBefore('remote plan');          /* v3.36 — keep ours before theirs replaces it */
+  /* v3.36 — keep ours before theirs replaces it. v3.37 (R-21): routine
+     poll updates back up at most every 10 min, so a busy two-PC day does not
+     rotate the pre-conflict / start-of-day copies out of the 30-slot ring.
+     Conflict resolution, restores and first sync always back up. */
+  const _now = Date.now();
+  if(!(meta && meta.routine) || _now - (_syncApplyRemote._lastBk || 0) > 10 * 60 * 1000){
+    _syncApplyRemote._lastBk = _now;
+    _backupBefore('remote plan');
+  }
   /* the vessel profile first — the cargo is placed on its geometry */
   _syncApplyRemoteVessel(remoteState.vesselProfile);
   if(!_applyPlan(v.plan)){
@@ -17812,6 +17888,10 @@ function _syncApplyRemote(remoteState, meta){
   /* keep the received plan in this computer's autosave (no push back) so a
      restart opens what the sync layer already considers current */
   try{ savePlan(); }catch(e){}
+  /* v3.37 (R-18) — an opened file no longer matches the screen: show it as
+     unsaved so Close asks and the title shows "•". The path is kept —
+     Ctrl+S saves what is on screen into that file, as for any edit. */
+  if(_currentFilePath){ _dirty = true; _updateSaveIndicator(); }
   if(typeof playSound === 'function') playSound('sync');
   showToast('Plan updated from ' + (meta && meta.writer ? meta.writer : 'the other computer'), 'ok');
   return true;
@@ -17831,7 +17911,7 @@ async function _syncSaveConfig(cfg){
       localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg));
       localStorage.setItem('spicaTide_syncAuth', cfg.password || '');
     }
-  } catch(e){ localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg)); }
+  } catch(e){ _lsSet('spicaTide_syncConfig', JSON.stringify(publicCfg)); }
 }
 
 async function _syncLoadConfig(){
@@ -17927,7 +18007,7 @@ function _syncWireCallbacks(){
       _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, remoteWriter: meta && meta.writer, resolve: plan => Sync.pushState(plan) });
       return;
     }
-    _syncApplyRemote(state, meta); _syncLog('pull', 'Remote state applied' + (meta && meta.writer ? ' (' + meta.writer + ')' : ''));
+    _syncApplyRemote(state, Object.assign({}, meta, { routine: true })); _syncLog('pull', 'Remote state applied' + (meta && meta.writer ? ' (' + meta.writer + ')' : ''));
   });
   Sync.onActivity((dir, detail) => { _syncShowActivity(dir, detail); _syncLog(dir, detail); });
   Sync.onConflict(_syncHandleConflict);
@@ -18181,7 +18261,7 @@ function init(){
   setupCanvas();const _hadStoredPlan = loadPlan();
   /* v3.36 — after init has built the UI: recover from the durable autosave
      if the WebView store came back empty, then keep a launch backup */
-  setTimeout(() => _durableBoot(_hadStoredPlan), 1500);
+  setTimeout(() => Promise.resolve(_durableBoot(_hadStoredPlan)).catch(() => {}).then(_openLaunchFile), 1500);
   /* Voyage date is rolling today — today always wins over the persisted
      value on init, regardless of what was in the autosave envelope. See
      _rollDateToTodayIfNeeded() below for the recurring midnight check. */
@@ -18620,7 +18700,7 @@ function bindAutosaveToggle(){
         bottomBtn.classList.remove('is-flipping');
       }, { once: true });
     }
-    localStorage.setItem('spicaTide_autosave', _autosaveEnabled ? 'on' : 'off');
+    _lsSet('spicaTide_autosave', _autosaveEnabled ? 'on' : 'off');
     _refreshSmartToolsSystem();
   }
 
@@ -18704,7 +18784,7 @@ function bindAutosaveToggle(){
     if(mode){ readouts(); positionHandles(); }
   }
   function lock(){
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    _lsSet(LS_KEY, JSON.stringify(state));
     preEditState = null;
     toggle(false);
     console.log('[vessel-align] LOCKED:', state);

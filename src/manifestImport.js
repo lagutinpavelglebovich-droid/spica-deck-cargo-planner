@@ -82,7 +82,7 @@ const looksText = s => /[a-z]{3,}/i.test(String(s || '')) && !looksCCU(s);
 
 /* Guess roles for a table without a usable header row. */
 function inferColumns(rows, hint){
-  const width = Math.max(0, ...rows.map(r => r.length));
+  let width = 0; for(const r of rows){ if(r && r.length > width) width = r.length; }   /* no spread: 200k rows overflow the call stack */
   const stat = Array.from({ length: width }, () => ({ n:0, ccu:0, wt:0, txt:0, idx:0, dec:0, vals:new Set() }));
   rows.forEach(r => r.forEach((c, i) => {
     const s = cellStr(c); if(!s) return;

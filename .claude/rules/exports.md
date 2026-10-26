@@ -8,8 +8,8 @@ The PDF export has been through 6 iterations. The current working pipeline is:
 2. `html2canvas(dcv)` captures the live deck as a raster image
 3. `buildPDF(deckCanvas)` draws header/locations/DG/deck image/footer with jsPDF
 4. `canvas.toBlob()` → `Uint8Array` → `doc.addImage(bytes, 'PNG')` — **NEVER use `canvas.toDataURL()`**
-5. Menu handler (`menuExportPDF()`) opens native Save As dialog FIRST, stores path in `window._pendingPdfPath`
-6. `buildPDF` reads `window._pendingPdfPath` and writes via `write_file_bytes` Rust command
+5. Menu handler (`menuExportPDF()`) opens native Save As dialog FIRST, then calls `exportPDF(path)`
+6. The path travels as an argument: `_renderReport('save', {pdfPath})` → `buildPDF(..., {pdfPath, openAfter})` → `write_file_bytes`. No global (it raced Print vs Export). `openAfter` is only set by Print (temp `decargo-print-*.pdf`)
 7. Browser fallback: `doc.save(fileName)` for non-Tauri mode
 
 ### What WILL break PDF export:
