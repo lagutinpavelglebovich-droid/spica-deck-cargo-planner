@@ -115,15 +115,51 @@ function inferColumns(rows, hint){
 
 /* ── Rows → records ─────────────────────────────────────────────────── */
 function pick(row, map, role){ return map[role] != null ? cellStr(row[map[role]]) : ''; }
-function parseWeight(s, headerText){
-  s = String(s || '').trim();
-  if(!s) return 0;
-  const kg = /kg/i.test(s) || /\bkg\b/i.test(headerText || '');
-  const v = parseFloat(s.replace(',', '.').replace(/[^0-9.]/g, ''));
-  if(!isFinite(v)) return 0;
-  if(kg || v > 60) return Math.round(v / 100) / 10;           /* kg → t */
+/* v3.37 — locale-aware numbers. Manifests come from many offices:
+   "1,234.5", "1.234,5", "12 500", "2,5", "2,350". preferThousands decides
+   the one ambiguous shape (a single separator followed by exactly three
+   digits): thousands in a kg column, decimals in a tonnes column. */
+export function parseNumberLocale(raw, preferThousands){
+  let s = String(raw == null ? '' : raw).trim().replace(/[\u00a0\u2009\u202f' ]/g, '');
+  s = s.replace(/[^\d.,+-]/g, '');
+  if(!s || !/\d/.test(s) || /[+-]/.test(s.slice(1))) return NaN;
+  const hasC = s.includes(','), hasD = s.includes('.');
+  const grouped = sep => new RegExp('^[+-]?\\d{1,3}(\\' + sep + '\\d{3})+$').test(s);
+  if(hasC && hasD){
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if(hasC || hasD){
+    const sep = hasC ? ',' : '.';
+    const count = s.split(sep).length - 1;
+    if(count > 1) s = grouped(sep) ? s.split(sep).join('') : 'x';
+    else if(grouped(sep) && preferThousands) s = s.replace(sep, '');
+    else s = s.replace(sep, '.');
+  }
+  const v = Number(s);
+  return Number.isFinite(v) ? v : NaN;
+}
+/* Weight in tonnes. An explicit unit in the cell wins, then the column
+   header; with no unit at all, values over unknownKgAbove are taken as kg
+   (manifests without units are usually kg; no PSV deck lift weighs 60 t+).
+   Negative or unreadable → 0 (shown as "no weight", never silently flipped). */
+export function parseWeightTonnes(raw, headerText, unknownKgAbove = 60){
+  const str = String(raw == null ? '' : raw).trim();
+  if(!str) return 0;
+  const unitTxt = str.replace(/[\d.,\s+-]/g, ' ');
+  const cellKg = /kg/i.test(unitTxt);
+  const cellT = !cellKg && /\b(t|te|tonnes?|tons?|mt)\b/i.test(unitTxt);
+  const h = String(headerText || '');
+  const hdrKg = /kg/i.test(h);
+  const hdrT = !hdrKg && /(\(t\)|\bt\b|\btonnes?\b|\btons?\b|\bte\b|\bmt\b)/i.test(h);
+  const kg = cellKg || (!cellT && hdrKg);
+  const t = cellT || (!cellKg && hdrT);
+  const v = parseNumberLocale(str, kg || (!t && unknownKgAbove != null));
+  if(!Number.isFinite(v) || v < 0) return 0;
+  if(kg) return Math.round(v / 100) / 10;
+  if(t) return v;
+  if(unknownKgAbove != null && v > unknownKgAbove) return Math.round(v / 100) / 10;
   return v;
 }
+function parseWeight(s, headerText){ return parseWeightTonnes(s, headerText, 60); }
 const NA = /^(n\/?a|nil|none|tbc|tba|-+|—)$/i;
 function rowToRecord(row, map, wtHeader){
   const r = {

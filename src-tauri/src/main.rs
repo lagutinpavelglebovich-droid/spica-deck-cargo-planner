@@ -28,14 +28,21 @@ struct RecentFile {
     opened_at: String,
 }
 
-#[tauri::command]
-fn write_file(path: String, contents: String) -> Result<(), String> {
-    store::atomic_write(std::path::Path::new(&path), contents.as_bytes()).map_err(|e| format!("Write failed: {}", e))
+/* v3.37 — file commands run off the UI thread: a slow or vanished network
+   path must never freeze the window (sync commands run on the main thread
+   in Tauri v2). */
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    store::atomic_write(std::path::Path::new(&path), &bytes).map_err(|e| format!("Write failed: {}", e))
+async fn write_file(path: String, contents: String) -> Result<(), String> {
+    blocking(move || store::atomic_write(std::path::Path::new(&path), contents.as_bytes()).map_err(|e| format!("Write failed: {}", e))).await
+}
+
+#[tauri::command]
+async fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    blocking(move || store::atomic_write(std::path::Path::new(&path), &bytes).map_err(|e| format!("Write failed: {}", e))).await
 }
 
 /* v3.36 — durable autosave + rolling backups in the app data folder */
@@ -61,9 +68,17 @@ fn backup_read(file: String) -> Result<String, String> {
     store::backup_read(&app_data_dir(), &file)
 }
 
+const MAX_TEXT_READ: u64 = 50 * 1024 * 1024; // plans and manifests are KBs–MBs
+
 #[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
+async fn read_file(path: String) -> Result<String, String> {
+    blocking(move || {
+        let len = fs::metadata(&path).map_err(|e| format!("Read failed: {}", e))?.len();
+        if len > MAX_TEXT_READ {
+            return Err(format!("Read failed: file is too large ({} MB)", len / 1_048_576));
+        }
+        fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
+    }).await
 }
 
 #[tauri::command]
@@ -97,7 +112,7 @@ fn add_recent_file(path: String, name: String) -> Vec<RecentFile> {
 
     // Persist
     if let Ok(json) = serde_json::to_string_pretty(&recents) {
-        fs::write(recent_file_path(), json).ok();
+        store::atomic_write(&recent_file_path(), json.as_bytes()).ok();
     }
 
     recents
@@ -133,10 +148,14 @@ fn append_file_raw(request: tauri::ipc::Request<'_>) -> Result<u64, String> {
 
 /// v3.16 — read a whole file as raw bytes (mail attachments → import).
 #[tauri::command]
-fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, String> {
-    fs::read(&path)
-        .map(tauri::ipc::Response::new)
-        .map_err(|e| format!("Read failed: {}", e))
+async fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, String> {
+    blocking(move || {
+        let len = fs::metadata(&path).map_err(|e| format!("Read failed: {}", e))?.len();
+        if len > MAX_TEXT_READ * 2 {
+            return Err(format!("Read failed: file is too large ({} MB)", len / 1_048_576));
+        }
+        fs::read(&path).map_err(|e| format!("Read failed: {}", e))
+    }).await.map(tauri::ipc::Response::new)
 }
 
 /// v3.16 — make sure a folder exists (recordings folder).
@@ -301,7 +320,6 @@ fn computer_name() -> String {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())

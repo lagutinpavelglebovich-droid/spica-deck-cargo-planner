@@ -38,6 +38,7 @@ let _active = false;
 let _timer = null;
 let _busy = false;            /* one read/commit in flight at a time */
 let _stateProvider = null;
+let _pendingProvider = null;  /* app: "an edit is waiting in my push debounce" */
 let _computer = '';
 let _onStatus = null, _onRemote = null, _onActivity = null, _onConflict = null;
 
@@ -82,6 +83,8 @@ export function onRemoteUpdate(fn){ _onRemote = fn; }
 export function onActivity(fn){ _onActivity = fn; }
 export function onConflict(fn){ _onConflict = fn; }
 export function setStateProvider(fn){ _stateProvider = fn; }
+export function setPendingProvider(fn){ _pendingProvider = fn; }
+const _localPending = () => { try{ return !!(_pendingProvider && _pendingProvider()); }catch(e){ return false; } };
 export function getSyncConfig(){ return _cfg; }
 
 export function setSyncConfig(cfg){
@@ -257,8 +260,10 @@ async function _poll(){
       } else if(doc.commit === _commit){
         _lastWriter = doc.writerName || _lastWriter;
         _setStatus(_dirty ? 'pending' : 'synced');
-      } else if(_dirty && !isViewer()){
-        /* the other computer published while we have unpublished edits */
+      } else if((_dirty || _localPending()) && !isViewer()){
+        /* the other computer published while we have unpublished edits —
+           including an edit still inside the app's 1.2 s push debounce.
+           Never adopt theirs first: the officer decides (v3.37). */
         _busy = false;
         _raiseConflict(doc, null);
       } else {

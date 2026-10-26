@@ -1,6 +1,6 @@
 [package]
 name = "spica-tide"
-version = "3.36.0"
+version = "3.37.0"
 description = "SPICA TIDE — Deck Cargo Planning Tool for PSV SPICA TIDE"
 authors = ["Pavlo Lagutin"]
 license = "Proprietary"
@@ -12,7 +12,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "~2.10", features = [] }
 tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
 tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

@@ -28,6 +28,7 @@ export const startSync = () => _active.startSync();
 export const stopSync = () => both(m => m.stopSync());
 export const migrateIfNeeded = s => _active.migrateIfNeeded(s);
 export const setStateProvider = fn => Folder.setStateProvider(fn);
+export const setPendingProvider = fn => Folder.setPendingProvider(fn);
 export function onStatusChange(fn){ both(m => m.onStatusChange(fn)); }
 export function onRemoteUpdate(fn){ both(m => m.onRemoteUpdate(fn)); }
 export function onActivity(fn){ both(m => m.onActivity(fn)); }

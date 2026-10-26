@@ -11,7 +11,7 @@ import * as Sync from './syncHub.js';
 import { invoke } from '@tauri-apps/api/core';
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
-import { readManifestFile } from './manifestImport.js';
+import { readManifestFile, parseWeightTonnes } from './manifestImport.js';
 import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
 import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, refresh as fieldWxRefresh } from './fieldWeather.js';
 import { initWeatherMap, openWeatherMap } from './weatherMap.js';
@@ -60,7 +60,7 @@ let _currentMode = localStorage.getItem('spicaTideOperatorMode') || 'viewer';
 function isOperator(){ return _currentMode === 'operator'; }
 function setMode(mode){
   _currentMode = mode;
-  localStorage.setItem('spicaTideOperatorMode', mode);
+  try{ localStorage.setItem('spicaTideOperatorMode', mode); }catch(e){ console.warn('[mode] not persisted:', e); }   /* v3.37 — a full store must not leave the UI in the old mode */
   applyModeUI();
 }
 /* Expose viewer check for sync.js (ES module — avoids import coupling) */
@@ -1592,6 +1592,12 @@ const CCU_PRESETS = [
    (a 6.06 × 2.44 m container showed as 2.00 × 7.42 m).                 */
 function _rotateCargo(c){
   const L = c.length_m || c.w / M, W = c.width_m || c.h / YS;
+  /* v3.37 — a unit longer than the deck is wide cannot be turned across it
+     (it used to hang over the side, unflagged) */
+  if(m2px_h(L) > CVH + 0.5){
+    showToast(`Too long to turn across the deck \u2014 ${(+L).toFixed(2)} m, deck ${(CVH / YS).toFixed(1)} m wide`, 'warn');
+    return false;
+  }
   const cx = c.x + c.w/2, cy = c.y + c.h/2;
   c.length_m = W; c.width_m = L;
   c.w = m2px_w(W); c.h = m2px_h(L);
@@ -1599,6 +1605,7 @@ function _rotateCargo(c){
   c.x = Math.max(0, Math.min(cx - c.w/2, TW  - c.w));
   c.y = Math.max(0, Math.min(cy - c.h/2, CVH - c.h));
   c.rot = ((c.rot || 0) + 1) % 4;
+  return true;
 }
 
 /* ── Heal geometry on load: metres are the source of truth ──────────────
@@ -3609,7 +3616,7 @@ function _marqueeStart(startEv, cv){
   document.addEventListener('mouseup',   onUp);
 }
 
-function addZone(cv,x,y,w,h,type,label){const z=document.createElement('div');z.className=`zone z-${type}`;z.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;z.innerHTML=`<span class="z-lbl">${label}</span>`;cv.appendChild(z);}
+function addZone(cv,x,y,w,h,type,label){const z=document.createElement('div');z.className=`zone z-${type}`;z.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;z.innerHTML=`<span class="z-lbl">${escHtml(label)}</span>`;cv.appendChild(z);}
 function addDolly(cv,x,y){const d=document.createElement('div');d.className='lp-dolly';d.style.left=x+'px';d.style.top=y+'px';cv.appendChild(d);}
 function addDring(cv,x,y){const d=document.createElement('div');d.className='lp-dring';d.style.left=x+'px';d.style.top=y+'px';cv.appendChild(d);}
 
@@ -3674,13 +3681,16 @@ function bindDatePicker(){
    implicit, not a user action; it shouldn't dirty autosave or create an
    undo step. Started once during init() at the bindDatePicker() call site;
    interval lifetime = page lifetime (Tauri reload destroys JS context). */
+/* v3.37 — roll over at midnight only a date that WAS today. A date the
+   officer picked, or the date of an opened older plan, stays as it is. */
+let _rollLastToday = new Date().toDateString();
 function _rollDateToTodayIfNeeded(){
   const calPopup = document.getElementById('calPopup');
   if(calPopup && calPopup.classList.contains('open')) return;
-  const now = new Date();
-  if(selDate.getFullYear() === now.getFullYear() &&
-     selDate.getMonth()    === now.getMonth() &&
-     selDate.getDate()     === now.getDate()) return;
+  const now = new Date(), today = now.toDateString();
+  const wasToday = selDate && selDate.toDateString() === _rollLastToday;
+  _rollLastToday = today;
+  if(!selDate || selDate.toDateString() === today || !wasToday) return;
   selDate = now;
   setDateDisplay();
 }
@@ -3911,7 +3921,7 @@ function buildActiveLocStrip(){
             pill.style.setProperty('--op-color', `${r},${g},${b}`);
           }catch(e){}
           pill.innerHTML=
-            `<span class="loc-pill-lbl">${s.label}</span>`+
+            `<span class="loc-pill-lbl">${escHtml(s.label)}</span>`+
             `<span class="loc-pill-val">${s.count}</span>`;
           /* Bloom Picker trigger — Operator only. In Viewer the click
              keeps bubbling to the card's location-filter toggle
@@ -4397,6 +4407,9 @@ function renderAll(){
     else   { if(typeof kbDeselect==='function') kbDeselect(); }
   }
   if(typeof cpReapplyHl==='function') cpReapplyHl();
+  /* v3.37 — the DG outlines live on the block elements: put them back after
+     a rebuild (Viewer mode and remote updates never re-ran checkSeg) */
+  if(typeof _dgReapplyHighlights==='function') _dgReapplyHighlights();
   motionAfterRender(S.cargo, cv);   /* v3.25 — several new blocks land in a wave */
 }
 
@@ -4530,7 +4543,7 @@ function renderBlock(cv,cargo){
   b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;animateCargoExit(_delId);S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();}));
   b.appendChild(mkBtn('cb-rot','↻',e=>{
     e.stopPropagation();
-    _rotateCargo(cargo);
+    if(!_rotateCargo(cargo)) return;
     const _rotId=cargo.id;
     renderAll();updateStats();buildActiveLocStrip();checkSeg();save();
     playSound('rotate');
@@ -4719,6 +4732,11 @@ function renderBlock(cv,cargo){
       _gt.end(false);
       clearDragSegOverlay();
       if(moved){
+        /* v3.37 — the plan can be replaced mid-drag (Ctrl+Z, a plan from the
+           other PC): move the LIVE unit, not the stale object we started with */
+        const live = S.cargo.find(c => String(c.id) === String(cargo.id));
+        if(!live){ showToast('This unit was removed while you were moving it', 'warn'); return; }
+        if(live !== cargo) cargo = live;
         /* Phase 4 — Group drag detection. If the cargo being dragged is
            part of an active multi-selection, every other selected cargo
            moves with it by the same delta. Relative positions preserved
@@ -5634,21 +5652,39 @@ function _renderDGCheckModal(list, all){
   const lvl = v.level;
   const title = all
     ? `${list.length} DG conflict${list.length === 1 ? '' : 's'} on deck`
+    : v.zone ? 'DG cargo in a no-DG area'
     : lvl >= 3 ? 'Needs a separate compartment' : lvl === 2 ? 'Too close — keep these apart' : 'Keep these a little further apart';
   el.dataset.level = String(lvl);
   el.querySelector('.dgc-title').textContent = title;
+  if(v.zone){
+    el.querySelector('.dgc-rule').innerHTML = `${_dgBadge(v.worstA)} <span>not allowed in</span> <b>${escHtml(v.zoneLabel)}</b>`;
+    el.querySelector('.dgc-fill').style.width = '100%';
+    el.querySelector('.dgc-now').innerHTML = `<b>${_dgUnitName(v.a)}</b> is inside`;
+    el.querySelector('.dgc-req').textContent = 'Move it aft of the DG LIMIT line';
+  } else {
   el.querySelector('.dgc-rule').innerHTML =
     `${_dgBadge(v.worstA)} <span>${_dgRuleWord[lvl] || 'separated from'}</span> ${_dgBadge(v.worstB)}`;
   const pct = Math.max(3, Math.min(100, v.distM / v.requiredM * 100));
   el.querySelector('.dgc-fill').style.width = pct + '%';
   el.querySelector('.dgc-now').innerHTML = `<b>${_dgFmt(v.distM)}</b> apart`;
   el.querySelector('.dgc-req').textContent = `${_dgFmt(v.requiredM)} required`;
+  }
   const more = el.querySelector('.dgc-more');
   more.textContent = list.length > 1 ? `+${list.length - 1} more` : '';
   more.hidden = list.length < 2;
 
   const mini = miniM();
   el.querySelector('.dgc-det').innerHTML = _dgWarnList.map((p, i) => {
+    if(p.zone){
+      const nZ = DG_CLASS_NAMES[p.worstA] || p.worstA;
+      return `<div class="dgc-pair">
+      <div class="dgc-pair-h"><b>${_dgUnitName(p.a)}</b> ${_dgBadge(p.worstA)} <span class="dgc-x2">in</span> <b>${escHtml(p.zoneLabel)}</b><button class="dgc-link" data-show="${i}">Show</button></div>
+      <table>
+        <tr><td>Unit</td><td>${escHtml(p.a.desc || '')}</td></tr>
+        <tr><td>Class</td><td>${escHtml(String(p.worstA))} ${escHtml(nZ)}</td></tr>
+        <tr><td>Rule</td><td><b>No dangerous goods</b> in this area of the deck (vessel setup)</td></tr>
+      </table></div>`;
+    }
     const nA = DG_CLASS_NAMES[p.worstA] || p.worstA, nB = DG_CLASS_NAMES[p.worstB] || p.worstB;
     const rule = SEG_LEVEL_LABEL[p.level] || 'Separated from';
     const comp = p.level >= 3
@@ -5714,6 +5750,15 @@ function _dgApplyHighlights(all, newKeys){
   });
 }
 /* Conflict chip on the DG ON BOARD line — stays while any conflict is on deck */
+function _dgIsNew(v){
+  if(!DG_ACK_PAIRS.has(v.key)) return true;
+  const k = DG_ACK_INFO.get(v.key);
+  return !!k && (v.level > k.level || v.distM < k.d - DG_WORSE_M);
+}
+function _dgReapplyHighlights(){
+  if(typeof SMART === 'undefined' || !SMART.dgSeg || !Array.isArray(_lastDGViolations) || !_lastDGViolations.length) return;
+  _dgApplyHighlights(_lastDGViolations, new Set(_lastDGViolations.filter(_dgIsNew).map(v => v.key)));
+}
 function _dgSyncConflictChip(){
   const line = document.getElementById('dgOnBoardLine'); if(!line) return;
   let chip = document.getElementById('dgConfChip');
@@ -5789,15 +5834,22 @@ function checkSeg(){
       }
     }
   }
+  /* v3.37 — DG cargo inside a NO DG CARGO area (drawn on deck, never
+     checked before). Limited quantities (LQ only) are not flagged. */
+  const nodgZones = (typeof ZONES_PX !== 'undefined' && Array.isArray(ZONES_PX)) ? ZONES_PX.filter(z => z.type === 'nodg') : [];
+  if(nodgZones.length) dgs.forEach(c => {
+    const cls = (c.dgClasses || []).filter(k => String(k).toUpperCase() !== 'LQ');
+    if(!cls.length || !(c.w > 0) || !(c.h > 0)) return;
+    const z = nodgZones.find(z => c.x < z.x + z.w - 0.5 && c.x + c.w > z.x + 0.5 && c.y < z.y + z.h - 0.5 && c.y + c.h > z.y + 0.5);
+    if(!z) return;
+    const worst = cls[0];
+    violations.push({ zone: true, zoneLabel: z.label || 'NO DG CARGO', a: c, b: { id: 'zone:' + (z.id || 'nodg'), ccu: z.label || 'NO DG CARGO' },
+      level: 3, worstA: worst, worstB: '', distM: 0, requiredM: 1, key: 'zone::' + (z.id || 'nodg') + '::' + c.id });
+  });
   _lastDGViolations = violations;   /* v3.10 — for DG ON BOARD click */
 
   /* ── 3. New = never reviewed, or reviewed but materially worse now ── */
-  const isNew = v => {
-    if(!DG_ACK_PAIRS.has(v.key)) return true;
-    const k = DG_ACK_INFO.get(v.key);
-    return !!k && (v.level > k.level || v.distM < k.d - DG_WORSE_M);
-  };
-  const newViolations = violations.filter(isNew);
+  const newViolations = violations.filter(_dgIsNew);
 
   /* Phase 27 — resolved detection: ids that were in a conflict and no longer are. */
   const currentViolationIds = new Set();
@@ -5876,7 +5928,7 @@ if(trWrap){
 }
 const _ovEl=document.getElementById('ov');const _mdlEl=_ovEl.querySelector('.mdl');_ovEl.classList.add('open');animateModalIn(_ovEl,_mdlEl);setTimeout(()=>document.getElementById('mCCU').focus(),50);
 }
-function buildModalLocs(selId){const g=document.getElementById('mLocGrid');g.innerHTML='';const show=S.activeLocs.length?S.activeLocs.map(id=>locById(id)).filter(Boolean):LOC_ALL;show.forEach(loc=>{const el=document.createElement('div');el.className='mdl-loc'+(loc.id===selId?' sel':'');el.style.setProperty('--lc',getLocBase(loc.id));el.dataset.lid=loc.id;el.innerHTML=`<div class="mdl-loc-dot"></div><div class="mdl-loc-name">${loc.name}</div>`;el.onclick=()=>{g.querySelectorAll('.mdl-loc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');};g.appendChild(el);}); }
+function buildModalLocs(selId){const g=document.getElementById('mLocGrid');g.innerHTML='';const show=S.activeLocs.length?S.activeLocs.map(id=>locById(id)).filter(Boolean):LOC_ALL;show.forEach(loc=>{const el=document.createElement('div');el.className='mdl-loc'+(loc.id===selId?' sel':'');el.style.setProperty('--lc',getLocBase(loc.id));el.dataset.lid=loc.id;el.innerHTML=`<div class="mdl-loc-dot"></div><div class="mdl-loc-name">${escHtml(loc.name)}</div>`;el.onclick=()=>{g.querySelectorAll('.mdl-loc').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');};g.appendChild(el);}); }
 
 /* Populate #mDesc <select> dynamically from CCU_PRESETS, grouped by category.
    Also appends custom library entries under a "Custom" group.
@@ -6454,7 +6506,7 @@ function inspBuildLocs(selId){
     el.className = 'insp-loc' + (loc.id === selId ? ' sel' : '');
     el.style.setProperty('--lc', getLocBase(loc.id));
     el.dataset.lid = loc.id;
-    el.innerHTML = `<span class="insp-loc-dot"></span><span class="insp-loc-name">${loc.name}</span>`;
+    el.innerHTML = `<span class="insp-loc-dot"></span><span class="insp-loc-name">${escHtml(loc.name)}</span>`;
     el.onclick = () => {
       if(!isOperator()) return;
       const c = S.cargo.find(x => x.id === inspSelId);
@@ -6827,8 +6879,8 @@ function bindInspector(){
       if(!isOperator() || inspSelId == null) return;
       const c = S.cargo.find(x => x.id === inspSelId);
       if(!c) return;
-      const v = parseFloat(wt.value);
-      c.wt = isNaN(v) ? 0 : v;
+      const v = parseFloat(String(wt.value).replace(',', '.'));
+      c.wt = Number.isFinite(v) && v >= 0 ? v : 0;   /* v3.37 — no negative tonnes */
       /* Weight change only affects stats — no need to re-render cargo blocks */
       if(typeof updateStats === 'function') updateStats();
       if(typeof buildActiveLocStrip === 'function') buildActiveLocStrip();
@@ -6960,7 +7012,7 @@ function bindInspector(){
     if(!isOperator() || inspSelId == null) return;
     const c = S.cargo.find(x => x.id === inspSelId);
     if(!c) return;
-    _rotateCargo(c);
+    if(!_rotateCargo(c)) return;
     renderAll(); kbSelect(inspSelId); checkSeg(); save();
   });
 
@@ -7096,7 +7148,7 @@ function bindModal(){
       }
     }
     c.desc=newDesc;
-    c.wt=parseFloat(document.getElementById('mWT').value)||0;
+    c.wt=Math.max(0, parseFloat(String(document.getElementById('mWT').value).replace(',', '.'))||0);   /* v3.37 */
     const sl=document.getElementById('mLocGrid').querySelector('.mdl-loc.sel');
     c.platform=sl?sl.dataset.lid:(S.selLoc||S.activeLocs[0]||_defaultLocId());
     ensureLocActive(c.platform);   /* keep a location chosen in the editor in the active strip */
@@ -7143,7 +7195,7 @@ function makeLibCard(item, allItems, list){
     <span class="lc-edit" title="Rename">✎</span>
     <div class="lc-cat">${item.cat}</div>
     ${alias
-      ? `<div class="lc-alias">${alias}</div><div class="lc-orig">${item.name}</div>`
+      ? `<div class="lc-alias">${escHtml(alias)}</div><div class="lc-orig">${escHtml(item.name)}</div>`
       : `<div class="lc-nm">${item.name}${approx}</div>`
     }
     <div class="lc-dim">${dimStr}${dimStr&&item.wt?' · ':''}${item.wt?item.wt+'T':''}</div>`;
@@ -7194,7 +7246,7 @@ function makeLibCard(item, allItems, list){
     const dimLabel = item.length_m != null
       ? ` · ${item.length_m.toFixed(2)}×${item.width_m.toFixed(2)} m` : '';
     document.getElementById('hint').innerHTML =
-      t('hint_place', alias||item.name, dimLabel);
+      t('hint_place', escHtml(alias||item.name), dimLabel);
   });
 
   return el;
@@ -7351,7 +7403,7 @@ function buildCustList(){
     const dimStr=item.length_m!=null?`${item.length_m.toFixed(2)}×${item.width_m.toFixed(2)} m`:'';
     const el=document.createElement('div');el.className='lc';el.dataset.ci=i;
     el.innerHTML=`<div class="lc-cat">Custom</div>
-      ${alias?`<div class="lc-alias">${alias}</div><div class="lc-orig">${item.name}</div>`:`<div class="lc-nm">${item.name}</div>`}
+      ${alias?`<div class="lc-alias">${escHtml(alias)}</div><div class="lc-orig">${escHtml(item.name)}</div>`:`<div class="lc-nm">${escHtml(item.name)}</div>`}
       <div class="lc-dim">${dimStr}${dimStr?' · ':''}${item.wt||0}T</div>`;
     list.appendChild(el);
   });
@@ -7360,7 +7412,7 @@ function buildCustList(){
     const item=S.customLib[+card.dataset.ci];if(!item)return;
     document.querySelectorAll('.lc,.dgc').forEach(c=>c.classList.remove('sel'));
     card.classList.add('sel');S.pending={type:'cargo',item};
-    document.getElementById('hint').innerHTML=t('hint_place', LIB_PREFS.aliases[libKey(item)]||item.name, '');
+    document.getElementById('hint').innerHTML=t('hint_place', escHtml(LIB_PREFS.aliases[libKey(item)]||item.name), '');
   };
 }
 function cancelPending(){_cpExitPlacing();S.pending=null;document.querySelectorAll('.lc,.dgc,.asco-qitem').forEach(c=>c.classList.remove('sel','selected-q'));document.getElementById('hint').innerHTML=t('hint_select');updateDGZones();}
@@ -7586,7 +7638,10 @@ function _takeSnapshot(){
   return JSON.stringify({
     cargo: S.cargo, activeLocs: S.activeLocs, selLoc: S.selLoc,
     customLib: S.customLib, customLocs: S.customLocs,
-    voyRemarks: S.voyRemarks, dynColors: DYN_COLORS
+    voyRemarks: S.voyRemarks, dynColors: DYN_COLORS,
+    /* v3.37 — the import queue is part of history: undoing a placement from
+       the queue puts the lift back in the queue instead of losing it */
+    queue: (typeof IMPORT_QUEUE !== 'undefined') ? IMPORT_QUEUE : []
   });
 }
 
@@ -7597,6 +7652,18 @@ function seedHistoryBaseline(){
   _undoStack = [];
   _redoStack = [];
   _updateUndoButtons();
+}
+
+/* v3.37 — a pure import-queue change (import, remove from queue) is not an
+   undo step, but the history baseline must know the queue — otherwise the
+   next undo would put back an older (often empty) queue. */
+function _historyRebaseQueue(){
+  if(_lastCommitted === null) return;
+  try{
+    const b = JSON.parse(_lastCommitted);
+    b.queue = (typeof IMPORT_QUEUE !== 'undefined') ? IMPORT_QUEUE : [];
+    _lastCommitted = JSON.stringify(b);
+  }catch(e){}
 }
 
 function _pushUndo(){
@@ -7763,10 +7830,17 @@ function _restoreSnapshot(snap){
   S.voyRemarks = snap.voyRemarks;
   Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]);
   Object.assign(DYN_COLORS, snap.dynColors);
+  if(Array.isArray(snap.queue) && typeof IMPORT_QUEUE !== 'undefined'){
+    IMPORT_QUEUE.length = 0; snap.queue.forEach(q => IMPORT_QUEUE.push(q));
+    try{ buildQueueList(); updateQueueBadge(); if(typeof cpRenderQueue === 'function') cpRenderQueue(); }catch(e){}
+  }
   renderAll(); updateStats(); updateDGSummary();
   buildActiveLocStrip(); checkSeg();
   savePlan();
   _dirty = true; _updateSaveIndicator();
+  /* v3.37 — undo / redo are edits too: publish them to the other PC */
+  try{ dcPlanChanged(); }catch(e){}
+  _syncPushDebounced();
 }
 
 function _updateUndoButtons(){
@@ -7804,6 +7878,125 @@ const TauriFileAdapter = {
     return LocalStorageAdapter.list();
   }
 };
+
+/* ══════════════════════════════════════════════════════════
+   PLAN VALIDATION + STAGED APPLY (v3.37)
+   Every way a whole plan enters the app — launch, Open, backups, the
+   other bridge PC, sync-panel restore — goes through _validatePlan (a
+   normalised deep copy or a reason) and _applyPlan (snapshot → apply →
+   render; anything throws → the previous plan is put back). A bad file
+   can no longer half-replace the plan or stop the app from starting.
+══════════════════════════════════════════════════════════ */
+const _PLAN_BAD_KEYS = ['__proto__', 'constructor', 'prototype'];
+const _isObj = o => !!o && typeof o === 'object' && !Array.isArray(o);
+const _finNum = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v);
+function _planDict(o){
+  const r = {};
+  if(!_isObj(o)) return r;
+  for(const k of Object.keys(o)){
+    if(_PLAN_BAD_KEYS.includes(k)) continue;
+    const v = o[k];
+    if(typeof v === 'string' || typeof v === 'number') r[k] = v;
+  }
+  return r;
+}
+function _planCopy(v){
+  return JSON.parse(JSON.stringify(v, (k, val) => _PLAN_BAD_KEYS.includes(k) ? undefined : val));
+}
+function _validatePlan(src){
+  const fail = error => ({ ok: false, error });
+  if(!_isObj(src)) return fail('not a Decargo plan');
+  let d;
+  try{ d = _planCopy(src); }catch(e){ return fail('unreadable plan'); }
+  const p = {};
+  if(d.cargo != null && !Array.isArray(d.cargo)) return fail('the cargo list is damaged');
+  p.cargo = [];
+  let n = 0;
+  for(const c of (d.cargo || [])){
+    n++;
+    if(!_isObj(c)) return fail('cargo entry ' + n + ' is damaged');
+    for(const k of ['x','y','w','h','length_m','width_m','wt']){
+      if(c[k] != null && c[k] !== '' && !_finNum(c[k])) return fail('cargo entry ' + n + ': ' + k + ' is not a number');
+    }
+    for(const k of ['length_m','width_m']){
+      if(c[k] != null && c[k] !== '' && !(+c[k] > 0 && +c[k] <= 200)) return fail('cargo entry ' + n + ': size out of range');
+    }
+    if(c.id == null || c.id === '') c.id = Date.now() + '-' + n + '-' + Math.random().toString(36).slice(2, 7);
+    c.x = +c.x || 0; c.y = +c.y || 0;
+    if(c.wt != null && c.wt !== ''){ const w = +c.wt; c.wt = Number.isFinite(w) && w >= 0 ? w : 0; }
+    if(c.dgClasses != null && !Array.isArray(c.dgClasses)) c.dgClasses = [];
+    p.cargo.push(c);
+  }
+  for(const k of ['customLib', 'customLocs']){
+    if(d[k] != null && !Array.isArray(d[k])) return fail(k + ' is damaged');
+    p[k] = (d[k] || []);
+    if(p[k].some(x => !_isObj(x))) return fail(k + ' has a damaged entry');
+  }
+  if(p.customLocs.some(l => l.id == null || typeof l.name !== 'string')) return fail('a custom location is damaged');
+  p.activeLocs = Array.isArray(d.activeLocs) ? d.activeLocs.filter(x => typeof x === 'string' || typeof x === 'number') : [];
+  p.selLoc = (typeof d.selLoc === 'string' || typeof d.selLoc === 'number') ? d.selLoc : null;
+  p.voyage = typeof d.voyage === 'string' ? d.voyage : (d.voyage == null ? '' : String(d.voyage));
+  p.voyRemarks = typeof d.voyRemarks === 'string' ? d.voyRemarks : '';
+  p.date = (typeof d.date === 'string' && !isNaN(new Date(d.date))) ? d.date : null;
+  p.dynColors = _planDict(d.dynColors);
+  p.cargoColors = d.cargoColors == null ? null : _planDict(d.cargoColors);
+  p.locColors = d.locColors == null ? null : _planDict(d.locColors);
+  p.loadList = (d.loadList && typeof d.loadList === 'object') ? d.loadList : null;
+  p.zoomLevel = _finNum(d.zoomLevel) ? +d.zoomLevel : null;
+  p.vessel = _isObj(d.vessel) ? { id: d.vessel.id != null ? String(d.vessel.id) : '', name: d.vessel.name != null ? String(d.vessel.name) : '' } : null;
+  if(_isObj(d.vesselProfile)) p.vesselProfile = d.vesselProfile;
+  return { ok: true, plan: p };
+}
+
+function _captureState(){
+  return _planCopy({
+    cargo: S.cargo, customLib: S.customLib, customLocs: S.customLocs, activeLocs: S.activeLocs, selLoc: S.selLoc,
+    voyage: (document.getElementById('voyIn') || {}).value || '', date: selDate ? selDate.toISOString() : null,
+    dynColors: DYN_COLORS, cargoColors: CARGO_COLORS, locColors: S.locColors, voyRemarks: S.voyRemarks || '', loadList: S.loadList || null,
+  });
+}
+function _setDict(target, src){ Object.keys(target).forEach(k => delete target[k]); Object.assign(target, src || {}); }
+function _restoreState(st){
+  S.cargo = st.cargo || []; S.customLib = st.customLib || []; S.customLocs = st.customLocs || [];
+  S.activeLocs = st.activeLocs || S.activeLocs; S.selLoc = st.selLoc;
+  const vi = document.getElementById('voyIn'); if(vi) vi.value = st.voyage || '';
+  if(st.date){ selDate = new Date(st.date); }
+  _setDict(DYN_COLORS, st.dynColors); _setDict(CARGO_COLORS, st.cargoColors); _setDict(S.locColors, st.locColors);
+  S.voyRemarks = st.voyRemarks || ''; S.loadList = st.loadList || null;
+  _planRebuildUI();
+}
+function _planRebuildUI(){
+  initDynColors(); setDateDisplay(); loadLibPrefs(); buildCustList();
+  buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
+  renderAll(); updateStats(); updateDGSummary();
+}
+
+/* opts: { zoom, ui:false (launch: init builds the UI itself) } */
+function _applyPlan(p, opts = {}){
+  const before = _captureState();
+  try{
+    /* the plan's vessel first: its geometry decides where cargo may stand */
+    if(opts.ui !== false) _vesselForPlan(p);
+    S.cargo = p.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo);
+    S.customLib = p.customLib; S.customLocs = p.customLocs;
+    if(p.activeLocs.length) S.activeLocs = p.activeLocs;
+    if(p.selLoc != null) S.selLoc = p.selLoc;
+    const vi = document.getElementById('voyIn'); if(vi) vi.value = p.voyage;
+    if(p.date){ selDate = new Date(p.date); if(isNaN(selDate)) selDate = new Date(); }
+    _setDict(DYN_COLORS, p.dynColors);
+    if(p.cargoColors) _setDict(CARGO_COLORS, p.cargoColors);
+    if(p.locColors) _setDict(S.locColors, p.locColors);
+    S.voyRemarks = p.voyRemarks;
+    S.loadList = p.loadList;
+    if(opts.zoom && p.zoomLevel) applyZoom(p.zoomLevel);
+    if(opts.ui !== false) _planRebuildUI();
+    return true;
+  }catch(e){
+    console.error('[plan] apply failed — previous plan restored', e);
+    try{ _restoreState(before); }catch(e2){ console.error('[plan] rollback failed', e2); }
+    return false;
+  }
+}
 
 /* ══════════════════════════════════════════════════════════
    DURABLE AUTOSAVE + BACKUPS (v3.36)
@@ -7885,13 +8078,18 @@ async function _durableBoot(hadStoredPlan){
        the newer copy; the file wins only when the store is empty or older
        (store reset, quota failure) */
     _dur.booted = true;
+    let recovered = false;
     const recover = (!hadStoredPlan || fileAt > storedAt + 5000)
       && env && env.plan && Array.isArray(env.plan.cargo) && env.plan.cargo.length;
     if(recover){
       if(hadStoredPlan && S.cargo.length) await _backupBefore('recover');   /* keep the older store copy too */
-      if(_applyProjectData(text, 'autosave', true)) showToast('Plan recovered from the Decargo backup folder', 'ok');
+      if(_applyProjectData(text, 'autosave', true)){ recovered = true; showToast('Plan recovered from the Decargo backup folder', 'ok'); }
     }
     if(S.cargo.length) await _backupBefore('launch');
+    if(window._decargoBootRejected && !recovered){
+      showToast('The saved plan could not be read and was set aside \u2014 pick a backup to restore', 'warn');
+      openBackupRestore();
+    }
   }catch(e){
     console.warn('[Autosave] boot check failed:', e);
   }finally{
@@ -7978,6 +8176,7 @@ function _buildEnvelope() {
       cargoColors: CARGO_COLORS,
       locColors:  S.locColors,
       voyRemarks: S.voyRemarks || '',
+      loadList:   S.loadList || null,   /* v3.37 — was missing: Save / Save As dropped the load list */
       zoomLevel:  zoomLevel,
       vessel:     VESSEL ? { id: VESSEL.id, name: VESSEL.name } : null
     }
@@ -8189,50 +8388,32 @@ function openProjectFile() {
 }
 
 function _applyProjectData(jsonString, fileName, quiet) {
-  try {
-    let envelope = JSON.parse(jsonString);
-    if (!envelope || typeof envelope !== 'object') throw new Error('not a Decargo project');
-    if (envelope._schema > PLAN_SCHEMA_CURRENT) {
-      showToast('This plan was saved by a newer Decargo — update the app to open it', 'warn');
-      return false;
-    }
-    if (envelope._schema < PLAN_SCHEMA_CURRENT) {
-      envelope = migratePlan(envelope);
-    }
-    /* validate BEFORE touching the current plan — a bad file must not
-       half-replace it */
-    if (!envelope || !envelope.plan || typeof envelope.plan !== 'object') throw new Error('not a Decargo project');
-    if (envelope.plan.cargo && !Array.isArray(envelope.plan.cargo)) throw new Error('cargo is not a list');
-    if ((envelope.plan.cargo || []).some(c => !c || typeof c !== 'object' || Array.isArray(c))) throw new Error('damaged cargo entry');
-    const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
-    if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
-    _vesselForPlan(d);
-    if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
-    if (d.voyage) document.getElementById('voyIn').value = d.voyage;
-    if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
-    if (d.selLoc) S.selLoc = d.selLoc;
-    if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
-    if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
-    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
-    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
-    if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
-    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
-    if (d.zoomLevel) applyZoom(d.zoomLevel);
-
-    initDynColors(); setDateDisplay(); loadLibPrefs();
-    buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
-    renderAll(); updateStats(); updateDGSummary();
-    LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
-    seedHistoryBaseline(); checkSeg();   /* new project = new history */
-    _dirty = false; _updateSaveIndicator();
-    if (!quiet) showToast('Project loaded \u2014 ' + fileName, 'ok');
-    return true;
-  } catch (err) {
-    console.error('[Project] Load error:', err);
-    showToast('Invalid project file', 'warn');
+  let envelope;
+  try { envelope = JSON.parse(jsonString); } catch (e) { envelope = null; }
+  if (!_isObj(envelope)) { showToast('Invalid project file', 'warn'); return false; }
+  if (envelope._schema > PLAN_SCHEMA_CURRENT) {
+    showToast('This plan was saved by a newer Decargo \u2014 update the app to open it', 'warn');
     return false;
   }
+  if (envelope._schema < PLAN_SCHEMA_CURRENT) {
+    try { envelope = migratePlan(envelope); } catch (e) { envelope = null; }
+  }
+  const v = _validatePlan(envelope && envelope.plan);
+  if (!v.ok) {
+    console.warn('[Project] rejected:', v.error);
+    showToast('Invalid project file \u2014 ' + v.error, 'warn');
+    return false;
+  }
+  if (!_applyPlan(v.plan, { zoom: true })) {
+    showToast('Could not open this plan \u2014 your current plan is unchanged', 'warn');
+    return false;
+  }
+  envelope.plan = v.plan;
+  LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
+  seedHistoryBaseline(); checkSeg();   /* new project = new history */
+  _dirty = false; _updateSaveIndicator();
+  if (!quiet) showToast('Project loaded \u2014 ' + fileName, 'ok');
+  return true;
 }
 
 /* ── Auto-detect Tauri runtime ──────────────────────────── */
@@ -8299,27 +8480,8 @@ function _refreshLocUI(){
 
 function savePlan(key) {
   key = key || PLAN_DEFAULT_KEY;
-  const envelope = {
-    _schema:     PLAN_SCHEMA_CURRENT,
-    _savedAt:    new Date().toISOString(),
-    _appVersion: (typeof CURRENT_BUILD !== 'undefined' ? CURRENT_BUILD : 'v3.0.0'),
-    name:        document.getElementById('voyIn').value || 'Untitled Plan',
-    plan: {
-      cargo:      S.cargo,
-      customLib:  S.customLib,
-      customLocs: S.customLocs,
-      voyage:     document.getElementById('voyIn').value,
-      activeLocs: S.activeLocs,
-      selLoc:     S.selLoc,
-      date:       selDate.toISOString(),
-      dynColors:  DYN_COLORS,
-      cargoColors: CARGO_COLORS,
-      locColors:  S.locColors,
-      voyRemarks: S.voyRemarks || '',
-      loadList:   S.loadList || null,
-      vessel:     VESSEL ? { id: VESSEL.id, name: VESSEL.name } : null
-    }
-  };
+  /* v3.37 — one envelope builder for autosave, files, backups and sync */
+  const envelope = _buildEnvelope();
   _planAdapter.save(key, envelope);
   /* Dual-write to legacy key for rollback safety — if user reverts to an older
      HTML file, their data is still accessible under the old key. */
@@ -8355,27 +8517,27 @@ function loadPlan(key) {
     return false;
   }
 
-  /* Run migrations if data is from an older schema */
-  if (envelope._schema < PLAN_SCHEMA_CURRENT) {
-    envelope = migratePlan(envelope);
-    _planAdapter.save(key, envelope);
+  /* v3.37 — a stored plan that cannot be read must never stop the app
+     from starting: set it aside, start empty, offer the backups. */
+  let v;
+  try {
+    if (envelope._schema > PLAN_SCHEMA_CURRENT) throw new Error('saved by a newer Decargo');
+    if (envelope._schema < PLAN_SCHEMA_CURRENT) {
+      envelope = migratePlan(envelope);
+      _planAdapter.save(key, envelope);
+    }
+    v = _validatePlan(envelope && envelope.plan);
+    if (!v.ok) throw new Error(v.error);
+    if (!_applyPlan(v.plan, { zoom: true, ui: false })) throw new Error('could not be applied');
+  } catch (e) {
+    console.error('[loadPlan] stored plan rejected:', e);
+    try { localStorage.setItem('decargo_rejectedPlan', JSON.stringify({ at: new Date().toISOString(), reason: String(e && e.message || e), envelope })); } catch (_e) {}
+    try { _planAdapter.delete(key); } catch (_e) {}
+    window._decargoBootRejected = String(e && e.message || e);
+    setDateDisplay();
+    loadLibPrefs();
+    return false;
   }
-
-  /* Apply plan data to app state */
-  const d = envelope.plan;
-  if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
-  if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
-  if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
-  if (d.voyage) document.getElementById('voyIn').value = d.voyage;
-  if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
-  if (d.selLoc) S.selLoc = d.selLoc;
-  if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
-  if (d.dynColors) Object.assign(DYN_COLORS, d.dynColors);
-  if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
-  if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
-  if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
-    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
-  if (d.zoomLevel) applyZoom(d.zoomLevel);
 
   /* Legacy scale warning for data imported from scaleVer < 2 */
   if (envelope._legacyScaleWarn) _showScaleWarning();
@@ -9089,7 +9251,7 @@ function parseASCOSheet(sheetName, sheetData){
      CCU / estimated-weight columns (v3.14.2 — the 2026 layout put the CCU
      number in a blank 'CCU Test Date' column and lost every unit code). */
   let descCol = COL_DESC, wtCol = COL_WT, ccuCol = COL_CCU, hazCol = COL_HAZARD;
-  let headerRow = -1;
+  let headerRow = -1, wtHeader = '';
   for(let ri = 0; ri < Math.min(sheetData.length, 30); ri++){
     const row = (sheetData[ri] || []).map(normCell);
     const di = row.findIndex(cv => cv === 'description' || cv === 'item description');
@@ -9099,7 +9261,7 @@ function parseASCOSheet(sheetName, sheetData){
     const find = test => row.findIndex((cv, ci) => ci > di && test(cv));
     let wi = find(cv => cv.startsWith('est wt') || cv.startsWith('estimated w'));
     if(wi < 0) wi = find(cv => /\bwt\b/.test(cv) && !/gross|actual/.test(cv));
-    if(wi >= 0) wtCol = wi;
+    if(wi >= 0){ wtCol = wi; wtHeader = row[wi] || ''; }
     const ci = find(cv => /^ccu\b/.test(cv) && !/test|date/.test(cv));
     if(ci >= 0) ccuCol = ci;
     const hi = find(cv => cv.startsWith('hazard'));
@@ -9139,8 +9301,9 @@ function parseASCOSheet(sheetName, sheetData){
     const rawWt = row[wtCol];
     let wt = 0;
     if(rawWt != null && rawWt !== ''){
-      const parsed = parseFloat(String(rawWt).replace(/[^0-9.]/g, ''));
-      if(!isNaN(parsed)) wt = parsed;
+      /* v3.37 — locale-aware ("2,5" = 2.5 t, "1,250 kg" = 1.25 t); ASCO
+         "Est Wt" is in tonnes unless the cell or header says kg */
+      wt = parseWeightTonnes(rawWt, wtHeader, null);
     }
 
     /* CCU */
@@ -9674,7 +9837,7 @@ function performAscoImport(){
     const q = IMPORT_QUEUE[i];
     if(!fileLocs.has(q.locId)) continue;
     const qk1 = ccuKey(q.ccu), qk2 = _descKey(q.name, q.wt, q.locId);
-    if(!(fileBag.take(qk1) || fileBag.take(qk2))){ IMPORT_QUEUE.splice(i, 1); removedStale++; }
+    if(!(fileBag.take(qk1) || fileBag.take(qk2))){ IMPORT_QUEUE.splice(i, 1); removedStale++; _historyRebaseQueue(); }
   }
 
   /* Classify EVERY row in file order (same pass as the preview), so the
@@ -9722,6 +9885,7 @@ function performAscoImport(){
   });
 
   updateLoadListProgress(); savePlan();   /* persist the load list */
+  _historyRebaseQueue();
   ascoDiff = { changed: [], dropped: [], byRow: {} };
   _cpEnter = { ids: new Set(added.map(q => q.id)), until: Date.now() + 1400 };
   closeAscoModal();
@@ -9817,12 +9981,13 @@ function buildQueueList(){
     el.querySelector('.asco-qitem-rm').addEventListener('click', e => {
       e.stopPropagation();
       const removed = IMPORT_QUEUE.splice(qi, 1)[0];
+      _historyRebaseQueue();
       buildQueueList();
       updateQueueBadge();
       showUndoToast(
         t('removed_prefix') + (removed.displayName || removed.name || 'item'),
         t('undo'),
-        () => { IMPORT_QUEUE.splice(qi, 0, removed); buildQueueList(); updateQueueBadge(); }
+        () => { IMPORT_QUEUE.splice(qi, 0, removed); _historyRebaseQueue(); buildQueueList(); updateQueueBadge(); }
       );
     });
 
@@ -10228,7 +10393,7 @@ function placeAt(cx, cy, quiet){
 }
 
 /* ── Utility: simple HTML escape ── */
-function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ════════════════════════════════════════════════════════════
    PHASE 14 — PREMIUM TOAST SYSTEM
@@ -11242,33 +11407,39 @@ function bindSaveAs(){
   /* ── Ctrl+S / Ctrl+O keyboard shortcuts ── */
   document.addEventListener('keydown', e=>{
     const mod = e.metaKey || e.ctrlKey;
-    if(!mod) return;
+    if(!mod || e.altKey) return;
+    /* v3.37 — Shift and Caps Lock give "S"/"Z": compare case-insensitively.
+       Ctrl+Z / Y inside a text field undo the typing, not the plan. */
+    const key = String(e.key || '').toLowerCase();
+    const a = document.activeElement;
+    const inText = !!a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+    if(inText && (key === 'z' || key === 'y')) return;
 
-    if(e.key === 's' && e.shiftKey){
+    if(key === 's' && e.shiftKey){
       /* Ctrl+Shift+S → Save As (always dialog) */
       e.preventDefault();
       menuSaveAs();
-    } else if(e.key === 's'){
+    } else if(key === 's'){
       /* Ctrl+S → Save (overwrite or dialog) */
       e.preventDefault();
       menuSave();
-    } else if(e.key === 'o'){
+    } else if(key === 'o'){
       /* Ctrl+O → Open */
       e.preventDefault();
       menuOpen();
-    } else if(e.key === 'z' && !e.shiftKey){
+    } else if(key === 'z' && !e.shiftKey){
       /* Ctrl+Z → Undo */
       e.preventDefault();
       undo();
-    } else if(e.key === 'z' && e.shiftKey){
+    } else if(key === 'z' && e.shiftKey){
       /* Ctrl+Shift+Z → Redo */
       e.preventDefault();
       redo();
-    } else if(e.key === 'y'){
+    } else if(key === 'y'){
       /* Ctrl+Y → Redo (Windows convention) */
       e.preventDefault();
       redo();
-    } else if(e.key === 'p' && !e.shiftKey){
+    } else if(key === 'p' && !e.shiftKey){
       /* Ctrl+P → Print deck plan report */
       e.preventDefault();
       printDeckPlan();
@@ -11733,7 +11904,7 @@ function cpRenderQueue(){
     rm.addEventListener('mousedown',e=>e.stopPropagation());
     rm.addEventListener('click',e=>{
       e.stopPropagation();
-      if(realIdx>=0) IMPORT_QUEUE.splice(realIdx,1);
+      if(realIdx>=0){ IMPORT_QUEUE.splice(realIdx,1); _historyRebaseQueue(); }
       updateQueueBadge(); cpRenderQueue();
     });
     card.appendChild(rm);
@@ -12387,7 +12558,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
   /* ── F1: Drag from library card onto deck canvas ── */
   const pendingItem = {
     type: 'cargo',
-    item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:parseFloat(wt)||0, length_m:item.length_m, width_m:item.width_m,
+    item: { cat:item.cat, name:displayName, key:itemKey, w:pw, h:ph, wt:Math.max(0, parseFloat(wt)||0), length_m:item.length_m, width_m:item.width_m,
             pipe:item.pipe, special:item.special, outline:item.outline, ht:item.ht }
   };
 
@@ -12989,7 +13160,7 @@ function kbHandleKey(e){
     e.preventDefault();
     const cargo = S.cargo.find(c => String(c.id) === String(KB_SEL));
     if(!cargo) return;
-    _rotateCargo(cargo);
+    if(!_rotateCargo(cargo)) return;
     const _rotId = KB_SEL;
     renderAll();
     kbSelect(KB_SEL);  /* re-apply ring after renderAll */
@@ -14085,15 +14256,15 @@ function runManifestMatch(){
   /* 1. Unplaced — in queue but not on deck */
   mkGroup('warn',t('match_unplaced'),'warn', unplaced, (row, {q}) => {
     const locName = q.locId ? (locById(q.locId)||{name:q.locId}).name : (q.displayName||'');
-    row.innerHTML = `<div class="cp-match-ccu">${q.ccu||q.name||'—'}</div>
-      <div class="cp-match-detail">${q.name||''} · ${q.wt||0}T${locName?' · '+locName:''}</div>`;
+    row.innerHTML = `<div class="cp-match-ccu">${escHtml(q.ccu||q.name||'—')}</div>
+      <div class="cp-match-detail">${escHtml(q.name||'')} · ${escHtml(q.wt||0)}T${locName?' · '+escHtml(locName):''}</div>`;
   });
 
   /* 2. Mismatch — on deck with different params */
   mkGroup('err',t('match_mismatch'),'err', mismatch, (row, {q, diffs}) => {
-    row.innerHTML = `<div class="cp-match-ccu">${q.ccu||q.name||'—'}</div>
-      <div class="cp-match-detail">${q.name||''}
-        <div class="cp-match-diff">${diffs.join('<br>')}</div>
+    row.innerHTML = `<div class="cp-match-ccu">${escHtml(q.ccu||q.name||'—')}</div>
+      <div class="cp-match-detail">${escHtml(q.name||'')}
+        <div class="cp-match-diff">${diffs.map(escHtml).join('<br>')}</div>
       </div>`;
     /* Click to highlight on deck */
     const c = deckByCcu.get((q.ccu||'').toUpperCase());
@@ -14108,8 +14279,8 @@ function runManifestMatch(){
   /* 3. Extra — on deck but not in ASCO */
   mkGroup('extra',t('match_extra'),'extra', extra, (row, {c}) => {
     const loc = locById(c.platform);
-    row.innerHTML = `<div class="cp-match-ccu">${c.ccu||'—'}</div>
-      <div class="cp-match-detail">${c.desc||''} · ${c.wt||0}T${loc?' · '+loc.name:''}</div>`;
+    row.innerHTML = `<div class="cp-match-ccu">${escHtml(c.ccu||'—')}</div>
+      <div class="cp-match-detail">${escHtml(c.desc||'')} · ${escHtml(c.wt||0)}T${loc?' · '+escHtml(loc.name):''}</div>`;
     row.addEventListener('click', ()=>{
       const el = document.querySelector(`.cb[data-id="${c.id}"]`);
       if(el){ el.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -14120,8 +14291,8 @@ function runManifestMatch(){
 
   /* 4. OK — matched */
   mkGroup('ok',t('match_ok'),'ok', ok, (row, {q}) => {
-    row.innerHTML = `<div class="cp-match-ccu">${q.ccu||q.name||'—'}</div>
-      <div class="cp-match-detail">${q.name||''} · ${q.wt||0}T</div>`;
+    row.innerHTML = `<div class="cp-match-ccu">${escHtml(q.ccu||q.name||'—')}</div>
+      <div class="cp-match-detail">${escHtml(q.name||'')} · ${escHtml(q.wt||0)}T</div>`;
   });
 
   if(unplaced.length === 0 && mismatch.length === 0 && extra.length === 0){
@@ -15323,8 +15494,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.36.0';
-const APP_VERSION   = '3.36.0';
+const CURRENT_BUILD = 'v3.37.0';
+const APP_VERSION   = '3.37.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16057,7 +16228,7 @@ function bindContextMenu(){
     if(action === 'edit'){
       openModal(cargo.id);
     } else if(action === 'rotate'){
-      _rotateCargo(cargo);
+      if(!_rotateCargo(cargo)) return;
       renderAll(); updateStats(); checkSeg(); save();
     } else if(action === 'duplicate'){
       const _spot=findFreeSpot(cargo.x+cargo.w+5,cargo.y,cargo.w,cargo.h);const nc={...cargo, id:Date.now()+Math.random(), x:_spot.x, y:_spot.y};
@@ -17422,16 +17593,8 @@ function _syncHandleConflict(conflict){
     _syncApplyRemote(conflict.remoteState);
   });
 
-  /* Folder sync waits for the officer's decision (nothing is lost while it
-     waits: edits stay local and unpublished). Cloud: keep local after 30 s. */
-  if(conflict.accept) return;
-  setTimeout(() => {
-    if(document.getElementById('syncConflictBar')){
-      document.getElementById('syncConflictBar').remove();
-      _syncLog('info', 'Conflict auto-resolved: keeping local (timeout)');
-      conflict.resolve(_syncPlanForPush());
-    }
-  }, 30000);
+  /* v3.37 — every conflict waits for the officer's decision. The old 30 s
+     "keep local" timeout silently overwrote the other computer's plan. */
 }
 
 function _syncUpdateUI(status){
@@ -17496,24 +17659,21 @@ function _syncApplyRemoteVessel(rp){
 }
 
 function _syncApplyRemote(remoteState, meta){
-  if(!remoteState) return;
+  if(!remoteState) return false;
+  const v = _validatePlan(remoteState);
+  if(!v.ok){
+    console.warn('[sync] remote plan rejected:', v.error);
+    if(typeof _syncLog === 'function') _syncLog('error', 'Remote plan rejected: ' + v.error);
+    showToast('The plan from ' + (meta && meta.writer ? meta.writer : 'the other computer') + ' could not be read \u2014 yours is unchanged', 'warn');
+    return false;
+  }
   _backupBefore('remote plan');          /* v3.36 — keep ours before theirs replaces it */
-  if(remoteState.cargo){ S.cargo = remoteState.cargo; _normalizeCargoGeometry(S.cargo); }
-  if(remoteState.customLib) S.customLib = remoteState.customLib;
-  if(remoteState.customLocs && Array.isArray(remoteState.customLocs)) S.customLocs = remoteState.customLocs;
-  if(remoteState.activeLocs && remoteState.activeLocs.length) S.activeLocs = remoteState.activeLocs;
-  if(remoteState.selLoc) S.selLoc = remoteState.selLoc;
-  if(remoteState.voyage) document.getElementById('voyIn').value = remoteState.voyage;
-  if(remoteState.date){ selDate = new Date(remoteState.date); if(isNaN(selDate)) selDate = new Date(); }
-  if(remoteState.dynColors){ Object.keys(DYN_COLORS).forEach(k=>delete DYN_COLORS[k]); Object.assign(DYN_COLORS, remoteState.dynColors); }
-  if(remoteState.cargoColors){ Object.keys(CARGO_COLORS).forEach(k=>delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, remoteState.cargoColors); }
-  if(remoteState.locColors){ Object.keys(S.locColors).forEach(k=>delete S.locColors[k]); Object.assign(S.locColors, remoteState.locColors); }
-  if(remoteState.voyRemarks) S.voyRemarks = remoteState.voyRemarks;
-  if('loadList' in remoteState) S.loadList = remoteState.loadList || null;
+  /* the vessel profile first — the cargo is placed on its geometry */
   _syncApplyRemoteVessel(remoteState.vesselProfile);
-  initDynColors(); setDateDisplay();
-  buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
-  renderAll(); updateStats(); updateDGSummary();
+  if(!_applyPlan(v.plan)){
+    showToast('Could not apply the plan from the other computer \u2014 yours is unchanged', 'warn');
+    return false;
+  }
   /* Remote state is the new baseline; undo must not revert (and re-sync)
      another device's change. */
   seedHistoryBaseline(); checkSeg();
@@ -17522,6 +17682,7 @@ function _syncApplyRemote(remoteState, meta){
   try{ savePlan(); }catch(e){}
   if(typeof playSound === 'function') playSound('sync');
   showToast('Plan updated from ' + (meta && meta.writer ? meta.writer : 'the other computer'), 'ok');
+  return true;
 }
 
 /* ── Sync config storage — password stored separately in encrypted store ── */
@@ -17629,7 +17790,7 @@ function _syncWireCallbacks(){
   Sync.onRemoteUpdate((state, meta) => {
     /* Local edits still waiting in the 3 s push debounce must not be wiped
        silently: ask the operator which version wins instead. */
-    if(_syncPushTimer && isOperator()){
+    if(_syncPushTimer && isOperator() && Sync.getMode() !== 'folder'){
       clearTimeout(_syncPushTimer); _syncPushTimer = null;
       _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, remoteWriter: meta && meta.writer, resolve: plan => Sync.pushState(plan) });
       return;
@@ -17669,8 +17830,8 @@ function _syncDoRestore(){
       const text = await file.text();
       const data = JSON.parse(text);
       const plan = data.plan || data.state || data;
-      if(plan.cargo){
-        _syncApplyRemote(plan);
+      if(plan && plan.cargo){
+        if(!_syncApplyRemote(plan, { writer: 'the backup file' })) return;
         _syncLog('info', 'Restored from backup: ' + file.name);
         showToast('Plan restored from backup', 'ok');
         if(Sync.getSyncStatus() !== 'disabled') _syncPushDebounced();
@@ -17740,6 +17901,7 @@ function bindSyncSettings(){
 
   window.__decargoVersion = APP_VERSION;
   Sync.setStateProvider(_syncPlanForPush);
+  Sync.setPendingProvider(() => !!_syncPushTimer);   /* v3.37 */
   document.querySelectorAll('#syncModeSeg .sync-mode-btn').forEach(b => b.addEventListener('click', () => _syncSetFormMode(b.dataset.mode)));
   document.getElementById('syncPickDir')?.addEventListener('click', _syncPickFolder);
   _syncSetFormMode('folder');

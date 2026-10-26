@@ -5,15 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Decargo — Deck Cargo Planner</title>
 <link rel="icon" type="image/png" href="/src/assets/brand/favicon-32.png">
-<script>
-/* Apply saved theme before first paint — prevents flash */
-(function(){
-  try{
-    var t=localStorage.getItem('spicaTide_theme');
-    if(t==='dark') document.documentElement.setAttribute('data-theme','dark');
-  }catch(e){}
-})();
-</script>
+<!-- v3.37 — external (not inline) so the Content-Security-Policy needs no inline-script exception -->
+<script src="/theme-boot.js"></script>
 <script type="module" src="/src/main.js"></script>
 </head>
 <body>
@@ -193,7 +186,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.36.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.37.0</div>
     </div>
   </div>
 </div>
@@ -221,7 +214,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.36.0<br>
+      Version 3.37.0<br>
       Release: Stable
     </div>
     <div class="about-desc">

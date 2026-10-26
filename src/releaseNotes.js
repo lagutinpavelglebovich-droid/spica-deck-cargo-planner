@@ -11,6 +11,27 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.37.0',
+    date: '2026-10-26',
+    highlights: [ 'Safer plans and sync', 'DG in the NO DG area is flagged' ],
+    changes: [
+      { type: 'fix', text: 'A damaged plan — opened, restored, received from the other PC or stored — can no longer half-replace the plan or stop Decargo from starting; it is set aside and the backups are offered' },
+      { type: 'fix', text: 'Shared folder: when the other PC changes the plan while you have an edit waiting, Decargo always asks which to keep — it no longer overwrites the other PC after 30 seconds' },
+      { type: 'fix', text: 'Undo / redo now reach the other bridge PC' },
+      { type: 'fix', text: 'Save, Save As and backups keep the load list' },
+      { type: 'fix', text: 'Undoing a placement from the import queue puts the lift back in the queue' },
+      { type: 'fix', text: 'Imported weights: "1,250 kg", "2,5 t", "12 500", tonnes over 60 t and negative values are read correctly' },
+      { type: 'feature', text: 'DG cargo standing in a NO DG CARGO area is flagged like a segregation conflict (limited quantities excepted)' },
+      { type: 'fix', text: 'A plan made for another vessel switches to that vessel BEFORE placing its cargo, so nothing moves' },
+      { type: 'fix', text: 'A unit longer than the deck is wide can no longer be turned across it' },
+      { type: 'fix', text: 'Viewer mode keeps the red DG conflict outlines' },
+      { type: 'fix', text: 'Ctrl+Shift+S / Ctrl+Shift+Z work, also with Caps Lock; Ctrl+Z in a text field undoes the typing, not the plan' },
+      { type: 'fix', text: 'The plan date rolls over at midnight only if it was today — a date you picked or an older plan keeps its date' },
+      { type: 'fix', text: 'Dropping a unit after an undo or a remote update mid-drag no longer loses the move; negative weights are refused' },
+      { type: 'improvement', text: 'Security: Content-Security-Policy on, imported names are always shown as text, unused file-system plugin removed, file reads/writes run off the UI thread with size limits' },
+    ],
+  },
+  {
     version: '3.36.0',
     date: '2026-10-26',
     highlights: [ 'Your plan is kept safe' ],
