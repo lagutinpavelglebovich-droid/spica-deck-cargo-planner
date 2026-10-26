@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.37.3',
+    date: '2026-10-26',
+    highlights: [ 'Explosives next to explosives — advisory per GOMO UKCS' ],
+    changes: [
+      { type: 'feature', text: 'Two Class 1 units within 3 MINI of each other now raise an amber advisory: "See introduction of Class 1 for segregations within group" (GOMO UKCS Supplement §2.3). The decision stays with the operator — mark it reviewed once checked' },
+      { type: 'ui', text: 'The DG card names its source: GOMO UKCS Supplement §2.3 segregation table, Rev 3' },
+    ],
+  },
+  {
     version: '3.37.2',
     date: '2026-10-26',
     highlights: [ 'Safer reading of scanned load lists and deck videos' ],

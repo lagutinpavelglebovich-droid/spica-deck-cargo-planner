@@ -2009,6 +2009,12 @@ function normDG(cls){
   return s;
 }
 
+/* Class 1 (any division or bare "1") — segregation within the group is
+   not in the table ("*"), see checkSeg's advisory. */
+function _isClass1(cls){
+  const c = canonDGClass(cls) || String(cls == null ? '' : cls).trim();
+  return c === '1' || /^1\.[1-6]$/.test(c);
+}
 /* Return segregation level (0–3) between two DG classes. */
 function getSeg(a,b){
   if(!a||!b)return 0;
@@ -5615,6 +5621,7 @@ function _renderDGCheckModal(list, all){
   const title = all
     ? `${list.length} DG conflict${list.length === 1 ? '' : 's'} on deck`
     : v.zone ? 'DG cargo in a no-DG area'
+    : v.advisory ? 'Explosives next to explosives — check'
     : lvl >= 3 ? 'Needs a separate compartment' : lvl === 2 ? 'Too close — keep these apart' : 'Keep these a little further apart';
   el.dataset.level = String(lvl);
   el.querySelector('.dgc-title').textContent = title;
@@ -5623,6 +5630,11 @@ function _renderDGCheckModal(list, all){
     el.querySelector('.dgc-fill').style.width = '100%';
     el.querySelector('.dgc-now').innerHTML = `<b>${_dgUnitName(v.a)}</b> is inside`;
     el.querySelector('.dgc-req').textContent = 'Move it aft of the DG LIMIT line';
+  } else if(v.advisory){
+    el.querySelector('.dgc-rule').innerHTML = `${_dgBadge(v.worstA)} <span>within Class 1</span> ${_dgBadge(v.worstB)}`;
+    el.querySelector('.dgc-fill').style.width = '100%';
+    el.querySelector('.dgc-now').innerHTML = `<b>${_dgFmt(v.distM)}</b> apart`;
+    el.querySelector('.dgc-req').textContent = 'See introduction of Class 1 for segregations within group';
   } else {
   el.querySelector('.dgc-rule').innerHTML =
     `${_dgBadge(v.worstA)} <span>${_dgRuleWord[lvl] || 'separated from'}</span> ${_dgBadge(v.worstB)}`;
@@ -5648,6 +5660,17 @@ function _renderDGCheckModal(list, all){
       </table></div>`;
     }
     const nA = DG_CLASS_NAMES[p.worstA] || p.worstA, nB = DG_CLASS_NAMES[p.worstB] || p.worstB;
+    if(p.advisory){
+      return `<div class="dgc-pair">
+      <div class="dgc-pair-h"><b>${_dgUnitName(p.a)}</b> ${_dgBadge(p.worstA)} <span class="dgc-x2">↔</span> <b>${_dgUnitName(p.b)}</b> ${_dgBadge(p.worstB)}<button class="dgc-link" data-show="${i}">Show</button></div>
+      <table>
+        <tr><td>Units</td><td>${escHtml(p.a.desc || '')}${p.a.desc && p.b.desc ? ' · ' : ''}${escHtml(p.b.desc || '')}</td></tr>
+        <tr><td>Classes</td><td>${escHtml(String(p.worstA))} ${escHtml(nA)} · ${escHtml(String(p.worstB))} ${escHtml(nB)}</td></tr>
+        <tr><td>Rule</td><td><b>See introduction of Class 1 for segregations within group</b> — according to Dangerous Goods General Segregation Provisions (GOMO UKCS Supplement §2.3)</td></tr>
+        <tr><td>Distance</td><td><b>${_dgFmt(p.distM)}</b> edge to edge (flagged within 3 MINI)</td></tr>
+        <tr><td>Decision</td><td>Operator / Master — check compatibility groups before stowing together</td></tr>
+      </table></div>`;
+    }
     const rule = SEG_LEVEL_LABEL[p.level] || 'Separated from';
     const comp = p.level >= 3
       ? `<div class="dgc-note">Needs a complete compartment or hold between them. On open deck ${Math.round(p.requiredM * 100) / 100} m (3 MINI) is only a guide — check the stowage with the Master.</div>` : '';
@@ -5656,7 +5679,7 @@ function _renderDGCheckModal(list, all){
       <table>
         <tr><td>Units</td><td>${escHtml(p.a.desc || '')}${p.a.desc && p.b.desc ? ' · ' : ''}${escHtml(p.b.desc || '')}</td></tr>
         <tr><td>Classes</td><td>${escHtml(String(p.worstA))} ${escHtml(nA)} · ${escHtml(String(p.worstB))} ${escHtml(nB)}</td></tr>
-        <tr><td>Rule</td><td><b>${rule}</b> — IMDG Code segregation table (7.2.4)</td></tr>
+        <tr><td>Rule</td><td><b>${rule}</b> — GOMO UKCS Supplement §2.3 segregation table (Rev 3)</td></tr>
         <tr><td>Distance</td><td><b class="dgc-bad">${_dgFmt(p.distM)}</b> edge to edge · required ${_dgFmt(p.requiredM)} (${p.level} MINI × ${mini.toFixed(2)} m)</td></tr>
         <tr><td>Short by</td><td><b>${_dgFmt(Math.max(0, p.requiredM - p.distM))}</b> more clearance</td></tr>
       </table>${comp}</div>`;
@@ -5793,11 +5816,27 @@ function checkSeg(){
           if(l > level){ level = l; worstA = clsA; worstB = clsB; }
         }
       }
-      if(level < 1) continue;
-      const requiredM = segClearanceM(level);
-      const distM     = cargoEdgeDistM(a, b);
-      if(distM < requiredM - SEG_EPS_M){
-        violations.push({ a, b, level, worstA, worstB, distM, requiredM, key: dgPairKey(a.id, b.id) });
+      let flagged = false;
+      if(level >= 1){
+        const requiredM = segClearanceM(level);
+        const distM     = cargoEdgeDistM(a, b);
+        if(distM < requiredM - SEG_EPS_M){
+          violations.push({ a, b, level, worstA, worstB, distM, requiredM, key: dgPairKey(a.id, b.id) });
+          flagged = true;
+        }
+      }
+      /* v3.37.3 — Class 1 next to Class 1: the GOMO UKCS table gives no
+         distance ("*" = see introduction of Class 1 for segregations within
+         group). Not decided by the app: two explosives units within 3 MINI
+         of each other raise an advisory for the operator to check. */
+      if(!flagged){
+        const c1a = a.dgClasses.find(_isClass1), c1b = b.dgClasses.find(_isClass1);
+        if(c1a && c1b){
+          const nearM = segClearanceM(3), distM = cargoEdgeDistM(a, b);
+          if(distM < nearM - SEG_EPS_M){
+            violations.push({ advisory: true, a, b, level: 1, worstA: c1a, worstB: c1b, distM, requiredM: nearM, key: 'c1::' + dgPairKey(a.id, b.id) });
+          }
+        }
       }
     }
   }
@@ -15317,7 +15356,7 @@ const LANG = {
     /* Smart Tools descriptions */
     st_bounce_desc: 'When cargo overlaps after drag — the block smoothly bounces to the nearest free position instead of staying in overlap.',
     st_dgfade_desc: 'On hover over a cargo block — DG and HL badges fade to show the CCU/ID underneath.',
-    st_dgseg_desc:  'When a DG item is placed or edited — automatically checks compatibility against the IMDG segregation matrix. Violations are flagged immediately with pair details.',
+    st_dgseg_desc:  'When a DG item is placed or edited — automatically checks compatibility against the GOMO UKCS segregation table (Rev 3); explosives next to explosives get an advisory. Violations are flagged immediately with pair details.',
     st_gridsnap_desc: 'On drop — gently snaps cargo to the nearest neighbour edge, bay line, or deck boundary within ~0.5 m. One-time assist: no sticky behaviour on subsequent moves.',
 
     /* Manifest Match info modal */
@@ -15395,7 +15434,7 @@ const LANG = {
 
     st_bounce_desc: 'При перекрытии грузов после drag — контейнер мягко отталкивается в ближайшую свободную позицию рядом, а не остаётся в overlap.',
     st_dgfade_desc: 'При наведении на грузовой блок — DG и HL бейджи становятся полупрозрачными, чтобы был виден CCU/ID.',
-    st_dgseg_desc:  'При размещении или редактировании DG груза — автоматическая проверка совместимости по матрице IMDG. Нарушения сегрегации отображаются немедленно.',
+    st_dgseg_desc:  'При размещении или редактировании DG груза — автоматическая проверка совместимости по таблице сегрегации GOMO UKCS (Rev 3); взрывчатка рядом со взрывчаткой — предупреждение. Нарушения сегрегации отображаются немедленно.',
     st_gridsnap_desc: 'При сбросе — контейнер аккуратно выравнивается по ближайшему соседу, границе бэя или палубы в радиусе ~0.5 м. Одноразовый assist: при следующем движении прилипания нет.',
 
     mi_sub:           'ASCO список vs реальная палуба',
@@ -15468,7 +15507,7 @@ const LANG = {
 
     st_bounce_desc: 'Якщо вантажі перекриваються після drag — контейнер плавно відштовхується до найближчої вільної позиції, а не залишається в overlap.',
     st_dgfade_desc: 'При наведенні на вантажний блок — DG та HL бейджі стають напівпрозорими, щоб був видимий CCU/ID.',
-    st_dgseg_desc:  'При розміщенні або редагуванні DG вантажу — автоматична перевірка сумісності за матрицею IMDG. Порушення сегрегації відображаються негайно.',
+    st_dgseg_desc:  'При розміщенні або редагуванні DG вантажу — автоматична перевірка сумісності за таблицею сегрегації GOMO UKCS (Rev 3); вибухові поруч з вибуховими — попередження. Порушення сегрегації відображаються негайно.',
     st_gridsnap_desc: 'При скиданні — вантаж акуратно вирівнюється по найближчому сусіду, межі бею або палуби в радіусі ~0.5 м. Одноразовий assist: при наступному русі прилипання немає.',
 
     mi_sub:           'ASCO список vs реальна палуба',
@@ -15643,8 +15682,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.37.2';
-const APP_VERSION   = '3.37.2';
+const CURRENT_BUILD = 'v3.37.3';
+const APP_VERSION   = '3.37.3';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
