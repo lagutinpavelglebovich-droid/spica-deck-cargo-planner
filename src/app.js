@@ -8350,18 +8350,25 @@ async function openPlanFromFile() {
    overwrite it), and a plan double-clicked while Decargo is already running
    arrives from the single-instance plugin and opens in this window. The
    plan on deck is backed up first, as for File → Open. */
+const _launchOpen = { ready: false, queue: [] };
+async function _launchOpenIt(p){
+  if(!p) return;
+  try{ await _openPlanPath(p); }
+  catch(e){ showToast('Could not open ' + String(p).split(/[/\\]/).pop() + ' \u2014 ' + (e && e.message || e), 'warn'); }
+}
+/* the listener is registered at start-up (events are not replayed to late
+   listeners); paths that arrive before recovery has finished wait in a queue */
+if(_isTauri()){
+  import('@tauri-apps/api/event').then(({ listen }) => listen('decargo://open-file', ev => {
+    const p = ev && ev.payload;
+    if(_launchOpen.ready) _launchOpenIt(p); else _launchOpen.queue.push(p);
+  })).catch(e => console.warn('[launch] listen', e));
+}
 async function _openLaunchFile(){
   if(!_isTauri()) return;
-  const openIt = async p => {
-    if(!p) return;
-    try{ await _openPlanPath(p); }
-    catch(e){ showToast('Could not open ' + String(p).split(/[/\\]/).pop() + ' \u2014 ' + (e && e.message || e), 'warn'); }
-  };
-  try{
-    const { listen } = await import('@tauri-apps/api/event');
-    await listen('decargo://open-file', ev => openIt(ev && ev.payload));
-  }catch(e){ console.warn('[launch] listen', e); }
-  try{ await openIt(await invoke('launch_file')); }catch(e){ /* older shell without the command */ }
+  try{ await _launchOpenIt(await invoke('launch_file')); }catch(e){ /* older shell without the command */ }
+  _launchOpen.ready = true;
+  while(_launchOpen.queue.length) await _launchOpenIt(_launchOpen.queue.shift());
 }
 
 async function _openPlanPath(filePath) {

@@ -322,10 +322,19 @@ fn computer_name() -> String {
 /// v3.37 — a plan file passed on the command line (double-click on a .spica /
 /// .json associated with Decargo, or "Open with"). The executable itself and
 /// any switches are skipped because they are not existing plan files.
-fn plan_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
-    args.into_iter().find(|a| {
+fn plan_arg<I: IntoIterator<Item = String>>(args: I, cwd: Option<&str>) -> Option<String> {
+    args.into_iter().find_map(|a| {
         let l = a.to_lowercase();
-        (l.ends_with(".spica") || l.ends_with(".json")) && std::path::Path::new(a).is_file()
+        if !(l.ends_with(".spica") || l.ends_with(".json")) {
+            return None;
+        }
+        // a relative argument belongs to the launching process's folder
+        let p = std::path::Path::new(&a);
+        let full = match cwd {
+            Some(dir) if p.is_relative() => std::path::Path::new(dir).join(p),
+            _ => p.to_path_buf(),
+        };
+        if full.is_file() { Some(full.to_string_lossy().into_owned()) } else { None }
     })
 }
 
@@ -338,7 +347,7 @@ fn launch_file() -> Option<String> {
     if LAUNCH_TAKEN.swap(true, Ordering::SeqCst) {
         return None;
     }
-    plan_arg(std::env::args().skip(1))
+    plan_arg(std::env::args().skip(1), None)
 }
 
 fn main() {
@@ -346,13 +355,13 @@ fn main() {
         // must be the first plugin: a second launch (double-click on another
         // plan while Decargo is open) focuses this window and hands it the file
         // instead of starting a second app writing the same autosave.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();
             }
-            if let Some(p) = plan_arg(argv.into_iter().skip(1)) {
+            if let Some(p) = plan_arg(argv.into_iter().skip(1), Some(&cwd)) {
                 let _ = app.emit("decargo://open-file", p);
             }
         }))
