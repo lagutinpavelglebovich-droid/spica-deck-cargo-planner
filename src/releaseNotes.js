@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.29.0',
+    date: '2026-10-26',
+    highlights: [ 'New sound palette' ],
+    changes: [
+      { type: 'improvement', text: 'All sounds redone as one family — felted wood and soft glass, physically modelled: cargo placed (three variants), snap, box select, remove, rotate, duplicate, undo/redo, save, export, list imported, plan received, DG warning, DG cleared, not allowed' },
+      { type: 'improvement', text: 'Built for long loadings: fixed loudness ladder (ticks quietest, alerts on top), rate limits so a drag never chatters, one sound per gesture, at most three at a time' },
+      { type: 'ui', text: 'Sound settings regrouped: Actions, Results, Alerts, Interface (panel and switch sounds, off by default). Ocean ambient, voice alert and VHF radio removed' },
+    ],
+  },
+  {
     version: '3.28.0',
     date: '2026-10-26',
     highlights: [ 'Sync over the ship network', 'Now called Decargo' ],

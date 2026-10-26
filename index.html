@@ -192,7 +192,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.28.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.29.0</div>
     </div>
   </div>
 </div>
@@ -214,7 +214,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.28.0<br>
+      Version 3.29.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -1864,7 +1864,7 @@
         </div>
         <div class="st-row-body" style="cursor:pointer" id="sndMasterExpand">
           <div class="st-row-title">Sound Effects <span class="snd-chv" id="sndMasterChv">&#9660;</span></div>
-          <div class="st-row-desc">9 sounds &middot; 3 categories &middot; click to expand</div>
+          <div class="st-row-desc">20 sounds &middot; 4 groups &middot; click to expand</div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
             <input type="range" id="stSoundVolume" min="0" max="100" value="70" style="flex:1;height:3px;accent-color:var(--acc);">
             <span id="stSoundVolLabel" style="font-size:9px;color:var(--txt4);font-family:'JetBrains Mono',monospace;width:28px;text-align:right;">70%</span>
@@ -1879,56 +1879,67 @@
       <!-- Expandable sub-panel -->
       <div class="snd-sub-panel" id="sndSubPanel">
 
-        <!-- Basic Sounds -->
-        <div class="snd-cat" id="sndCat-basic">
-          <div class="snd-cat-hd" id="sndCatHd-basic">
+        <div class="snd-cat" id="sndCat-actions">
+          <div class="snd-cat-hd" id="sndCatHd-actions">
             <span class="snd-dot" style="background:#3ea36a"></span>
-            <span class="snd-cat-title">Basic Sounds</span>
-            <span class="snd-badge" id="sndBadge-basic">11/11</span>
-            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-basic" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+            <span class="snd-cat-title">Actions</span>
+            <span class="snd-badge" id="sndBadge-actions">8/9</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-actions" checked><div class="st-track"><div class="st-thumb"></div></div></label>
           </div>
-          <div class="snd-cat-body" id="sndCatBody-basic">
-            <div class="snd-item"><span class="snd-emoji">📦</span><span class="snd-name">Cargo Drop</span><button class="snd-preview" data-snd="drop">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-drop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">🗑️</span><span class="snd-name">Cargo Remove</span><button class="snd-preview" data-snd="remove">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-remove" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">⚠️</span><span class="snd-name">DG Warning</span><button class="snd-preview" data-snd="warning">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-warning" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">💾</span><span class="snd-name">Save Plan</span><button class="snd-preview" data-snd="save">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-save" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">✨</span><span class="snd-name">Select Tick</span><button class="snd-preview" data-snd="select">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-select" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">🧲</span><span class="snd-name">Snap Click</span><button class="snd-preview" data-snd="snap">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-snap" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">↶</span><span class="snd-name">Undo</span><button class="snd-preview" data-snd="undo">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-undo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">↷</span><span class="snd-name">Redo</span><button class="snd-preview" data-snd="redo">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-redo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">↻</span><span class="snd-name">Rotate</span><button class="snd-preview" data-snd="rotate">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-rotate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">⎘</span><span class="snd-name">Duplicate</span><button class="snd-preview" data-snd="duplicate">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-duplicate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">📤</span><span class="snd-name">Export Complete</span><button class="snd-preview" data-snd="export">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-export" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          <div class="snd-cat-body" id="sndCatBody-actions">
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⬇</span><span class="snd-name">Cargo placed</span><button class="snd-preview" data-snd="drop" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-drop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⊡</span><span class="snd-name">Snap to edge</span><button class="snd-preview" data-snd="snap" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-snap" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">◦</span><span class="snd-name">Select</span><button class="snd-preview" data-snd="select" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-select"><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⬚</span><span class="snd-name">Box select</span><button class="snd-preview" data-snd="multi" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-multi" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">✕</span><span class="snd-name">Cargo removed</span><button class="snd-preview" data-snd="remove" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-remove" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">↻</span><span class="snd-name">Rotate</span><button class="snd-preview" data-snd="rotate" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-rotate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⎘</span><span class="snd-name">Duplicate</span><button class="snd-preview" data-snd="duplicate" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-duplicate" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">↶</span><span class="snd-name">Undo</span><button class="snd-preview" data-snd="undo" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-undo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">↷</span><span class="snd-name">Redo</span><button class="snd-preview" data-snd="redo" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-redo" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 
-        <!-- Ambient -->
-        <div class="snd-cat" id="sndCat-ambient">
-          <div class="snd-cat-hd" id="sndCatHd-ambient">
-            <span class="snd-dot" style="background:#c89a38"></span>
-            <span class="snd-cat-title">Ambient & Context</span>
-            <span class="snd-badge" id="sndBadge-ambient">4/4</span>
-            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-ambient" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+        <div class="snd-cat" id="sndCat-results">
+          <div class="snd-cat-hd" id="sndCatHd-results">
+            <span class="snd-dot" style="background:#486083"></span>
+            <span class="snd-cat-title">Results</span>
+            <span class="snd-badge" id="sndBadge-results">4/4</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-results" checked><div class="st-track"><div class="st-thumb"></div></div></label>
           </div>
-          <div class="snd-cat-body" id="sndCatBody-ambient" style="display:none">
-            <div class="snd-item"><span class="snd-emoji">🌊</span><span class="snd-name">Ocean Ambient</span><button class="snd-preview" data-snd="ocean">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-ocean" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">☢️</span><span class="snd-name">DG Placement</span><button class="snd-preview" data-snd="dgDrop">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-dgDrop" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">⚖️</span><span class="snd-name">Overweight</span><button class="snd-preview" data-snd="overweight">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-overweight" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">✅</span><span class="snd-name">DG Resolved</span><button class="snd-preview" data-snd="resolved">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-resolved" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          <div class="snd-cat-body" id="sndCatBody-results" style="display:none">
+            <div class="snd-item"><span class="snd-emoji snd-glyph">✓</span><span class="snd-name">Plan saved</span><button class="snd-preview" data-snd="save" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-save" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⇪</span><span class="snd-name">Export done</span><button class="snd-preview" data-snd="export" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-export" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⇩</span><span class="snd-name">List imported</span><button class="snd-preview" data-snd="import" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-import" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⇄</span><span class="snd-name">Plan received</span><button class="snd-preview" data-snd="sync" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-sync" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 
-        <!-- Advanced -->
-        <div class="snd-cat" id="sndCat-advanced">
-          <div class="snd-cat-hd" id="sndCatHd-advanced">
+        <div class="snd-cat" id="sndCat-alerts">
+          <div class="snd-cat-hd" id="sndCatHd-alerts">
             <span class="snd-dot" style="background:#c0392b"></span>
-            <span class="snd-cat-title">Advanced / Voice</span>
-            <span class="snd-badge" id="sndBadge-advanced">2/2</span>
-            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-advanced" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+            <span class="snd-cat-title">Alerts</span>
+            <span class="snd-badge" id="sndBadge-alerts">3/3</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-alerts" checked><div class="st-track"><div class="st-thumb"></div></div></label>
           </div>
-          <div class="snd-cat-body" id="sndCatBody-advanced" style="display:none">
-            <div class="snd-item"><span class="snd-emoji">🗣️</span><span class="snd-name">Voice Alert</span><button class="snd-preview" data-snd="voice">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-voice" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
-            <div class="snd-item"><span class="snd-emoji">📻</span><span class="snd-name">VHF Radio</span><button class="snd-preview" data-snd="radio">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-radio" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          <div class="snd-cat-body" id="sndCatBody-alerts" style="display:none">
+            <div class="snd-item"><span class="snd-emoji snd-glyph">!</span><span class="snd-name">DG warning</span><button class="snd-preview" data-snd="warning" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-warning" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">✓</span><span class="snd-name">DG cleared</span><button class="snd-preview" data-snd="resolved" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-resolved" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⊘</span><span class="snd-name">Not allowed</span><button class="snd-preview" data-snd="error" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-error" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          </div>
+        </div>
+
+        <div class="snd-cat disabled" id="sndCat-interface">
+          <div class="snd-cat-hd" id="sndCatHd-interface">
+            <span class="snd-dot" style="background:#c89a38"></span>
+            <span class="snd-cat-title">Interface</span>
+            <span class="snd-badge" id="sndBadge-interface">4/4</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-interface"><div class="st-track"><div class="st-thumb"></div></div></label>
+          </div>
+          <div class="snd-cat-body" id="sndCatBody-interface" style="display:none">
+            <div class="snd-item"><span class="snd-emoji snd-glyph">▭</span><span class="snd-name">Panel open</span><button class="snd-preview" data-snd="open" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-open" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">▭</span><span class="snd-name">Panel close</span><button class="snd-preview" data-snd="close" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-close" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">●</span><span class="snd-name">Switch on</span><button class="snd-preview" data-snd="toggleOn" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-toggleOn" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">○</span><span class="snd-name">Switch off</span><button class="snd-preview" data-snd="toggleOff" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-toggleOff" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 

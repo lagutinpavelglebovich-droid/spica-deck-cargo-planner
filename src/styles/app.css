@@ -8165,6 +8165,9 @@ body.hdr-tight .save-state-text{ display:none; }
 .snd-item{display:flex;align-items:center;gap:6px;padding:5px 4px;border-radius:4px;font-size:11px;color:var(--txt2);}
 .snd-item:hover{background:rgba(72,96,131,.05);}
 .snd-emoji{font-size:13px;width:20px;text-align:center;flex-shrink:0;}
+/* v3.29 — monochrome glyphs instead of emoji, in the sound family's quiet tone */
+.snd-glyph{font:600 12px/1 'Inter',system-ui,sans-serif;color:var(--txt3);font-variant-emoji:text;}
+[data-theme="dark"] .snd-glyph{color:var(--txt3);}
 .snd-name{flex:1;font-weight:500;}
 .snd-preview{width:22px;height:22px;border-radius:50%;border:1px solid var(--brd);background:transparent;color:var(--txt3);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
 .snd-preview:hover{border-color:var(--acc);color:var(--acc);background:rgba(72,96,131,.06);}

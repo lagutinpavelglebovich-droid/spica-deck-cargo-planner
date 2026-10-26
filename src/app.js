@@ -3685,6 +3685,7 @@ function _marqueeStart(startEv, cv){
       if(typeof kbHideCoord === 'function') kbHideCoord();
       if(typeof inspClose === 'function') inspClose();
     } else {
+      if(typeof playSound === 'function') playSound(hits.length > 1 ? 'multi' : 'select');
       KB_SEL = Array.from(KB_SEL_SET).pop();
       if(typeof kbShowCoord === 'function') kbShowCoord(KB_SEL);
       if(typeof inspOpen === 'function') inspOpen(KB_SEL);
@@ -4604,7 +4605,7 @@ function renderBlock(cv,cargo){
   const dgd=_dgList.length>0?DG_DATA.find(d=>d.cls===_dgList[0]):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
 
-  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;animateCargoExit(_delId);S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();playSound('remove');}));
+  b.appendChild(mkBtn('cb-del','×',e=>{e.stopPropagation();const _delId=cargo.id;animateCargoExit(_delId);S.cargo=S.cargo.filter(x=>x.id!==_delId);dgEvictDeletedCargo(_delId);renderAll();updateStats();buildActiveLocStrip();checkSeg();updateDGSummary();save();}));
   b.appendChild(mkBtn('cb-rot','↻',e=>{
     e.stopPropagation();
     _rotateCargo(cargo);
@@ -4889,7 +4890,7 @@ function renderBlock(cv,cargo){
               () => snapEl.classList.remove('cb-snap-pulse'),
               { once:true });
           }
-          playSound('snap');
+          /* one acknowledgement per gesture: the drop sound covers it */
         }
       }else{
                 /* Click without drag → Phase 2: select + open inspector.
@@ -5077,6 +5078,7 @@ function toggle3D(force){
 function animateCargoExit(ids){
   if(!ids) return;
   const list = Array.isArray(ids) ? ids : [ids];
+  if(list.length && typeof playSound === 'function') playSound('remove');   /* every removal path passes here */
   list.forEach(id => {
     const el = document.querySelector(`.cb[data-id="${id}"]`);
     if(!el) return;
@@ -5123,6 +5125,7 @@ function animateCargoLift(ids){
   if(!ids) return;
   const list = Array.isArray(ids) ? ids : [ids];
   if(!_motionOK()){ animateCargoExit(list); return; }
+  if(list.length && typeof playSound === 'function') playSound('remove');
   list.forEach((id, i) => {
     const el = document.querySelector(`.cb[data-id="${id}"]`);
     if(!el) return;
@@ -9692,6 +9695,7 @@ function performAscoImport(){
     if(window._libExpandForImport) window._libExpandForImport();
   }
 
+  if((added.length > 0 || _nDiff) && typeof playSound === 'function') playSound('import');
   /* Import summary: plain "N added" when nothing was skipped, otherwise
      full added / already-imported / already-on-deck / no-CCU breakdown. */
   if(_nDiff){
@@ -10227,6 +10231,8 @@ function _toastIcon(type){
 
 function showToast(msg, type = 'ok'){
   const stack = _ensureToastStack();
+  /* v3.29 — a refused action gets the "not allowed" sound */
+  if((type === 'err' || (type === 'warn' && /^(Switch to Operator|Viewer mode)/.test(String(msg)))) && typeof playSound === 'function') playSound('error');
 
   /* Enforce stack cap by dismissing the oldest until appending a new
      toast will leave us at exactly _TOAST_CAP visible entries. Loop
@@ -11302,6 +11308,7 @@ function _cpExitPlacing(){
 
 /* ── Open / Close ── */
 function cpOpen(){
+  if(!CP_OPEN) playSound('open');
   CP_OPEN = true;
   /* Mutual exclusion with Inspector — only one right rail at a time. */
   if(typeof inspSelId !== 'undefined' && inspSelId != null && typeof inspClose === 'function') inspClose();
@@ -11316,6 +11323,7 @@ function cpOpen(){
      activation here and in performAscoImport). */
 }
 function cpClose(){
+  if(CP_OPEN) playSound('close');
   CP_OPEN = false;
   document.getElementById('cpOverlay').classList.remove('open');
   document.body.classList.remove('cp-panel-open');
@@ -14478,8 +14486,8 @@ function bindSmartTools(){
   if(perfModeChk)     perfModeChk.checked     = SMART.perfMode;
 
   /* Open / Close */
-  const open  = () => ov.classList.add('open');
-  const close = () => ov.classList.remove('open');
+  const open  = () => { if(!ov.classList.contains('open')) playSound('open'); ov.classList.add('open'); };
+  const close = () => { if(ov.classList.contains('open')) playSound('close'); ov.classList.remove('open'); };
   btn.addEventListener('click', open);
   closeBtn.addEventListener('click', close);
   backdrop.addEventListener('click', close);
@@ -14561,7 +14569,6 @@ function bindSmartTools(){
     const subPanel = document.getElementById('sndSubPanel');
     if(subPanel) subPanel.classList.toggle('disabled', !SMART.soundEnabled);
     if(_sndMaster) _sndMaster.gain.setTargetAtTime(SMART.soundEnabled ? SMART.soundVolume/100 : 0, _sndCtx?.currentTime||0, 0.05);
-    if(!SMART.soundEnabled) _sndStopAmb();
     if(SMART.soundEnabled) playSound('save');
   });
   if(soundVolSlider) soundVolSlider.addEventListener('input', () => {
@@ -14580,7 +14587,7 @@ function bindSmartTools(){
     if(sndChv) sndChv.classList.toggle('open', sndPanel.classList.contains('open'));
   });
   /* Category expand/collapse + toggle */
-  ['basic','ambient','advanced'].forEach(cat => {
+  Object.keys(_sndCats).forEach(cat => {
     const hd = document.getElementById('sndCatHd-'+cat);
     const bd = document.getElementById('sndCatBody-'+cat);
     const tgl = document.getElementById('sndCatTgl-'+cat);
@@ -14622,7 +14629,7 @@ function bindSmartTools(){
   _sndLoadSettings();
   /* Apply disabled states */
   if(sndPanel && !SMART.soundEnabled) sndPanel.classList.add('disabled');
-  ['basic','ambient','advanced'].forEach(cat => {
+  Object.keys(_sndCats).forEach(cat => {
     _sndUpdateBadge(cat);
     const catEl = document.getElementById('sndCat-'+cat);
     if(catEl && !_sndCats[cat].on) catEl.classList.add('disabled');
@@ -14683,6 +14690,9 @@ function bindSmartTools(){
   document.getElementById('stOv')?.addEventListener('change', e => {
     if(e.target && e.target.matches('input[type="checkbox"]')){
       _stUpdateAllSectionCounters();
+      /* v3.29 — switch sounds (Interface group, off by default); the master
+         sound switch itself already answers with its own cue */
+      if(e.target.id !== 'stSoundToggle') playSound(e.target.checked ? 'toggleOn' : 'toggleOff');
     }
   });
 }
@@ -14783,7 +14793,7 @@ const _ST_PRESETS = {
       bounce:true, gridSnap:true, dgSeg:true, dgFade:true,
       kbShortcuts:true, soundEnabled:true,
     },
-    soundCats: { basic:true, ambient:true, advanced:false },
+    soundCats: { actions:true, results:true, alerts:true, interface:false },
   },
   premium: {
     description: 'Full visual & audio language',
@@ -14792,7 +14802,7 @@ const _ST_PRESETS = {
       kbShortcuts:true, soundEnabled:true,
       nameShimmer:true,
     },
-    soundCats: { basic:true, ambient:true, advanced:true },
+    soundCats: { actions:true, results:true, alerts:true, interface:true },
   },
   minimal: {
     description: 'Essentials only — quietest possible workspace',
@@ -14803,7 +14813,7 @@ const _ST_PRESETS = {
       nameShimmer:false,
       dragGhost:false,
     },
-    soundCats: { basic:false, ambient:false, advanced:false },
+    soundCats: { actions:false, results:false, alerts:true, interface:false },
   },
 };
 
@@ -14821,12 +14831,12 @@ function _stApplyPreset(id){
   if(!preset) return;
   /* Snapshot current state so the user can undo via toast. */
   const snap = { smart: {...SMART}, theme: document.documentElement.getAttribute('data-theme'),
-                 soundCats: { basic:_sndCats.basic.on, ambient:_sndCats.ambient.on, advanced:_sndCats.advanced.on } };
+                 soundCats: Object.fromEntries(Object.keys(_sndCats).map(c => [c, _sndCats[c].on])) };
   /* Apply SMART flags the preset names. */
   Object.keys(preset.smart || {}).forEach(k => { SMART[k] = preset.smart[k]; });
   /* Apply sound categories. */
   if(preset.soundCats){
-    ['basic','ambient','advanced'].forEach(c => {
+    Object.keys(_sndCats).forEach(c => {
       if(preset.soundCats[c] !== undefined) _sndCats[c].on = preset.soundCats[c];
     });
     _sndSaveSettings();
@@ -14884,7 +14894,7 @@ function _stSyncAllCheckboxesFromSmart(){
     if(chk && typeof SMART[key] === 'boolean') chk.checked = SMART[key];
   });
   /* Sync sound category toggles too. */
-  ['basic','ambient','advanced'].forEach(c => {
+  Object.keys(_sndCats).forEach(c => {
     const t = document.getElementById('sndCatTgl-'+c);
     if(t) t.checked = _sndCats[c].on;
   });
@@ -15257,8 +15267,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.28.0';
-const APP_VERSION   = '3.28.0';
+const CURRENT_BUILD = 'v3.29.0';
+const APP_VERSION   = '3.29.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16967,267 +16977,119 @@ function _focusDeckExit(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   SOUND ENGINE v3 — 3-level hierarchy: Master → Category → Individual
-   Apple-inspired organic synthesis. 9 sounds. Ambient loop.
+   SOUND ENGINE v4 (v3.29) — Master → Category → Individual
+   One family of physically modelled sounds (felted wood + soft glass),
+   rendered offline to src/assets/sounds/*.wav by tools/sound-design.py and decoded
+   once into AudioBuffers. Levels follow a fixed ladder (ticks < contacts <
+   completions < alerts, ~3 dB apart). Rules for six-hour loadings:
+   per-sound rate limits, round-robin variants, max three voices, routine
+   sounds held back for a moment after an alert.
 ══════════════════════════════════════════════════════════ */
-let _sndCtx=null, _sndMaster=null, _sndAnalyser=null;
-/* Phase 25 — `select` and `snap` added to the `basic` category so the
-   sound engine now fires on single-cargo selection and on drag-drop
-   snap lock-ins, completing the tactile feedback set. Both default on
-   and respect the same per-sound + per-category toggles.
-   Phase 27 — `undo`, `redo`, `rotate`, `duplicate`, `export` added to
-   basic; `resolved` added to ambient. Coherent audio family across
-   every common mouse-first operation. */
-const _sndCats={basic:{on:true,sounds:['drop','remove','warning','save','select','snap','undo','redo','rotate','duplicate','export']},ambient:{on:true,sounds:['ocean','dgDrop','overweight','resolved']},advanced:{on:true,sounds:['voice','radio']}};
-const _sndState={drop:true,remove:true,warning:true,save:true,select:true,snap:true,undo:true,redo:true,rotate:true,duplicate:true,export:true,ocean:true,dgDrop:true,overweight:true,resolved:true,voice:true,radio:true};
-const _sndCatMap={drop:'basic',remove:'basic',warning:'basic',save:'basic',select:'basic',snap:'basic',undo:'basic',redo:'basic',rotate:'basic',duplicate:'basic',export:'basic',ocean:'ambient',dgDrop:'ambient',overweight:'ambient',resolved:'ambient',voice:'advanced',radio:'advanced'};
-let _ambNodes=null;
-
-function _sndInit(){
-  if (!_sndCtx) {
-    _sndCtx = new (window.AudioContext || window.webkitAudioContext)();
-    _sndMaster = _sndCtx.createGain();
-    _sndMaster.gain.value = SMART.soundVolume / 100;
-    _sndMaster.connect(_sndCtx.destination);
-    _sndRenderAll(); // fire-and-forget; buffers populate as ready
-  }
-  if (_sndCtx.state === 'suspended') _sndCtx.resume();
-}
-function canPlaySound(id){if(!SMART.soundEnabled)return false;const c=_sndCatMap[id];if(!_sndCats[c].on)return false;if(!_sndState[id])return false;return true;}
-function softTone(freq,{start=0,attack=0.04,hold=0,decay=0.3,peak=0.2,type='sine',detune=0}={}){const t=start+_sndCtx.currentTime;const o=_sndCtx.createOscillator(),g=_sndCtx.createGain();o.type=type;o.frequency.value=freq;if(detune)o.detune.value=detune;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+attack);if(hold>0)g.gain.setValueAtTime(peak,t+attack+hold);g.gain.setTargetAtTime(0.0001,t+attack+hold,decay/4);o.connect(g);g.connect(_sndMaster);o.start(t);o.stop(t+attack+hold+decay+0.1);}
-function softNoise({start=0,attack=0.03,hold=0,decay=0.25,peak=0.08,filterFreq=800,filterQ=1,filterType='bandpass'}={}){const t=start+_sndCtx.currentTime;const dur=attack+hold+decay+0.1;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.1)*0.98;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type=filterType;filt.frequency.value=filterFreq;filt.Q.value=filterQ;const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+attack);if(hold>0)g.gain.setValueAtTime(peak,t+attack+hold);g.gain.setTargetAtTime(0.0001,t+attack+hold,decay/4);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);}
-function addTail(freq,delay,vol,tailDecay){softTone(freq,{start:delay,attack:0.01,decay:tailDecay,peak:vol});}
-
-/* ===== Premium offline-rendered engine =====
-   Replaced sounds (drop/remove/save/warning/overweight/snap/radio) are
-   rendered ONCE into a normalised AudioBuffer at first interaction (inside
-   _sndInit) and cached in _sndBuffers[id]. The soundFns.<id> becomes a thin
-   buffer-player with a verbatim legacy-synth fallback for the sub-second
-   window before render-all completes on the very first interaction. */
+const SND_FILES = import.meta.glob('./assets/sounds/*.wav', { eager: true, query: '?url', import: 'default' });
+const SND_VARIANTS = { drop: ['drop1', 'drop2', 'drop3'], snap: ['snap1', 'snap2'] };
+const _sndCats = {
+  actions:   { on: true,  sounds: ['drop', 'snap', 'select', 'multi', 'remove', 'rotate', 'duplicate', 'undo', 'redo'] },
+  results:   { on: true,  sounds: ['save', 'export', 'import', 'sync'] },
+  alerts:    { on: true,  sounds: ['warning', 'resolved', 'error'] },
+  interface: { on: false, sounds: ['open', 'close', 'toggleOn', 'toggleOff'] },
+};
+const _sndState = {}, _sndCatMap = {};
+Object.entries(_sndCats).forEach(([c, v]) => v.sounds.forEach(id => { _sndState[id] = id !== 'select'; _sndCatMap[id] = c; }));
+/* minimum gap between two plays of the same sound (ms) */
+const SND_GAP = { snap: 140, rotate: 140, select: 90, multi: 150, drop: 70, toggleOn: 60, toggleOff: 60, open: 150, close: 150, error: 450, warning: 900, sync: 1500, save: 400, export: 600, import: 600 };
+const SND_ALERT = { warning: 1, error: 1 };
+const SND_ROUTINE = { select: 1, snap: 1, rotate: 1, multi: 1, open: 1, close: 1, toggleOn: 1, toggleOff: 1 };
+let _sndCtx = null, _sndMaster = null, _sndAnalyser = null;
 const _sndBuffers = {};
 let _sndReadyPromise = null;
+const _sndLast = {}, _sndRR = {}, _sndVoices = [];
+let _sndAlertAt = 0;
 
-function _sndImpulse(oc, sec, decay){
-  const len = Math.floor(oc.sampleRate * sec);
-  const b = oc.createBuffer(2, len, oc.sampleRate);
-  for (let c = 0; c < 2; c++) {
-    const d = b.getChannelData(c);
-    for (let i = 0; i < len; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, decay);
-  }
-  return b;
-}
-function _sndBrown(oc, sec){
-  const len = Math.floor(oc.sampleRate * sec);
-  const b = oc.createBuffer(1, len, oc.sampleRate);
-  const d = b.getChannelData(0);
-  let last = 0;
-  for (let i = 0; i < len; i++) { const w = Math.random()*2-1; last = (last + 0.02*w)/1.02; d[i] = last * 3.4; }
-  return b;
-}
-function _sndNormalize(buf, target){
-  let peak = 0;
-  for (let c = 0; c < buf.numberOfChannels; c++) {
-    const d = buf.getChannelData(c);
-    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
-  }
-  if (peak < 1e-5) return;
-  const g = target / peak;
-  for (let c = 0; c < buf.numberOfChannels; c++) {
-    const d = buf.getChannelData(c);
-    for (let i = 0; i < d.length; i++) d[i] *= g;
-  }
-}
-async function _sndRender(seconds, build){
-  const rate = 44100, len = Math.ceil(rate * seconds);
-  const oc = new OfflineAudioContext(2, len, rate);
-  const out = oc.createGain(); out.connect(oc.destination);
-  const conv = oc.createConvolver(); conv.buffer = _sndImpulse(oc, 1.2, 3.0);
-  const rev = oc.createGain(); rev.gain.value = 1; conv.connect(rev); rev.connect(out);
-  build(oc, out, conv);
-  const buf = await oc.startRendering();
-  _sndNormalize(buf, 0.85); // headroom under master
-  return buf;
-}
-function _vO(oc, dry, rev, o){
-  const { freq, type='sine', t0=0, attack=0.005, decay=0.3, peak=0.2, glideTo, glideT, detune=0, filt, Q=0.7, send=0 } = o;
-  const osc = oc.createOscillator(); osc.type = type; osc.frequency.setValueAtTime(freq, t0);
-  if (glideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo, 1), t0 + (glideT || decay));
-  if (detune) osc.detune.value = detune;
-  let n = osc;
-  if (filt) { const f = oc.createBiquadFilter(); f.type='lowpass'; f.frequency.value = filt; f.Q.value = Q; osc.connect(f); n = f; }
-  const g = oc.createGain();
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(peak, t0 + attack);
-  g.gain.setTargetAtTime(0.0001, t0 + attack, decay / 3.2);
-  n.connect(g); g.connect(dry);
-  if (send > 0) { const s = oc.createGain(); s.gain.value = send; g.connect(s); s.connect(rev); }
-  osc.start(t0); osc.stop(t0 + decay*4 + 0.2);
-}
-function _nO(oc, dry, rev, o){
-  const { filt=1500, type='lowpass', Q=0.9, decay=0.07, peak=0.4, attack=0.004, t0=0, send=0 } = o;
-  const src = oc.createBufferSource(); src.buffer = _sndBrown(oc, decay + 0.06);
-  const f = oc.createBiquadFilter(); f.type = type; f.frequency.value = filt; f.Q.value = Q;
-  const g = oc.createGain();
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(peak, t0 + attack);
-  g.gain.setTargetAtTime(0.0001, t0 + attack, decay / 3);
-  src.connect(f); f.connect(g); g.connect(dry);
-  if (send > 0) { const s = oc.createGain(); s.gain.value = send; g.connect(s); s.connect(rev); }
-  src.start(t0); src.stop(t0 + decay + 0.1);
-}
-function _modal(oc, dry, rev, { fund, ratios, peaks, decays, filt=2400, send=0.12, t0=0, glide=0 }){
-  ratios.forEach((r, i) => {
-    const f0 = fund * r;
-    _vO(oc, dry, rev, { freq: f0, glideTo: glide ? f0*glide : null, decay: decays[i], peak: peaks[i],
-      filt, attack: 0.004, t0, send: i === 0 ? send : send * 0.5, detune: (i % 2 ? 7 : -5) });
-  });
-}
-function _sndPlayBuf(id){
-  const buf = _sndBuffers[id]; if (!buf) return false;
-  const s = _sndCtx.createBufferSource(); s.buffer = buf; s.connect(_sndMaster); s.start();
-  return true;
-}
 function _sndRenderAll(){
-  if (_sndReadyPromise) return _sndReadyPromise;
-  const recipes = {
-    drop: () => _sndRender(0.75, (oc, dry, rev) => {
-      _nO(oc, dry, rev, { filt: 1700, Q: 0.9, decay: 0.07, peak: 0.55, send: 0.12 });
-      _vO(oc, dry, rev, { freq: 92, glideTo: 70, decay: 0.50, peak: 0.62, filt: 1100, send: 0.20 });
-      _modal(oc, dry, rev, { fund: 92, ratios: [2.4, 3.8, 5.4], peaks: [0.14, 0.07, 0.035], decays: [0.20, 0.12, 0.08], filt: 2000, send: 0.10, glide: 0.78 });
-    }),
-    remove: () => _sndRender(0.7, (oc, dry, rev) => {
-      _nO(oc, dry, rev, { filt: 1900, Q: 1.1, decay: 0.05, peak: 0.4, send: 0.10 });
-      _vO(oc, dry, rev, { freq: 80, glideTo: 118, decay: 0.36, peak: 0.58, filt: 1300, send: 0.18 });
-      _modal(oc, dry, rev, { fund: 80, ratios: [2.4, 3.8], peaks: [0.11, 0.05], decays: [0.16, 0.10], filt: 1900, send: 0.10, glide: 1.45 });
-      _vO(oc, dry, rev, { freq: 520, glideTo: 760, type: 'triangle', decay: 0.13, peak: 0.06, filt: 3000, send: 0.14 });
-    }),
-    save: () => _sndRender(0.85, (oc, dry, rev) => {
-      [392, 392].forEach((f, i) => _vO(oc, dry, rev, { freq: f, detune: i ? 6 : -6, decay: 0.30, peak: 0.34, filt: 2800, send: 0.22 }));
-      _vO(oc, dry, rev, { freq: 784, decay: 0.26, peak: 0.10, filt: 3200, send: 0.2 });
-      [587.33, 587.33].forEach((f, i) => _vO(oc, dry, rev, { freq: f, detune: i ? 6 : -6, t0: 0.105, decay: 0.42, peak: 0.38, filt: 3000, send: 0.28 }));
-      _vO(oc, dry, rev, { freq: 1174, t0: 0.105, decay: 0.30, peak: 0.07, type: 'triangle', filt: 3600, send: 0.24 });
-      _vO(oc, dry, rev, { freq: 1763, t0: 0.105, decay: 0.24, peak: 0.03, type: 'triangle', filt: 4200, send: 0.26 });
-    }),
-    warning: () => _sndRender(0.7, (oc, dry, rev) => {
-      const pulse = (s) => {
-        _vO(oc, dry, rev, { freq: 415, t0: s, decay: 0.16, peak: 0.40, filt: 1400, send: 0.07 });
-        _vO(oc, dry, rev, { freq: 466, t0: s, decay: 0.16, peak: 0.17, filt: 1300, send: 0.07 });
-        _vO(oc, dry, rev, { freq: 110, t0: s, decay: 0.12, peak: 0.16, filt: 700 });
-      };
-      pulse(0); pulse(0.21);
-    }),
-    overweight: () => _sndRender(0.9, (oc, dry, rev) => {
-      _vO(oc, dry, rev, { freq: 104, glideTo: 80, attack: 0.04, decay: 0.55, peak: 0.55, filt: 620, send: 0.14 });
-      _vO(oc, dry, rev, { freq: 52, glideTo: 40, attack: 0.05, decay: 0.55, peak: 0.32, filt: 320 });
-      _modal(oc, dry, rev, { fund: 104, ratios: [2.4, 4.1], peaks: [0.09, 0.04], decays: [0.26, 0.16], filt: 900, send: 0.1, t0: 0.04, glide: 0.78 });
-    }),
-    snap: () => _sndRender(0.4, (oc, dry, rev) => {
-      _vO(oc, dry, rev, { freq: 1244.5, decay: 0.07, peak: 0.4, filt: 5200, send: 0.12 });
-      _vO(oc, dry, rev, { freq: 2489, decay: 0.05, peak: 0.12, type: 'triangle', filt: 6200, send: 0.12 });
-    }),
-    radio: () => _sndRender(0.4, (oc, dry, rev) => {
-      _vO(oc, dry, rev, { freq: 1700, decay: 0.03, peak: 0.18, type: 'square', filt: 2200 });
-      _nO(oc, dry, rev, { filt: 1800, type: 'bandpass', Q: 5, decay: 0.06, peak: 0.5, t0: 0.02 });
-      _vO(oc, dry, rev, { freq: 1500, t0: 0.16, decay: 0.04, peak: 0.14, type: 'square', filt: 2000 });
-    }),
-  };
-  _sndReadyPromise = Promise.all(
-    Object.entries(recipes).map(async ([k, fn]) => { _sndBuffers[k] = await fn(); })
-  );
+  if(_sndReadyPromise) return _sndReadyPromise;
+  _sndReadyPromise = Promise.all(Object.entries(SND_FILES).map(async ([path, url]) => {
+    const id = path.split('/').pop().replace('.wav', '');
+    if(id.startsWith('_')) return;
+    try{
+      const ab = await (await fetch(url)).arrayBuffer();
+      _sndBuffers[id] = await _sndCtx.decodeAudioData(ab);
+    }catch(e){ console.warn('[Sound] could not load', id, e); }
+  }));
   return _sndReadyPromise;
 }
-
-/* Phase 27 — AUDIO FAMILY DYNAMICS (calibrated, do not drift):
-   - Significant moments (infrequent): peak 0.10-0.30.
-     drop (0.30), warning (0.15), save (0.14), overweight (0.18), export (0.10).
-     These DESERVE to cut through — they mark real transitions.
-   - Frequent interactions (per-click): peak 0.04-0.06.
-     select (0.045), snap (0.055), undo (0.050), redo (0.045),
-     rotate (0.050), duplicate (0.045), resolved (0.055).
-     Must never fatigue the ear during rapid layout building.
-   - Any new sound must declare which band it belongs to. */
-const soundFns={
-  drop(){if(_sndPlayBuf('drop'))return;softTone(150,{attack:0.008,decay:0.35,peak:0.30});softTone(75,{attack:0.012,decay:0.45,peak:0.18});softTone(220,{attack:0.005,decay:0.15,peak:0.06,detune:-15});softNoise({attack:0.003,decay:0.08,peak:0.06,filterFreq:300,filterType:'lowpass'});addTail(75,0.12,0.04,0.5);addTail(150,0.08,0.03,0.4);},
-  remove(){if(_sndPlayBuf('remove'))return;const t=_sndCtx.currentTime,dur=0.4;const buf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*dur,_sndCtx.sampleRate);const d=buf.getChannelData(0);let last=0;for(let i=0;i<d.length;i++){last=(last+(Math.random()*2-1)*0.08)*0.99;d[i]=last;}const src=_sndCtx.createBufferSource();src.buffer=buf;const filt=_sndCtx.createBiquadFilter();filt.type='bandpass';filt.Q.value=0.8;filt.frequency.setValueAtTime(300,t);filt.frequency.exponentialRampToValueAtTime(2500,t+0.25);filt.frequency.setTargetAtTime(600,t+0.25,0.08);const g=_sndCtx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.12,t+0.06);g.gain.setTargetAtTime(0.0001,t+0.2,0.06);src.connect(filt);filt.connect(g);g.connect(_sndMaster);src.start(t);src.stop(t+dur);softTone(1800,{attack:0.05,decay:0.2,peak:0.02});softTone(2400,{attack:0.07,decay:0.18,peak:0.012,detune:8});},
-  warning(){if(_sndPlayBuf('warning'))return;softTone(587,{start:0,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(587*2,{start:0,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(698,{start:0.18,attack:0.04,hold:0.06,decay:0.2,peak:0.15});softTone(698*2,{start:0.18,attack:0.04,hold:0.06,decay:0.15,peak:0.03});softTone(587,{start:0.36,attack:0.04,hold:0.06,decay:0.35,peak:0.12});softTone(294,{start:0,attack:0.06,decay:0.6,peak:0.06});},
-  save(){if(_sndPlayBuf('save'))return;[{f:523,s:0,p:0.14},{f:659,s:0.07,p:0.12},{f:784,s:0.14,p:0.10}].forEach(n=>{softTone(n.f,{start:n.s,attack:0.03,decay:0.45,peak:n.p});softTone(n.f*2,{start:n.s,attack:0.04,decay:0.3,peak:n.p*0.12,detune:3});addTail(n.f,n.s+0.15,n.p*0.08,0.6);});softTone(262,{start:0,attack:0.06,decay:0.6,peak:0.04});},
-  /* Phase 25 — calibrated confirmation ticks. `select` is a very soft,
-     short fifth-octave tap for selection transitions. `snap` is a
-     slightly firmer, lower tap representing a physical lock-in when
-     Smart Grid Snap commits a drop onto a real boundary. Both are
-     quieter than drop/save so rapid firing doesn't fatigue. */
-  select(){softTone(880,{attack:0.002,decay:0.08,peak:0.045});softTone(1320,{attack:0.003,decay:0.06,peak:0.020,detune:4});softNoise({attack:0.002,decay:0.03,peak:0.012,filterFreq:4200,filterType:'highpass'});},
-  snap(){if(_sndPlayBuf('snap'))return;softTone(520,{attack:0.002,decay:0.10,peak:0.055});softTone(260,{attack:0.004,decay:0.15,peak:0.028});softNoise({attack:0.002,decay:0.05,peak:0.020,filterFreq:1800,filterType:'bandpass',filterQ:1.2});addTail(520,0.04,0.018,0.18);},
-  /* Phase 27 — premium interaction family.
-     undo:     high→low sweep ~ "rewind". 780→520 via two staggered tones.
-     redo:     inverse, low→high. Same envelope, feels forward.
-     rotate:   soft mechanical tap (mid body, short tail + mild click).
-     duplicate: twin-tone ~ "one, and another". 660 + 880 offset 45ms.
-     export:   two-tone cadence + sub body ~ "done". Slightly fuller than save.
-     resolved: soft descending 640→480 with filter fade ~ tension release. */
-  undo(){softTone(780,{attack:0.004,decay:0.08,peak:0.040});softTone(520,{start:0.05,attack:0.004,decay:0.12,peak:0.050});softNoise({attack:0.003,decay:0.06,peak:0.010,filterFreq:500,filterType:'lowpass'});},
-  redo(){softTone(520,{attack:0.004,decay:0.08,peak:0.040});softTone(780,{start:0.05,attack:0.004,decay:0.12,peak:0.045});softNoise({attack:0.003,decay:0.06,peak:0.010,filterFreq:2200,filterType:'highpass'});},
-  rotate(){softTone(420,{attack:0.002,decay:0.06,peak:0.050});softTone(840,{attack:0.003,decay:0.04,peak:0.018,detune:3});softNoise({attack:0.002,decay:0.03,peak:0.014,filterFreq:2800,filterType:'bandpass',filterQ:1.4});},
-  duplicate(){softTone(660,{attack:0.003,decay:0.10,peak:0.045});softTone(880,{start:0.045,attack:0.003,decay:0.08,peak:0.035,detune:2});softNoise({attack:0.002,decay:0.04,peak:0.012,filterFreq:3200,filterType:'highpass'});},
-  export(){softTone(523,{attack:0.01,decay:0.25,peak:0.10});softTone(784,{start:0.12,attack:0.01,decay:0.35,peak:0.11});softTone(261,{attack:0.03,decay:0.50,peak:0.04});addTail(784,0.28,0.04,0.4);},
-  resolved(){softTone(640,{attack:0.006,decay:0.14,peak:0.055});softTone(480,{start:0.08,attack:0.008,decay:0.22,peak:0.045});softNoise({attack:0.004,decay:0.10,peak:0.012,filterFreq:1200,filterType:'lowpass'});addTail(480,0.12,0.018,0.28);},
-  dgDrop(){soundFns.drop();softTone(93,{start:0.2,attack:0.15,decay:0.8,peak:0.06});softTone(139,{start:0.2,attack:0.18,decay:0.7,peak:0.04});for(let i=0;i<6;i++){const d=0.3+Math.random()*0.6;softTone(3000+Math.random()*1500,{start:d,attack:0.001,decay:0.02,peak:0.015+Math.random()*0.01});}},
-  overweight(){if(_sndPlayBuf('overweight'))return;softTone(70,{attack:0.25,hold:0.3,decay:1.0,peak:0.18});softTone(71.5,{attack:0.28,hold:0.28,decay:0.9,peak:0.12});softTone(140,{attack:0.3,hold:0.2,decay:0.8,peak:0.05});softNoise({attack:0.2,hold:0.25,decay:0.8,peak:0.04,filterFreq:200,filterQ:0.5,filterType:'lowpass'});addTail(70,0.8,0.03,1.2);},
-  voice(){if(!('speechSynthesis' in window))return;softTone(880,{attack:0.05,decay:0.3,peak:0.06});softTone(1320,{attack:0.06,decay:0.25,peak:0.03});setTimeout(()=>{const u=new SpeechSynthesisUtterance('DG segregation violation, Bay 4');u.rate=0.92;u.pitch=0.85;u.volume=SMART.soundEnabled?Math.min(SMART.soundVolume/100*1.2,1):0;const voices=speechSynthesis.getVoices();const v=voices.find(v=>v.lang.startsWith('en')&&/female|samantha/i.test(v.name))||voices.find(v=>v.lang.startsWith('en'));if(v)u.voice=v;speechSynthesis.speak(u);},350);},
-  radio(){if(_sndPlayBuf('radio'))return;const t=_sndCtx.currentTime;const sDur=0.45;const sBuf=_sndCtx.createBuffer(1,_sndCtx.sampleRate*sDur,_sndCtx.sampleRate);const sD=sBuf.getChannelData(0);let sL=0;for(let i=0;i<sD.length;i++){sL=(sL+(Math.random()*2-1)*0.12)*0.97;sD[i]=sL;}const sSrc=_sndCtx.createBufferSource();sSrc.buffer=sBuf;const sF=_sndCtx.createBiquadFilter();sF.type='bandpass';sF.frequency.value=1800;sF.Q.value=0.6;const sG=_sndCtx.createGain();sG.gain.setValueAtTime(0.0001,t);sG.gain.exponentialRampToValueAtTime(0.1,t+0.08);sG.gain.setTargetAtTime(0.02,t+0.1,0.1);sG.gain.setTargetAtTime(0.0001,t+0.35,0.04);sSrc.connect(sF);sF.connect(sG);sG.connect(_sndMaster);sSrc.start(t);sSrc.stop(t+sDur);softTone(1100,{attack:0.01,decay:0.06,peak:0.05});setTimeout(()=>{if(!('speechSynthesis' in window))return;const u=new SpeechSynthesisUtterance('Cargo status update, all bays secured');u.rate=1.0;u.pitch=0.75;u.volume=SMART.soundEnabled?Math.min(SMART.soundVolume/100*0.85,1):0;speechSynthesis.speak(u);},450);setTimeout(()=>{softNoise({attack:0.02,hold:0.05,decay:0.2,peak:0.06,filterFreq:2000,filterQ:0.5});softTone(1100,{start:0.02,attack:0.005,decay:0.05,peak:0.04});},2200);},
-  ocean(){ if (_ambNodes) _sndStopAmb(); else _sndStartAmb(); }
-};
-
-function _sndStartAmb(){
-  if (_ambNodes) return;
-  const src = _sndCtx.createBufferSource(); src.buffer = _sndBrown(_sndCtx, 4); src.loop = true;
-  const lp = _sndCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 0.6;
-  const lfo = _sndCtx.createOscillator(); lfo.frequency.value = 0.07;
-  const lfoG = _sndCtx.createGain(); lfoG.gain.value = 190; lfo.connect(lfoG); lfoG.connect(lp.frequency);
-  const g = _sndCtx.createGain(); g.gain.value = 0.0001;
-  g.gain.setTargetAtTime(0.22, _sndCtx.currentTime, 0.8);
-  src.connect(lp); lp.connect(g); g.connect(_sndMaster);
-  src.start(); lfo.start();
-  _ambNodes = { src, lfo, g };
+function _sndInit(){
+  if(!_sndCtx){
+    _sndCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _sndMaster = _sndCtx.createGain();
+    _sndMaster.gain.value = SMART.soundEnabled ? SMART.soundVolume / 100 : 0;
+    _sndMaster.connect(_sndCtx.destination);
+    _sndRenderAll();
+  }
+  if(_sndCtx.state === 'suspended') _sndCtx.resume();
 }
-function _sndStopAmb(){
-  if (!_ambNodes) return;
-  const n = _ambNodes; _ambNodes = null;
-  n.g.gain.setTargetAtTime(0.0001, _sndCtx.currentTime, 0.4);
-  setTimeout(() => { try { n.src.stop(); n.lfo.stop(); } catch(e){} }, 900);
+function canPlaySound(id){
+  if(!SMART.soundEnabled) return false;
+  const c = _sndCatMap[id];
+  if(!c || !_sndCats[c].on || !_sndState[id]) return false;
+  return true;
 }
-
+function _sndPlayBuf(id){
+  const v = SND_VARIANTS[id];
+  const key = v ? v[(_sndRR[id] = ((_sndRR[id] || 0) + 1) % v.length)] : id;
+  const buf = _sndBuffers[key]; if(!buf) return false;
+  while(_sndVoices.length >= 3){ const o = _sndVoices.shift(); try{ o.stop(); }catch(e){} }
+  const s = _sndCtx.createBufferSource(); s.buffer = buf; s.connect(_sndMaster);
+  s.onended = () => { const i = _sndVoices.indexOf(s); if(i >= 0) _sndVoices.splice(i, 1); };
+  _sndVoices.push(s); s.start();
+  return true;
+}
+/* preview from the settings panel: ignores switches and rate limits */
+function _sndPreview(id){
+  try{ _sndInit(); if(!_sndPlayBuf(id)) _sndRenderAll().then(() => _sndPlayBuf(id)); }catch(e){}
+}
+const soundFns = new Proxy({}, { get: (_, id) => () => _sndPreview(id) });
 function playSound(type){
   if(!canPlaySound(type)) return;
-  try{_sndInit();if(soundFns[type])soundFns[type]();}catch(e){}
+  const now = performance.now();
+  if(now - (_sndLast[type] || -1e9) < (SND_GAP[type] || 60)) return;
+  if(!SND_ALERT[type] && SND_ROUTINE[type] && now - _sndAlertAt < 350) return;
+  _sndLast[type] = now;
+  if(SND_ALERT[type]) _sndAlertAt = now;
+  try{
+    _sndInit();
+    if(!_sndPlayBuf(type)){
+      /* very first interaction: buffers are still decoding — play if it is
+         ready almost at once, otherwise skip (a late click is worse) */
+      _sndRenderAll().then(() => { if(performance.now() - now < 180) _sndPlayBuf(type); });
+    }
+  }catch(e){}
 }
-if('speechSynthesis' in window){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();}
 
 function _sndUpdateBadge(cat){
-  const sounds=_sndCats[cat].sounds;
-  const on=sounds.filter(s=>_sndState[s]).length;
-  const badge=document.getElementById('sndBadge-'+cat);
-  if(!badge)return;
-  badge.textContent=on+'/'+sounds.length;
-  badge.className='snd-badge'+(on===sounds.length?'':on===0?' none':' some');
+  if(!_sndCats[cat]) return;
+  const sounds = _sndCats[cat].sounds;
+  const on = sounds.filter(s => _sndState[s]).length;
+  const badge = document.getElementById('sndBadge-' + cat);
+  if(!badge) return;
+  badge.textContent = on + '/' + sounds.length;
+  badge.className = 'snd-badge' + (on === sounds.length ? '' : on === 0 ? ' none' : ' some');
 }
+const SND_SETTINGS_KEY = 'decargo_soundSettings';
 function _sndSaveSettings(){
   try{
-    localStorage.setItem('spicaTide_soundSettings',JSON.stringify({
-      cats:{basic:_sndCats.basic.on,ambient:_sndCats.ambient.on,advanced:_sndCats.advanced.on},
-      sounds:_sndState
-    }));
+    const cats = {}; Object.keys(_sndCats).forEach(c => cats[c] = _sndCats[c].on);
+    localStorage.setItem(SND_SETTINGS_KEY, JSON.stringify({ v: 4, cats, sounds: _sndState }));
   }catch(e){}
 }
 function _sndLoadSettings(){
   try{
-    const d=JSON.parse(localStorage.getItem('spicaTide_soundSettings')||'null');
-    if(!d)return;
-    if(d.cats){['basic','ambient','advanced'].forEach(c=>{if(typeof d.cats[c]==='boolean')_sndCats[c].on=d.cats[c];});}
-    if(d.sounds){Object.keys(_sndState).forEach(s=>{if(typeof d.sounds[s]==='boolean')_sndState[s]=d.sounds[s];});}
-    /* Sync UI toggles */
-    ['basic','ambient','advanced'].forEach(c=>{const t=document.getElementById('sndCatTgl-'+c);if(t)t.checked=_sndCats[c].on;});
-    Object.keys(_sndState).forEach(s=>{const t=document.getElementById('sndTgl-'+s);if(t)t.checked=_sndState[s];});
+    const d = JSON.parse(localStorage.getItem(SND_SETTINGS_KEY) || 'null');
+    if(d){
+      if(d.cats) Object.keys(_sndCats).forEach(c => { if(typeof d.cats[c] === 'boolean') _sndCats[c].on = d.cats[c]; });
+      if(d.sounds) Object.keys(_sndState).forEach(s => { if(typeof d.sounds[s] === 'boolean') _sndState[s] = d.sounds[s]; });
+    }
+    Object.keys(_sndCats).forEach(c => { const t = document.getElementById('sndCatTgl-' + c); if(t) t.checked = _sndCats[c].on; _sndUpdateBadge(c); });
+    Object.keys(_sndState).forEach(s => { const t = document.getElementById('sndTgl-' + s); if(t) t.checked = _sndState[s]; });
   }catch(e){}
 }
 
@@ -17418,6 +17280,7 @@ function _syncApplyRemote(remoteState, meta){
   /* keep the received plan in this computer's autosave (no push back) so a
      restart opens what the sync layer already considers current */
   try{ savePlan(); }catch(e){}
+  if(typeof playSound === 'function') playSound('sync');
   showToast('Plan updated from ' + (meta && meta.writer ? meta.writer : 'the other computer'), 'ok');
 }
 

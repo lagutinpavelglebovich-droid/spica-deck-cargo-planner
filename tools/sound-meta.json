@@ -1,0 +1,232 @@
+{
+ "drop1": {
+  "loud": -24.0,
+  "ms": 185,
+  "peak_db": -16.6,
+  "centroid": 799,
+  "cls": "contact",
+  "label": "Cargo placed",
+  "group": "actions",
+  "default": true
+ },
+ "drop2": {
+  "loud": -24.0,
+  "ms": 180,
+  "peak_db": -16.1,
+  "centroid": 957,
+  "cls": "contact",
+  "label": "Cargo placed",
+  "group": "actions",
+  "default": true
+ },
+ "drop3": {
+  "loud": -24.0,
+  "ms": 184,
+  "peak_db": -15.6,
+  "centroid": 895,
+  "cls": "contact",
+  "label": "Cargo placed",
+  "group": "actions",
+  "default": true
+ },
+ "snap1": {
+  "loud": -27.0,
+  "ms": 80,
+  "peak_db": -13.0,
+  "centroid": 1950,
+  "cls": "tick",
+  "label": "Snap to edge",
+  "group": "actions",
+  "default": true
+ },
+ "snap2": {
+  "loud": -27.0,
+  "ms": 80,
+  "peak_db": -13.3,
+  "centroid": 2277,
+  "cls": "tick",
+  "label": "Snap to edge",
+  "group": "actions",
+  "default": true
+ },
+ "select": {
+  "loud": -27.0,
+  "ms": 70,
+  "peak_db": -14.7,
+  "centroid": 2122,
+  "cls": "tick",
+  "label": "Select",
+  "group": "actions",
+  "default": false
+ },
+ "multi": {
+  "loud": -27.0,
+  "ms": 110,
+  "peak_db": -15.0,
+  "centroid": 2086,
+  "cls": "tick",
+  "label": "Box select",
+  "group": "actions",
+  "default": true
+ },
+ "remove": {
+  "loud": -24.0,
+  "ms": 192,
+  "peak_db": -15.3,
+  "centroid": 922,
+  "cls": "gesture",
+  "label": "Cargo removed",
+  "group": "actions",
+  "default": true
+ },
+ "rotate": {
+  "loud": -27.0,
+  "ms": 110,
+  "peak_db": -14.2,
+  "centroid": 1776,
+  "cls": "tick",
+  "label": "Rotate",
+  "group": "actions",
+  "default": true
+ },
+ "duplicate": {
+  "loud": -24.0,
+  "ms": 215,
+  "peak_db": -15.4,
+  "centroid": 1358,
+  "cls": "gesture",
+  "label": "Duplicate",
+  "group": "actions",
+  "default": true
+ },
+ "undo": {
+  "loud": -24.0,
+  "ms": 211,
+  "peak_db": -17.0,
+  "centroid": 813,
+  "cls": "gesture",
+  "label": "Undo",
+  "group": "actions",
+  "default": true
+ },
+ "redo": {
+  "loud": -24.0,
+  "ms": 213,
+  "peak_db": -16.6,
+  "centroid": 834,
+  "cls": "gesture",
+  "label": "Redo",
+  "group": "actions",
+  "default": true
+ },
+ "save": {
+  "loud": -24.0,
+  "ms": 272,
+  "peak_db": -16.5,
+  "centroid": 1179,
+  "cls": "contact",
+  "label": "Plan saved",
+  "group": "results",
+  "default": true
+ },
+ "export": {
+  "loud": -21.0,
+  "ms": 587,
+  "peak_db": -14.5,
+  "centroid": 1129,
+  "cls": "complete",
+  "label": "Export done",
+  "group": "results",
+  "default": true
+ },
+ "import": {
+  "loud": -21.0,
+  "ms": 553,
+  "peak_db": -14.3,
+  "centroid": 970,
+  "cls": "complete",
+  "label": "List imported",
+  "group": "results",
+  "default": true
+ },
+ "sync": {
+  "loud": -24.0,
+  "ms": 360,
+  "peak_db": -17.7,
+  "centroid": 1253,
+  "cls": "contact",
+  "label": "Plan received",
+  "group": "results",
+  "default": true
+ },
+ "warning": {
+  "loud": -18.0,
+  "ms": 379,
+  "peak_db": -9.2,
+  "centroid": 950,
+  "cls": "alert",
+  "label": "DG warning",
+  "group": "alerts",
+  "default": true
+ },
+ "resolved": {
+  "loud": -21.0,
+  "ms": 311,
+  "peak_db": -15.3,
+  "centroid": 863,
+  "cls": "complete",
+  "label": "DG cleared",
+  "group": "alerts",
+  "default": true
+ },
+ "error": {
+  "loud": -18.0,
+  "ms": 200,
+  "peak_db": -9.5,
+  "centroid": 598,
+  "cls": "alert",
+  "label": "Not allowed",
+  "group": "alerts",
+  "default": true
+ },
+ "open": {
+  "loud": -27.0,
+  "ms": 140,
+  "peak_db": -15.5,
+  "centroid": 1752,
+  "cls": "tick",
+  "label": "Panel open",
+  "group": "interface",
+  "default": false
+ },
+ "close": {
+  "loud": -27.0,
+  "ms": 140,
+  "peak_db": -16.2,
+  "centroid": 1616,
+  "cls": "tick",
+  "label": "Panel close",
+  "group": "interface",
+  "default": false
+ },
+ "toggleOn": {
+  "loud": -27.0,
+  "ms": 80,
+  "peak_db": -13.5,
+  "centroid": 2191,
+  "cls": "tick",
+  "label": "Switch on",
+  "group": "interface",
+  "default": false
+ },
+ "toggleOff": {
+  "loud": -27.0,
+  "ms": 80,
+  "peak_db": -15.4,
+  "centroid": 1710,
+  "cls": "tick",
+  "label": "Switch off",
+  "group": "interface",
+  "default": false
+ }
+}
