@@ -18393,3 +18393,13 @@ html:is([data-motion="calm"], [data-motion="off"]) :is(#stPanel, #inspRail, #dec
 .cb.kb-sel .cb-del:hover{ transform: translateY(calc(-50% - 26px * var(--zc, 1))) scale(calc(1.06 * var(--zc, 1))) !important; }
 .cb.kb-sel .cb-rot:hover{ transform: translateY(-50%) scale(calc(1.06 * var(--zc, 1))) !important; }
 .cb.kb-sel .cb-copy:hover{ transform: translateY(calc(-50% + 26px * var(--zc, 1))) scale(calc(1.06 * var(--zc, 1))) !important; }
+
+/* v3.37 — brand subtitle contrast (was ~2:1 on the light header card).
+   The big "TIDE" word keeps the brand blue; the 11px subtitle under it
+   takes a deeper shade of the same hue so it is readable. */
+:root{ --brand-dcp-ink: #2f6ea8; }
+[data-theme="dark"]{ --brand-dcp-ink: var(--brand-tide); }
+html:not([data-theme="dark"]) .shell-ribbon .rc-brand .brand-dcp{
+  color: var(--brand-dcp-ink) !important;
+  -webkit-text-fill-color: var(--brand-dcp-ink) !important;
+}

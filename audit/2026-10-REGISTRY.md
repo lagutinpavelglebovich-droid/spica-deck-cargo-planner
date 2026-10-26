@@ -22,21 +22,21 @@
 
 | Область | Файлы | Статус | Кто |
 | --- | --- | --- | --- |
-| Rust / IPC / capabilities | src-tauri/** | не проверено | security |
-| CSP, XSS-стоки, недоверенные данные | index.html, src/*.js | не проверено | security |
-| CI / релиз / обновления | .github/workflows, tools | не проверено | security |
-| Сохранение, загрузка, миграции, undo/redo | app.js (persistence) | изучено (3.36) | reliability |
-| Синхронизация папка / облако | syncFolder.js, sync.js, syncHub.js | не проверено | reliability |
-| Импорт манифестов / почты / камеры | manifestImport.js, mailWatch.js, deckCamera.js, vision.js, liftReader.js | не проверено | reliability + security |
-| Геометрия палубы, единицы, размещение, DG | app.js (deck, DG) | не проверено | domain |
-| Экспорт PDF / Excel ↔ модель | app.js (export) | не проверено | domain |
-| Погода, карты | weather/*, fieldWeather.js, weatherMap.js, locMap.js | не проверено | reliability |
-| Производительность | app.js render/drag | не проверено | performance |
-| UI/UX: рабочее пространство, выбор/перетаскивание/масштаб | app.js, app.css | не проверено | ui |
-| UI/UX: панели, диалоги, меню, состояния, тёмная тема, клавиатура | index.html, app.css | не проверено | ui |
-| Анимации, reduced motion | motion.js, animations/*, app.css | не проверено | ui |
-| Установщик, Windows-специфика | tauri.conf.json, NSIS | не проверено | security/windows |
-| Устаревшее в репозитории | current-build/, source/, screenshots/, .playwright-mcp/ | не проверено | — |
+| Rust / IPC / capabilities | src-tauri/** | проверено, исправлено | security |
+| CSP, XSS-стоки, недоверенные данные | index.html, src/*.js | проверено, исправлено | security |
+| CI / релиз / обновления | .github/workflows, tools | поверхностно, замечаний нет | security |
+| Сохранение, загрузка, миграции, undo/redo | app.js (persistence) | проверено, исправлено | reliability |
+| Синхронизация папка / облако | syncFolder.js, sync.js, syncHub.js | папка исправлена; облако открыто (R-11) | reliability |
+| Импорт манифестов / почты / камеры | manifestImport.js, mailWatch.js, deckCamera.js, vision.js, liftReader.js | манифесты исправлены; почта/камера — код; vision/liftReader НЕ проверены | reliability + security |
+| Геометрия палубы, единицы, размещение, DG | app.js (deck, DG) | проверено, исправлено, 2 вопроса | domain |
+| Экспорт PDF / Excel ↔ модель | app.js (export) | проверено, исправлено, 1 вопрос | domain |
+| Погода, карты | weather/*, fieldWeather.js, weatherMap.js, locMap.js | код (таймеры, хранилище) — замечаний нет | reliability |
+| Производительность | app.js render/drag | A/B, исправлено | performance |
+| UI/UX: рабочее пространство, выбор/перетаскивание/масштаб | app.js, app.css | проверено, исправлено частично | ui |
+| UI/UX: панели, диалоги, меню, состояния, тёмная тема, клавиатура | index.html, app.css | проверено, исправлено частично | ui |
+| Анимации, reduced motion | motion.js, animations/*, app.css | проверено, исправлено | ui |
+| Установщик, Windows-специфика | tauri.conf.json, NSIS | конфиги; решения: .json-ассоциация, подпись | security/windows |
+| Устаревшее в репозитории | current-build/, source/, screenshots/, .playwright-mcp/ | перечислено, не трогал | — |
 
 ## Находки
 
@@ -123,6 +123,7 @@
 | U-11 | подсказка на грузе: полное имя, размер, вес; номер рейса — полный текст при наведении | t38 |
 | U-12 | About: дата проверки в формате приложения; «Changelog» открывает историю версий внутри приложения (`window.open` в Tauri не работает) | t38 |
 | U-13 | Smart Tools: «Last file save» / «Not saved to a file yet» вместо «Not yet saved» рядом с включённым автосохранением | код |
+| U-15 | подпись «Deck Cargo Plan» в светлой теме 2.5:1 → 5.4:1 (тот же оттенок, темнее) | расчёт контраста |
 | U-14 | единица веса «t» в интерфейсе, «…» в меню (Excel-заголовки «(T)» не трогал — формат выгрузки) | код |
 | R-14 | `_lsSet` — защищённая запись localStorage во всех незащищённых местах | rel/t_q Q1b NOREPRO |
 | R-15 | путь PDF передаётся аргументом (без глобальной переменной); Print во время Export отклоняется с сообщением; экспорт больше не пытается открыть файл; пункт ленты «Save as PDF» в Tauri открывает диалог | t38b |
