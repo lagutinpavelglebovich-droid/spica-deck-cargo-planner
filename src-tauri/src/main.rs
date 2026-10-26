@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod shared_sync;
+mod store;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -29,12 +30,35 @@ struct RecentFile {
 
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
-    fs::write(&path, &contents).map_err(|e| format!("Write failed: {}", e))
+    store::atomic_write(std::path::Path::new(&path), contents.as_bytes()).map_err(|e| format!("Write failed: {}", e))
 }
 
 #[tauri::command]
 fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    fs::write(&path, &bytes).map_err(|e| format!("Write failed: {}", e))
+    store::atomic_write(std::path::Path::new(&path), &bytes).map_err(|e| format!("Write failed: {}", e))
+}
+
+/* v3.36 — durable autosave + rolling backups in the app data folder */
+#[tauri::command]
+async fn autosave_store(contents: String, backup: bool) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || store::autosave_store(&app_data_dir(), &contents, backup))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn autosave_read() -> Option<String> {
+    store::autosave_read(&app_data_dir())
+}
+
+#[tauri::command]
+async fn backups_list() -> Vec<store::BackupInfo> {
+    tauri::async_runtime::spawn_blocking(|| store::backups_list(&app_data_dir())).await.unwrap_or_default()
+}
+
+#[tauri::command]
+fn backup_read(file: String) -> Result<String, String> {
+    store::backup_read(&app_data_dir(), &file)
 }
 
 #[tauri::command]
@@ -297,6 +321,10 @@ fn main() {
             shared_commit,
             shared_probe,
             computer_name,
+            autosave_store,
+            autosave_read,
+            backups_list,
+            backup_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

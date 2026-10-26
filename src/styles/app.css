@@ -18258,3 +18258,33 @@ html[data-perf="reduced"] .bp-update-dot{ animation:none !important; }
 .about-auto-upd{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:10.5px; color:var(--txt2); cursor:pointer; }
 .about-auto-upd input{ margin:0; accent-color:var(--acc); }
 .about-auto-upd span{ color:var(--txt3); }
+
+/* ════════════════════════════════════════════════════════════
+   v3.36 — RESTORE FROM BACKUP (reuses the Clear Deck modal shell)
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --bk-ic-bg:rgba(47,127,156,.10); --bk-ic-brd:rgba(47,127,156,.22); --bk-ic:#2f7f9c;
+  --bk-row-hov:rgba(47,127,156,.08);
+}
+[data-theme="dark"]{
+  --bk-ic-bg:rgba(79,179,201,.12); --bk-ic-brd:rgba(79,179,201,.26); --bk-ic:#4fb3c9;
+  --bk-row-hov:rgba(79,179,201,.10);
+}
+.bk-modal{ width:440px; max-width:calc(100vw - 32px); }
+.bk-icon-wrap{ background:var(--bk-ic-bg); border-color:var(--bk-ic-brd); color:var(--bk-ic); }
+.bk-list{ max-height:min(52vh, 420px); overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:2px; }
+.bk-item{
+  display:grid; grid-template-columns:150px minmax(0,1fr); gap:14px; align-items:center;
+  width:100%; padding:9px 12px; border:0; border-radius:10px; background:none; cursor:pointer;
+  text-align:left; font-family:'Inter',sans-serif; color:var(--txt);
+  transition:background .12s;
+}
+.bk-item:hover, .bk-item:focus-visible{ background:var(--bk-row-hov); outline:none; }
+.bk-item:focus-visible{ box-shadow:inset 0 0 0 2px var(--acc); }
+.bk-item:disabled{ opacity:.45; cursor:default; }
+.bk-when, .bk-what{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.bk-when b{ font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.bk-what{ font-size:12.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bk-when small, .bk-what small{ font-size:11px; color:var(--txt3); font-weight:400; }
+.bk-muted{ color:var(--txt3); font-style:italic; }
+.bk-empty{ padding:22px 14px; font-size:12px; line-height:1.5; color:var(--txt2); font-family:'Inter',sans-serif; text-align:center; }

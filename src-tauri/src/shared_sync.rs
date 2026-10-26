@@ -50,7 +50,7 @@ fn transient(e: &std::io::Error) -> bool {
         || matches!(e.kind(), ErrorKind::PermissionDenied | ErrorKind::WouldBlock | ErrorKind::Interrupted)
 }
 
-fn retry<T>(mut f: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+pub(crate) fn retry<T>(mut f: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
     let mut delay = 40u64;
     let mut attempt = 0;
     loop {

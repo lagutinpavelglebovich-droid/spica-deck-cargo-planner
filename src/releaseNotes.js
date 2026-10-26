@@ -11,6 +11,21 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.36.0',
+    date: '2026-10-26',
+    highlights: [ 'Your plan is kept safe' ],
+    changes: [
+      { type: 'improvement', text: 'The plan is now also kept as a file in the Decargo data folder, with backups every 10 minutes while you work, at launch and before any plan is replaced (open, new, clear, restore, a plan from the other bridge PC). 30 recent copies + one per day for two weeks' },
+      { type: 'feature', text: 'File → Restore from Backup… — pick a copy by time, voyage and cargo count; the plan you leave is backed up too' },
+      { type: 'improvement', text: 'An opened plan file changes only when you Save (Ctrl+S); every file Decargo writes is written safely, so a power cut cannot leave it half-written' },
+      { type: 'fix', text: 'Closing: Decargo asks Save / Don\u2019t Save / Cancel only when an opened file has unsaved changes; File → Exit closes properly' },
+      { type: 'fix', text: 'Opening a damaged or newer-version file no longer half-replaces the plan or makes that file the target of the next Save' },
+      { type: 'fix', text: 'File → recent files list was always empty — it now shows your recent plans' },
+      { type: 'fix', text: 'Print (Ctrl+P) opens the PDF again' },
+      { type: 'ui', text: 'PDF footer time shows its time zone (e.g. 09:40 UTC+1)' },
+    ],
+  },
+  {
     version: '3.35.0',
     date: '2026-10-26',
     highlights: [ 'Automatic updates' ],

@@ -129,6 +129,7 @@
       <div class="menu-action" data-action="newDeck">New Deck Plan</div>
       <div class="menu-action ctx-danger" data-action="clearDeck">Clear Deck Plan...</div>
       <div class="menu-action" data-action="restoreDeck" id="menuRestoreDeck" style="display:none" data-i18n="restore_menu">Restore previous deck plan</div>
+      <div class="menu-action" data-action="restoreBackup">Restore from Backup…</div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="openProject">Open Project<span class="menu-shortcut">Ctrl+O</span></div>
       <div class="menu-action" data-action="saveProject">Save<span class="menu-shortcut">Ctrl+S</span></div>
@@ -192,7 +193,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.35.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.36.0</div>
     </div>
   </div>
 </div>
@@ -220,7 +221,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.35.0<br>
+      Version 3.36.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -955,6 +956,29 @@
     <button class="dgc-more" data-k="det" hidden></button>
   </div>
   <div class="dgc-det"></div>
+</div>
+
+<!-- v3.36 — File → Restore from Backup… (list filled by openBackupRestore) -->
+<div class="clr-deck-ov bk-ov" id="bkOv" role="dialog" aria-modal="true" aria-labelledby="bkTitle">
+  <div class="clr-deck-modal bk-modal">
+    <div class="clr-deck-head">
+      <div class="clr-deck-icon-wrap bk-icon-wrap">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M3.2 9a5.8 5.8 0 1 0 1.7-4.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2.8 2.6v2.8h2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 5.6V9l2.3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="clr-deck-title" id="bkTitle">Restore from Backup</div>
+        <div class="clr-deck-sub">The plan on deck now is backed up before it is replaced</div>
+      </div>
+    </div>
+    <div class="bk-list" id="bkList"></div>
+    <div class="clr-deck-actions">
+      <button class="clr-deck-cancel" id="bkClose" type="button">Close</button>
+    </div>
+  </div>
 </div>
 
 <div class="clr-deck-ov" id="clrDeckOv">

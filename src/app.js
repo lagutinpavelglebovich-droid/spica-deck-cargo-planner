@@ -7783,14 +7783,11 @@ function _updateUndoButtons(){
 const TauriFileAdapter = {
 
   save(key, envelope) {
-    const json = JSON.stringify(envelope, null, 2);
-    if (_currentFilePath) {
-      invoke('write_file', { path: _currentFilePath, contents: json }).catch(e => {
-        console.warn('[TauriFileAdapter] Save failed:', e);
-      });
-    }
-    /* Always also save to localStorage as fallback */
+    /* v3.36 — the opened .spica / project file is written ONLY by Save /
+       Save As (Ctrl+S). Every change goes to the WebView store and to a
+       durable autosave file in the app data folder (+ rolling backups). */
     LocalStorageAdapter.save(key, envelope);
+    if (key === PLAN_DEFAULT_KEY) _durableAutosave(envelope);
   },
 
   load(key) {
@@ -7807,6 +7804,159 @@ const TauriFileAdapter = {
     return LocalStorageAdapter.list();
   }
 };
+
+/* ══════════════════════════════════════════════════════════
+   DURABLE AUTOSAVE + BACKUPS (v3.36)
+   The working plan lives in the WebView store AND as a real file in the
+   app data folder (%APPDATA%/com.spicatide.app/autosave/current.json),
+   written atomically by Rust. Rolling backups (newest 30) are dropped
+   into .../backups/: at most every 10 minutes while the plan changes,
+   at launch, and right before anything that replaces the whole plan
+   (open, new deck, clear deck, restore, a plan received from the other
+   bridge PC). File → Restore from Backup… lists them.
+══════════════════════════════════════════════════════════ */
+const BACKUP_EVERY = 10 * 60 * 1000;
+const _dur = { timer: 0, pending: null, lastBackupAt: 0, lastBackupSig: '', lastSig: '', chain: Promise.resolve(), booted: false };
+
+function _planSig(json){
+  /* cheap change signature — ignores the _savedAt timestamp */
+  let h = 0;
+  const body = json.replace(/"_savedAt":\s*"[^"]*"/, '');
+  for(let i = 0; i < body.length; i++){ h = (h * 31 + body.charCodeAt(i)) | 0; }
+  return body.length + ':' + h;
+}
+
+function _durableAutosave(envelope){
+  if(!_isTauri()) return;
+  _dur.pending = envelope;
+  /* nothing touches the autosave file until the launch check has read it —
+     otherwise an early save could overwrite the copy we may need to recover */
+  if(!_dur.booted) return;
+  clearTimeout(_dur.timer);
+  _dur.timer = setTimeout(() => { _durableFlush(false); }, 1200);
+}
+
+/* Write the pending (or current) plan now. backup=true forces a backup copy. */
+async function _durableFlush(forceBackup){
+  if(!_isTauri() || !_dur.booted) return true;
+  clearTimeout(_dur.timer);
+  const env = _dur.pending || _buildEnvelope();
+  _dur.pending = null;
+  const json = JSON.stringify(env);
+  const sig = _planSig(json);
+  const due = Date.now() - _dur.lastBackupAt >= BACKUP_EVERY && sig !== _dur.lastBackupSig;
+  const backup = (forceBackup || due) && sig !== _dur.lastBackupSig && (env.plan && Array.isArray(env.plan.cargo) && env.plan.cargo.length > 0);
+  if(!backup && sig === _dur.lastSig) return true;
+  /* strictly one write at a time, in call order — a slower older write can
+     never land after a newer one (Rust runs commands on worker threads) */
+  const run = _dur.chain.then(() => invoke('autosave_store', { contents: json, backup: !!backup }));
+  _dur.chain = run.catch(() => {});
+  try{
+    await run;
+    _dur.lastSig = sig;
+    if(backup){ _dur.lastBackupAt = Date.now(); _dur.lastBackupSig = sig; }
+    return true;
+  }catch(e){
+    console.warn('[Autosave] durable write failed:', e);
+    return false;
+  }
+}
+
+/* Called right before the whole plan is replaced. */
+function _backupBefore(reason){
+  if(!_isTauri()) return Promise.resolve(true);
+  _dur.pending = _buildEnvelope();
+  return _durableFlush(true).then(ok => { if(!ok) console.warn('[Backup] before ' + reason + ' failed'); return ok; });
+}
+
+/* Launch: keep a copy of what we start from; if the WebView store came
+   back empty (reset / reinstall) but the durable autosave has a plan,
+   bring it back. */
+async function _durableBoot(hadStoredPlan){
+  if(!_isTauri()) return;
+  try{
+    const text = await invoke('autosave_read');
+    let env = null;
+    if(text){ try{ env = JSON.parse(text); }catch(e){} }
+    let storedAt = 0;
+    try{ const st = LocalStorageAdapter.load(PLAN_DEFAULT_KEY); storedAt = Date.parse(st && st._savedAt) || 0; }catch(e){}
+    const fileAt = Date.parse(env && env._savedAt) || 0;
+    /* the WebView store is written first on every change, so it is normally
+       the newer copy; the file wins only when the store is empty or older
+       (store reset, quota failure) */
+    _dur.booted = true;
+    const recover = (!hadStoredPlan || fileAt > storedAt + 5000)
+      && env && env.plan && Array.isArray(env.plan.cargo) && env.plan.cargo.length;
+    if(recover){
+      if(hadStoredPlan && S.cargo.length) await _backupBefore('recover');   /* keep the older store copy too */
+      if(_applyProjectData(text, 'autosave', true)) showToast('Plan recovered from the Decargo backup folder', 'ok');
+    }
+    if(S.cargo.length) await _backupBefore('launch');
+  }catch(e){
+    console.warn('[Autosave] boot check failed:', e);
+  }finally{
+    _dur.booted = true;
+    if(_dur.pending) _durableFlush(false);
+  }
+}
+
+/* ── File → Restore from Backup… ── */
+function _bkWhen(ts){
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2,'0'), hh = String(d.getHours()).padStart(2,'0'), mi = String(d.getMinutes()).padStart(2,'0');
+  const mon = d.toLocaleString('en-GB', { month:'short' });
+  const mins = Math.round((Date.now() - ts) / 60000);
+  const ago = mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago' : mins < 1440 ? Math.round(mins / 60) + ' h ago' : Math.round(mins / 1440) + ' d ago';
+  return { abs: dd + ' ' + mon + ' ' + d.getFullYear() + ' · ' + hh + ':' + mi, ago };
+}
+function _escBk(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c])); }
+
+async function openBackupRestore(){
+  if(!_isTauri()){ showToast('Backups are kept by the desktop app', 'info'); return; }
+  if(!isOperator()){ showToast('Switch to Operator mode to restore a plan', 'warn'); return; }
+  const ov = document.getElementById('bkOv'), list = document.getElementById('bkList');
+  if(!ov || !list) return;
+  await _durableFlush(false);
+  list.innerHTML = '<div class="bk-empty">Loading…</div>';
+  ov.classList.add('open');
+  let items = [];
+  try{ items = await invoke('backups_list'); }catch(e){ items = []; }
+  if(!items.length){
+    list.innerHTML = '<div class="bk-empty">No backups yet. Decargo keeps a copy every 10 minutes while you work, at launch and before a plan is replaced.</div>';
+    return;
+  }
+  list.innerHTML = items.map(b => {
+    const w = _bkWhen(b.ts);
+    const name = b.voyage ? _escBk(b.voyage) : '<span class="bk-muted">No voyage name</span>';
+    return `<button type="button" class="bk-item" data-file="${_escBk(b.file)}" ${b.ok ? '' : 'disabled'}>
+      <span class="bk-when"><b>${w.abs}</b><small>${w.ago}</small></span>
+      <span class="bk-what">${name}<small>${b.cargo} cargo${b.vessel ? ' · ' + _escBk(b.vessel) : ''}${b.ok ? '' : ' · unreadable'}</small></span>
+    </button>`;
+  }).join('');
+}
+
+function bindBackupRestore(){
+  const ov = document.getElementById('bkOv');
+  if(!ov) return;
+  const close = () => ov.classList.remove('open');
+  document.getElementById('bkClose')?.addEventListener('click', close);
+  ov.addEventListener('click', e => { if(e.target === ov) close(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && ov.classList.contains('open')) close(); });
+  document.getElementById('bkList')?.addEventListener('click', async e => {
+    const it = e.target.closest('.bk-item');
+    if(!it || it.disabled) return;
+    const file = it.dataset.file;
+    let text;
+    try{ text = await invoke('backup_read', { file }); }catch(err){ showToast('Could not read that backup', 'warn'); return; }
+    await _backupBefore('restore');            /* the plan you leave is itself kept */
+    if(_applyProjectData(text, 'backup')){
+      _currentFilePath = null; _updateWindowTitle(null);
+      save();                                   /* new working plan: autosave + sync */
+      close();
+      showToast('Plan restored from backup — ' + it.querySelector('.bk-when b').textContent, 'ok');
+    }
+  });
+}
 
 /* ── Native file dialog functions (Tauri only) ──────────── */
 
@@ -7921,92 +8071,35 @@ async function openPlanFromFile() {
       multiple: false
     });
     if (!selected) return; /* user cancelled */
-
     const filePath = typeof selected === 'string' ? selected : selected.path;
-    const contents = await invoke('read_file', { path: filePath });
-    let envelope = JSON.parse(contents);
-
-    /* Run migrations if needed */
-    if (envelope._schema < PLAN_SCHEMA_CURRENT) {
-      envelope = migratePlan(envelope);
-    }
-
-    /* Apply to app state (same logic as loadPlan) */
-    const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
-    if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
-    _vesselForPlan(d);
-    if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
-    if (d.voyage) document.getElementById('voyIn').value = d.voyage;
-    if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
-    if (d.selLoc) S.selLoc = d.selLoc;
-    if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
-    if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
-    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
-    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
-    if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
-    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
-    if (d.zoomLevel) applyZoom(d.zoomLevel);
-
-    _currentFilePath = filePath;
-    _updateWindowTitle(filePath);
-    _addToRecent(filePath, envelope.name);
-
-    /* Re-render everything */
-    initDynColors();
-    setDateDisplay();
-    loadLibPrefs();
-    buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
-    renderAll(); updateStats(); updateDGSummary();
-
-    /* Also store in localStorage as backup */
-    LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
-    /* A freshly opened plan starts a new history: without this, Ctrl+Z
-       restored the PREVIOUS plan and wrote it into the newly opened file. */
-    seedHistoryBaseline(); checkSeg();
-
-    showToast('Plan opened', 'ok');
+    await _openPlanPath(filePath);
   } catch (e) {
     console.error('[openPlanFromFile]', e);
     showToast('Open failed: ' + e, 'warn');
   }
 }
 
+/* v3.36 — one way to open a plan file: read → keep a backup of the plan
+   being replaced → validate + apply → only then adopt the file path, so a
+   bad file can never become the target of the next Ctrl+S. */
+async function _openPlanPath(filePath) {
+  const contents = await invoke('read_file', { path: filePath });
+  const name = filePath.split(/[/\\]/).pop();
+  await _backupBefore('open');
+  if (!_applyProjectData(contents, name, true)) return false;
+  _currentFilePath = filePath;
+  _updateWindowTitle(filePath);
+  _addToRecent(filePath, _buildEnvelope().name);
+  showToast('Plan opened \u2014 ' + name, 'ok');
+  return true;
+}
+
 async function openRecentFile(path) {
   if (!_isTauri() || !path) return;
   try {
-    const contents = await invoke('read_file', { path });
-    let envelope = JSON.parse(contents);
-    if (envelope._schema < PLAN_SCHEMA_CURRENT) {
-      envelope = migratePlan(envelope);
-    }
-    const d = envelope.plan;
-    if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
-    if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
-    _vesselForPlan(d);
-    if (d.customLocs && Array.isArray(d.customLocs)) S.customLocs = d.customLocs;
-    if (d.voyage) document.getElementById('voyIn').value = d.voyage;
-    if (d.activeLocs && d.activeLocs.length) S.activeLocs = d.activeLocs;
-    if (d.selLoc) S.selLoc = d.selLoc;
-    if (d.date) { selDate = new Date(d.date); if (isNaN(selDate)) selDate = new Date(); }
-    if (d.dynColors) { Object.keys(DYN_COLORS).forEach(k => delete DYN_COLORS[k]); Object.assign(DYN_COLORS, d.dynColors); }
-    if (d.cargoColors) { Object.keys(CARGO_COLORS).forEach(k => delete CARGO_COLORS[k]); Object.assign(CARGO_COLORS, d.cargoColors); }
-    if (d.locColors) { Object.keys(S.locColors).forEach(k => delete S.locColors[k]); Object.assign(S.locColors, d.locColors); }
-    if (d.voyRemarks) S.voyRemarks = d.voyRemarks;
-    S.loadList = d.loadList || null;   /* v3.10 — load list belongs to the plan */
-    if (d.zoomLevel) applyZoom(d.zoomLevel);
-
-    _currentFilePath = path;
-    _updateWindowTitle(path);
-    _addToRecent(path, envelope.name);
-    initDynColors(); setDateDisplay(); loadLibPrefs();
-    buildActiveLocStrip(); buildLocGrid(); buildCargoList(); buildDGList();
-    renderAll(); updateStats(); updateDGSummary();
-    LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
-    seedHistoryBaseline(); checkSeg();   /* new file = new history */
-    showToast('Plan opened', 'ok');
+    await _openPlanPath(path);
   } catch (e) {
-    showToast('Could not open file', 'warn');
+    showToast('Could not open file \u2014 it may have been moved or deleted', 'warn');
   }
 }
 
@@ -8073,11 +8166,7 @@ function openProjectFile() {
         });
         if (!selected) return;
         const filePath = typeof selected === 'string' ? selected : selected.path;
-        const contents = await invoke('read_file', { path: filePath });
-        _applyProjectData(contents, filePath.split(/[/\\]/).pop());
-        _currentFilePath = filePath;
-        _updateWindowTitle(filePath);
-        _addToRecent(filePath, _buildEnvelope().name);
+        await _openPlanPath(filePath);
       } catch (e) {
         showToast('Open failed: ' + (e && e.message || e), 'warn');
       }
@@ -8099,12 +8188,22 @@ function openProjectFile() {
   input.click();
 }
 
-function _applyProjectData(jsonString, fileName) {
+function _applyProjectData(jsonString, fileName, quiet) {
   try {
     let envelope = JSON.parse(jsonString);
+    if (!envelope || typeof envelope !== 'object') throw new Error('not a Decargo project');
+    if (envelope._schema > PLAN_SCHEMA_CURRENT) {
+      showToast('This plan was saved by a newer Decargo — update the app to open it', 'warn');
+      return false;
+    }
     if (envelope._schema < PLAN_SCHEMA_CURRENT) {
       envelope = migratePlan(envelope);
     }
+    /* validate BEFORE touching the current plan — a bad file must not
+       half-replace it */
+    if (!envelope || !envelope.plan || typeof envelope.plan !== 'object') throw new Error('not a Decargo project');
+    if (envelope.plan.cargo && !Array.isArray(envelope.plan.cargo)) throw new Error('cargo is not a list');
+    if ((envelope.plan.cargo || []).some(c => !c || typeof c !== 'object' || Array.isArray(c))) throw new Error('damaged cargo entry');
     const d = envelope.plan;
     if (d.cargo) { S.cargo = d.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo); }
     if (d.customLib) { S.customLib = d.customLib; buildCustList(); buildCargoList(); }
@@ -8126,10 +8225,13 @@ function _applyProjectData(jsonString, fileName) {
     renderAll(); updateStats(); updateDGSummary();
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
     seedHistoryBaseline(); checkSeg();   /* new project = new history */
-    showToast('Project loaded \u2014 ' + fileName, 'ok');
+    _dirty = false; _updateSaveIndicator();
+    if (!quiet) showToast('Project loaded \u2014 ' + fileName, 'ok');
+    return true;
   } catch (err) {
     console.error('[Project] Load error:', err);
     showToast('Invalid project file', 'warn');
+    return false;
   }
 }
 
@@ -10981,7 +11083,8 @@ async function buildPDF(deckCanvas, data, opts){
   const yyyy = now.getFullYear();
   const hh  = String(now.getHours()).padStart(2,'0');
   const mi  = String(now.getMinutes()).padStart(2,'0');
-  const ts  = `${dd} ${mon} ${yyyy} \u00B7 ${hh}:${mi}`;
+  /* v3.36 — explicit zone: ship's clock may be UTC or local; say which */
+  const ts  = `${dd} ${mon} ${yyyy} \u00B7 ${hh}:${mi} ${_utcOffsetLabel(now)}`;
   /* Left: Generated ts + brand wordmark + version. */
   doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.footerInk); doc.setCharSpace(0.2);
   doc.text('Generated ' + ts + '  \u00B7  Decargo v' + APP_VERSION, ML, fy + 4);
@@ -13415,6 +13518,7 @@ function bindClearDeck(){
   confirm.addEventListener('click', () => {
     closeModal();
     if(!isOperator()) return;            /* Viewer is read-only */
+    _backupBefore('clear deck');         /* v3.36 */
     /* Subtle fade-out of all cargo blocks AND location cards before removing.
        Both fade in parallel over the same 180ms window so the destructive
        setTimeout (190ms) clears them simultaneously and the user perceives
@@ -13469,6 +13573,7 @@ let _newDeckHtcCleanup = null;
 
 function _execNewDeck(){
   if(!isOperator()) return;
+  _backupBefore('new deck');   /* v3.36 — envelope captured now, written async */
   /* ── Block 1: snapshot current state before clearing ── */
   const snap = {
     cargo: JSON.parse(JSON.stringify(S.cargo)),
@@ -13498,6 +13603,7 @@ function _execNewDeck(){
 /* ── Restore deck from snapshot ── */
 function _restoreFromSnapshot(){
   if(!isOperator()) return false;
+  _backupBefore('restore snapshot');     /* v3.36 */
   let raw;
   try { raw = localStorage.getItem('spicaTide_lastSnapshot_v1'); } catch(e){}
   if(!raw) return false;
@@ -14872,7 +14978,7 @@ const LANG = {
 
   en: {
     /* Clear Deck modal */
-    clr_sub:    'This cannot be undone',
+    clr_sub:    'A backup is kept \u2014 File \u2192 Restore from Backup',
     clr_body:   'Clears all cargo and locations from the deck.',
 
     /* Buttons */
@@ -14954,7 +15060,7 @@ const LANG = {
   },
 
   ru: {
-    clr_sub:    'Это действие нельзя отменить',
+    clr_sub:    'Копия сохраняется \u2014 File \u2192 Restore from Backup',
     clr_body:   'Удаляет весь груз и локации с палубы.',
 
     btn_cancel: 'Отмена',
@@ -15027,7 +15133,7 @@ const LANG = {
   },
 
   uk: {
-    clr_sub:    'Цю дію не можна скасувати',
+    clr_sub:    'Копія зберігається \u2014 File \u2192 Restore from Backup',
     clr_body:   'Видаляє весь вантаж і локації з палуби.',
 
     btn_cancel: 'Скасувати',
@@ -15217,8 +15323,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.35.0';
-const APP_VERSION   = '3.35.0';
+const CURRENT_BUILD = 'v3.36.0';
+const APP_VERSION   = '3.36.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15307,17 +15413,20 @@ async function menuSaveAs(){
     const dlg = await import('@tauri-apps/plugin-dialog');
     const dd=String(selDate.getDate()).padStart(2,'0'), mm=String(selDate.getMonth()+1).padStart(2,'0'), yyyy=selDate.getFullYear();
     const path = await dlg.save({ title:'Save Project As', defaultPath:_fileVessel()+' Project - '+dd+'.'+mm+'.'+yyyy+'.json', filters:[{name:'Decargo Project',extensions:['json']}] });
-    if(!path) return;
+    if(!path) return false;
     const envelope = _buildEnvelope();
     await invoke('write_file', { path, contents: JSON.stringify(envelope,null,2) });
     _currentFilePath = path;
     _updateWindowTitle(path);
     LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
     _markSaved();
+    _addToRecent(path, envelope.name);
     showToast('Saved \u2014 ' + path.split(/[/\\]/).pop(), 'ok');
+    return true;
   } catch(e){
     console.error('[SaveAs]', e);
     showToast('Save As failed: '+(e&&e.message||e), 'warn');
+    return false;
   }
 }
 
@@ -15329,10 +15438,10 @@ async function menuSave(){
       LocalStorageAdapter.save(PLAN_DEFAULT_KEY, envelope);
       _markSaved();
       showToast('Saved \u2014 ' + _currentFilePath.split(/[/\\]/).pop(), 'ok');
-    } catch(e){ showToast('Save failed: '+(e&&e.message||e),'warn'); }
-  } else {
-    menuSaveAs();
+      return true;
+    } catch(e){ showToast('Save failed: '+(e&&e.message||e),'warn'); return false; }
   }
+  return menuSaveAs();
 }
 
 async function menuExportPDF(){
@@ -15369,10 +15478,7 @@ async function menuOpen(){
     const selected = await dlg.open({ title:'Open Project', filters:[{name:'SPICA Project',extensions:['json','spica']}], multiple:false });
     if(!selected) return;
     const filePath = typeof selected === 'string' ? selected : selected.path;
-    const contents = await invoke('read_file', { path: filePath });
-    _applyProjectData(contents, filePath.split(/[/\\]/).pop());
-    _currentFilePath = filePath;
-    _updateWindowTitle(filePath);
+    await _openPlanPath(filePath);
   } catch(e){
     console.error('[Open]', e);
     showToast('Open failed: '+(e&&e.message||e),'warn');
@@ -15389,7 +15495,7 @@ async function _populateMenuRecent(){
 
   let recents = [];
   try {
-    if(window.__TAURI__) recents = await invoke('get_recent_files');
+    if(_isTauri()) recents = await invoke('get_recent_files');   /* v3.36 — __TAURI__ is never set (withGlobalTauri off): the menu list was always empty */
   } catch(e){}
 
   if(!recents.length){
@@ -15458,6 +15564,7 @@ function bindMenuBar(){
   const actions = {
     newDeck:       () => { if(isOperator()) openNewDeckModal(); },
     restoreDeck:   () => { if(_restoreFromSnapshot()) showToast(t('restore_menu'),'ok'); },
+    restoreBackup: () => openBackupRestore(),
     /* Clear Deck moved out of the main ribbon into the File menu.
        Delegates to the existing #btnClrDeck handler which opens the
        confirmation modal — destructive action path unchanged. */
@@ -15470,7 +15577,11 @@ function bindMenuBar(){
     print:         () => printDeckPlan(),
     exportJSON:    () => menuSaveAs(),
     pdfLabelPlate: () => { pdfLabelPlate(!pdfLabelPlate()); showToast(pdfLabelPlate() ? 'PDF: cargo names on a white plate' : 'PDF: cargo names without the plate', 'ok'); },
-    exit:          () => { try{ window.close(); }catch(e){} },
+    exit:          async () => {
+      /* v3.36 — through the real window close, so the close check runs */
+      if(_isTauri()){ try{ const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().close(); return; }catch(e){ console.warn('[exit]', e); } }
+      try{ window.close(); }catch(e){}
+    },
     undo:          () => undo(),
     redo:          () => redo(),
     /* Same semantics as the Delete key: Operator only, honours multi-select,
@@ -16062,6 +16173,14 @@ const _RN_CHANGE_ICONS = {
   sync:        '\u27F3',   /* ⟳ */
   breaking:    '\u26A0',   /* ⚠ */
 };
+
+/* "UTC", "UTC+1", "UTC-3:30" — for printed / exported timestamps */
+function _utcOffsetLabel(d){
+  const off = -(d || new Date()).getTimezoneOffset();
+  if(!off) return 'UTC';
+  const sign = off > 0 ? '+' : '-', a = Math.abs(off), h = Math.floor(a / 60), m = a % 60;
+  return 'UTC' + sign + h + (m ? ':' + String(m).padStart(2, '0') : '');
+}
 
 function _getReleaseEntry(version){
   return RELEASE_NOTES.find(r => r.version === version) || null;
@@ -17378,6 +17497,7 @@ function _syncApplyRemoteVessel(rp){
 
 function _syncApplyRemote(remoteState, meta){
   if(!remoteState) return;
+  _backupBefore('remote plan');          /* v3.36 — keep ours before theirs replaces it */
   if(remoteState.cargo){ S.cargo = remoteState.cargo; _normalizeCargoGeometry(S.cargo); }
   if(remoteState.customLib) S.customLib = remoteState.customLib;
   if(remoteState.customLocs && Array.isArray(remoteState.customLocs)) S.customLocs = remoteState.customLocs;
@@ -17753,6 +17873,7 @@ function init(){
   bindModeButton();
   _updBindUI();
   _scheduleUpdateCheck();
+  bindBackupRestore();
   bindContextMenu();
   bindSyncSettings();
 
@@ -17763,7 +17884,10 @@ function init(){
   bindLangSwitch();        /* restore and apply saved language */
   bindDGAutoCheck();       /* DG Auto-Segregation Check modal controls */
   applyNewBadges();        /* version-aware NEW badge visibility */
-  setupCanvas();load();
+  setupCanvas();const _hadStoredPlan = loadPlan();
+  /* v3.36 — after init has built the UI: recover from the durable autosave
+     if the WebView store came back empty, then keep a launch backup */
+  setTimeout(() => _durableBoot(_hadStoredPlan), 1500);
   /* Voyage date is rolling today — today always wins over the persisted
      value on init, regardless of what was in the autosave envelope. See
      _rollDateToTodayIfNeeded() below for the recurring midnight check. */
@@ -17882,31 +18006,51 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
   bindAutosaveToggle();
   _updateSaveIndicator();
 
-  /* ── Close confirmation — Tauri native dialog + browser fallback ── */
-  if(window.__TAURI__){
+  /* ── Close confirmation — Tauri native dialog + browser fallback ──
+     v3.36: guarded by _isTauri(); the old window.__TAURI__ guard was never
+     true (withGlobalTauri is off), so this handler never ran before. */
+  if(_isTauri()){
     /* Tauri: intercept close request, show native confirm dialog */
     (async () => {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
+        /* v3.36 — honest close. The working plan is always kept (WebView
+           store + durable autosave file), so only a plan that came from a
+           file and has changes NOT written to that file asks anything:
+           Save / Don't Save / Cancel. Nothing else interrupts closing. */
+        let closing = false;
         await win.onCloseRequested(async (event) => {
+          if(closing) return;
           event.preventDefault();
           try {
-            const dlg = await import('@tauri-apps/plugin-dialog');
-            const msg = S.cargo.length > 0
-              ? 'You have ' + S.cargo.length + ' cargo items on deck. Unsaved changes will be lost.'
-              : 'Are you sure you want to close the application?';
-            const confirmed = await dlg.ask(msg, {
-              title: 'Confirm Exit',
-              kind: 'warning',
-              okLabel: 'Exit',
-              cancelLabel: 'Cancel'
-            });
-            if(confirmed) await win.destroy();
-          } catch(e){
-            /* If dialog fails, allow close */
-            await win.destroy();
+          try { savePlan(); } catch(_e){}
+          await _durableFlush(false);
+          if(_currentFilePath && _dirty){
+            const name = _currentFilePath.split(/[/\\]/).pop();
+            let choice = 'Cancel';
+            try {
+              const dlg = await import('@tauri-apps/plugin-dialog');
+              choice = await dlg.message(
+                'Save changes to \u201C' + name + '\u201D before closing?\n\nIf you don\u2019t save, the file stays as it was. Your latest plan is still kept by Decargo and opens next time.',
+                { title: 'Decargo', kind: 'warning', buttons: { yes: 'Save', no: 'Don\u2019t Save', cancel: 'Cancel' } });
+            } catch(e){
+              /* no dialog → save the file ourselves and close; if even that
+                 fails the window stays open (toast says why). Never trapped
+                 by a broken dialog, never silently dropping file changes. */
+              console.warn('[close] dialog failed:', e);
+              choice = 'Save';
+            }
+            if(choice === 'Save' || choice === 'Yes'){
+              const ok = await menuSave();
+              if(!ok) return;               /* save failed — stay open */
+            } else if(!(choice === 'Don\u2019t Save' || choice === 'No')){
+              return;                       /* Cancel / closed the dialog */
+            }
           }
+          } catch(e){ console.warn('[close] handler error:', e); }
+          closing = true;
+          await win.destroy();
         });
       } catch(e){ /* fallback to beforeunload if Tauri API unavailable */ }
     })();
