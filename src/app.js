@@ -15615,15 +15615,15 @@ function applyLang(code){
     b.classList.toggle('active', b.dataset.lang === code);
   });
 
-  /* Persist */
-  try{ localStorage.setItem('spicaTide_lang', code); }catch(e){}
   }catch(e){ console.warn('i18n applyLang error:', e); }
 }
 
 function bindLangSwitch(){
-  /* Restore saved language */
-  let saved = 'en';
-  try{ saved = localStorage.getItem('spicaTide_lang') || 'en'; }catch(e){}
+  /* v3.37.4 — English only (owner decision: the international working
+     language on board; the partial RU/UK switch is gone). A language
+     picked earlier is reset so nobody is left on a half-translated UI. */
+  try{ localStorage.removeItem('spicaTide_lang'); }catch(e){}
+  const saved = 'en';
 
   /* Dropdown picker logic */
   const pickerBtn  = document.getElementById('langPickerBtn');
@@ -15682,8 +15682,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.37.3';
-const APP_VERSION   = '3.37.3';
+const CURRENT_BUILD = 'v3.37.4';
+const APP_VERSION   = '3.37.4';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

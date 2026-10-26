@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.37.4',
+    date: '2026-10-26',
+    highlights: [ 'English only — language switch removed' ],
+    changes: [
+      { type: 'ui', text: 'The language switch is gone from the header: Decargo is English only. Anyone who had switched to Russian or Ukrainian is back on English' },
+    ],
+  },
+  {
     version: '3.37.3',
     date: '2026-10-26',
     highlights: [ 'Explosives next to explosives — advisory per GOMO UKCS' ],
