@@ -2283,7 +2283,7 @@ function vesselSummaryLine(withLimits){
   let t = `${p.name || 'SPICA TIDE'} · ${_fmtM2(DECK_LENGTH_M)} m × ${_fmtM2(CVH / YS)} m`;
   if(p.deckAreaM2) t += ` · ${p.deckAreaM2} m²`;
   if(withLimits){
-    if(p.maxLoadT) t += ` · Max ${p.maxLoadT} T`;
+    if(p.maxLoadT) t += ` · Max ${p.maxLoadT} t`;
     if(p.maxPressureT) t += ` · ${_fmtM2(p.maxPressureT)} T/m²`;
   }
   return t;
@@ -3625,6 +3625,8 @@ let calDate=new Date();
 let selDate=new Date();
 
 function fmtDate(d){return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});}
+/* v3.37 — one timestamp format across the app: "26 Oct 2026 14:05". */
+function _fmtStamp(ms){ const d = new Date(ms); if(isNaN(d)) return '—'; return fmtDate(d) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
 function setDateDisplay(){document.getElementById('dateBtn').textContent=fmtDate(selDate);}
 
 function renderCalendar(){
@@ -4518,6 +4520,15 @@ function renderBlock(cv,cargo){
   const b=document.createElement('div');b.className='cb' + (isOperator() ? '' : ' cb-viewer');b.dataset.id=cargo.id;
   /* Location id for Quick Filter — used by #locFilterStyle CSS rule */
   b.dataset.loc = cargo.platform || '';
+  /* v3.37 — full name on hover: the on-deck label auto-shrinks/clips on
+     small units, the tooltip is the only place the whole CCU/description
+     is readable without opening the inspector. */
+  {
+    const _nm = [cargo.ccu, cargo.desc].map(v => String(v || '').trim()).filter(Boolean);
+    const _L = cargo.length_m || cargo.w / M, _W = cargo.width_m || cargo.h / YS;
+    const _wt = parseFloat(cargo.wt);
+    b.title = (_nm.length ? _nm.join(' · ') + '\n' : '') + _L.toFixed(2) + ' × ' + _W.toFixed(2) + ' m' + (_wt > 0 ? ' · ' + _wt + ' t' : '');
+  }
   const _dgList = cargo.dgClasses || [];
   if(_dgList.length > 0) b.dataset.dg = _dgList[0];
   /* Premium tactile finish — subtle inset highlight + ambient shadow */
@@ -4542,7 +4553,7 @@ function renderBlock(cv,cargo){
   if(cbControlsFlipLeft(cargo)) b.classList.add('cb-ctrl-left');
 
   /* Right-click context menu (Operator only — Viewer can still see block but not act) */
-  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); if(!isOperator()) return; showCtxMenu(cargo.id, e.clientX, e.clientY); });
+  b.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); if(!isOperator()) return; if(!KB_SEL_SET.has(cargo.id)) kbSelect(cargo.id); showCtxMenu(cargo.id, e.clientX, e.clientY); });
 
   const dgd=_dgList.length>0?DG_DATA.find(d=>d.cls===_dgList[0]):null;
   const mkBtn=(cls,txt,fn)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;d.addEventListener('mousedown',e=>e.stopPropagation());d.addEventListener('click',fn);return d;};
@@ -5350,7 +5361,7 @@ function updateStats(){
   });
 
   setFlip(document.getElementById('sLifts'), tot);
-  document.getElementById('sWT').textContent=wt.toFixed(1)+' T';
+  document.getElementById('sWT').textContent=wt.toFixed(1)+' t';
   const trGst=document.getElementById('gstTR');if(trGst)trGst.style.display='';
   _gstShow('sL', L > 0); _gstShow('sBL', BL > 0); _gstShow('sROB', ROB > 0); _gstShow('sTR', TR > 0);
   /* hidden blocks keep their last number while they fold away */
@@ -8234,12 +8245,23 @@ function _fileVessel(){
   return n || 'Decargo';
 }
 
+let _winTitleFile = null, _winTitleLast = '';
 function _updateWindowTitle(filePath) {
-  if (filePath) {
-    const name = filePath.split(/[/\\]/).pop();
-    document.title = 'Decargo — ' + name;
-  } else {
-    document.title = 'Decargo — Deck Cargo Planner';
+  _winTitleFile = filePath ? String(filePath).split(/[/\\]/).pop() : null;
+  _syncWindowTitle();
+}
+/* v3.37 — the native window title follows the document: "• plan.json — Decargo"
+   while a file has unsaved changes (Windows convention), so the taskbar and
+   Alt+Tab show which plan is open. document.title alone never reached the
+   native title bar in Tauri. */
+function _syncWindowTitle(){
+  const dirty = !!(_winTitleFile && typeof _dirty !== 'undefined' && _dirty);
+  const t = _winTitleFile ? (dirty ? '• ' : '') + _winTitleFile + ' — Decargo' : 'Decargo — Deck Cargo Planner';
+  if(t === _winTitleLast) return;
+  _winTitleLast = t;
+  document.title = t;
+  if(_isTauri()){
+    import('@tauri-apps/api/window').then(m => m.getCurrentWindow().setTitle(t)).catch(() => {});
   }
 }
 
@@ -8603,6 +8625,25 @@ function save() {
 function load() { loadPlan(); }
 
 let zoomLevel=1.0;const ZOOM_STEP=0.1,ZOOM_MIN=0.3,ZOOM_MAX=2.0;
+/* v3.37 — selection controls (×/↻/+, resize grips) keep a constant size on
+   screen: they live inside the zoomed deck, so --zc = 1/zoom counter-scales
+   them. Set only on the selected unit(s) — a variable on the deck would
+   restyle every block. A class observer catches every new selection. */
+function _zcNow(){ return Math.max(.5, Math.min(3.4, 1 / (zoomLevel || 1))).toFixed(3); }
+function _applyCtrlScale(){
+  const v = _zcNow();
+  document.querySelectorAll('#cvDECK .cb.kb-sel').forEach(el => {
+    if(el.style.getPropertyValue('--zc') !== v) el.style.setProperty('--zc', v);
+  });
+  const cv = document.getElementById('cvDECK');
+  if(cv && !cv._zcObs){
+    cv._zcObs = new MutationObserver(ms => {
+      const now = _zcNow();
+      if(ms.some(m => m.target.classList && m.target.classList.contains('kb-sel') && m.target.style.getPropertyValue('--zc') !== now)) _applyCtrlScale();
+    });
+    cv._zcObs.observe(cv, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  }
+}
 function applyZoom(z){
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
   const wrap = document.getElementById('deckZoomWrap');
@@ -8643,6 +8684,7 @@ function applyZoom(z){
      ZOOM_MIN. Easing is quadratic ease-in on the normalized distance
      below FIT so the reveal starts gently, then strengthens. */
   updateVesselBgOpacity();
+  _applyCtrlScale();
   /* v3.10 — remember whether the deck is at FIT, so opening a side panel
      can refit into the narrower area only when the user was at FIT. */
   try{ _atFit = Math.abs(zoomLevel - computeFitScale()) < 0.012; }catch(e){}
@@ -9579,7 +9621,7 @@ function renderAscoContent(sheets, stats){
       if(item.heavyLift)      badges += `<span class="asco-badge hl">⬆ Heavy Lift</span>`;
       if(!item.sizeDetected)  badges += `<span class="asco-badge no-size">⚠ Size not detected</span>`;
       else badges += `<span class="asco-badge size">${item.dims.length_m.toFixed(2)}×${item.dims.width_m.toFixed(2)} m</span>`;
-      if(item.wt > 0) badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
+      if(item.wt > 0) badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} t</span>`;
       if(item.autoAssigned) badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
       if(item.corrected) badges += `<span class="asco-badge ocr" title="Read as ${escHtml(item.corrected)} — matched to a known unit">read ${escHtml(item.corrected)}</span>`;
       if(item.note) badges += `<span class="asco-badge note" title="${escHtml(item.note)}">${escHtml(item.note.length > 34 ? item.note.slice(0, 33) + '…' : item.note)}</span>`;
@@ -9990,7 +10032,7 @@ function buildQueueList(){
     const _qdg = item.dgClasses||[];
     if(_qdg.length>0)      badges += `<span class="asco-badge dg">◆ DG ${escHtml(_qdg.join(', '))}</span>`;
     if(item.heavyLift)     badges += `<span class="asco-badge hl">⬆ HL</span>`;
-    if(item.wt > 0)        badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} T</span>`;
+    if(item.wt > 0)        badges += `<span class="asco-badge wt">${item.wt.toFixed(1)} t</span>`;
     if(!item.sizeDetected) badges += `<span class="asco-badge no-size">default size</span>`;
     if(item.autoAssigned)  badges += `<span class="asco-badge auto-assign">Auto: ${escHtml(item.autoAssigned)}</span>`;
     if(item.status === 'BL') badges += `<span class="asco-badge bl">Backload</span>`;
@@ -11477,8 +11519,50 @@ function bindSaveAs(){
       /* Ctrl+P → Print deck plan report */
       e.preventDefault();
       printDeckPlan();
+    } else if((key === '=' || key === '+') && !inText){
+      /* v3.37 — Ctrl+= / Ctrl+- / Ctrl+0 zoom the DECK (the WebView's own
+         page zoom would scale the whole UI and break the layout). */
+      e.preventDefault();
+      applyZoom(zoomLevel + ZOOM_STEP);
+    } else if((key === '-' || key === '_') && !inText){
+      e.preventDefault();
+      applyZoom(zoomLevel - ZOOM_STEP);
+    } else if(key === '0' && !inText){
+      e.preventDefault();
+      applyZoom(1.0);
+    } else if(key === 'f' && !e.shiftKey){
+      /* Ctrl+F → command palette (searches cargo) instead of the WebView's
+         find bar, which does not exist in the desktop shell. */
+      e.preventDefault();
+      if(typeof openCmdPalette === 'function') openCmdPalette();
     }
   });
+
+  /* v3.37 — a long voyage number is clipped with an ellipsis; hovering
+     shows the full value. */
+  const _voyHover = document.getElementById('voyIn');
+  if(_voyHover) _voyHover.addEventListener('mouseenter', () => { _voyHover.title = _voyHover.value || ''; });
+
+  /* v3.37 — Desktop shell: keep browser-only accelerators and the WebView's
+     native context menu from leaking into the app (reload would drop the
+     unsaved session; "Inspect"/"Back" make no sense in a desktop tool).
+     Text fields keep their native Cut/Copy/Paste menu. */
+  if(_isTauri()){
+    document.addEventListener('keydown', e => {
+      const k = String(e.key || '').toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      const browserOnly =
+        k === 'f5' || k === 'f3' || k === 'f7' || k === 'browserback' || k === 'browserforward' ||
+        (mod && !e.altKey && ['r','u','g','j','h','d','l','n','t','w'].includes(k)) ||
+        (e.altKey && !mod && (k === 'arrowleft' || k === 'arrowright' || k === 'home'));
+      if(browserOnly) e.preventDefault();
+    }, { capture: true });
+    document.addEventListener('contextmenu', e => {
+      const t = e.target;
+      if(t && (t.isContentEditable || (t.closest && t.closest('input, textarea, [contenteditable="true"]')))) return;
+      e.preventDefault();
+    });
+  }
 
   /* ── Undo/Redo button clicks ── */
   document.getElementById('btnUndo').addEventListener('click', undo);
@@ -12952,6 +13036,9 @@ function closeKbCheat(){
 }
 
 /* ── Main keyboard event handler ───────────────────────────────── */
+function _kbAnyOverlayOpen(){
+  return !!document.querySelector('[id$="Ov"].open, [id$="Overlay"].open, .ctx-menu.open');
+}
 function kbHandleKey(e){
   /* Always respect ? key for cheatsheet, regardless of shortcuts toggle */
   if(e.key === '?'){
@@ -13006,6 +13093,12 @@ function kbHandleKey(e){
      when one is already open (Phase 2 behaviour: panel follows selection). */
   if(e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey){
     if(S.cargo.length === 0) return;
+    /* v3.37 — never hijack Tab while a dialog/overlay is open or focus sits
+       on a real control outside the deck (keyboard users must be able to
+       move between buttons, menus and form fields). */
+    if(_kbAnyOverlayOpen()) return;
+    const ae = document.activeElement;
+    if(ae && ae !== document.body && !(ae.closest && ae.closest('#cvDECK'))) return;
     e.preventDefault();
     e.stopPropagation();
     const ordered = S.cargo.slice().sort((a,b) =>
@@ -16296,7 +16389,7 @@ function bindAboutModal(){
   /* Show last check time */
   const lastTs = localStorage.getItem('spicaTide_lastUpdateCheck');
   const lastEl = document.getElementById('aboutLastCheck');
-  if(lastEl && lastTs) lastEl.textContent = 'Last check: ' + new Date(parseInt(lastTs)).toLocaleString();
+  if(lastEl && lastTs) lastEl.textContent = 'Last check: ' + _fmtStamp(parseInt(lastTs));
 
   /* Check for updates button */
   const checkBtn = document.getElementById('aboutCheckBtn');
@@ -16305,7 +16398,10 @@ function bindAboutModal(){
   /* Changelog button */
   const clBtn = document.getElementById('aboutChangelogBtn');
   if(clBtn) clBtn.addEventListener('click', () => {
-    window.open('https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/blob/main/CHANGELOG.md', '_blank');
+    /* v3.37 — in-app history (window.open is blocked in the Tauri WebView
+       and the bridge PC is often offline). */
+    ov.classList.remove('open');
+    openReleaseHistory();
   });
 }
 
@@ -16580,7 +16676,7 @@ function _updLastCheck(){
 function _updStampCheck(){
   try{ localStorage.setItem(UPD_LAST_KEY, String(Date.now())); }catch(e){}
   const lastEl = document.getElementById('aboutLastCheck');
-  if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
+  if(lastEl) lastEl.textContent = 'Last check: ' + _fmtStamp(Date.now());
 }
 function _updAboutResult(html){
   const el = document.getElementById('aboutCheckResult');
@@ -16596,8 +16692,8 @@ async function _checkForUpdates(manual){
   if(_upd.checking) return;
   _upd.checking = true;
   if(manual){
-    showToast('Checking for updates...', 'info');
-    _updAboutResult('Checking...');
+    showToast('Checking for updates…', 'info');
+    _updAboutResult('Checking…');
   }
   try{
     /* Strategy 1: Tauri updater (desktop build — can download + install) */
@@ -17640,7 +17736,7 @@ function _syncUpdateUI(status){
   const descSt = document.getElementById('syncDesc');
   const secBp = document.getElementById('bpSyncSection');
   const labels = {
-    synced:'Synced', syncing:'Syncing...', offline:'Offline',
+    synced:'Synced', syncing:'Syncing…', offline:'Offline',
     error:'Error', disabled:'Sync', auth_failed:'Auth Failed',
     pending:'Pending', conflict:'Conflict'
   };
@@ -17663,7 +17759,7 @@ function _syncUpdateUI(status){
     const errCount = Sync.getErrorCount();
     const errSuffix = errCount > 0 ? ' · ' + errCount + ' error' + (errCount>1?'s':'') : '';
     if(status==='synced') descSt.textContent = (folder ? 'Ship network folder' : 'Connected') + (timeStr ? ' · Last: ' + timeStr : '');
-    else if(status==='syncing') descSt.textContent = 'Syncing...';
+    else if(status==='syncing') descSt.textContent = 'Syncing…';
     else if(status==='pending') descSt.textContent = 'Changes waiting to be published';
     else if(status==='conflict') descSt.textContent = 'Conflict — choose which plan to keep';
     else if(status==='offline') descSt.textContent = (folder ? 'Folder not reachable — working locally' : 'Offline — local only') + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
@@ -18002,9 +18098,9 @@ function bindSyncSettings(){
     const cfg = _syncFormConfig();
     if(cfg.mode === 'folder' && !cfg.dir){ resultEl.textContent = 'Choose the shared folder first'; resultEl.style.color = '#c0392b'; return; }
     Sync.setSyncConfig(cfg);
-    resultEl.textContent = 'Testing...';
+    resultEl.textContent = 'Testing…';
     resultEl.style.color = 'var(--txt3)';
-    _syncLog('info', 'Testing connection...');
+    _syncLog('info', 'Testing connection…');
     const r = await Sync.testConnection();
     if(r.ok){
       resultEl.textContent = cfg.mode === 'folder'
@@ -18305,6 +18401,7 @@ function _setSaveState(next){
   }
 
   _saveState.current = next;
+  _syncWindowTitle();
   const dot  = document.getElementById('saveDotBottom');
   const text = document.getElementById('saveStateText');
   if(!dot || !text) return;
@@ -18447,7 +18544,7 @@ function _refreshSmartToolsSystem(){
   const lastEl = document.getElementById('stLastSave');
   if(lastEl){
     if(!_lastSaveAt){
-      lastEl.textContent = 'Not yet saved';
+      lastEl.textContent = 'Not saved to a file yet';
     } else {
       const d = new Date(_lastSaveAt);
       const hh = String(d.getHours()).padStart(2,'0');

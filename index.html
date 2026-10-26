@@ -120,13 +120,13 @@
     <span class="menu-label">File</span>
     <div class="menu-dropdown">
       <div class="menu-action" data-action="newDeck">New Deck Plan</div>
-      <div class="menu-action ctx-danger" data-action="clearDeck">Clear Deck Plan...</div>
+      <div class="menu-action ctx-danger" data-action="clearDeck">Clear Deck Plan…</div>
       <div class="menu-action" data-action="restoreDeck" id="menuRestoreDeck" style="display:none" data-i18n="restore_menu">Restore previous deck plan</div>
       <div class="menu-action" data-action="restoreBackup">Restore from Backup…</div>
       <div class="menu-sep"></div>
       <div class="menu-action" data-action="openProject">Open Project<span class="menu-shortcut">Ctrl+O</span></div>
       <div class="menu-action" data-action="saveProject">Save<span class="menu-shortcut">Ctrl+S</span></div>
-      <div class="menu-action" data-action="saveProjectAs">Save As...<span class="menu-shortcut">Ctrl+Shift+S</span></div>
+      <div class="menu-action" data-action="saveProjectAs">Save As…<span class="menu-shortcut">Ctrl+Shift+S</span></div>
       <div class="menu-sep"></div>
       <div class="menu-sublabel" id="menuRecentLabel" style="display:none">Recent Projects</div>
       <div id="menuRecentList"></div>
@@ -274,7 +274,7 @@
         <path d="m9.2 9.2 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
       </svg>
       <input type="text" id="cmdpInput" class="cmdp-input" placeholder="Type a command or search cargo…" autocomplete="off" spellcheck="false" />
-      <span class="cmdp-input-kbd" aria-hidden="true"><span>⌘</span><span>K</span></span>
+      <span class="cmdp-input-kbd" aria-hidden="true"><span>Ctrl</span><span>K</span></span>
     </div>
     <div class="cmdp-list" id="cmdpList" role="listbox" aria-label="Commands"></div>
     <div class="cmdp-footer">
@@ -375,7 +375,7 @@
     <section class="insp-sec">
       <div class="insp-sec-title">Deck &amp; Physical</div>
       <div class="insp-field insp-field-short">
-        <label for="inspWT">Weight (T)</label>
+        <label for="inspWT">Weight (t)</label>
         <input type="number" id="inspWT" step="0.1" min="0">
       </div>
       <div class="insp-field-row">
@@ -638,7 +638,7 @@
           <span class="gst-lift-num" id="sLifts">0</span>
         </div>
         <div class="gst-lift-meta">
-          <span class="gst-lift-meta-val" id="sWT">0.0 T</span>
+          <span class="gst-lift-meta-val" id="sWT">0.0 t</span>
           <span class="gst-lift-meta-lbl">total</span>
         </div>
         <!-- Retained for threshold-color JS hook (no longer rendered as a bar). -->
@@ -888,7 +888,7 @@
         <div class="saveas-item tauri-only" id="openPlanFile" style="display:none">
           <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5V11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1H7.5L6 3H3a1 1 0 0 0-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
           <span class="saveas-item-text">
-            <span class="saveas-item-name">Open Plan...</span>
+            <span class="saveas-item-name">Open Plan…</span>
             <span class="saveas-item-sub">.spica file &middot; Ctrl+O</span>
           </span>
         </div>
@@ -907,7 +907,7 @@
         <div class="saveas-item" id="openProjectFile">
           <span class="saveas-item-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5V11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1H7.5L6 3H3a1 1 0 0 0-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
           <span class="saveas-item-text">
-            <span class="saveas-item-name">Open Project...</span>
+            <span class="saveas-item-name">Open Project…</span>
             <span class="saveas-item-sub">.json file</span>
           </span>
         </div>
@@ -1467,7 +1467,7 @@
     <section class="mdl-sec">
       <div class="mdl-sec-title">Deck &amp; Physical</div>
       <div class="mdl-field">
-        <label>Weight (T)</label>
+        <label>Weight (t)</label>
         <input type="number" id="mWT" step="0.1" min="0">
       </div>
       <div class="mdl-field">
@@ -1503,7 +1503,7 @@
           <button type="button" class="dg-multi-add" id="dgMultiAdd">+ Add DG Class</button>
           <div class="dg-multi-dropdown" id="dgMultiDropdown">
             <div class="dg-picker-search-wrap">
-              <input class="dg-picker-search" id="dgMultiSearch" type="text" placeholder="Search DG class..." autocomplete="off" spellcheck="false">
+              <input class="dg-picker-search" id="dgMultiSearch" type="text" placeholder="Search DG class…" autocomplete="off" spellcheck="false">
             </div>
             <div class="dg-multi-list" id="dgMultiList"></div>
           </div>
@@ -1592,7 +1592,7 @@
           </button>
         </div>
         <div class="st-system-row">
-          <span>Last save</span>
+          <span>Last file save</span>
           <span id="stLastSave">—</span>
         </div>
         <div class="st-system-row">

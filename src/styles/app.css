@@ -18314,3 +18314,82 @@ html:is([data-motion="calm"],[data-motion="off"]) .hfw-map-ic path{ animation-pl
   .cb.kb-sel .cb-rot{ opacity: 0; transform: translateY(-50%) scale(.8); }
   .cb.kb-sel .cb-copy{ opacity: 0; transform: translateY(calc(-50% + 26px)) scale(.8); }
 }
+
+/* ════════════════════════════════════════════════════════════
+   v3.37 UI/UX AUDIT FIXES
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --pop-surf: rgba(252,252,250,.97);     /* menus, context menu, popovers */
+  --modal-surf: rgba(250,250,248,.97);   /* dialogs */
+  --focus-ring: var(--acc);
+}
+[data-theme="dark"]{
+  --pop-surf: rgba(30,34,42,.97);
+  --modal-surf: rgba(34,36,31,.97);
+}
+/* Menus and popovers were glass: with Performance mode off the menubar's own
+   blur made them see-through (header text crisp behind the items). Floating
+   chrome that carries words is near-opaque now; the blur stays as a hint. */
+html body .menu-dropdown,
+html body .saveas-dropdown,
+html body .ctx-menu,
+html body .locpop,
+html body .cal-popup{ background: var(--pop-surf) !important; }
+/* Clear Deck / Restore from Backup used --glass (11 % white): rows were
+   unreadable over cargo. Same surface as the New Deck dialog. */
+.clr-deck-modal{ background: var(--modal-surf); }
+/* A destructive confirmation does not bounce. */
+.clr-deck-modal{ animation-timing-function: cubic-bezier(.2,.8,.2,1); }
+
+/* Voyage number: never cut mid-token without telling — ellipsis + tooltip */
+.info-value-input{ text-overflow: ellipsis; }
+
+/* Locations already on this voyage stand out in the light theme too */
+.loc-opt.in-use{
+  background: color-mix(in srgb, var(--acc) 80%, rgba(20,24,32,.6));
+  border-color: color-mix(in srgb, var(--acc) 70%, #fff);
+}
+
+/* Contrast — small informational text ≥ 4.5:1 */
+.rc-lifts .gst-lift-meta-val{ color: var(--txt3); }
+.side-lbl{ color: rgba(0,0,0,.46); }
+[data-theme="dark"] .side-lbl{ color: rgba(255,255,255,.46); }
+
+/* One focus ring for keyboard users, none after a mouse click */
+:is(button, [role="button"], [tabindex], .menu-label, .menu-action, .gp, .zbtn, input, select):focus-visible{
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible){ outline: none; }
+
+/* Empty-deck hint sits on a soft plate, not across the bay watermarks */
+.empty-deck-hint .edh-title, .empty-deck-hint .edh-sub{
+  background: color-mix(in srgb, var(--surf) 78%, transparent);
+  padding: 2px 10px; border-radius: 8px;
+}
+
+/* Several units selected: one set of actions (keyboard / Inspector), not a
+   delete-rotate-copy stack on every unit */
+body.insp-multi .cb :is(.cb-del, .cb-rot, .cb-copy, .rh){ display: none !important; }
+
+/* Selection controls keep a constant on-screen size at every zoom
+   (--zc = 1 / zoom, set by JS on the selected unit only) */
+.cb.kb-sel .cb-del{ transform: translateY(calc(-50% - 26px * var(--zc, 1))) scale(var(--zc, 1)); }
+.cb.kb-sel .cb-rot{ transform: translateY(-50%) scale(var(--zc, 1)); }
+.cb.kb-sel .cb-copy{ transform: translateY(calc(-50% + 26px * var(--zc, 1))) scale(var(--zc, 1)); }
+.cb.kb-sel :is(.cb-del, .cb-rot, .cb-copy){ transform-origin: left center; margin-left: calc(8px * var(--zc, 1)); }
+.cb.kb-sel.cb-ctrl-left :is(.cb-del, .cb-rot, .cb-copy){ transform-origin: right center; margin-left: 0; margin-right: calc(8px * var(--zc, 1)); }
+/* handles: constant size when zooming in, but capped when zoomed far out so
+   they never swallow a small unit and its label */
+.cb.kb-sel .rh{ scale: min(var(--zc, 1), 1.4); }
+
+/* Calm / Off motion and reduced motion: panels, dialogs, palette, context
+   menu, DG card and the deck refit only fade — no slides, no bounces */
+html:is([data-motion="calm"], [data-motion="off"]) :is(#stPanel, #inspRail, #deckZoomWrap, .clr-deck-modal, .new-deck-modal, .about-modal, .kb-cheat-panel, .cmdp-panel, .ctx-menu, .dgc){
+  animation: none !important;
+  transition-property: opacity !important;
+  transition-duration: .12s !important;
+}
+.cb.kb-sel .cb-del:hover{ transform: translateY(calc(-50% - 26px * var(--zc, 1))) scale(calc(1.06 * var(--zc, 1))) !important; }
+.cb.kb-sel .cb-rot:hover{ transform: translateY(-50%) scale(calc(1.06 * var(--zc, 1))) !important; }
+.cb.kb-sel .cb-copy:hover{ transform: translateY(calc(-50% + 26px * var(--zc, 1))) scale(calc(1.06 * var(--zc, 1))) !important; }
