@@ -14362,85 +14362,113 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
 }
 
 /* ============================================
-   HEADER TOOLBAR — top-right cluster (v3.34)
-   macOS "icon and text" toolbar: Upload / Library / Smart Tools are
-   coloured tiles with their name always written underneath — each
-   keeps its own colour so it is recognised before it is read.
-   Theme + Language are utilities: two small round buttons stacked
-   on the right (.gp-mini), name in the tooltip.
+   HEADER TOOLBAR — top-right cluster (v3.34.1)
+   Upload / Library / Smart Tools are tiles built exactly like the
+   Wind & waves map button (46 px, r13, 120° gradient, top-left sheen,
+   1 px top highlight, soft tinted shadow) — each takes its own slice
+   of that maritime palette: indigo→ocean, teal→sea green, forest→olive.
+   Columns are a fixed 72 px so the tiles are evenly spaced whatever
+   the label length; the TILE sits on the header's centre line (same
+   line as the map button) and the name hangs 6 px below it.
+   Theme + Language: two small round buttons stacked (.gp-mini).
    (Class names .gp-* kept from the old gradient pills.)
    ============================================ */
 :root{
-  --gpt-up-a:#6a55a0;  --gpt-up-b:#9a7fd0;
-  --gpt-lib-a:#1f5fbf; --gpt-lib-b:#4f8fe6;
-  --gpt-st-a:#b7791f;  --gpt-st-b:#e0a84a;
+  --gpt-up:  linear-gradient(120deg, #3a4f9a 0%, #3569a5 42%, #2f7f9c 78%, #398ba1 100%);
+  --gpt-lib: linear-gradient(120deg, #245d70 0%, #287c83 42%, #359384 78%, #4b9b7a 100%);
+  --gpt-st:  linear-gradient(120deg, #3d684c 0%, #5c7d43 42%, #7b8d3f 78%, #929a43 100%);
+  --gpt-up-sh:  rgba(36,70,120,.24);
+  --gpt-lib-sh: rgba(28,91,91,.22);
+  --gpt-st-sh:  rgba(67,83,35,.22);
+  --gpt-sheen: rgba(255,255,255,.22);
+  --gpt-hi:    rgba(255,255,255,.22);
   --gpt-on-tile:#ffffff;
   --gpt-lbl:#3b4a5c;   --gpt-lbl-hov:#0f1c2c;
   --gpt-shadow:rgba(20,40,70,.18);
-  --gpt-rim:rgba(255,255,255,.18);
   --gpt-mini-bg:rgba(255,255,255,.92);
   --gpt-badge:#ef4444;
 }
 [data-theme="dark"]{
-  --gpt-lbl:#aeb9c7;   --gpt-lbl-hov:#f1f5fa;
+  --gpt-up-sh:rgba(0,0,0,.30); --gpt-lib-sh:rgba(0,0,0,.30); --gpt-st-sh:rgba(0,0,0,.30);
+  --gpt-sheen:rgba(255,255,255,.16);
+  --gpt-hi:rgba(255,255,255,.18);
+  --gpt-lbl:#bac5d2;   --gpt-lbl-hov:#f1f5fa;
   --gpt-shadow:rgba(0,0,0,.45);
   --gpt-mini-bg:rgba(255,255,255,.08);
 }
-.gp-upload { --a:var(--gpt-up-a);  --b:var(--gpt-up-b); }
-.gp-library{ --a:var(--gpt-lib-a); --b:var(--gpt-lib-b); }
-.gp-smart  { --a:var(--gpt-st-a);  --b:var(--gpt-st-b); }
+.gp-upload { --g:var(--gpt-up);  --sh:var(--gpt-up-sh); }
+.gp-library{ --g:var(--gpt-lib); --sh:var(--gpt-lib-sh); }
+.gp-smart  { --g:var(--gpt-st);  --sh:var(--gpt-st-sh); }
 
 .gp-cluster{
   display:flex;
   align-items:center;
-  gap:14px;
+  gap:4px;
+  margin-left:20px;            /* air after the Wind & waves button */
 }
 .gp{
   position:relative;
   display:inline-flex;
-  flex-direction:column;
   align-items:center;
-  gap:6px;
-  min-width:48px;
-  padding:2px 0 0;
+  justify-content:center;
+  width:72px;
+  height:46px;
+  padding:0;
   margin:0;
   border:none;
   outline:none;
   background:none;
   cursor:pointer;
   vertical-align:middle;
+  overflow:visible;
 }
 .gp .gp-ico{
   position:relative;
-  width:42px;
-  height:42px;
+  width:46px;
+  height:46px;
   border-radius:13px;
+  overflow:hidden;
+  isolation:isolate;
   display:flex;
   align-items:center;
   justify-content:center;
   color:var(--gpt-on-tile);
-  background:linear-gradient(160deg,var(--b),var(--a));
-  box-shadow:0 1px 2px var(--gpt-shadow), inset 0 0 0 .5px var(--gpt-rim);
-  transition:transform .25s cubic-bezier(.3,1.4,.5,1), box-shadow .25s ease;
+  background:var(--g);
+  box-shadow:0 6px 16px var(--sh), inset 0 1px 0 var(--gpt-hi);
+  transition:transform .18s, box-shadow .18s;
   pointer-events:none;
 }
-.gp .gp-ico svg{ width:20px; height:20px; display:block; }
-.gp:hover .gp-ico{ transform:translateY(-1px); box-shadow:0 6px 14px var(--gpt-shadow), inset 0 0 0 .5px var(--gpt-rim); }
-.gp:active .gp-ico{ transform:scale(.94); }
+.gp .gp-ico::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  background:radial-gradient(120% 90% at 0% 0%, var(--gpt-sheen), transparent 55%);
+}
+.gp .gp-ico svg{
+  width:22px; height:22px; display:block;
+  fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+.gp-upload .gp-ico svg{ transform:translateY(1px); }   /* optical: arrow makes it top-heavy */
+.gp:hover .gp-ico{ transform:translateY(-1px); box-shadow:0 10px 22px var(--sh), inset 0 1px 0 var(--gpt-hi); }
+.gp:active .gp-ico{ transform:translateY(0) scale(.98); }
 .gp .gp-lbl{
-  display:block;
-  font:600 11px/1.1 Inter,-apple-system,system-ui,"Segoe UI",sans-serif;
-  letter-spacing:.01em;
+  position:absolute;
+  top:52px;
+  left:50%;
+  transform:translateX(-50%);
+  font:600 11px/14px Inter,-apple-system,system-ui,"Segoe UI",sans-serif;
+  letter-spacing:0;
   white-space:nowrap;
   color:var(--gpt-lbl);
-  transition:color .2s ease;
+  transition:color .18s ease;
   pointer-events:none;
 }
 .gp:hover .gp-lbl{ color:var(--gpt-lbl-hov); }
 .gp .gp-badge{
   position:absolute;
-  top:-4px;
-  right:-4px;
+  top:-5px;
+  left:calc(50% + 15px);
   min-width:16px;
   height:16px;
   padding:0 4px;
@@ -14463,8 +14491,9 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
   display:flex;
   flex-direction:column;
   gap:8px;
+  margin-left:12px;            /* 4 + 12 = 16 px after the last tile column */
 }
-.gp-mini .gp{ min-width:0; padding:0; }
+.gp-mini .gp{ width:30px; height:30px; }
 .gp-mini .gp .gp-ico{
   width:30px;
   height:30px;
@@ -14473,8 +14502,9 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
   background:var(--gpt-mini-bg);
   box-shadow:0 1px 2px var(--gpt-shadow);
 }
+.gp-mini .gp .gp-ico::after{ content:none; }
 .gp-mini .gp:hover .gp-ico{ color:var(--gpt-lbl-hov); }
-.gp-mini .gp .gp-ico svg{ width:15px; height:15px; }
+.gp-mini .gp .gp-ico svg{ width:15px; height:15px; fill:none; stroke-width:1.2; transform:none; }
 .gp-mini .gp .gp-lbl{ display:none; }
 .gp-cluster .lang-switch{
   position:relative;
@@ -14484,15 +14514,15 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
   border:none;
   flex-shrink:0;
 }
-.rc-tools .gp-mini .lang-switch{ margin-left:0 !important; }
+.rc-tools .gp-mini .lang-switch{ margin:0 !important; padding:0 !important; }   /* drop legacy pill spacing */
 .rc-tools .gp-mini .lang-switch::before{ content:none; }
 
-body.hdr-compact .gp-cluster{ gap:12px; }
-body.hdr-compact .gp > .gp-ico{ width:38px; height:38px; border-radius:12px; }
-body.hdr-compact .gp > .gp-ico svg{ width:18px; height:18px; }
-body.hdr-tight .gp-cluster{ gap:10px; }
-body.hdr-tight .gp > .gp-ico{ width:36px; height:36px; border-radius:11px; }
-body.hdr-tight .gp .gp-lbl{ font-size:10.5px; }
+/* narrower windows: tighter columns, the tiles keep their size so they
+   still match the map button (which also stays 46 px) */
+body.hdr-compact .gp-cluster{ margin-left:14px; }
+body.hdr-compact .gp{ width:68px; }
+body.hdr-tight .gp{ width:66px; }
+body.hdr-compact .gp-mini .gp, body.hdr-tight .gp-mini .gp{ width:28px; height:28px; }
 body.hdr-compact .gp-mini .gp .gp-ico,
 body.hdr-tight .gp-mini .gp .gp-ico{ width:28px; height:28px; border-radius:14px; }
 

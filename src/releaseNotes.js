@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.34.1',
+    date: '2026-10-26',
+    highlights: [ 'Header tiles match the Wind & waves button' ],
+    changes: [
+      { type: 'ui', text: 'Upload, Library and Smart Tools are built like the Wind & waves button — same size, corners and light — in ocean blue, teal and olive from the same sea palette' },
+      { type: 'ui', text: 'The tiles sit on the same line as the Wind & waves button, the names hang underneath, and the tiles are evenly spaced' },
+    ],
+  },
+  {
     version: '3.34.0',
     date: '2026-10-26',
     highlights: [ 'New Decargo icon', 'Header buttons with names' ],
