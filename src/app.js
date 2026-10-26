@@ -163,18 +163,8 @@ function applyModeUI(){
   if(typeof renderAll === 'function') renderAll();
 }
 
-/* ── Load persisted brand labels from localStorage ── */
-(function loadBrandConfig(){
-  try{
-    const saved = JSON.parse(localStorage.getItem('spicaTide_brand') || 'null');
-    if(saved){
-      if(saved.name)     SPICA_CONFIG.BRAND.name     = saved.name;
-      if(saved.title)    SPICA_CONFIG.BRAND.title    = saved.title;
-      if(saved.subtitle) SPICA_CONFIG.BRAND.subtitle = saved.subtitle;
-    }
-  }catch(e){}
-})();
-
+/* v3.30 — header labels are no longer editable: earlier hand edits stored
+   in 'spicaTide_brand' are ignored; the name follows the active vessel. */
 /* ── Apply brand labels to DOM on load ──
    Brand name rendered as two colored spans (first word + rest). No icon. */
 function applyBrandLabels(){
@@ -184,7 +174,7 @@ function applyBrandLabels(){
     sub:  document.getElementById('brandSub'),
   };
   if(el.name){
-    const name = (SPICA_CONFIG.BRAND.name || '').trim();
+    const name = ((typeof VESSEL !== 'undefined' && VESSEL && VESSEL.name) || SPICA_CONFIG.BRAND.name || '').trim();
     const parts = name.split(/\s+/);
     el.name.innerHTML = '';
     const first = document.createElement('span');
@@ -203,12 +193,9 @@ function applyBrandLabels(){
   if(el.sub)  el.sub.textContent  = SPICA_CONFIG.BRAND.subtitle;
 }
 
-/* ════════════════════════════════════════════════════════════
-   ADMIN EDIT MODE
-   Flow: click pencil → password modal → validate vs SPICA_CONFIG
-   → enable inline editing → save to localStorage on exit
-════════════════════════════════════════════════════════════ */
-let ADMIN_ACTIVE = false;
+/* v3.30 — the header-label editor (pencil + admin edit mode) is gone: the
+   header shows the active vessel's name and the plan title. The
+   confirmation modal below stays for Vessel Setup. */
 
 /* ── v3.11.1 — Charterer ──────────────────────────────────────
    Per-installation setting (the vessel's current charter), not per plan.
@@ -271,9 +258,9 @@ function adminOpenModal(target, title, hint){
   if(!ov) return;
   _adminUnlockTarget = typeof target === 'function' ? target : null;
   const tEl = ov.querySelector('.admin-modal-title'), lEl = ov.querySelector('.admin-modal-lbl'), bEl = document.getElementById('adminModalUnlock');
-  if(tEl) tEl.textContent = _adminUnlockTarget ? (title || 'Confirm') : 'Edit header';
-  if(lEl) lEl.textContent = _adminUnlockTarget ? (hint || 'Continue?') : 'Edit the vessel name and titles in the header?';
-  if(bEl) bEl.textContent = _adminUnlockTarget ? 'Open' : 'Edit';
+  if(tEl) tEl.textContent = title || 'Confirm';
+  if(lEl) lEl.textContent = hint || 'Continue?';
+  if(bEl) bEl.textContent = 'Open';
   ov.classList.add('open');
   setTimeout(() => bEl && bEl.focus(), 120);
 }
@@ -300,81 +287,10 @@ function _trackRibbonBottom(){
 function adminValidate(){
   const target = _adminUnlockTarget; _adminUnlockTarget = null;
   adminCloseModal();
-  if(target) target(); else adminEnterEditMode();
-}
-
-function adminEnterEditMode(){
-  ADMIN_ACTIVE = true;
-  document.getElementById('adminModeBar').classList.add('active');
-
-  /* Replace brand text nodes with editable inputs */
-  const fields = [
-    { id:'brandName', key:'name',     placeholder:'Vessel name'  },
-    { id:'brandDcp',  key:'title',    placeholder:'Plan title'   },
-    { id:'brandSub',  key:'subtitle', placeholder:'Descriptor'   },
-  ];
-
-  fields.forEach(({ id, key, placeholder }) => {
-    const el = document.getElementById(id);
-    if(!el || el.querySelector('input')) return;   /* already editing */
-
-    const currentText = el.textContent.trim();
-    el.textContent = '';
-
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.className = 'brand-edit-field';
-    inp.value = currentText;
-    inp.placeholder = placeholder;
-    inp.dataset.key = key;
-
-    /* Commit on blur or Enter */
-    const commit = () => {
-      const val = inp.value.trim() || currentText;
-      SPICA_CONFIG.BRAND[key] = val;
-      el.textContent = val;
-      adminSaveBrand();
-    };
-    inp.addEventListener('blur', commit);
-    inp.addEventListener('keydown', e => {
-      if(e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
-      if(e.key === 'Escape') { inp.value = currentText; inp.blur(); }
-    });
-    inp.addEventListener('mousedown', e => e.stopPropagation());
-
-    el.appendChild(inp);
-  });
-
-  /* Focus first field */
-  const first = document.querySelector('.brand-edit-field');
-  if(first) first.focus();
-}
-
-function adminExitEditMode(){
-  ADMIN_ACTIVE = false;
-  document.getElementById('adminModeBar').classList.remove('active');
-
-  /* Commit any still-focused inputs */
-  document.querySelectorAll('.brand-edit-field').forEach(inp => inp.blur());
-
-  adminSaveBrand();
-}
-
-function adminSaveBrand(){
-  try{
-    localStorage.setItem('spicaTide_brand', JSON.stringify(SPICA_CONFIG.BRAND));
-  }catch(e){}
+  if(target) target();
 }
 
 function bindAdmin(){
-  /* Pencil button → open password modal */
-  const editBtn = document.getElementById('brandEditBtn');
-  if(editBtn) editBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    if(ADMIN_ACTIVE) adminExitEditMode();
-    else adminOpenModal();
-  });
-
   /* Modal: close button */
   document.getElementById('adminModalClose')?.addEventListener('click', adminCloseModal);
   document.getElementById('adminModalCancel')?.addEventListener('click', adminCloseModal);
@@ -391,9 +307,6 @@ function bindAdmin(){
   document.getElementById('adminModalOv')?.addEventListener('keydown', e => {
     if(e.key === 'Escape'){ e.preventDefault(); adminCloseModal(); }
   });
-
-  /* Exit admin mode */
-  document.getElementById('adminModeExit')?.addEventListener('click', adminExitEditMode);
 
   /* Apply brand labels from config / localStorage */
   applyBrandLabels();
@@ -8463,7 +8376,7 @@ let _atFit = true;
   let open = null;
   const sync = () => {
     const b = document.body;
-    const now = b.classList.contains('cp-panel-open') || b.classList.contains('insp-open') || b.classList.contains('vessel-setup');
+    const now = (b.classList.contains('cp-panel-open') && !b.classList.contains('cp-placing')) || b.classList.contains('insp-open') || b.classList.contains('vessel-setup');
     if(now === open) return;
     const first = open === null;
     open = now;
@@ -11295,12 +11208,19 @@ const CP_SECTIONS = { queue:true, freq:true, pipe:true, sp:true, lib:false, cust
 
 /* ── Placing state — slide library clear of deck during placement ── */
 let _cpPlacingActive = false;
-function _cpEnterPlacing(){
+/* v3.30 — a click-to-place pick slides the Library away AND gives the deck
+   its full width back (body.cp-placing → _watchSidePanels refits from the
+   narrow FIT to the full FIT, smoothly); when the Library returns (save /
+   cancel of the placed unit) the deck refits beside it again. A drag keeps
+   the zoom: rescaling the deck under a dragged ghost would move the target. */
+function _cpEnterPlacing(refit){
+  if(refit) document.body.classList.add('cp-placing');
   if(_cpPlacingActive) return;
   _cpPlacingActive = true;
   document.getElementById('cpOverlay')?.classList.add('placing');
 }
 function _cpExitPlacing(){
+  document.body.classList.remove('cp-placing');
   if(!_cpPlacingActive) return;
   _cpPlacingActive = false;
   document.getElementById('cpOverlay')?.classList.remove('placing');
@@ -11952,7 +11872,7 @@ function _pipeEndSvg(spec, W, H){
 function _cpArm(pi){
   if(!isOperator()) return;
   document.querySelectorAll('.cp-qi,.cp-lc,.cp-dg').forEach(x => x.classList.remove('cp-qi-sel','cp-lc-sel','cp-dg-sel'));
-  S.pending = pi; _cpEnterPlacing();
+  S.pending = pi; _cpEnterPlacing(true);
   cpShowHint('<b>' + escHtml(pi.item.name) + '</b> → click deck to place');
 }
 function _cpPipeBind(){
@@ -12357,7 +12277,7 @@ function cpMakeLibCard(item, isCustom=false, options={}){
     } else {
       card.classList.add('cp-lc-sel');
       S.pending = pendingItem;
-      _cpEnterPlacing();
+      _cpEnterPlacing(true);
       cpShowHint('<b>' + displayName.replace(/</g,'&lt;') + '</b> → click deck to place');
     }
   });
@@ -15267,8 +15187,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.29.0';
-const APP_VERSION   = '3.29.0';
+const CURRENT_BUILD = 'v3.30.0';
+const APP_VERSION   = '3.30.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16086,7 +16006,6 @@ function bindModeButton(){
   const btn = document.getElementById('modeBtn');
   if(btn){
     btn.addEventListener('click', e => {
-      if(e.target.closest('.brand-edit-btn')) return;
       if(isOperator()){ setMode('viewer'); } else { openModeModal(); }
     });
     btn.addEventListener('keydown', e => {

@@ -5841,21 +5841,8 @@ body.dragging-cargo *{
 }
 #kb-zoom-flash.show{ opacity:1; }
 
-/* Pencil icon trigger — appears on brand hover */
+/* Confirmation modal (Vessel Setup) */
 .brand{position:relative;}
-.brand-edit-btn{
-  position:absolute;top:50%;right:-22px;transform:translateY(-50%);
-  width:20px;height:20px;border-radius:50%;
-  background:transparent;border:none;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-  font-size:11px;color:var(--txt4);
-  opacity:0;transition:opacity .18s,background .12s,color .12s;
-  padding:0;
-}
-.brand:hover .brand-edit-btn{opacity:1;}
-.brand-edit-btn:hover{background:rgba(72,96,131,.12);color:var(--acc);}
-
-/* Admin password modal */
 .admin-modal-ov{
   position:fixed;inset:0;z-index:8000;
   background:rgba(49,51,44,.28);
@@ -5932,47 +5919,6 @@ body.dragging-cargo *{
   letter-spacing:.2px;
 }
 .admin-modal-unlock:hover{background:var(--acc2);}
-
-/* Edit mode: editable brand fields */
-.brand-edit-field{
-  background:transparent;border:none;outline:none;
-  border-bottom:1.5px solid var(--acc);
-  font-family:inherit;font-size:inherit;font-weight:inherit;
-  color:inherit;letter-spacing:inherit;text-transform:inherit;
-  line-height:inherit;padding:1px 2px;
-  width:100%;min-width:80px;
-  transition:background .12s;
-  cursor:text;
-}
-.brand-edit-field:focus{background:rgba(72,96,131,.06);}
-
-/* Admin mode indicator bar */
-.admin-mode-bar{
-  display:none;
-  flex-shrink:0;
-  background:rgba(72,96,131,.08);
-  border-top:1px solid rgba(72,96,131,.18);
-  padding:4px 18px;
-  align-items:center;gap:10px;
-  font-family:'Inter',sans-serif;font-size:9px;
-  color:var(--acc);font-weight:600;letter-spacing:1px;text-transform:uppercase;
-}
-.admin-mode-bar.active{display:flex;}
-.admin-mode-bar-dot{
-  width:6px;height:6px;border-radius:50%;
-  background:var(--acc);animation:adminPulse 2s ease infinite;
-}
-@keyframes adminPulse{
-  0%,100%{opacity:1;} 50%{opacity:.4;}
-}
-.admin-mode-exit{
-  margin-left:auto;padding:3px 12px;border-radius:20px;
-  background:transparent;border:1px solid rgba(72,96,131,.25);
-  color:var(--acc);font-size:8.5px;font-weight:700;
-  cursor:pointer;font-family:'Inter',sans-serif;
-  transition:all .12s;letter-spacing:.3px;
-}
-.admin-mode-exit:hover{background:rgba(72,96,131,.10);}
 
 /* ═══════════════════════════════════════
    DARK MODE — [data-theme="dark"]
@@ -10623,7 +10569,6 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
     0 2px 6px rgba(0,0,0,.24),
     inset 0 1px 0 rgba(255,255,255,.06) !important;
 }
-.admin-mode-bar{ border-radius:var(--r-float-sm) !important;backdrop-filter:blur(8px); }
 
 /* Floating-pills paradigm: drawer container stays transparent — pills carry the visual weight. */
 .loc-drawer.open{background:transparent !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;border:0 !important;box-shadow:none !important;}
@@ -12076,9 +12021,6 @@ html[data-theme="dark"] .shell-ribbon .rc-brand .brand-dcp{
   flex-direction: column !important;
   justify-content: center !important;
   align-items: flex-start !important;
-}
-.rc-brand .brand > .brand-edit-btn{
-  z-index: 2;                              /* above any decoration */
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -16170,7 +16112,7 @@ html[data-perf="reduced"]:not([data-theme="dark"]) .st-section{
    guard blocks missed. Status remains visible via colour/outline. */
 @media (prefers-reduced-motion: reduce){
   .cb.dg-violation, .cb.dg-violation::before, .cb.dg-violation::after,
-  .feature-badge, .viewer-banner-dot, .admin-mode-bar-dot, .sync-dot,
+  .feature-badge, .viewer-banner-dot, .sync-dot,
   .skel-card, .htc-shimmer, .wx-cloud-d,
   .empty-deck-hint .edh-art{
     animation:none !important;
@@ -18117,7 +18059,7 @@ html body .cal-popup{
 html:is([data-motion="calm"],[data-motion="off"]) .wx-scene :is(.wx-cloud-a,.wx-cloud-b,.wx-cloud-c,.wx-cloud-d,.wx-stars,.wx-fog,.wx-sun,.wx-moon,.wx-lightning),
 html:is([data-motion="calm"],[data-motion="off"]) .wx-scene .wx-precip::before,
 html:is([data-motion="calm"],[data-motion="off"]) .wx-scene .wx-precip::after,
-html:is([data-motion="calm"],[data-motion="off"]) :is(.feature-badge,.viewer-banner-dot,.admin-mode-bar-dot,.htc-shimmer,.empty-deck-hint .edh-art,.brand-name,.dc-rec-dot){
+html:is([data-motion="calm"],[data-motion="off"]) :is(.feature-badge,.viewer-banner-dot,.htc-shimmer,.empty-deck-hint .edh-art,.brand-name,.dc-rec-dot){
   animation:none !important;
 }
 html:is([data-motion="calm"],[data-motion="off"]) .cb:is(.dg-violation,.dg-violation-warn),

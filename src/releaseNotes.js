@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.30.0',
+    date: '2026-10-26',
+    highlights: [ 'Deck gets its width back while you place' ],
+    changes: [
+      { type: 'improvement', text: 'Picking a unit in the Library slides the Library away and the deck smoothly zooms back to full width for placing; after you save the unit the Library returns and the deck fits beside it again. Dragging a card keeps the zoom so the target does not move under the pointer' },
+      { type: 'ui', text: 'The header-label editor (pencil next to the vessel name) is removed — the header shows the active vessel and “Deck Cargo Plan”' },
+    ],
+  },
+  {
     version: '3.29.0',
     date: '2026-10-26',
     highlights: [ 'New sound palette' ],
