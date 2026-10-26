@@ -15217,8 +15217,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.34.1';
-const APP_VERSION   = '3.34.1';
+const CURRENT_BUILD = 'v3.35.0';
+const APP_VERSION   = '3.35.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -16201,13 +16201,39 @@ function _formatReleaseDate(dateStr){
 }
 
 /* ══════════════════════════════════════════════════════════
-   AUTO-UPDATE SYSTEM — checks every 5 days, shows banner
+   AUTO-UPDATE — iOS / macOS style (v3.35)
+
+   check  → quietly, at launch, every 3 h, when the network comes back
+            and when the window is brought forward after a long gap
+   fetch  → if "Download updates automatically" is on (default), the
+            installer (~30 MB) downloads in the background
+   offer  → a small card bottom-right "Decargo X is ready — Install and
+            restart / Later" + a chip in the bottom status bar that
+            stays until it is installed. The card waits for a quiet
+            moment (no drag, no open dialog, no typing) and makes no sound.
+   install→ only when the operator presses the button: the plan is saved
+            first (abort if that fails), then the NSIS installer takes
+            over, closes the app and reopens it.
+   Never installs on its own, never on app exit, never on a timer.
+   The download lives in memory only — after a restart it is fetched again.
 ══════════════════════════════════════════════════════════ */
-/* Silent re-check while the app stays open (bridge PCs run for days
-   without a restart). Launch check always runs; this is the repeat. */
-const UPDATE_CHECK_INTERVAL = 12 * 60 * 60 * 1000; /* 12 h in ms */
-let _updateAvailable = null;
-let _updateFallback   = null; /* set by Strategy 2 (GitHub API) when Tauri plugin unavailable */
+const UPD_CHECK_EVERY   = 3 * 60 * 60 * 1000;   /* periodic check */
+const UPD_REMIND_AFTER  = 4 * 60 * 60 * 1000;   /* "Later" → card again */
+const UPD_RETRY         = [60 * 60 * 1000, 3 * 60 * 60 * 1000]; /* failed download back-off */
+const UPD_AUTO_KEY      = 'decargo_autoDownloadUpdates';
+const UPD_LAST_KEY      = 'spicaTide_lastUpdateCheck';
+const _upd = {
+  state: 'idle',          /* idle | available | downloading | ready | installing */
+  update: null,           /* Tauri Update object — kept alive until install */
+  version: '', notes: '',
+  got: 0, total: 0,
+  fails: 0, retryTimer: 0,
+  checking: false,
+  remindAt: 0,            /* when "Later" was pressed → show card again after this */
+  cardPending: false,
+};
+let _updateFallback = null; /* browser / plugin failure: link to the release page */
+let _updLastInput = 0, _updPointerDown = false;
 
 /* Semantic version comparison: returns true if a > b (e.g. "2.1.0" > "1.8.1") */
 function _semverNewer(a, b){
@@ -16221,169 +16247,302 @@ function _semverNewer(a, b){
   return false; /* equal */
 }
 
-async function _checkForUpdates(manual){
-  const resultEl = document.getElementById('aboutCheckResult');
+function _updAutoOn(){
+  try{ return localStorage.getItem(UPD_AUTO_KEY) !== '0'; }catch(e){ return true; }
+}
+function _updLastCheck(){
+  try{ return parseInt(localStorage.getItem(UPD_LAST_KEY) || '0', 10) || 0; }catch(e){ return 0; }
+}
+function _updStampCheck(){
+  try{ localStorage.setItem(UPD_LAST_KEY, String(Date.now())); }catch(e){}
   const lastEl = document.getElementById('aboutLastCheck');
+  if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
+}
+function _updAboutResult(html){
+  const el = document.getElementById('aboutCheckResult');
+  if(el) el.innerHTML = html;
+}
 
-  if(manual) {
+async function _checkForUpdates(manual){
+  /* already have one in hand — just bring it forward */
+  if(_upd.state !== 'idle'){
+    if(manual){ _updShowCard(true); _updRenderAbout(); }
+    return;
+  }
+  if(_upd.checking) return;
+  _upd.checking = true;
+  if(manual){
     showToast('Checking for updates...', 'info');
-    if(resultEl) resultEl.textContent = 'Checking...';
+    _updAboutResult('Checking...');
   }
-
-  /* Strategy 1: Tauri plugin updater (desktop builds — supports download+install) */
-  if(_isTauri()){
-    try {
-      const updaterMod = await import('@tauri-apps/plugin-updater');
-      const update = await updaterMod.check();
-
-      localStorage.setItem('spicaTide_lastUpdateCheck', String(Date.now()));
-      if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
-
-      if(update && update.available){
-        const ver = update.version || '';
-        /* Only offer update if remote version is actually newer */
-        if(_semverNewer(ver, APP_VERSION)){
-          _updateAvailable = update;
-          _showUpdateBanner(ver);
-          if(manual){
-            showToast('Update available: v' + ver, 'ok');
-            if(resultEl){
-              resultEl.innerHTML = 'Version <b>' + ver + '</b> is available <button id="aboutUpdateBtn" style="margin-left:6px;padding:2px 8px;border-radius:4px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;font-size:10px;">Update</button>';
-              const _aub = resultEl.querySelector('#aboutUpdateBtn');
-              if(_aub) _aub.onclick = () => { _doUpdate(); };
-            }
-          }
-        } else {
-          /* Remote is older or same — ignore */
-          if(manual){
-            showToast('You are on the latest version', 'ok');
-            if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
-          }
-        }
-      } else {
-        if(manual){
+  try{
+    /* Strategy 1: Tauri updater (desktop build — can download + install) */
+    if(_isTauri()){
+      try{
+        const updaterMod = await import('@tauri-apps/plugin-updater');
+        const update = await updaterMod.check({ timeout: 30000 });
+        _updStampCheck();
+        if(update && _semverNewer(update.version || '', APP_VERSION)){
+          _updFound(update, manual);
+        } else if(manual){
           showToast('You are on the latest version', 'ok');
-          if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
+          _updAboutResult('You are on the latest version ✓');
         }
+        return;
+      }catch(e){
+        if(!manual) return;          /* auto-checks fail silently (offline at sea) */
       }
-      return;
-    } catch(e) {
-      /* Tauri plugin failed — fall through to GitHub API check */
-      if(!manual) return; /* silent fail for auto-check */
     }
-  }
-
-  /* Strategy 2: GitHub API check (browser dev mode or Tauri plugin failure) */
-  try {
+    /* Strategy 2: GitHub API (browser dev mode or plugin failure) — link only */
     const res = await fetch('https://api.github.com/repos/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
     if(!res.ok) throw new Error('GitHub API ' + res.status);
     const data = await res.json();
     const latest = data.tag_name ? data.tag_name.replace(/^v/,'') : '';
-
-    localStorage.setItem('spicaTide_lastUpdateCheck', String(Date.now()));
-    if(lastEl) lastEl.textContent = 'Last check: ' + new Date().toLocaleString();
-
+    _updStampCheck();
     if(latest && _semverNewer(latest, APP_VERSION)){
-      /* Store fallback so _doUpdate() can open the release page (Tauri plugin unavailable) */
-      _updateFallback = {
-        version: latest,
-        url: data.html_url || 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest'
-      };
-      if(manual){
-        showToast('Update available: v' + latest, 'ok');
-        if(resultEl) resultEl.innerHTML = 'Version <b>' + latest + '</b> available — <a href="' + (data.html_url||'#') + '" target="_blank" style="color:var(--acc);">View release</a>';
-      }
-      _showUpdateBanner(latest);
-    } else {
-      if(manual){
-        showToast('You are on the latest version', 'ok');
-        if(resultEl) resultEl.textContent = 'You are on the latest version \u2713';
-      }
+      _updateFallback = { version: latest, url: data.html_url || 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest' };
+      _updAboutResult('Version <b>' + latest + '</b> available — <a href="' + _updateFallback.url + '" target="_blank" style="color:var(--acc);">View release</a>');
+      if(manual) showToast('Update available: v' + latest, 'ok');
+    } else if(manual){
+      showToast('You are on the latest version', 'ok');
+      _updAboutResult('You are on the latest version ✓');
     }
-  } catch(e){
+  }catch(e){
     if(manual){
       showToast('Update check failed', 'warn');
-      if(resultEl) resultEl.textContent = 'Check failed: ' + (e && e.message || e);
+      _updAboutResult('Check failed: ' + _escHtmlUpd(e && e.message || e));
     }
+  }finally{
+    _upd.checking = false;
   }
 }
 
-function _showUpdateBanner(ver){
-  const banner = document.getElementById('updateBanner');
-  const textEl = document.getElementById('ubText');
-  if(banner && textEl){
-    /* Enrich with highlights from release notes registry if available */
-    const entry = _getReleaseEntry(ver);
-    if(entry && entry.highlights && entry.highlights.length > 0){
-      textEl.textContent = 'v' + ver + ': ' + entry.highlights.slice(0, 2).join(' \u00B7 ');
-    } else {
-      textEl.textContent = 'New version ' + ver + ' available';
-    }
-    banner.classList.add('show');
-    setTimeout(() => banner.classList.remove('show'), 30000);
+function _escHtmlUpd(v){
+  return String(v).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+}
+
+/* latest.json "notes": CI writes the release's highlights there */
+function _updNotesFrom(update){
+  const raw = String(update && update.body || '').trim();
+  if(!raw || /^(SPICA TIDE|Decargo) v?[\d.]+$/i.test(raw)) return '';
+  return raw.split('\n')[0].slice(0, 140);
+}
+
+function _updFound(update, manual){
+  _upd.update = update;
+  _upd.version = update.version || '';
+  _upd.notes = _updNotesFrom(update);
+  _upd.state = 'available';
+  if(_updAutoOn()){
+    _updDownload(manual);
+  } else {
+    if(manual){ showToast('Update available: v' + _upd.version, 'ok'); _updShowCard(true); }
+    else _updShowCard(false);
+  }
+  _updRender();
+}
+
+async function _updDownload(manual){
+  if(!_upd.update || _upd.state === 'downloading' || _upd.state === 'ready') return;
+  clearTimeout(_upd.retryTimer);
+  _upd.state = 'downloading'; _upd.got = 0; _upd.total = 0;
+  _updRender();
+  if(manual) _updShowCard(true);
+  try{
+    await _upd.update.download(ev => {
+      if(!ev) return;
+      if(ev.event === 'Started') _upd.total = (ev.data && ev.data.contentLength) || 0;
+      else if(ev.event === 'Progress'){ _upd.got += (ev.data && ev.data.chunkLength) || 0; _updRenderProgress(); }
+    }, { timeout: 20 * 60 * 1000 });
+    _upd.state = 'ready'; _upd.fails = 0;
+    _updRender();
+    _updShowCard(false);
+  }catch(e){
+    console.warn('[Update] download failed:', e);
+    _upd.state = 'available';
+    _updRender();
+    if(manual) showToast('Update download failed — will try again later', 'warn');
+    /* back off on a struggling satellite link; never hammer it */
+    const wait = UPD_RETRY[Math.min(_upd.fails, UPD_RETRY.length - 1)];
+    _upd.fails++;
+    if(_updAutoOn()) _upd.retryTimer = setTimeout(() => _updDownload(false), wait);
   }
 }
 
-async function _doUpdate(){
-  /* Strategy 2 fallback: Tauri plugin unavailable — open GitHub release page in browser */
-  if(!_updateAvailable && _updateFallback){
-    try {
-      const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
-      await shellOpen(_updateFallback.url);
-    } catch(e){
-      showToast('Open browser: ' + _updateFallback.url, 'info');
-    }
-    _hideUpdateBanner();
+async function _updInstall(){
+  if(_upd.state !== 'ready' || !_upd.update) return;
+  /* 1. the plan must be safely stored first — otherwise do not install */
+  try{
+    savePlan();
+    const back = _planAdapter.load(PLAN_DEFAULT_KEY);   /* read it back — trust nothing */
+    if(!back || !back.plan || (back.plan.cargo || []).length !== S.cargo.length) throw new Error('plan not stored');
+  }catch(e){
+    showToast('Could not save the plan — update not installed', 'err');
     return;
   }
-  if(!_updateAvailable) return;
-  try {
-    /* Persist the current plan first: on Windows the NSIS installer
-       closes the app as soon as the download finishes. */
-    try { savePlan(); } catch(_e){}
-    showToast('Downloading update — the app will close and reopen when it installs', 'ok');
-    await _updateAvailable.downloadAndInstall();
-    /* Prompt restart */
+  _upd.state = 'installing';
+  _updRender();
+  try{
+    /* On Windows the installer closes the app here and reopens it. */
+    await _upd.update.install();
+  }catch(e){
+    console.warn('[Update] install failed:', e);
+    _upd.state = 'ready';
+    _updRender();
+    showToast('Update could not be installed: ' + (e && e.message || e), 'warn');
+    return;
+  }
+  /* still running (non-Windows) — restart into the new version */
+  try{
     const { relaunch } = await import('@tauri-apps/plugin-process');
-    if(confirm('Update installed. Restart now?')) relaunch();
-  } catch(e){
-    showToast('Update failed: ' + (e && e.message || e), 'warn');
+    await relaunch();
+  }catch(e){
+    showToast('Update installed — restart Decargo to finish', 'ok');
   }
 }
 
-function _bindUpdateBanner(){
-  const banner = document.getElementById('updateBanner');
-  if(!banner) return;
+/* ── when is it polite to show the card? ── */
+function _updQuiet(){
+  if(_updPointerDown) return false;
+  if(Date.now() - _updLastInput < 2500) return false;
+  if(document.body.classList.contains('dragging-cargo')) return false;
+  const a = document.activeElement;
+  if(a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return false;
+  if(document.querySelector('[class*="overlay"].open,[class*="-ov"].open,[class*="overlay"].show,[class*="-ov"].show,.st-ov.open')) return false;
+  return true;
+}
+function _updShowCard(now){
+  const card = document.getElementById('updCard');
+  if(!card || _upd.state === 'idle') return;
+  if(!now && _upd.remindAt && Date.now() < _upd.remindAt) return;
+  if(!now && !_updQuiet()){
+    if(!_upd.cardPending){
+      _upd.cardPending = true;
+      const retry = () => { if(!_upd.cardPending) return; if(_updQuiet()){ _upd.cardPending = false; _updShowCard(true); } else setTimeout(retry, 3000); };
+      setTimeout(retry, 3000);
+    }
+    return;
+  }
+  _upd.cardPending = false;
+  _updRender();
+  card.hidden = false;
+  requestAnimationFrame(() => card.classList.add('show'));
+}
+function _updHideCard(later){
+  const card = document.getElementById('updCard');
+  if(!card) return;
+  if(later) _upd.remindAt = Date.now() + UPD_REMIND_AFTER;
+  card.classList.remove('show');
+  setTimeout(() => { if(!card.classList.contains('show')) card.hidden = true; }, 260);
+}
 
-  document.getElementById('ubUpdate').addEventListener('click', () => {
-    banner.classList.remove('show');
-    _doUpdate();
+/* ── render card + status-bar chip + About ── */
+function _updMB(n){ return (n / 1048576).toFixed(n > 10485760 ? 0 : 1); }
+function _updRenderProgress(){
+  const pct = _upd.total ? Math.min(100, Math.round(_upd.got / _upd.total * 100)) : 0;
+  const bar = document.getElementById('updBar');
+  if(bar) bar.style.setProperty('--p', pct + '%');
+  const st = document.getElementById('updStatus');
+  if(st && _upd.state === 'downloading') st.textContent = _upd.total ? `Downloading… ${_updMB(_upd.got)} of ${_updMB(_upd.total)} MB` : 'Downloading…';
+  const chip = document.getElementById('bpUpdateTxt');
+  if(chip && _upd.state === 'downloading') chip.textContent = _upd.total ? `Downloading update ${pct}%` : 'Downloading update';
+}
+function _updRender(){
+  const card = document.getElementById('updCard');
+  if(card){
+    card.dataset.state = _upd.state;
+    const v = document.getElementById('updVer');
+    if(v) v.textContent = 'Decargo ' + _upd.version;
+    const n = document.getElementById('updNotes');
+    if(n){ n.textContent = _upd.notes; n.hidden = !_upd.notes; }
+    const st = document.getElementById('updStatus');
+    const go = document.getElementById('updGo');
+    if(st && go){
+      if(_upd.state === 'ready'){ st.textContent = 'Downloaded and ready. Decargo closes for a moment and reopens — your plan is saved first.'; go.textContent = 'Install and restart'; go.disabled = false; }
+      else if(_upd.state === 'available'){ st.textContent = 'A new version is available (about 30 MB).'; go.textContent = 'Download'; go.disabled = false; }
+      else if(_upd.state === 'downloading'){ go.textContent = 'Install and restart'; go.disabled = true; }
+      else if(_upd.state === 'installing'){ st.textContent = 'Installing… Decargo will reopen by itself.'; go.textContent = 'Installing…'; go.disabled = true; }
+    }
+  }
+  const chipWrap = document.getElementById('bpUpdate');
+  const chip = document.getElementById('bpUpdateTxt');
+  if(chipWrap && chip){
+    const show = _upd.state !== 'idle';
+    chipWrap.hidden = !show;
+    const sep = document.getElementById('bpUpdateSep');
+    if(sep) sep.hidden = !show;
+    chipWrap.dataset.state = _upd.state;
+    if(_upd.state === 'ready') chip.textContent = 'Update ready';
+    else if(_upd.state === 'available') chip.textContent = 'Update available';
+    else if(_upd.state === 'installing') chip.textContent = 'Installing update';
+  }
+  _updRenderProgress();
+  _updRenderAbout();
+}
+function _updRenderAbout(){
+  if(_upd.state === 'idle') return;
+  const v = '<b>' + _escHtmlUpd(_upd.version) + '</b>';
+  if(_upd.state === 'ready') _updAboutResult('Version ' + v + ' is downloaded — <a href="#" data-upd="show" style="color:var(--acc);">install</a>');
+  else if(_upd.state === 'downloading') _updAboutResult('Downloading version ' + v + '…');
+  else if(_upd.state === 'available') _updAboutResult('Version ' + v + ' is available — <a href="#" data-upd="show" style="color:var(--acc);">download</a>');
+}
+
+function _updBindUI(){
+  const go = document.getElementById('updGo');
+  if(go) go.addEventListener('click', () => {
+    if(_upd.state === 'ready') _updInstall();
+    else if(_upd.state === 'available') _updDownload(true);
   });
-  document.getElementById('ubLater').addEventListener('click', () => {
-    banner.classList.remove('show');
+  const later = document.getElementById('updLater');
+  if(later) later.addEventListener('click', () => _updHideCard(true));
+  const chip = document.getElementById('bpUpdate');
+  if(chip) chip.addEventListener('click', () => _updShowCard(true));
+  const res = document.getElementById('aboutCheckResult');
+  if(res) res.addEventListener('click', e => {
+    const a = e.target.closest('[data-upd="show"]');
+    if(!a) return;
+    e.preventDefault();
+    const ov = document.getElementById('aboutOverlay');
+    if(ov) ov.classList.remove('open');
+    _updShowCard(true);
   });
-  document.getElementById('ubDismiss').addEventListener('click', () => {
-    banner.classList.remove('show');
-  });
-  document.getElementById('ubWhatsNew').addEventListener('click', async () => {
-    /* window.open() is blocked in the Tauri WebView — use the shell plugin. */
-    const url = 'https://github.com/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases';
-    try {
-      const { open: shellOpen } = await import('@tauri-apps/plugin-shell');
-      await shellOpen(url);
-    } catch(e){ window.open(url, '_blank'); }
-  });
+  const auto = document.getElementById('aboutAutoUpd');
+  if(auto){
+    auto.checked = _updAutoOn();
+    auto.addEventListener('change', () => {
+      try{ localStorage.setItem(UPD_AUTO_KEY, auto.checked ? '1' : '0'); }catch(e){}
+      if(auto.checked && _upd.state === 'available') _updDownload(false);
+      if(!auto.checked) clearTimeout(_upd.retryTimer);
+    });
+  }
+  /* activity tracking for the "quiet moment" rule */
+  const mark = () => { _updLastInput = Date.now(); };
+  window.addEventListener('pointerdown', () => { _updPointerDown = true; mark(); }, true);
+  window.addEventListener('pointerup', () => { _updPointerDown = false; mark(); }, true);
+  window.addEventListener('pointercancel', () => { _updPointerDown = false; }, true);
+  window.addEventListener('keydown', mark, true);
 }
 
 function _scheduleUpdateCheck(){
   if(!_isTauri()) return;
-  /* Always check on launch (8 s delay so the app loads first), then
-     repeat silently every UPDATE_CHECK_INTERVAL while it stays open.
-     The old 5-day gate meant a fresh release could go unseen for days,
-     and never at all on a PC that is never restarted. Offline at sea
-     the check fails silently (auto-checks never toast errors). */
+  /* launch check (after the app has settled), then quietly every 3 h.
+     Once an update is found nothing re-checks — the Update object in
+     hand is the one that gets installed. Offline at sea checks just fail
+     silently and the next trigger tries again. */
+  const due = (gap) => _upd.state === 'idle' && Date.now() - _updLastCheck() > gap;
   setTimeout(() => _checkForUpdates(false), 8000);
-  setInterval(() => { if(!_updateAvailable) _checkForUpdates(false); }, UPDATE_CHECK_INTERVAL);
+  setInterval(() => { if(_upd.state === 'idle') _checkForUpdates(false); }, UPD_CHECK_EVERY);
+  /* network came back (VSAT / 4G handover) */
+  window.addEventListener('online', () => setTimeout(() => {
+    if(due(30 * 60 * 1000)) _checkForUpdates(false);
+    else if(_upd.state === 'available' && _updAutoOn()) _updDownload(false);
+  }, 5000));
+  /* PC woke up / window brought forward after a long gap */
+  const onWake = () => { if(document.visibilityState === 'visible' && due(UPD_CHECK_EVERY)) _checkForUpdates(false); };
+  document.addEventListener('visibilitychange', onWake);
+  window.addEventListener('focus', onWake);
+  /* "Later" reminder while the app stays open */
+  setInterval(() => { if(_upd.state === 'ready' && _upd.remindAt && Date.now() >= _upd.remindAt){ _upd.remindAt = 0; _updShowCard(false); } }, 5 * 60 * 1000);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -17592,7 +17751,7 @@ function init(){
   bindMenuBar();
   bindAboutModal();
   bindModeButton();
-  _bindUpdateBanner();
+  _updBindUI();
   _scheduleUpdateCheck();
   bindContextMenu();
   bindSyncSettings();

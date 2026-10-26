@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.35.0',
+    date: '2026-10-26',
+    highlights: [ 'Automatic updates' ],
+    changes: [
+      { type: 'feature', text: 'Decargo checks for updates by itself — at launch, every 3 hours and whenever the internet comes back — and downloads a new version in the background (about 30 MB)' },
+      { type: 'feature', text: 'When it is ready, a small card offers Install and restart / Later; the bottom bar shows Update ready until you install. Nothing installs without your click' },
+      { type: 'improvement', text: 'Before installing, the plan is saved and read back; if that fails, the update is not installed' },
+      { type: 'improvement', text: 'The card waits while you drag cargo, type or have a dialog open, and makes no sound' },
+      { type: 'ui', text: 'About → Download updates automatically: switch off on an expensive satellite link' },
+    ],
+  },
+  {
     version: '3.34.1',
     date: '2026-10-26',
     highlights: [ 'Header tiles match the Wind & waves button' ],

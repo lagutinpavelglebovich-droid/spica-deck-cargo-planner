@@ -161,12 +161,16 @@ jobs:
           ENCODED_NAME=$(printf '%s' "${NSIS_ZIP_NAME}" | tr ' ' '.')
           URL="https://github.com/${REPO}/releases/download/${TAG}/${ENCODED_NAME}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          # Highlights from src/releaseNotes.js — shown on the app's update card
+          NOTES=$(node tools/release-highlights.mjs "$VERSION" 2>/dev/null || true)
+          if [ -z "$NOTES" ]; then NOTES="Decargo ${TAG}"; fi
+          echo "Notes: $NOTES"
 
           # Generate JSON with node to avoid heredoc quoting issues
           node -e "
             const j = {
               version: '${VERSION}',
-              notes: 'SPICA TIDE ${TAG}',
+              notes: process.argv[2],
               pub_date: '${PUB_DATE}',
               platforms: {
                 'windows-x86_64': {
@@ -177,7 +181,7 @@ jobs:
             };
             require('fs').writeFileSync('latest.json', JSON.stringify(j, null, 2));
             console.log('latest.json written');
-          " "$SIG"
+          " "$SIG" "$NOTES"
 
           echo "=== Generated latest.json ==="
           cat latest.json

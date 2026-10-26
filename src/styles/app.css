@@ -8407,27 +8407,6 @@ body.hdr-mini .bottom-panel .bp-label{ display:none; }
 /* ═══════════════════════════════════════
    UPDATE BANNER + ABOUT UPDATES
 ═══════════════════════════════════════ */
-.update-banner{
-  display:none;height:40px;
-  background:#1a2332;color:#fff;
-  align-items:center;gap:10px;padding:0 16px;
-  font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:500;
-  flex-shrink:0;z-index:150;
-  animation:ubSlide .3s ease;
-  overflow:hidden;
-}
-.update-banner.show{ display:flex; }
-@keyframes ubSlide{ from{max-height:0;opacity:0} to{max-height:40px;opacity:1} }
-.ub-text{ flex:1; }
-.ub-link{ color:var(--acc,#c8a84e);font-size:11px;cursor:pointer;text-decoration:underline;margin-right:4px; }
-.ub-btn{ border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit; }
-.ub-btn-update{ background:#c8a84e;color:#1a2332; }
-.ub-btn-update:hover{ background:#dbb85e; }
-.ub-btn-later{ background:rgba(255,255,255,.12);color:#fff; }
-.ub-btn-later:hover{ background:rgba(255,255,255,.2); }
-.ub-dismiss{ background:none;border:none;color:rgba(255,255,255,.5);font-size:16px;cursor:pointer;padding:4px 6px;line-height:1; }
-.ub-dismiss:hover{ color:#fff; }
-
 /* About panel — update section */
 .about-update-section{
   margin-top:14px;padding-top:14px;
@@ -11038,7 +11017,6 @@ body.zoom-minimum .dcv{ --deck-grain-alpha: .030; }
 [data-theme="dark"] .toast-undo-btn:hover{ background:#8ab6e0; }
 
 @media print{ .toast-stack{ display:none !important; } }
-.update-banner{ background:var(--glass-ribbon) !important;backdrop-filter:blur(16px) !important;-webkit-backdrop-filter:blur(16px) !important;border-bottom:1px solid var(--glass-brd-dim) !important; }
 /* Viewer banner visibility is governed by the premium rule near the top
    of this file (`.viewer-banner { display:none }` + `body.is-viewer .viewer-banner { display:inline-flex }`).
    This legacy hard-hide has been removed so the premium indicator can show. */
@@ -18191,3 +18169,92 @@ html:is([data-motion="off"]) .hfw-map-ic path{ animation:none !important; stroke
 .wxm-zoom .wxm-valbtn{ font:600 11.5px/1 var(--fw-font); letter-spacing:.3px; color:#9aa3ae; }
 .wxm-zoom .wxm-valbtn.on{ color:#fff; background:rgba(255,107,107,.28); }
 .wxm-ta{ width:13px; height:13px; flex:0 0 auto; color:#fff; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.35 — SOFTWARE UPDATE (iOS / macOS style)
+   .upd-card  — small glass card bottom-right: "Decargo X is ready"
+   .bp-update — chip in the bottom status bar while an update waits
+   No sound, no focus stealing; app.js decides when it is quiet enough.
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --upd-card-bg:rgba(255,255,255,.86);
+  --upd-card-brd:rgba(20,40,70,.10);
+  --upd-card-sh:0 18px 48px rgba(20,40,70,.22), 0 2px 6px rgba(20,40,70,.08);
+  --upd-txt:#0f1c2c;
+  --upd-txt2:#4a5868;
+  --upd-go-bg:linear-gradient(120deg, #3a4f9a 0%, #3569a5 42%, #2f7f9c 78%, #398ba1 100%);
+  --upd-go-txt:#ffffff;
+  --upd-later-bg:rgba(20,40,70,.07);
+  --upd-later-hov:rgba(20,40,70,.12);
+  --upd-track:rgba(20,40,70,.10);
+  --upd-fill:#2f7f9c;
+  --upd-dot:#2f9e6e;
+  --upd-dot-wait:#2f7f9c;
+}
+[data-theme="dark"]{
+  --upd-card-bg:rgba(30,37,51,.90);
+  --upd-card-brd:rgba(255,255,255,.08);
+  --upd-card-sh:0 18px 48px rgba(0,0,0,.50), 0 2px 6px rgba(0,0,0,.30);
+  --upd-txt:#f1f5fa;
+  --upd-txt2:#aeb9c7;
+  --upd-later-bg:rgba(255,255,255,.08);
+  --upd-later-hov:rgba(255,255,255,.14);
+  --upd-track:rgba(255,255,255,.12);
+  --upd-fill:#4fb3c9;
+  --upd-dot:#3dd39a;
+  --upd-dot-wait:#4fb3c9;
+}
+.upd-card{
+  position:fixed; right:24px; bottom:64px; z-index:2400;
+  width:340px; max-width:calc(100vw - 48px);
+  display:flex; gap:14px; align-items:flex-start;
+  padding:16px 16px 14px;
+  border-radius:18px;
+  background:var(--upd-card-bg);
+  border:1px solid var(--upd-card-brd);
+  box-shadow:var(--upd-card-sh);
+  backdrop-filter:blur(22px) saturate(1.4); -webkit-backdrop-filter:blur(22px) saturate(1.4);
+  font-family:Inter,-apple-system,system-ui,"Segoe UI",sans-serif;
+  color:var(--upd-txt);
+  opacity:0; transform:translateY(12px) scale(.98);
+  transition:opacity .24s ease, transform .3s cubic-bezier(.2,.9,.3,1.15);
+}
+.upd-card[hidden]{ display:none; }
+.upd-card.show{ opacity:1; transform:none; }
+.upd-ico{ width:44px; height:44px; flex:0 0 44px; display:block; }
+.upd-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.upd-ver{ font-size:14px; font-weight:700; letter-spacing:-.01em; }
+.upd-notes{ font-size:12.5px; line-height:1.4; color:var(--upd-txt); }
+.upd-notes[hidden]{ display:none; }
+.upd-status{ font-size:11.5px; line-height:1.4; color:var(--upd-txt2); }
+.upd-bar{ display:none; height:4px; border-radius:2px; background:var(--upd-track); overflow:hidden; margin-top:4px; --p:0%; }
+.upd-bar i{ display:block; height:100%; width:var(--p); border-radius:2px; background:var(--upd-fill); transition:width .3s ease; }
+.upd-card[data-state="downloading"] .upd-bar{ display:block; }
+.upd-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+.upd-btn{ height:30px; padding:0 14px; border:0; border-radius:9px; font-family:inherit; font-size:12px; font-weight:600; line-height:1; cursor:pointer; transition:filter .15s, background .15s, transform .1s; }
+.upd-btn:active{ transform:scale(.97); }
+.upd-btn:focus-visible{ outline:2px solid var(--acc); outline-offset:2px; }
+.upd-later{ background:var(--upd-later-bg); color:var(--upd-txt); }
+.upd-later:hover{ background:var(--upd-later-hov); }
+.upd-go{ background:var(--upd-go-bg); color:var(--upd-go-txt); box-shadow:inset 0 1px 0 rgba(255,255,255,.2); }
+.upd-go:hover{ filter:brightness(1.08); }
+.upd-go:disabled{ opacity:.55; cursor:default; filter:none; }
+
+.bp-update{
+  border:0; background:none; cursor:pointer;
+  font:600 11px/1 Inter,-apple-system,system-ui,sans-serif; color:var(--upd-txt);
+}
+.bp-update[hidden]{ display:none !important; }
+.bp-update:hover .bp-update-txt{ text-decoration:underline; text-underline-offset:2px; }
+.bp-update-txt{ min-width:136px; text-align:left; font-variant-numeric:tabular-nums; }
+.bp-update-dot{ width:8px; height:8px; border-radius:50%; background:var(--upd-dot-wait); flex:0 0 8px; }
+.bp-update[data-state="ready"] .bp-update-dot{ background:var(--upd-dot); box-shadow:0 0 0 3px color-mix(in srgb, var(--upd-dot) 22%, transparent); }
+.bp-update[data-state="downloading"] .bp-update-dot{ animation:updPulse 1.6s ease-in-out infinite; }
+@keyframes updPulse{ 50%{ opacity:.35; } }
+html[data-perf="reduced"] .bp-update-dot{ animation:none !important; }
+@media (prefers-reduced-motion: reduce){ .bp-update-dot{ animation:none !important; } .upd-card{ transition:none; } }
+#bpUpdateSep[hidden]{ display:none; }
+
+.about-auto-upd{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:10.5px; color:var(--txt2); cursor:pointer; }
+.about-auto-upd input{ margin:0; accent-color:var(--acc); }
+.about-auto-upd span{ color:var(--txt3); }

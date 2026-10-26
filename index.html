@@ -192,18 +192,24 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.34.1</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.35.0</div>
     </div>
   </div>
 </div>
 
-<!-- UPDATE BANNER -->
-<div class="update-banner" id="updateBanner">
-  <span class="ub-text" id="ubText">New version available</span>
-  <a class="ub-link" id="ubWhatsNew">What's new</a>
-  <button class="ub-btn ub-btn-update" id="ubUpdate">Update</button>
-  <button class="ub-btn ub-btn-later" id="ubLater">Later</button>
-  <button class="ub-dismiss" id="ubDismiss">&times;</button>
+<!-- UPDATE CARD — iOS/macOS-style "ready to install" (v3.35, see AUTO-UPDATE in app.js) -->
+<div class="upd-card" id="updCard" hidden role="dialog" aria-labelledby="updVer" data-state="idle">
+  <img class="upd-ico" src="/src/assets/brand/app-icon.png" width="44" height="44" alt="">
+  <div class="upd-body">
+    <div class="upd-ver" id="updVer">Decargo</div>
+    <div class="upd-notes" id="updNotes" hidden></div>
+    <div class="upd-status" id="updStatus"></div>
+    <div class="upd-bar" id="updBar" aria-hidden="true"><i></i></div>
+    <div class="upd-actions">
+      <button class="upd-btn upd-later" id="updLater" type="button">Later</button>
+      <button class="upd-btn upd-go" id="updGo" type="button">Install and restart</button>
+    </div>
+  </div>
 </div>
 
 <!-- ABOUT MODAL -->
@@ -214,7 +220,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.34.1<br>
+      Version 3.35.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -227,6 +233,7 @@
         <button class="about-check-btn" id="aboutCheckBtn">Check for updates</button>
       </div>
       <div class="about-check-result" id="aboutCheckResult"></div>
+      <label class="about-auto-upd"><input type="checkbox" id="aboutAutoUpd" checked> Download updates automatically <span>(about 30 MB each)</span></label>
       <button class="about-changelog-btn" id="aboutChangelogBtn">View changelog</button>
     </div>
     <div class="about-footer">&copy; 2026 Decargo<br>Developed by Pavlo Lagutin</div>
@@ -1321,6 +1328,11 @@
     <span class="bp-value" id="dsbLength">&mdash;</span>
   </div>
   <div class="bp-spacer"></div>
+  <button class="bp-section bp-update" id="bpUpdate" type="button" hidden data-state="idle" title="Software update">
+    <span class="bp-update-dot" aria-hidden="true"></span>
+    <span class="bp-update-txt" id="bpUpdateTxt">Update ready</span>
+  </button>
+  <div class="bp-sep" id="bpUpdateSep" hidden></div>
   <div class="bp-section">
     <button class="bp-autosave is-on" id="autosaveToggleBottom" title="Autosave On"
             aria-pressed="true" aria-label="Autosave on">
