@@ -1677,7 +1677,7 @@ body.is-viewer .bp-viewer-indicator{
 .zlbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);min-width:40px;text-align:center;}
 
 /* ═══════════════════════════════════════
-   ASCO UPLOAD BUTTON — replaced by .gp-upload (see "GRADIENT PILL" section at EOF)
+   ASCO UPLOAD BUTTON — replaced by .gp-upload (see "HEADER TOOLBAR" section)
 ═══════════════════════════════════════ */
 
 /* ═══════════════════════════════════════
@@ -5196,7 +5196,7 @@ body.dragging-cargo *{
    Close = layout identical to v31 stable.
 ═══════════════════════════════════════════════════════════ */
 
-/* ── Toolbar trigger button — replaced by .gp-library (see GRADIENT PILL section at EOF) ── */
+/* ── Toolbar trigger button — replaced by .gp-library (see HEADER TOOLBAR section) ── */
 
 /* ── Overlay backdrop ────────────────────────────────────────── */
 /* ── Cargo Panel Overlay ────────────────────────────────────────
@@ -6885,7 +6885,7 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 }
 
 /* ═══════════════════════════════════════
-   SMART TOOLS BUTTON — replaced by .gp-smart (see GRADIENT PILL section at EOF)
+   SMART TOOLS BUTTON — replaced by .gp-smart (see HEADER TOOLBAR section)
 ═══════════════════════════════════════ */
 
 /* ═══════════════════════════════════════
@@ -7377,7 +7377,7 @@ body.hdr-mini .btn-saveas-chevron{ display:none; }
 
 /* ═══════════════════════════════════════
    LANGUAGE + THEME — pill button styles replaced by .gp-lang / .gp-theme
-   (see GRADIENT PILL section at EOF). Only the language DROPDOWN survives
+   (see HEADER TOOLBAR section). Only the language DROPDOWN survives
    below — the picker BUTTON itself is now a gradient pill.
 ═══════════════════════════════════════ */
 
@@ -9155,7 +9155,7 @@ body.pdf-capture .shell-ribbon::before{ display:none !important; }
    proportionally across any screen size. */
 .rc-brand{
   flex: 0 1 auto !important;
-  flex-shrink: 0 !important;        /* lock at natural width — cluster pill hover (.gp:hover 52→165px) must not pressure SPICA TIDE wordmark into wrap */
+  flex-shrink: 0 !important;        /* lock at natural width — the toolbar must not pressure the wordmark into wrap */
   min-width: 0 !important;
 }
 .rc-lifts{
@@ -14362,176 +14362,139 @@ body.deck-gutter:not(.deck-gutter-off) .insp:not(.open) .insp-empty{
 }
 
 /* ============================================
-   GRADIENT PILL — top-right cluster controls
+   HEADER TOOLBAR — top-right cluster (v3.34)
+   macOS "icon and text" toolbar: Upload / Library / Smart Tools are
+   coloured tiles with their name always written underneath — each
+   keeps its own colour so it is recognised before it is read.
+   Theme + Language are utilities: two small round buttons stacked
+   on the right (.gp-mini), name in the tooltip.
+   (Class names .gp-* kept from the old gradient pills.)
    ============================================ */
-
-.gp {
-  position: relative;
-  height: 52px;
-  width: 52px;
-  border-radius: 26px;
-  background: white;
-  box-shadow:
-    0 8px 22px rgba(30,60,90,0.10),
-    0 2px 4px rgba(30,60,90,0.04);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    width 900ms cubic-bezier(0.32, 1.55, 0.42, 1),
-    box-shadow 700ms ease;
-  overflow: hidden;
-  padding: 0;
-  border: none;
-  outline: none;
-  vertical-align: middle;
+:root{
+  --gpt-up-a:#6a55a0;  --gpt-up-b:#9a7fd0;
+  --gpt-lib-a:#1f5fbf; --gpt-lib-b:#4f8fe6;
+  --gpt-st-a:#b7791f;  --gpt-st-b:#e0a84a;
+  --gpt-on-tile:#ffffff;
+  --gpt-lbl:#3b4a5c;   --gpt-lbl-hov:#0f1c2c;
+  --gpt-shadow:rgba(20,40,70,.18);
+  --gpt-rim:rgba(255,255,255,.18);
+  --gpt-mini-bg:rgba(255,255,255,.92);
+  --gpt-badge:#ef4444;
 }
-
-.gp:hover {
-  width: 165px;
-  box-shadow:
-    0 12px 32px rgba(0,0,0,0.18),
-    0 4px 10px rgba(0,0,0,0.08);
+[data-theme="dark"]{
+  --gpt-lbl:#aeb9c7;   --gpt-lbl-hov:#f1f5fa;
+  --gpt-shadow:rgba(0,0,0,.45);
+  --gpt-mini-bg:rgba(255,255,255,.08);
 }
+.gp-upload { --a:var(--gpt-up-a);  --b:var(--gpt-up-b); }
+.gp-library{ --a:var(--gpt-lib-a); --b:var(--gpt-lib-b); }
+.gp-smart  { --a:var(--gpt-st-a);  --b:var(--gpt-st-b); }
 
-.gp .gp-ico {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(1);
-  transition:
-    transform 700ms cubic-bezier(0.32, 1.55, 0.42, 1),
-    opacity 400ms ease;
-  opacity: 1;
-  z-index: 3;
-  font-size: 21px;
-  color: #5b6b7c;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+.gp-cluster{
+  display:flex;
+  align-items:center;
+  gap:14px;
 }
-
-.gp .gp-ico svg {
-  width: 21px;
-  height: 21px;
-  display: block;
+.gp{
+  position:relative;
+  display:inline-flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  min-width:48px;
+  padding:2px 0 0;
+  margin:0;
+  border:none;
+  outline:none;
+  background:none;
+  cursor:pointer;
+  vertical-align:middle;
 }
-
-.gp:hover .gp-ico {
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
+.gp .gp-ico{
+  position:relative;
+  width:42px;
+  height:42px;
+  border-radius:13px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--gpt-on-tile);
+  background:linear-gradient(160deg,var(--b),var(--a));
+  box-shadow:0 1px 2px var(--gpt-shadow), inset 0 0 0 .5px var(--gpt-rim);
+  transition:transform .25s cubic-bezier(.3,1.4,.5,1), box-shadow .25s ease;
+  pointer-events:none;
 }
-
-.gp .gp-lbl {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(0.3);
-  opacity: 0;
-  transition:
-    transform 900ms cubic-bezier(0.32, 1.55, 0.42, 1) 100ms,
-    opacity 500ms ease 250ms,
-    color 600ms ease;
-  color: white;
-  z-index: 3;
-  font-size: 12.5px;
-  font-weight: 400;
-  letter-spacing: 1.8px;
-  text-transform: uppercase;
-  white-space: nowrap;
-  font-family: -apple-system, system-ui, "SF Pro Text", "Helvetica Neue", sans-serif;
-  pointer-events: none;
+.gp .gp-ico svg{ width:20px; height:20px; display:block; }
+.gp:hover .gp-ico{ transform:translateY(-1px); box-shadow:0 6px 14px var(--gpt-shadow), inset 0 0 0 .5px var(--gpt-rim); }
+.gp:active .gp-ico{ transform:scale(.94); }
+.gp .gp-lbl{
+  display:block;
+  font:600 11px/1.1 Inter,-apple-system,system-ui,"Segoe UI",sans-serif;
+  letter-spacing:.01em;
+  white-space:nowrap;
+  color:var(--gpt-lbl);
+  transition:color .2s ease;
+  pointer-events:none;
 }
-
-.gp:hover .gp-lbl {
-  transform: translate(-50%, -50%) scale(1);
-  opacity: 1;
+.gp:hover .gp-lbl{ color:var(--gpt-lbl-hov); }
+.gp .gp-badge{
+  position:absolute;
+  top:-4px;
+  right:-4px;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  border-radius:8px;
+  background:var(--gpt-badge);
+  color:var(--gpt-on-tile);
+  font-size:10px;
+  font-weight:700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:4;
+  pointer-events:none;
+  box-shadow:0 2px 4px var(--gpt-shadow);
 }
+.gp .gp-badge:empty{ display:none; }
 
-.gp::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 26px;
-  opacity: 0;
-  transition: opacity 700ms ease;
-  z-index: 1;
+/* utilities: theme + language */
+.gp-mini{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
-
-.gp:hover::before {
-  opacity: 1;
+.gp-mini .gp{ min-width:0; padding:0; }
+.gp-mini .gp .gp-ico{
+  width:30px;
+  height:30px;
+  border-radius:15px;
+  color:var(--gpt-lbl);
+  background:var(--gpt-mini-bg);
+  box-shadow:0 1px 2px var(--gpt-shadow);
 }
-
-
-
-.gp-upload::before  { background: linear-gradient(45deg, #5e4b8b, #8b6fb5); }
-.gp-library::before { background: linear-gradient(45deg, #2a4d6e, #5680a8); }
-.gp-smart::before   { background: linear-gradient(45deg, #7a6a52, #b8a584); }
-.gp-theme::before   { background: linear-gradient(45deg, #a8581f, #d49050); }
-.gp-lang::before    { background: linear-gradient(45deg, #2c5f4f, #5a9580); }
-
-.gp-cluster {
-  display: flex;
-  gap: 14px;
-  align-items: center;
+.gp-mini .gp:hover .gp-ico{ color:var(--gpt-lbl-hov); }
+.gp-mini .gp .gp-ico svg{ width:15px; height:15px; }
+.gp-mini .gp .gp-lbl{ display:none; }
+.gp-cluster .lang-switch{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  padding:0;
+  border:none;
+  flex-shrink:0;
 }
+.rc-tools .gp-mini .lang-switch{ margin-left:0 !important; }
+.rc-tools .gp-mini .lang-switch::before{ content:none; }
 
-.gp-cluster .lang-switch {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: none;
-  flex-shrink: 0;
-}
-
-.gp .gp-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: #ef4444;
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 4;
-  pointer-events: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.gp .gp-badge:empty {
-  display: none;
-}
-
-[data-theme="dark"] .gp {
-  background: rgba(40, 50, 65, 0.85);
-  box-shadow:
-    0 8px 22px rgba(0,0,0,0.30),
-    0 2px 4px rgba(0,0,0,0.20);
-}
-[data-theme="dark"] .gp .gp-ico {
-  color: #c0c8d4;
-}
-
-body.hdr-compact .gp { height: 46px; width: 46px; border-radius: 23px; }
-body.hdr-compact .gp:hover { width: 150px; }
-body.hdr-compact .gp .gp-ico { font-size: 19px; }
-body.hdr-compact .gp .gp-ico svg { width: 19px; height: 19px; }
-body.hdr-compact .gp .gp-lbl { font-size: 11.5px; letter-spacing: 1.5px; }
-
-body.hdr-tight .gp { height: 40px; width: 40px; border-radius: 20px; }
-body.hdr-tight .gp:hover { width: 130px; }
-body.hdr-tight .gp .gp-ico { font-size: 17px; }
-body.hdr-tight .gp .gp-ico svg { width: 17px; height: 17px; }
-body.hdr-tight .gp .gp-lbl { font-size: 10.5px; letter-spacing: 1.2px; }
-body.hdr-tight .gp-cluster { gap: 10px; }
+body.hdr-compact .gp-cluster{ gap:12px; }
+body.hdr-compact .gp > .gp-ico{ width:38px; height:38px; border-radius:12px; }
+body.hdr-compact .gp > .gp-ico svg{ width:18px; height:18px; }
+body.hdr-tight .gp-cluster{ gap:10px; }
+body.hdr-tight .gp > .gp-ico{ width:36px; height:36px; border-radius:11px; }
+body.hdr-tight .gp .gp-lbl{ font-size:10.5px; }
+body.hdr-compact .gp-mini .gp .gp-ico,
+body.hdr-tight .gp-mini .gp .gp-ico{ width:28px; height:28px; border-radius:14px; }
 
 /* ════════════════════════════════════════════════════════════
    BRAND BLOCK — role indicator with animated accent bar
@@ -17815,24 +17778,6 @@ body.pdf-capture .flip-ft, body.pdf-capture .flip-fb{ display:none; }
   .info-block.info-fieldwx .hfw-temp, .info-block.info-fieldwx .hfw-arr{ display:none; }
 }
 
-/* Upload / Library / Smart Tools / Theme fold into a 2 × 2 block on
-   narrower windows (language stays beside it); the pills get a little
-   smaller and keep their size on hover — the name shows as a tooltip. */
-@media (max-width: 1679px){
-  .rc-tools .gp-cluster{ display:grid; grid-template-columns:auto auto auto; grid-template-areas:"up lib lang" "smart theme lang";
-    gap:8px 8px; align-items:center; justify-items:center; }
-  .rc-tools .gp-cluster > .gp-upload{ grid-area:up; }
-  .rc-tools .gp-cluster > .gp-library{ grid-area:lib; }
-  .rc-tools .gp-cluster > .gp-smart{ grid-area:smart; }
-  .rc-tools .gp-cluster > .gp-theme{ grid-area:theme; }
-  .rc-tools .gp-cluster > .lang-switch{ grid-area:lang; margin-left:6px; }
-  body .rc-tools .gp-cluster .gp, body .rc-tools .gp-cluster .gp:hover{ width:38px !important; height:38px !important; border-radius:19px !important; }
-  body .rc-tools .gp-cluster .gp .gp-ico svg{ width:16px !important; height:16px !important; }
-  body .rc-tools .gp-cluster .gp:hover .gp-lbl{ display:none !important; }
-  body .rc-tools .gp-cluster .gp:hover .gp-ico{ transform:translate(-50%,-50%) scale(1) !important; opacity:1 !important; color:#fff !important; }
-  body .rc-tools .gp-cluster .gp::before{ border-radius:19px; }
-  .rc-tools .gp .gp-badge{ top:-3px; right:-3px; }
-}
 
 /* ═══ v3.24 — Field weather in the style of Windy "Compare forecasts" ═══
    Dark grey panel, one white table per location, smooth gradient rows,

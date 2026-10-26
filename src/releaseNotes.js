@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.34.0',
+    date: '2026-10-26',
+    highlights: [ 'New Decargo icon', 'Header buttons with names' ],
+    changes: [
+      { type: 'ui', text: 'New app icon: a graphite D with cargo blocks inside — on the taskbar, Start menu, installer, window and About' },
+      { type: 'ui', text: 'Header: Upload, Library and Smart Tools are now coloured tiles with their name always written underneath — purple, blue and amber, so you find them at a glance without hovering' },
+      { type: 'ui', text: 'Theme and Language moved to two small round buttons on the right' },
+    ],
+  },
+  {
     version: '3.33.0',
     date: '2026-10-26',
     highlights: [ 'Delete several locations in a row' ],

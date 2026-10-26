@@ -192,7 +192,7 @@
       <div class="menu-action" data-action="releaseHistory">Update History</div>
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.33.0</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.34.0</div>
     </div>
   </div>
 </div>
@@ -210,11 +210,11 @@
 <div class="about-overlay" id="aboutOverlay">
   <div class="about-modal">
     <button class="about-close" id="aboutClose">&times;</button>
-    <div class="about-icon"><img src="/src/assets/brand/app-icon.png" width="56" height="56" alt="Decargo" style="border-radius:12px;"></div>
+    <div class="about-icon"><img src="/src/assets/brand/app-icon.png" width="56" height="56" alt="Decargo"></div>
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.33.0<br>
+      Version 3.34.0<br>
       Release: Stable
     </div>
     <div class="about-desc">
@@ -767,7 +767,7 @@
   <!-- Card 5: Tools & Actions — three distinct control groups -->
   <div class="rc rc-tools">
 
-    <!-- ─── Gradient-pill cluster: Upload / Library / Smart Tools / Theme / Language ───
+    <!-- ─── Toolbar: Upload / Library / Smart Tools tiles + theme / language ───
          Role indicator (#modeBtn) moved out of this cluster and into the brand
          block (status-light pattern with animated accent bar). The cluster now
          carries only action pills. -->
@@ -805,7 +805,9 @@
         <span class="gp-lbl">Smart Tools</span>
       </button>
 
-      <!-- 4. Theme (single pill, reflects current mode) -->
+      <!-- 4–5. Utilities: theme + language, two small round buttons stacked -->
+      <div class="gp-mini">
+      <!-- 4. Theme (reflects current mode) -->
       <button class="gp gp-theme" id="themeToggle" aria-label="Toggle theme" title="Light / dark theme">
         <span class="gp-ico" id="themeIco"><svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="6" cy="6" r="2.5" stroke="currentColor" stroke-width="1.3"/>
@@ -835,6 +837,7 @@
           </button>
         </div>
       </div>
+      </div><!-- /gp-mini -->
 
     </div><!-- /gp-cluster -->
 
