@@ -11,6 +11,19 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.0',
+    date: '2026-10-29',
+    highlights: [ 'Watch lifts: the deck camera locks on the load, reads its number and shows where it comes down' ],
+    changes: [
+      { type: 'feature', text: 'Watch lifts (Deck camera): play a video or start the camera — the load on the hook is locked and followed while it swings and hovers, its painted number is read when it can be seen, and a shadow on the deck shows where it is coming down, with the bay and side' },
+      { type: 'feature', text: 'Set-downs and lift-offs are listed with the bay. A load list is not needed; with one, the number is checked against it and the unit can be placed from Imported or marked lifted with one click. A unit that could not be read can be picked from Imported' },
+      { type: 'feature', text: 'Numbers painted on units already standing on deck are learned first, so a load swinging over them is not reported as one of them' },
+      { type: 'improvement', text: 'Calibration reopens on the picture it was made on (kept on this computer) with the deck lines drawn — no more points on a black screen' },
+      { type: 'ui', text: 'Clearer Picture panel: live camera or a video/photo file; Record video now says what it is for and that it needs the live camera' },
+      { type: 'improvement', text: 'Text reading runs in the background, so the video and the lock do not stutter' },
+    ],
+  },
+  {
     version: '3.39.0',
     date: '2026-10-29',
     highlights: [ 'Calibrate the deck camera even when corners are hidden or outside the picture' ],

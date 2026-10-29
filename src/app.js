@@ -15706,8 +15706,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.39.0';
-const APP_VERSION   = '3.39.0';
+const CURRENT_BUILD = 'v3.40.0';
+const APP_VERSION   = '3.40.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -19402,6 +19402,8 @@ initDeckCamera({
     const c = S.cargo.find(x => String(x.ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k);
     if(c) markLifted([c.id]);
   },
+  /* v3.40 — Watch lifts: pick the unit for a set-down that was not read */
+  queueUnits: () => IMPORT_QUEUE.map(q => String(q.ccu || '').trim()).filter(Boolean),
   placeQueued: (ccu, xM, yM) => {
     const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const qi = IMPORT_QUEUE.findIndex(q => String(q.ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k);

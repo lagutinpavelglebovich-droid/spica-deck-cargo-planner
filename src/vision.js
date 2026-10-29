@@ -31,10 +31,16 @@ export async function loadOcr(){
 }
 
 /* ── helpers ───────────────────────────────────────────────── */
-function canvasOf(w, h){ const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+/* v3.40 — also runs inside a Web Worker (visionWorker.js): OffscreenCanvas there */
+const HAS_DOM = typeof document !== 'undefined';
+function canvasOf(w, h){
+  if(!HAS_DOM) return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+}
 function toCanvas(img){
-  if(img instanceof HTMLCanvasElement) return img;
+  if((typeof HTMLCanvasElement !== 'undefined' && img instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== 'undefined' && img instanceof OffscreenCanvas)) return img;
   const c = canvasOf(img.width, img.height);
+  if(typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap){ c.getContext('2d').drawImage(img, 0, 0); return c; }
   c.getContext('2d').putImageData(img instanceof ImageData ? img : new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0);
   return c;
 }
@@ -159,12 +165,12 @@ async function recognise(src, b, flip){
 }
 
 /* Read all text in an image (canvas / ImageData). → [{text, score, cx, cy, w, h, a}] */
-export async function readText(img, { both = true } = {}){
+export async function readText(img, { both = true, max = 40 } = {}){
   await loadOcr();
   const src = toCanvas(img);
   const boxes = await detect(src);
   const res = [];
-  for(const b of boxes.slice(0, 40)){
+  for(const b of boxes.slice(0, max)){
     const r1 = await recognise(src, b, false);
     const r2 = both ? await recognise(src, b, true) : { text: '', score: 0 };
     const r = r2.score > r1.score ? r2 : r1;

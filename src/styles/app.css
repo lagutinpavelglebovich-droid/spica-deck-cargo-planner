@@ -18498,3 +18498,45 @@ html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-t
 .dc-tune-row output{ font:600 11px ui-monospace, Menlo, monospace; color:var(--txt); text-align:right; }
 .dc-btn.dc-sm{ height:24px; padding:0 8px; font-size:11px; }
 .dc-btn:disabled{ opacity:.5; cursor:default; }
+
+/* ════════════════════════════════════════════════════════════
+   v3.40 — DECK CAMERA · Watch lifts (lock on the load, landing shadow)
+   Stage overlays sit on the always-dark picture: one palette for both themes.
+════════════════════════════════════════════════════════════ */
+.dc-ov{
+  --dc-lock: #38bdf8;          /* moving load */
+  --dc-down: #4ade80;          /* set down */
+  --dc-lift: #fbbf24;          /* lifted off */
+  --dc-halo: rgba(0,0,0,.72);
+  --dc-cap-bg: rgba(8,12,18,.72);
+  --dc-cap-ink: rgba(255,255,255,.86);
+}
+.dc-src-lbl{ font-size:11px; font-weight:600; color:var(--txt3); margin-top:2px; }
+.dc-shot-cap{ position:absolute; left:50%; bottom:14px; transform:translateX(-50%); max-width:86%;
+  padding:6px 12px; border-radius:20px; background:var(--dc-cap-bg); color:var(--dc-cap-ink);
+  font-size:11.5px; line-height:1.35; text-align:center; pointer-events:none; }
+.dc-check.dc-inline{ flex:1; margin:0; }
+.dc-select.dc-sm{ width:auto; flex:none; height:28px; font-size:12px; }
+.dc-w-ctl{ align-items:center; }
+.dc-w-now{ display:flex; gap:10px; padding:10px; border-radius:12px; border:1px solid var(--dc-line); background:var(--dc-field); min-height:84px; }
+.dc-w-thumb{ width:72px; height:72px; flex-shrink:0; border-radius:9px; overflow:hidden; background:var(--dc-stage); display:flex; align-items:center; justify-content:center; }
+.dc-w-thumb canvas, .dc-an-thumb canvas{ max-width:100%; max-height:100%; display:block; }
+.dc-an-thumb{ display:flex; align-items:center; justify-content:center; }
+.dc-w-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; justify-content:center; }
+.dc-w-num{ font:800 17px/1.15 'JetBrains Mono',monospace; color:var(--txt); overflow-wrap:anywhere; }
+.dc-w-num.dim{ font:600 13px/1.2 'Inter',sans-serif; color:var(--txt3); }
+.dc-w-where{ font-size:12.5px; font-weight:700; color:var(--acc); }
+.dc-w-phase{ font-size:11px; color:var(--txt3); }
+/* stage overlay */
+.dc-w-lock{ fill:none; stroke:var(--dc-lock); stroke-width:3; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 2px var(--dc-halo)); }
+.dc-w-lock.down{ stroke:var(--dc-down); }
+.dc-w-lab{ fill:var(--dc-lock); font:800 13px 'JetBrains Mono',monospace; paint-order:stroke; stroke:var(--dc-halo); stroke-width:3.5px; }
+.dc-w-shadow{ fill:color-mix(in srgb, var(--dc-lock) 16%, transparent); stroke:var(--dc-lock); stroke-width:2; stroke-dasharray:7 5; stroke-linejoin:round; }
+.dc-w-shadow.down{ fill:color-mix(in srgb, var(--dc-down) 22%, transparent); stroke:var(--dc-down); stroke-dasharray:none; }
+.dc-w-drop{ stroke:var(--dc-lock); stroke-width:1.5; stroke-dasharray:3 4; opacity:.8; }
+.dc-w-past{ fill:none; stroke-width:1.6; }
+.dc-w-past.landed{ stroke:var(--dc-down); fill:color-mix(in srgb, var(--dc-down) 10%, transparent); }
+.dc-w-past.lifted{ stroke:var(--dc-lift); stroke-dasharray:4 3; }
+.dc-w-past-t{ fill:var(--dc-cap-ink); font:700 10.5px 'JetBrains Mono',monospace; text-anchor:middle; paint-order:stroke; stroke:var(--dc-halo); stroke-width:3px; }
+[data-theme="dark"] .dc-w-now{ background:color-mix(in srgb, var(--txt) 6%, transparent); }
+.dc-an-card.moved{ opacity:.55; }

@@ -232,8 +232,8 @@ function buildPanel(){
       <div class="dc-head-text"><div class="dc-kicker">Deck camera</div><div class="dc-title" id="dcTitle">—</div></div>
       <nav class="dc-tabs" id="dcTabs" role="tablist">
         <button type="button" role="tab" data-tab="calib" class="sel">Calibrate</button>
-        <button type="button" role="tab" data-tab="record">Record</button>
-        <button type="button" role="tab" data-tab="analyse">Read lifts</button>
+        <button type="button" role="tab" data-tab="watch">Watch lifts</button>
+        <button type="button" role="tab" data-tab="record">Record video</button>
       </nav>
       <button type="button" class="dc-x" id="dcClose" title="Close (Esc)">✕</button>
     </header>
@@ -246,19 +246,22 @@ function buildPanel(){
         <canvas class="dc-loupe" id="dcLoupe" width="168" height="168" hidden></canvas>
         <div class="dc-empty" id="dcEmpty">
           <div class="dc-empty-t">No picture yet</div>
-          <div class="dc-empty-s">Start the camera, or open a photo or video taken from the camera position.</div>
+          <div class="dc-empty-s">Start the live camera, or open a video or photo taken from the camera position (Picture, on the right).</div>
         </div>
+        <div class="dc-shot-cap" id="dcShotCap" hidden>Saved calibration picture — open a video or start the camera to see it live</div>
       </div>
       <aside class="dc-side">
         <div class="dc-body">
           <section class="dc-sec">
-            <div class="dc-sec-title">Picture</div>
+            <div class="dc-sec-title">Picture <span class="dc-sec-meta" id="dcSrcState"></span></div>
+            <div class="dc-src-lbl">Live camera</div>
             <div class="dc-row">
-              <select class="dc-select" id="dcDevice" aria-label="Camera"><option value="">Camera…</option></select>
-              <button type="button" class="dc-btn" id="dcStart">Start</button>
+              <select class="dc-select" id="dcDevice" aria-label="Camera"><option value="">Looking for cameras…</option></select>
+              <button type="button" class="dc-btn" id="dcStart">Start camera</button>
             </div>
+            <div class="dc-src-lbl">or a file — a video or photo taken from the camera position</div>
             <div class="dc-row">
-              <button type="button" class="dc-btn dc-grow" id="dcOpen">Open photo or video…</button>
+              <button type="button" class="dc-btn dc-grow" id="dcOpen">Open video or photo…</button>
               <input type="file" id="dcFile" accept="image/*,video/*" hidden>
             </div>
             <div class="dc-row dc-video" id="dcVideoRow" hidden>
@@ -266,7 +269,6 @@ function buildPanel(){
               <input type="range" id="dcSeek" min="0" max="1000" value="0" aria-label="Position">
               <span class="dc-time" id="dcTime">0:00</span>
             </div>
-            <label class="dc-check"><input type="checkbox" id="dcRoomy"> Room around the picture — to place corners that are outside it</label>
             <div class="dc-row">
               <span class="dc-lbl">Rotate</span>
               <button type="button" class="dc-btn dc-icon" id="dcRotL" title="Rotate left">⟲</button>
@@ -276,8 +278,9 @@ function buildPanel(){
           </section>
 
           <section class="dc-sec dc-pane" data-pane="record" hidden>
-            <div class="dc-sec-title">Recording <span class="dc-sec-meta" id="dcRecState"></span></div>
-            <div class="dc-note">Records the camera and, next to the video, the load list and every move you make on the plan with its time — the material the camera model learns from. Keeps recording when this window is closed.</div>
+            <div class="dc-sec-title">Record video <span class="dc-sec-meta" id="dcRecState"></span></div>
+            <div class="dc-note">Saves what the <b>live camera</b> sees to a video file in a folder you choose, so a lift can be watched again later. Next to the video it writes a small log of the moves you make on the plan, with their times. Not needed for Watch lifts. Keeps recording when this window is closed.</div>
+            <div class="dc-hint warn" id="dcRecNeed" hidden>Recording works with the live camera only — start it in Picture above. A video file is already a recording: open it in Watch lifts.</div>
             <label class="dc-field"><span>Folder</span>
               <div class="dc-row"><span class="dc-path" id="dcRecDir">Not chosen</span><button type="button" class="dc-btn" id="dcRecDirBtn">Choose…</button></div></label>
             <label class="dc-field"><span>Quality</span>
@@ -295,12 +298,25 @@ function buildPanel(){
             <div class="dc-hint" id="dcRecHint"></div>
           </section>
 
-          <section class="dc-sec dc-pane" data-pane="analyse" hidden>
-            <div class="dc-sec-title">Read lifts <span class="dc-sec-meta" id="dcAnState"></span></div>
-            <div class="dc-note">Goes through the opened video, finds every lift, reads the unit number on the hook against the load list, the Imported queue and the deck, and shows where it was lifted from or landed. Runs on this computer — takes about 6–8 times the length of the video.</div>
-            <button type="button" class="dc-btn dc-primary dc-an-go" id="dcAnBtn">Read lifts in this video</button>
-            <div class="dc-an-prog" id="dcAnProg" hidden><div class="dc-an-bar"><i id="dcAnBar"></i></div><span id="dcAnTxt"></span></div>
-            <div class="dc-an-list" id="dcAnList"></div>
+          <section class="dc-sec dc-pane" data-pane="watch" hidden>
+            <div class="dc-sec-title">Watch lifts <span class="dc-sec-meta" id="dcWState"></span></div>
+            <div class="dc-note">Play the video or start the camera. The load moving on the hook is locked and followed; its number is read when it can be seen; the shadow on the deck shows where it is coming down. Set-downs and lift-offs are listed below with the bay. A load list is not needed — when there is one, the number read is checked against it.</div>
+            <div class="dc-w-now" id="dcWNow">
+              <div class="dc-w-thumb" id="dcWThumb"></div>
+              <div class="dc-w-main">
+                <div class="dc-w-num" id="dcWNum">—</div>
+                <div class="dc-w-where" id="dcWWhere"></div>
+                <div class="dc-w-phase" id="dcWPhase"></div>
+              </div>
+            </div>
+            <div class="dc-row dc-w-ctl">
+              <label class="dc-check dc-inline"><input type="checkbox" id="dcWOn" checked> Lock on loads</label>
+              <select class="dc-select dc-sm" id="dcWRate" aria-label="Playback speed" title="Playback speed">
+                <option value="1" selected>1×</option><option value="2">2×</option><option value="0.5">½×</option>
+              </select>
+            </div>
+            <div class="dc-sub">Lifts <span class="dc-sec-meta" id="dcWCount"></span></div>
+            <div class="dc-an-list" id="dcWList"></div>
           </section>
 
           <section class="dc-sec dc-pane" data-pane="calib">
@@ -313,6 +329,7 @@ function buildPanel(){
                 <ol class="dc-steps" id="dcSteps"></ol>
               </div>
             </div>
+            <label class="dc-check"><input type="checkbox" id="dcRoomy"> Room around the picture — to place corners that are outside it</label>
             <label class="dc-field"><span>Joint for points 3 and 4 — pick one you can see clearly, far from the stern</span>
               <select class="dc-select" id="dcLine"></select></label>
             <div class="dc-sub">Guide lines <span class="dc-sec-meta">(when corners are hidden by cargo or outside the picture)</span></div>
@@ -407,8 +424,14 @@ export function openDeckCamera(tab){
   }
   ov.classList.add('open');
   document.body.classList.add('dc-open');
-  renderSteps(); layout(); drawOverlay(); listDevices(false);
-  setTab(tab || (REC ? 'record' : 'calib'));
+  loadShot(cam);
+  DC.wOn = ov.querySelector('#dcWOn').checked; DC.wEvents = []; watchReset();
+  ov.querySelector('#dcEmpty').hidden = !!DC.shot;
+  ov.querySelector('#dcShotCap').hidden = !DC.shot;
+  ov.querySelector('#dcVideoRow').hidden = true;
+  srcState();
+  renderSteps(); layout(); drawFrame(); drawOverlay(); listDevices(false);
+  setTab(tab || (REC ? 'record' : cam.calib ? 'watch' : 'calib'));
   if(CAM) attachLive();
   recRender();
   setTimeout(() => ov.querySelector('#dcClose').focus(), 30);
@@ -418,8 +441,9 @@ function setTab(t){
   DC.tab = t;
   DC.ov.querySelectorAll('#dcTabs button').forEach(b => b.classList.toggle('sel', b.dataset.tab === t));
   DC.ov.querySelectorAll('.dc-pane').forEach(p => { p.hidden = p.dataset.pane !== t; });
-  if(t !== 'calib') DC.placing = -1;
-  drawOverlay(); recRender(); anRender();
+  if(t !== 'calib'){ DC.placing = -1; DC.drawing = null; }
+  if(t === 'watch') watchStart();
+  layout(); drawFrame(); drawOverlay(); recRender(); watchRender();
 }
 function closeDeckCamera(){
   if(!DC) return;
@@ -461,7 +485,8 @@ async function listDevices(afterPermission){
     const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
     const sel = DC.ov.querySelector('#dcDevice'), cur = sel.value;
     sel.innerHTML = '';
-    if(!devs.length){ sel.innerHTML = '<option value="">No camera found</option>'; return; }
+    DC.ov.querySelector('#dcStart').disabled = !devs.length;
+    if(!devs.length){ sel.innerHTML = '<option value="">No camera on this computer</option>'; return; }
     devs.forEach((d, i) => {
       const o = document.createElement('option');
       o.value = d.deviceId; o.textContent = d.label || ('Camera ' + (i + 1));
@@ -500,6 +525,7 @@ async function startCamera(){
 function openFile(file){
   if(!DC || !file) return;
   stopSource();
+  DC.wEvents = []; watchReset();
   const url = URL.createObjectURL(file);
   DC.url = url;
   if(/^video\//.test(file.type) || /\.(mov|mp4|m4v|webm|mkv)$/i.test(file.name)){
@@ -509,7 +535,9 @@ function openFile(file){
       if(!DC || DC.src !== v) return;
       setSourceSize(v.videoWidth, v.videoHeight); loop();
     }, { once: true });
-    v.addEventListener('error', () => API.toast('This video cannot be played here', 'warn'), { once: true });
+    v.addEventListener('error', () => API.toast('This video cannot be played here' + (/\.mov$/i.test(file.name) ? ' — an iPhone HEVC video may need converting to MP4 (H.264)' : ''), 'warn'), { once: true });
+    v.addEventListener('ended', () => { if(DC && DC.src === v) watchFlush(); });
+    v.addEventListener('play', () => { if(DC && DC.src === v){ try{ v.playbackRate = +DC.ov.querySelector('#dcWRate').value || 1; }catch(_){} } });
     DC.src = v; DC.kind = 'video';
   }else{
     const img = new Image();
@@ -523,6 +551,8 @@ function openFile(file){
 function setSourceSize(w, h){
   DC.sw = w; DC.sh = h;
   DC.ov.querySelector('#dcEmpty').hidden = true;
+  DC.ov.querySelector('#dcShotCap').hidden = true;
+  srcState();
   layout(); drawFrame(); drawOverlay();
 }
 function loop(){
@@ -531,6 +561,7 @@ function loop(){
     if(!DC || !DC.src) return;
     drawFrame();
     if(DC.kind === 'video') syncSeek();
+    watchTick();
     DC.raf = requestAnimationFrame(tick);
   };
   DC.raf = requestAnimationFrame(tick);
@@ -546,7 +577,7 @@ function layout(){
   const stage = DC.ov.querySelector('#dcStage');
   const frame = DC.ov.querySelector('#dcFrame');
   const sr = stage.getBoundingClientRect();
-  const { w, h } = DC.sw ? rotDims() : { w: 9, h: 16 };
+  const { w, h } = DC.sw ? rotDims() : DC.savedAspect ? { w: DC.savedAspect * 1000, h: 1000 } : { w: 9, h: 16 };
   /* "room around the picture": space to place hidden corners beside it */
   const pad = DC.roomy ? Math.round(Math.min(sr.width, sr.height) * 0.2) : 24, aw = Math.max(10, sr.width - pad * 2), ah = Math.max(10, sr.height - pad * 2);
   const s = Math.min(aw / w, ah / h);
@@ -560,17 +591,43 @@ function layout(){
   const res = DC.ov.querySelector('#dcRes');
   res.textContent = DC.sw ? `${rotDims().w} × ${rotDims().h}` : '';
 }
-function drawFrame(){
-  if(!DC || !DC.src || !DC.sw) return;
-  const cv = DC.ov.querySelector('#dcCanvas'), ctx = cv.getContext('2d');
+/* the source turned by the mount rotation, filling w × h of ctx */
+function drawRotated(ctx, w, h){
   ctx.save();
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.translate(cv.width / 2, cv.height / 2);
+  ctx.translate(w / 2, h / 2);
   ctx.rotate(DC.rotation * Math.PI / 180);
   const r = DC.rotation % 180 !== 0;
-  const dw = r ? cv.height : cv.width, dh = r ? cv.width : cv.height;
+  const dw = r ? h : w, dh = r ? w : h;
   try{ ctx.drawImage(DC.src, -dw / 2, -dh / 2, dw, dh); }catch(e){}
   ctx.restore();
+}
+function drawFrame(){
+  if(!DC) return;
+  const cv = DC.ov.querySelector('#dcCanvas'), ctx = cv.getContext('2d');
+  if(DC.src && DC.sw){ ctx.clearRect(0, 0, cv.width, cv.height); drawRotated(ctx, cv.width, cv.height); return; }
+  /* v3.40 — no picture: the still the calibration was made on */
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if(DC.shot && DC.shot.complete && DC.shot.naturalWidth) ctx.drawImage(DC.shot, 0, 0, cv.width, cv.height);
+}
+/* v3.40 — a still of the calibration picture, kept on this computer, so the
+   calibration can be looked at without the video it was made on */
+const shotKey = () => 'spicaTide_camShot_' + String(API.vesselName() || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function saveShot(at){
+  if(!DC || !DC.src || !DC.sw) return;
+  const d = rotDims(), k = Math.min(1, 720 / Math.max(d.w, d.h));
+  const c = document.createElement('canvas'); c.width = Math.round(d.w * k); c.height = Math.round(d.h * k);
+  drawRotated(c.getContext('2d'), c.width, c.height);
+  try{ lsSet(shotKey(), JSON.stringify({ at, img: c.toDataURL('image/jpeg', 0.72) })); }catch(e){}
+}
+function loadShot(cam){
+  DC.shot = null;
+  try{
+    const j = JSON.parse(lsGet(shotKey(), 'null'));
+    if(!j || !j.img || !cam.calib || j.at !== cam.calib.at) return;
+    const im = new Image();
+    im.onload = () => { if(DC && DC.shot === im && !DC.src){ layout(); drawFrame(); drawOverlay(); } };
+    im.src = j.img; DC.shot = im;
+  }catch(e){}
 }
 
 /* v3.39 — every clicked point and every guide handle is one constraint;
@@ -620,7 +677,7 @@ function drawOverlay(){
   const P = (X, Y) => { const p = MDL && MDL.toImage(X, Y); return p && Math.abs(p[0]) < 4 && Math.abs(p[1]) < 4 ? [p[0] * W, p[1] * Hh] : null; };
   const poly = pts => pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
   let out = '';
-  if(H && DC.sw){
+  if(H && (DC.sw || DC.savedAspect)){
     const L = geo.length, Wd = geo.width;
     if(showCargo){
       API.cargo().forEach(c => {
@@ -659,12 +716,37 @@ function drawOverlay(){
       if(ps) out += `<text class="dc-side-t" x="${ps[0].toFixed(1)}" y="${ps[1].toFixed(1)}" style="opacity:${alpha.toFixed(2)}">STBD</text>`;
     }
   }
-  /* lift being read (Read lifts) */
-  if(DC.anBlob && DC.tab === 'analyse'){
-    const b = DC.anBlob, q = toDisp(b.x, b.y), r = toDisp(b.x + b.w, b.y + b.h);
-    const x = Math.min(q[0], r[0]) * W, y = Math.min(q[1], r[1]) * Hh, w = Math.abs(r[0] - q[0]) * W, h = Math.abs(r[1] - q[1]) * Hh;
-    out += `<rect class="dc-an-box" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="4"/>`;
-    if(DC.anText) out += `<text class="dc-an-t" x="${x.toFixed(1)}" y="${(y - 6).toFixed(1)}">${esc(DC.anText)}</text>`;
+  /* v3.40 — Watch lifts: the lock on the load, its shadow on the deck, and
+     where the last loads were set down */
+  if(DC.tab === 'watch' && DC.w){
+    const Pn = (X, Y) => { const p = MDL && MDL.toImage(X, Y); return p && Math.abs(p[0]) < 3 && Math.abs(p[1]) < 3 ? [p[0] * W, p[1] * Hh] : null; };
+    const fpPoly = fp => { const q = fp.poly.map(c => Pn(c[0], c[1])); return q.some(v => !v) ? null : poly(q); };
+    DC.wEvents.slice(0, 6).forEach((e, i) => {
+      if(!e.fp || !MDL || e.movedOn) return;
+      const pg = fpPoly(e.fp); if(!pg) return;
+      const c = Pn(e.fp.centre[0], e.fp.centre[1]);
+      out += `<polygon class="dc-w-past ${e.kind}" points="${pg}" style="opacity:${(1 - i * 0.13).toFixed(2)}"/>`;
+      if(c) out += `<text class="dc-w-past-t" x="${c[0].toFixed(1)}" y="${c[1].toFixed(1)}">${esc(e.reading && e.reading.text ? e.reading.text : e.kind === 'landed' ? 'set down' : 'lifted')}</text>`;
+    });
+    const tr = DC.w.st && DC.w.st.track;
+    if(tr){
+      const fp = MDL ? footprint(tr.box, tr.foot) : null;
+      const down = tr.phase === 'down';
+      if(fp){
+        const pg = fpPoly(fp);
+        if(pg) out += `<polygon class="dc-w-shadow${down ? ' down' : ''}" points="${pg}"/>`;
+        const c = Pn(fp.centre[0], fp.centre[1]);
+        const f = [tr.foot[0] * W, tr.foot[1] * Hh];
+        if(c && !down) out += `<line class="dc-w-drop" x1="${f[0].toFixed(1)}" y1="${f[1].toFixed(1)}" x2="${c[0].toFixed(1)}" y2="${c[1].toFixed(1)}"/>`;
+      }
+      /* lock brackets, like a camera's subject tracking */
+      const x = tr.box.x * W, y = tr.box.y * Hh, w = tr.box.w * W, h = tr.box.h * Hh, k = Math.max(6, Math.min(18, Math.min(w, h) * 0.28));
+      const br = (px, py, dx, dy) => `M${(px + dx * k).toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${(py + dy * k).toFixed(1)}`;
+      out += `<path class="dc-w-lock${down ? ' down' : ''}" d="${br(x, y, 1, 1)}${br(x + w, y, -1, 1)}${br(x, y + h, 1, -1)}${br(x + w, y + h, -1, -1)}"/>`;
+      const rd = bestReading(tr.id);
+      const lab = (rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : 'reading…') + (fp ? '  →  ' + whereOf(fp) : '');
+      out += `<text class="dc-w-lab" x="${x.toFixed(1)}" y="${Math.max(12, y - 7).toFixed(1)}">${esc(lab)}</text>`;
+    }
   }
   /* guide lines */
   const resM = residualMap();
@@ -881,7 +963,8 @@ function bind(ov){
   $('#dcRecBtn').addEventListener('click', () => { if(REC) stopRecording(); else startRecording(); });
   $('#dcRecDirBtn').addEventListener('click', () => chooseRecFolder());
   $('#dcRecQ').addEventListener('change', e => lsSet('spicaTide_recQ', e.target.value));
-  $('#dcAnBtn').addEventListener('click', () => { if(DC && DC.anRun) DC.anStop = true; else analyse(); });
+  $('#dcWOn').addEventListener('change', e => { if(!DC) return; DC.wOn = e.target.checked; if(!DC.wOn) watchReset(); watchRender(); drawOverlay(); });
+  $('#dcWRate').addEventListener('change', e => { if(DC && DC.kind === 'video'){ try{ DC.src.playbackRate = +e.target.value; }catch(_){} } });
   $('#dcCancel').addEventListener('click', () => closeDeckCamera());
   $('#dcStart').addEventListener('click', () => startCamera());
   $('#dcDevice').addEventListener('change', () => { if(DC && DC.kind === 'live') startCamera(); });
@@ -1042,6 +1125,7 @@ function save(){
   });
   if(DC.kind === 'live' && CAM && CAM.label) cam.deviceLabel = CAM.label;
   API.setCamera(cam);
+  saveShot(cam.calib.at);
   DC.savedAspect = cam.calib.aspect;
   DC.dirty = false;
   drawOverlay();
@@ -1236,6 +1320,7 @@ function recRender(){
     $('#dcRecEv').textContent = String(REC.events.length);
   }
   $('#dcRecState').textContent = REC ? '· recording' : '';
+  $('#dcRecNeed').hidden = !!(REC || CAM);
   const hint = $('#dcRecHint');
   hint.classList.toggle('warn', !!(REC && REC.err));
   hint.textContent = REC && REC.err ? REC.err
@@ -1247,25 +1332,212 @@ function recRender(){
 window.addEventListener('beforeunload', () => { if(REC){ try{ REC.recorder.stop(); }catch(e){} } });
 
 /* ════════════════════════════════════════════════════════════
-   READ LIFTS (video analysis) — see liftReader.js
+   WATCH LIFTS — v3.40
+   While the picture plays (video file or the live camera) the one load
+   moving on the hook is locked and followed (liftTrack.js, ~10 times a
+   second on a small copy of the frame); its number is read in a worker
+   from a sharp crop of the full frame (ocrClient.js → PaddleOCR) and the
+   readings vote; the deck under it (calibration) gives the bay and side
+   and the shadow of where it is coming down. Set-downs and lift-offs are
+   listed; with a load list / Imported queue the number is matched to a
+   unit and can be placed or marked lifted with one click.
 ════════════════════════════════════════════════════════════ */
-/* source-frame normalised point → displayed (rotated) frame */
-function toDisp(u, v){
-  switch(DC ? DC.rotation : 0){
-    case 90:  return [1 - v, u];
-    case 180: return [1 - u, 1 - v];
-    case 270: return [v, 1 - u];
-    default:  return [u, v];
-  }
+let LTM = null, OCRM = null, LRM = null;
+const WEIGHTS = /\b(MGW|MAX\s*GROSS|GROSS|TARE|PAYLOAD|NET|KGS?|LBS?|SWL|WLL|MAX|CU\.?\s*M)\b/i;
+const NRM = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const clamp01 = v => Math.min(1, Math.max(0, v));
+function srcState(){
+  if(!DC) return;
+  const e = DC.ov.querySelector('#dcSrcState');
+  e.textContent = DC.kind === 'live' ? '· live camera' : DC.kind === 'video' ? '· video file' : DC.kind === 'image' ? '· photo' : DC.shot ? '· saved calibration picture' : '';
 }
-function deckPointOf(at){
+function watchReset(){
+  if(!DC) return;
+  DC.w = { tracker: null, st: null, lastT: -1, reads: new Map(), thumbs: new Map(), busy: false, ocrWall: 0, match: null, trackId: 0, deck: [], deckWall: -1e9 };
+}
+async function watchStart(){
+  if(!DC) return;
+  if(!DC.w) watchReset();
+  try{
+    if(!LTM) LTM = await import('./liftTrack.js');
+    if(!LRM) LRM = await import('./liftReader.js');
+    if(!OCRM) OCRM = await import('./ocrClient.js');
+  }catch(e){ API.toast('Could not load the lift watcher — ' + String(e && e.message || e).slice(0, 120), 'warn'); }
+  watchRender();
+}
+/* small copy of the displayed (rotated) frame for the tracker */
+function grabWork(){
+  const d = rotDims(), k = Math.min(1, 480 / Math.max(d.w, d.h));
+  const w = Math.max(16, Math.round(d.w * k)), h = Math.max(16, Math.round(d.h * k));
+  const c = DC.wc || (DC.wc = document.createElement('canvas'));
+  if(c.width !== w || c.height !== h){ c.width = w; c.height = h; DC.wcx = null; }
+  const x = DC.wcx || (DC.wcx = c.getContext('2d', { willReadFrequently: true }));
+  drawRotated(x, w, h);
+  return x.getImageData(0, 0, w, h);
+}
+/* sharp crop of the displayed frame (normalised box), up to `max` px */
+function cropDisp(x0, y0, x1, y1, max){
+  const d = rotDims(), cw = (x1 - x0) * d.w, ch = (y1 - y0) * d.h;
+  const k = Math.min(2.5, Math.max(0.3, max / Math.max(cw, ch)));
+  const c = document.createElement('canvas'); c.width = Math.max(8, Math.round(cw * k)); c.height = Math.max(8, Math.round(ch * k));
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.translate(-x0 * d.w * k, -y0 * d.h * k);
+  drawRotated(x, d.w * k, d.h * k);
+  return c;
+}
+function watchTick(){
+  const W_ = DC && DC.w;
+  if(!W_ || !LTM || DC.tab !== 'watch' || !DC.wOn || !DC.src || !DC.sw || DC.kind === 'image') return;
+  let t;
+  if(DC.kind === 'video'){
+    /* paused on a frame: a good moment to learn the numbers already on deck */
+    if(DC.src.paused || DC.src.seeking){ if(!DC.src.seeking && DC.src.readyState >= 2) scanDeck(); return; }
+    t = DC.src.currentTime;
+  }
+  else t = performance.now() / 1000;
+  if(W_.lastT >= 0 && t >= W_.lastT && t - W_.lastT < 0.095) return;
+  if(W_.lastT >= 0 && (t < W_.lastT - 0.3 || t > W_.lastT + 2.5)) W_.tracker = null;   /* jumped in the video */
+  W_.lastT = t;
+  if(!W_.tracker) W_.tracker = LTM.createTracker();
+  const img = grabWork();
+  W_.st = W_.tracker.step(img.data, img.width, img.height, t, 4);
+  const tr = W_.st.track;
+  if(tr && tr.id !== W_.trackId){
+    W_.trackId = tr.id;
+    /* candidates as they are now: the plan may have changed since the last lift */
+    const cands = API.candidates();
+    W_.match = cands.length && LRM ? LRM.makeMatcher(cands) : null;
+  }
+  W_.tracker.takeEvents().forEach(onTrackEvent);
+  /* one reader: the load first, the deck scan in between */
+  if(tr && !(W_.deckTile != null && W_.lastWasLoad)) maybeRead(tr); else scanDeck();
+  watchRender(true);
+  drawOverlay();
+}
+function watchFlush(){
+  const W_ = DC && DC.w;
+  if(!W_ || !W_.tracker) return;
+  W_.tracker.flush().forEach(onTrackEvent);
+  W_.st = null; watchRender(); drawOverlay();
+}
+/* the numbers painted on units standing on deck, read from the whole picture
+   while nothing is on the hook: a load swinging over them must not be
+   reported as one of them */
+function scanDeck(){
+  const W_ = DC.w;
+  if(!OCRM || W_.busy) return;
+  const now = performance.now();
+  /* the whole picture in overlapping tiles (small stencils need the detail) */
+  if(W_.deckTile == null){ if(now - W_.deckWall < 30000) return; W_.deckTile = 0; W_.deckNext = []; }
+  const d = rotDims(), cols = d.w > d.h ? 4 : 3, rows = d.w > d.h ? 3 : 4, k = W_.deckTile;
+  const cx = k % cols, cy = Math.floor(k / cols), ov = 0.06;
+  const x0 = clamp01(cx / cols - ov), x1 = clamp01((cx + 1) / cols + ov), y0 = clamp01(cy / rows - ov), y1 = clamp01((cy + 1) / rows + ov);
+  W_.busy = true; W_.lastWasLoad = false;
+  const c = cropDisp(x0, y0, x1, y1, 1000), img = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  OCRM.readTextAsync(img, { both: false, max: 60 }).then(res => {
+    if(!DC || DC.w !== W_) return;
+    (res || []).filter(q => q.score >= 0.6 && /\d/.test(q.text)).forEach(q => {
+      const n = NRM(q.text);
+      if(n.length >= 3) W_.deckNext.push({ n, x: x0 + q.cx / c.width * (x1 - x0), y: y0 + q.cy / c.height * (y1 - y0) });
+    });
+  }).catch(() => {}).finally(() => {
+    if(!DC || DC.w !== W_) return;
+    W_.busy = false;
+    W_.deckTile++;
+    if(W_.deckTile >= cols * rows){ W_.deck = W_.deckNext; W_.deckTile = null; W_.deckWall = performance.now(); }
+  });
+}
+const sameText = (a, b) => a === b || (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a)));
+function maybeRead(tr){
+  const W_ = DC.w;
+  if(!OCRM || W_.busy) return;
+  const now = performance.now();
+  if(now - W_.ocrWall < 650) return;
+  const b = tr.box, d = rotDims();
+  if(b.w * d.w < 28 || b.h * d.h < 28) return;                     /* too small to hold a readable number */
+  const pad = 0.12;
+  const x0 = clamp01(b.x - b.w * pad), y0 = clamp01(b.y - b.h * pad), x1 = clamp01(b.x + b.w * (1 + pad)), y1 = clamp01(b.y + b.h * (1 + pad));
+  if(x1 - x0 < 0.01 || y1 - y0 < 0.01) return;
+  W_.busy = true; W_.ocrWall = now; W_.lastWasLoad = true;
+  const id = tr.id, c = cropDisp(x0, y0, x1, y1, 900);
+  /* a small picture of the load for its card */
+  if(!W_.thumbs.has(id) || (W_.reads.get(id) || {}).n % 3 === 0){
+    const k = Math.min(1, 160 / Math.max(c.width, c.height)), th = document.createElement('canvas');
+    th.width = Math.max(1, Math.round(c.width * k)); th.height = Math.max(1, Math.round(c.height * k));
+    th.getContext('2d').drawImage(c, 0, 0, th.width, th.height);
+    W_.thumbs.set(id, th);
+  }
+  const img = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  /* the load itself inside the crop (text in the margin is a unit on deck) */
+  const cx0 = (b.x - x0) / (x1 - x0), cx1 = (b.x + b.w - x0) / (x1 - x0), cy0 = (b.y - y0) / (y1 - y0), cy1 = (b.y + b.h - y0) / (y1 - y0);
+  const match = W_.match, cw = c.width, ch = c.height;
+  const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+  OCRM.readTextAsync(img, { both: true }).then(res => {
+    if(!DC || DC.w !== W_) return;
+    const rec = W_.reads.get(id) || { raw: new Map(), m: new Map(), n: 0 };
+    rec.n++;
+    /* every sighting keeps where it was in the picture and where the load was:
+       a number painted on the load moves with it, one on a unit on deck does not */
+    const vote = (map, key, w, at) => { const o = map.get(key) || { s: 0, occ: [] }; o.s += w; o.occ.push(at); map.set(key, o); };
+    const parts = [];
+    (res || []).forEach(q => {
+      const u = q.cx / cw, v = q.cy / ch;
+      if(q.score < 0.6 || u < cx0 || u > cx1 || v < cy0 || v > cy1) return;
+      if(WEIGHTS.test(q.text)) return;
+      const n = NRM(q.text);
+      if(n.length < 2 || n.length > 14) return;
+      const at = [x0 + u * (x1 - x0), y0 + v * (y1 - y0), bx, by];
+      parts.push({ n, at });
+      if(/\d/.test(n) && n.length >= 3) vote(rec.raw, n, q.score, at);
+      if(match){ const m = match(q.text); if(m) vote(rec.m, m.c.ccu, m.how === 'text' ? 1 : m.how === 'near' ? 0.4 : 0.8, at); }
+    });
+    /* "AME" and "3130" read as two pieces → "AME3130" */
+    parts.forEach(a => parts.forEach(c => { if(a !== c && /^[A-Z]{2,5}$/.test(a.n) && /^\d{3,7}$/.test(c.n)){ vote(rec.raw, a.n + c.n, 0.9, c.at); if(match){ const m = match(a.n + ' ' + c.n); if(m) vote(rec.m, m.c.ccu, 0.8, c.at); } } }));
+    W_.reads.set(id, rec);
+    watchRender(true);
+  }).catch(() => {}).finally(() => { if(DC && DC.w === W_) W_.busy = false; });
+}
+/* best number for a lock: a unit on the lists, else the most read text */
+function bestReading(id){
+  const rec = DC.w.reads.get(id);
+  if(!rec) return null;
+  /* a reading that stays put in the picture while the load moves is a unit
+     standing on deck under it — it hardly counts */
+  const spread = pts => { const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, my = pts.reduce((a, p) => a + p[1], 0) / pts.length; return pts.reduce((a, p) => a + Math.hypot(p[0] - mx, p[1] - my), 0) / pts.length; };
+  const deck = DC.w.deck || [];
+  const weigh = (o, key) => {
+    /* sightings right where the same text stood on deck before the load came */
+    const occ = o.occ.filter(a => !deck.some(d => Math.hypot(d.x - a[0], d.y - a[1]) < 0.07 && sameText(d.n, NRM(key))));
+    if(!occ.length) return 0;
+    o = { s: o.s * occ.length / o.occ.length, occ };
+    if(o.occ.length < 2) return o.s;
+    const sAbs = spread(o.occ.map(a => [a[0], a[1]])), sRel = spread(o.occ.map(a => [a[0] - a[2], a[1] - a[3]]));
+    const loadMoved = spread(o.occ.map(a => [a[2], a[3]]));
+    return loadMoved > 0.01 && sAbs < 0.6 * sRel ? o.s * 0.15 : o.s;
+  };
+  const top = m => [...m.entries()].map(([k, o]) => [k, weigh(o, k)]).sort((a, b) => b[1] - a[1]);
+  const mm = top(rec.m), rr = top(rec.raw);
+  if(mm.length && mm[0][1] >= 1) return { text: mm[0][0], ccu: mm[0][0], sure: mm[0][1] >= 2 && (!mm[1] || mm[0][1] >= 2 * mm[1][1]), n: rec.n };
+  /* free text (no list to check against) only once it was read twice */
+  if(rr.length && rr[0][1] >= 1.5) return { text: rr[0][0].replace(/^([A-Z]+)(\d)/, '$1 $2'), ccu: null, sure: rr[0][1] >= 2.5 && (!rr[1] || rr[0][1] >= 2 * rr[1][1]), n: rec.n };
+  return { text: '', n: rec.n };
+}
+/* deck footprint of a load: its foot (the near edge in the picture) and the
+   width of its near edge; it reaches as far again away from the camera */
+function footprint(box, foot){
   const M = currentModel(); if(!M) return null;
-  const d = toDisp(at[0], at[1]);
-  const p = M.toDeck(d[0], d[1]);
-  if(!p) return null;
+  const F = M.toDeck(foot[0], foot[1]), A = M.toDeck(box.x, box.y + box.h), B = M.toDeck(box.x + box.w, box.y + box.h);
+  const U = M.toDeck(foot[0], Math.max(0, foot[1] - 0.02));
+  if(!F || !A || !B || !U) return null;
   const g = DC.geo;
-  if(p[0] < -1 || p[0] > g.length + 1 || p[1] < -1 || p[1] > g.width + 1) return null;
-  return { x: Math.min(g.length, Math.max(0, p[0])), y: Math.min(g.width, Math.max(0, p[1])) };
+  if(F[0] < -2 || F[0] > g.length + 2 || F[1] < -2 || F[1] > g.width + 2) return null;
+  const d = Math.min(13, Math.max(1, Math.hypot(A[0] - B[0], A[1] - B[1])));
+  let ux = U[0] - F[0], uy = U[1] - F[1]; const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+  const c = [F[0] + ux * d / 2, F[1] + uy * d / 2];
+  const px = -uy, py = ux;
+  const corner = (a, b) => [c[0] + ux * a * d / 2 + px * b * d / 2, c[1] + uy * a * d / 2 + py * b * d / 2];
+  return { centre: [Math.min(g.length, Math.max(0, c[0])), Math.min(g.width, Math.max(0, c[1]))], size: d,
+    poly: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] };
 }
 function whereText(pt){
   if(!pt) return '';
@@ -1276,87 +1548,109 @@ function whereText(pt){
   return `Bay ${bay} · ${side}`;
 }
 const tFmt = s => `${Math.floor(s / 60)}:${pad(Math.floor(s) % 60)}`;
-
-async function analyse(){
-  if(!DC) return;
-  if(DC.kind !== 'video' || !DC.src || !DC.src.duration){ API.toast('Open a video in Picture first', 'warn'); return; }
-  const cands = API.candidates();
-  if(!cands.length) API.toast('No load list, Imported queue or cargo on deck — numbers can only be read, not matched', 'info');
-  let LR;
-  try{ LR = await import('./liftReader.js'); }catch(e){ API.toast('Could not load the reader — ' + (e && e.message || e), 'warn'); return; }
-  const v = DC.src;
-  try{ v.pause(); }catch(e){}
-  DC.anRun = true; DC.anStop = false; DC.anRes = null;
-  anRender();
-  const $ = q => DC.ov.querySelector(q);
-  $('#dcAnTxt').textContent = 'Loading the text reader…';
-  try{
-    const res = await LR.analyseVideo(v, {
-      candidates: cands,
-      shouldStop: () => !DC || DC.anStop,
-      onProgress: (f, info) => {
-        if(!DC) return;
-        DC.anBlob = info.blob || null;
-        DC.anText = (info.texts || []).filter(t => /[0-9]/.test(t)).slice(0, 2).join(' · ');
-        $('#dcAnBar').style.width = Math.round(f * 100) + '%';
-        $('#dcAnTxt').textContent = `${tFmt(info.t)} of ${tFmt(v.duration)}`;
-        drawFrame(); drawOverlay();
-      },
-    });
-    if(!DC) return;
-    res.events.forEach(e => { e.where = deckPointOf(e.at); });
-    DC.anRes = res;
-  }catch(e){
-    if(DC) API.toast('Reading the video failed — ' + String(e && e.message || e).slice(0, 140), 'warn');
-  }finally{
-    if(DC){ DC.anRun = false; DC.anBlob = null; DC.anText = ''; drawOverlay(); anRender(); }
+function whereOf(fp){ return fp ? whereText({ x: fp.centre[0], y: fp.centre[1] }) : ''; }
+function onTrackEvent(e){
+  if(!DC || (e.kind !== 'landed' && e.kind !== 'lifted')) return;
+  const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
+  let guess = null;
+  if(e.kind === 'lifted' && fp){
+    /* which planned unit stood there */
+    const [X, Y] = fp.centre;
+    const near = API.cargo().map(c => ({ c, d: Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) }))
+      .filter(o => o.d < 1.5 && o.c.ccu).sort((a, b) => a.d - b.d)[0];
+    if(near) guess = near.c.ccu;
   }
+  const ev = { id: e.id, kind: e.kind, t: e.t, live: DC.kind === 'live', at: new Date(), fp, where: whereOf(fp), reading: rd,
+    thumb: W_.thumbs.get(e.id) || null, guess };
+  /* the same load set down a moment ago and moved on: the earlier card is history */
+  const prev = e.moves != null && DC.wEvents.find(o => o.id === e.moves);
+  if(prev){
+    prev.movedOn = true;
+    if(!(rd && rd.text) && prev.reading && prev.reading.text) ev.reading = prev.reading;
+    if(!ev.thumb) ev.thumb = prev.thumb;
+    ev.movedFrom = prev.where;
+  }
+  DC.wEvents.unshift(ev);
+  if(DC.wEvents.length > 60) DC.wEvents.length = 60;
+  try{ API.sound(); }catch(_){}
+  watchRender();
 }
-
-function anRender(){
+function watchRender(quick){
   if(!DC) return;
   const $ = q => DC.ov.querySelector(q);
-  const btn = $('#dcAnBtn');
-  btn.textContent = DC.anRun ? 'Stop' : (DC.anRes ? 'Read again' : 'Read lifts in this video');
-  btn.disabled = !DC.anRun && DC.kind !== 'video';
-  $('#dcAnProg').hidden = !DC.anRun;
-  const st = $('#dcAnState');
-  const evs = DC.anRes ? DC.anRes.events : null;
-  st.textContent = DC.anRun ? '· reading…' : evs ? `· ${evs.length} lift${evs.length === 1 ? '' : 's'}` : (DC.kind !== 'video' ? '· open a video' : '');
-  const list = $('#dcAnList');
+  const W_ = DC.w, tr = W_ && W_.st && W_.st.track;
+  const calibrated = !!currentModel();
+  const st = $('#dcWState');
+  st.textContent = !DC.wOn ? '· off' : !DC.src ? '· no picture' : DC.kind === 'image' ? '· needs a video or the camera'
+    : (DC.kind === 'video' && DC.src.paused) ? '· press play' : tr ? (tr.phase === 'down' ? '· set down' : '· locked') : '· watching';
+  /* the lift now */
+  const num = $('#dcWNum'), where = $('#dcWWhere'), phase = $('#dcWPhase'), th = $('#dcWThumb');
+  if(tr){
+    const rd = bestReading(tr.id);
+    num.textContent = rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…';
+    num.classList.toggle('dim', !(rd && rd.text));
+    const fp = footprint(tr.box, tr.foot);
+    where.textContent = !calibrated ? 'Calibrate the camera to see the bay' : fp ? (tr.phase === 'down' ? '' : '→ ') + whereOf(fp) : 'Over the side';
+    phase.textContent = tr.phase === 'down' ? `Set down ${Math.floor(tr.still)} s — confirming` : 'On the hook, moving';
+    const t = W_.thumbs.get(tr.id);
+    if(t && th.firstChild !== t){ th.innerHTML = ''; th.appendChild(t); }
+  }else{
+    num.textContent = '—'; num.classList.add('dim');
+    where.textContent = DC.src && DC.kind !== 'image' ? (DC.kind === 'video' && DC.src.paused ? 'Press ▶ to play the video' : 'Waiting for a load on the hook') : 'Open a video or start the camera';
+    phase.textContent = calibrated ? '' : 'Not calibrated — loads are followed, bays are not shown';
+    th.innerHTML = '';
+  }
+  if(quick && W_ && W_.lastEvN === DC.wEvents.length) return;
+  if(W_) W_.lastEvN = DC.wEvents.length;
+  /* the list */
+  $('#dcWCount').textContent = DC.wEvents.length ? `· ${DC.wEvents.length}` : '';
+  const list = $('#dcWList');
   list.innerHTML = '';
-  if(!evs) return;
-  if(!evs.length){ list.innerHTML = '<div class="dc-hint">No lifts found in this video.</div>'; return; }
-  evs.forEach((e, i) => {
+  if(!DC.wEvents.length){ list.innerHTML = '<div class="dc-hint">Set-downs and lift-offs will appear here.</div>'; return; }
+  DC.wEvents.forEach(e => {
     const card = el('div', 'dc-an-card');
-    const info = e.unit ? API.unitInfo(e.unit.ccu) : {};
-    const confTxt = e.conf === 'high' ? 'Sure' : e.conf === 'low' ? 'Maybe' : e.raw ? 'Not on lists' : 'Not read';
-    const kindTxt = e.kind === 'landed' ? 'Landed' : e.kind === 'lifted' ? 'Lifted off' : 'Moved';
-    const where = whereText(e.where);
+    const rd = e.reading, ccu = rd && rd.ccu, txt = rd && rd.text;
+    const info = ccu ? API.unitInfo(ccu) : {};
+    const timeTxt = e.live ? e.at.toTimeString().slice(0, 5) : tFmt(e.t);
+    const conf = ccu ? (rd.sure ? 'high' : 'low') : txt ? 'low' : 'none';
+    const confTxt = ccu ? (rd.sure ? 'On the list' : 'On the list?') : txt ? (rd.sure ? 'Read' : 'Read?') : 'No number';
     card.innerHTML = `
       <div class="dc-an-thumb"></div>
       <div class="dc-an-main">
-        <div class="dc-an-top"><span class="dc-an-ccu">${e.unit && e.conf !== 'none' ? esc(e.unit.ccu) : e.raw ? 'read: ' + esc(e.raw) : '—'}</span>
-          <span class="dc-an-conf ${e.conf}">${confTxt}</span></div>
-        <div class="dc-an-sub"><button type="button" class="dc-an-time" title="Show in the video">${tFmt(e.t0)}–${tFmt(e.t1)}</button> · ${kindTxt}${where ? ' · ' + esc(where) : ''}</div>
-        ${e.alt && e.alt.length && e.conf !== 'high' ? `<div class="dc-an-alt">${e.conf === 'none' && e.unit ? `also read: <b>${esc(e.unit.ccu)}</b>${e.alt.length ? ', ' : ''}` : 'or: '}${e.alt.map(a => esc(a.ccu)).join(', ')}</div>` : ''}
+        <div class="dc-an-top"><span class="dc-an-ccu">${txt ? esc(txt) : e.guess ? esc(e.guess) + '?' : '—'}</span>
+          <span class="dc-an-conf ${conf}">${e.guess && !txt ? 'Stood there' : confTxt}</span></div>
+        <div class="dc-an-sub">${e.live ? `<span>${timeTxt}</span>` : `<button type="button" class="dc-an-time" title="Show in the video">${timeTxt}</button>`} · <b>${e.kind === 'landed' ? (e.movedFrom ? 'Moved to' : 'Set down') : 'Lifted off'}</b>${e.where ? ' · ' + esc(e.where) : ''}${e.movedFrom ? ` <span class="dc-an-note">(from ${esc(e.movedFrom)})</span>` : ''}</div>
         <div class="dc-an-act"></div>
       </div>`;
-    if(e.thumb){ const im = document.createElement('img'); im.src = e.thumb.toDataURL('image/jpeg', 0.7); im.alt = ''; card.querySelector('.dc-an-thumb').appendChild(im); }
-    card.querySelector('.dc-an-time').addEventListener('click', () => { try{ DC.src.currentTime = e.t0; }catch(_){} });
+    if(e.thumb){ const c = document.createElement('canvas'); c.width = e.thumb.width; c.height = e.thumb.height; c.getContext('2d').drawImage(e.thumb, 0, 0); card.querySelector('.dc-an-thumb').appendChild(c); }
+    const tb = card.querySelector('.dc-an-time');
+    if(tb) tb.addEventListener('click', () => { if(DC && DC.kind === 'video'){ try{ DC.src.currentTime = Math.max(0, e.t - 1); }catch(_){} } });
     const act = card.querySelector('.dc-an-act');
-    const addBtn = (label, fn, primary) => { const b = el('button', 'dc-btn' + (primary ? ' dc-primary' : ''), esc(label)); b.type = 'button'; b.addEventListener('click', () => { fn(); e.done = label; anRender(); }); act.appendChild(b); };
-    if(e.done){ act.innerHTML = `<span class="dc-an-done">✓ ${esc(e.done)}</span>`; }
-    else if(e.unit && e.conf !== 'none' && API.isOperator()){
-      if(e.kind !== 'landed' && info.onDeck) addBtn('Mark lifted', () => API.markLifted(e.unit.ccu), e.conf === 'high');
-      if(e.kind === 'landed' && info.inQueue && e.where) addBtn('Place at ' + where, () => API.placeQueued(e.unit.ccu, e.where.x, e.where.y), e.conf === 'high');
-      if(!info.onDeck && !info.inQueue) act.innerHTML = '<span class="dc-an-note">Not on deck and not in Imported</span>';
-    }else if(e.raw && (!e.unit || e.conf === 'none')){
-      act.innerHTML = '<span class="dc-an-note">Not on the load list, Imported or deck — check the number</span>';
+    const addBtn = (label, fn, primary) => { const b = el('button', 'dc-btn dc-sm' + (primary ? ' dc-primary' : ''), esc(label)); b.type = 'button'; b.addEventListener('click', () => { if(fn() === false) return; e.done = label; watchRender(); drawOverlay(); }); act.appendChild(b); };
+    if(e.movedOn){ card.classList.add('moved'); act.innerHTML = `<span class="dc-an-note">Moved on — see the newer card${e.done ? ' (✓ ' + esc(e.done) + ' here — move it on the plan)' : ''}</span>`; }
+    else if(e.done){ act.innerHTML = `<span class="dc-an-done">✓ ${esc(e.done)}</span>`; }
+    else if(API.isOperator()){
+      const unit = ccu || (e.kind === 'lifted' ? e.guess : null);
+      const ui = unit ? API.unitInfo(unit) : {};
+      if(e.kind === 'lifted' && unit && ui.onDeck) addBtn('Mark ' + unit + ' lifted', () => API.markLifted(unit), !!(rd && rd.sure));
+      if(e.kind === 'landed' && e.fp){
+        if(ccu && info.inQueue) addBtn('Place ' + ccu + ' here', () => API.placeQueued(ccu, e.fp.centre[0], e.fp.centre[1]), rd.sure);
+        else{
+          /* nothing read / not on the lists: pick the unit from Imported */
+          const q = API.queueUnits ? API.queueUnits() : [];
+          if(q.length){
+            const sel = el('select', 'dc-select dc-sm'); sel.setAttribute('aria-label', 'Unit from Imported');
+            sel.innerHTML = '<option value="">Unit from Imported…</option>' + q.map(u => `<option>${esc(u)}</option>`).join('');
+            act.appendChild(sel);
+            addBtn('Place here', () => { if(!sel.value){ API.toast('Pick the unit from Imported first', 'info'); return false; } API.placeQueued(sel.value, e.fp.centre[0], e.fp.centre[1]); }, false);
+          }
+        }
+      }
+      if(!act.children.length && txt && !ccu) act.innerHTML = '<span class="dc-an-note">Not on the load list, Imported or deck — check the number</span>';
     }
     list.appendChild(card);
   });
 }
 
 /* test hooks */
-export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, analyse, deckPointOf };
+export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, footprint, watchFlush, cropDisp, ocr: () => OCRM };

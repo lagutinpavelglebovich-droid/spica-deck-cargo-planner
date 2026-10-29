@@ -55,6 +55,8 @@ export default defineConfig({
      the 28 MB WebGPU/JSEP variant that the WebView does not need. */
   /* The "extern wasm" build loads ort-wasm-simd-threaded.{mjs,wasm} from
      env.wasm.wasmPaths (/ocr/), so the 14 MB runtime is shipped once. */
+  /* v3.40 — the OCR worker imports ONNX Runtime lazily: ES-module worker */
+  worker: { format: 'es' },
   resolve: { alias: [{ find: /^onnxruntime-web$/, replacement: resolve('node_modules/onnxruntime-web/dist/ort.wasm.min.mjs') }] },
   build: {
     outDir: 'dist',
