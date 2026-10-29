@@ -134,12 +134,55 @@ export function calibrationH(cam, geo){
 }
 
 /* ── panel ─────────────────────────────────────────────────── */
-const STEP_TXT = [
-  ['Aft edge · PORT',  'Where the aft edge of the deck meets the port side'],
-  ['Aft edge · STBD',  'Where the aft edge of the deck meets the starboard side'],
-  ['Bay line · PORT',  'The chosen bay line at the port side'],
-  ['Bay line · STBD',  'The chosen bay line at the starboard side'],
-];
+/* v3.38.1 — plain names: what to click, in deck words (was "Bay line · PORT") */
+function stepTexts(){
+  const g = DC.geo, k = DC.line, a = g.labels[k], b = g.labels[k + 1];
+  return [
+    ['Stern corner · port',      'the corner where the stern edge of the deck meets the PORT side'],
+    ['Stern corner · starboard', 'the corner where the stern edge of the deck meets the STARBOARD side'],
+    [`Bay ${a}/${b} joint · port`,      `where the joint between Bay ${a} and Bay ${b} meets the PORT side`],
+    [`Bay ${a}/${b} joint · starboard`, `where the joint between Bay ${a} and Bay ${b} meets the STARBOARD side`],
+  ];
+}
+
+/* Deck map drawn the way a bridge camera sees the deck: looking aft, stern
+   at the top, PORT on the right. The point to click next is ringed. */
+function renderMap(){
+  if(!DC) return;
+  const box = DC.ov.querySelector('#dcMap'); if(!box) return;
+  const sig = [DC.step, DC.placing, DC.line, DC.pts.map(p => p ? 1 : 0).join(''), DC.extra.map(e => e.bay).join(',')].join('|');
+  if(box._sig === sig) return;   /* drawOverlay runs per video frame */
+  box._sig = sig;
+  const g = DC.geo, L = g.bays.reduce((a, b) => a + b, 0) + g.joint * (g.bays.length - 1), Wm = g.width;
+  const X0 = 16, Y0 = 16, DH = 236, DW = Math.round(DH * Wm / L);
+  const PX = m => Y0 + m / L * DH;               /* along the deck → down the map */
+  const PY = w => X0 + (1 - w / Wm) * DW;        /* PORT (w = 0) on the right   */
+  let o = `<svg viewBox="0 0 ${X0 * 2 + DW} ${Y0 + DH + 16}" role="img" aria-label="Deck seen from the bridge looking aft — where to click next">`;
+  o += `<text class="m-end" x="${X0 + DW / 2}" y="${Y0 - 5}" text-anchor="middle">STERN</text>`;
+  o += `<rect class="m-deck" x="${X0}" y="${Y0}" width="${DW}" height="${DH}" rx="3"/>`;
+  for(let k = 0; k < g.bays.length - 1; k++){
+    const y = PX(boundaryX(g, k)).toFixed(1);
+    o += `<line class="m-joint${k === DC.line ? ' sel' : ''}" x1="${X0}" y1="${y}" x2="${X0 + DW}" y2="${y}"/>`;
+  }
+  for(let i = 0; i < g.bays.length; i++) o += `<text class="m-bay" x="${X0 + DW / 2}" y="${(PX(bayCentreX(g, i)) + 3).toFixed(1)}">${esc(g.labels[i])}</text>`;
+  o += `<text class="m-side" x="${X0 + DW + 3}" y="${Y0 + DH / 2}" transform="rotate(90 ${X0 + DW + 3} ${Y0 + DH / 2})" text-anchor="middle" dy="-1">PORT</text>`;
+  o += `<text class="m-side" x="${X0 - 3}" y="${Y0 + DH / 2}" transform="rotate(-90 ${X0 - 3} ${Y0 + DH / 2})" text-anchor="middle" dy="-1">STBD</text>`;
+  o += `<text class="m-end" x="${X0 + DW / 2}" y="${Y0 + DH + 12}" text-anchor="middle">BRIDGE</text>`;
+  const ref = refPoints(g, DC.line);
+  DC.pts.forEach((p, i) => { if(p) o += `<g class="m-done"><circle cx="${PY(ref[i][1]).toFixed(1)}" cy="${PX(ref[i][0]).toFixed(1)}" r="4.5"/><text x="${PY(ref[i][1]).toFixed(1)}" y="${(PX(ref[i][0]) + 2.8).toFixed(1)}" text-anchor="middle">${i + 1}</text></g>`; });
+  DC.extra.forEach(e => { o += `<circle class="m-xdone" cx="${PY(Wm / 2).toFixed(1)}" cy="${PX(bayCentreX(g, e.bay)).toFixed(1)}" r="3.5"/>`; });
+  let t = null;
+  if(DC.placing >= 0) t = [bayCentreX(g, DC.placing), Wm / 2];
+  else if(DC.step < 4) t = ref[DC.step];
+  if(t) o += `<circle class="m-target" cx="${PY(t[1]).toFixed(1)}" cy="${PX(t[0]).toFixed(1)}" r="7"/><circle class="m-target-dot" cx="${PY(t[1]).toFixed(1)}" cy="${PX(t[0]).toFixed(1)}" r="2.5"/>`;
+  box.innerHTML = o + '</svg>';
+  const cap = DC.ov.querySelector('#dcMapCap');
+  if(cap){
+    cap.textContent = DC.placing >= 0 ? `Click the middle of Bay ${g.labels[DC.placing]} on the centreline (its painted number)`
+      : DC.step < 4 ? `Click ${stepTexts()[DC.step][1]}`
+      : 'All 4 points placed. Check that the drawn bay lines sit on the deck joints in the picture; drag a point to correct it.';
+  }
+}
 
 function el(tag, cls, html){ const e = document.createElement(tag); if(cls) e.className = cls; if(html != null) e.innerHTML = html; return e; }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
@@ -229,12 +272,20 @@ function buildPanel(){
 
           <section class="dc-sec dc-pane" data-pane="calib">
             <div class="dc-sec-title">Calibration <span class="dc-sec-meta" id="dcCalState"></span></div>
-            <label class="dc-field"><span>Bay line used for points 3 and 4</span>
+            <div class="dc-note">Tie the picture to the deck plan with 4 points. The map shows the deck as the bridge camera sees it, looking aft: click in the picture the spot ringed on the map.</div>
+            <div class="dc-cal">
+              <div class="dc-map" id="dcMap"></div>
+              <div class="dc-cal-r">
+                <div class="dc-map-cap" id="dcMapCap"></div>
+                <ol class="dc-steps" id="dcSteps"></ol>
+              </div>
+            </div>
+            <label class="dc-field"><span>Joint for points 3 and 4 — pick one you can see clearly, far from the stern</span>
               <select class="dc-select" id="dcLine"></select></label>
-            <ol class="dc-steps" id="dcSteps"></ol>
-            <div class="dc-sub">More points — painted bay numbers <span class="dc-sec-meta">(the nearer the camera, the better)</span></div>
+            <div class="dc-sub">Optional · bay centres <span class="dc-sec-meta">(more accuracy — points near the camera help most)</span></div>
+            <div class="dc-note">Click the middle of a bay on the centreline, where its number is painted.</div>
             <div class="dc-row">
-              <select class="dc-select" id="dcExtraBay" aria-label="Bay number"></select>
+              <select class="dc-select" id="dcExtraBay" aria-label="Bay"></select>
               <button type="button" class="dc-btn" id="dcAddExtra">Place</button>
             </div>
             <ol class="dc-steps" id="dcExtras"></ol>
@@ -286,14 +337,14 @@ export function openDeckCamera(tab){
   for(let k = 0; k < geo.bays.length - 1; k++){
     const o = document.createElement('option');
     o.value = String(k);
-    o.textContent = `Bay ${geo.labels[k]} | Bay ${geo.labels[k + 1]}  ·  ${boundaryX(geo, k).toFixed(2)} m from aft`;
+    o.textContent = `Bay ${geo.labels[k]} / Bay ${geo.labels[k + 1]} joint  ·  ${boundaryX(geo, k).toFixed(1)} m from the stern`;
     ls.appendChild(o);
   }
   ls.value = String(DC.line);
   const xb = ov.querySelector('#dcExtraBay');
   xb.innerHTML = '';
   for(let i = geo.bays.length - 1; i >= 0; i--){
-    const o = document.createElement('option'); o.value = String(i); o.textContent = 'Bay ' + geo.labels[i] + ' number'; xb.appendChild(o);
+    const o = document.createElement('option'); o.value = String(i); o.textContent = 'Bay ' + geo.labels[i] + ' centre'; xb.appendChild(o);
   }
   ov.classList.add('open');
   document.body.classList.add('dc-open');
@@ -558,6 +609,7 @@ function drawOverlay(){
       <text x="${(x + 13).toFixed(1)}" y="${(y - 11).toFixed(1)}" class="dc-pt-n">${i + 1}</text></g>`;
   });
   svg.innerHTML = out;
+  renderMap();
   /* status */
   const st = DC.ov.querySelector('#dcCalState');
   const placed = DC.pts.filter(Boolean).length;
@@ -579,10 +631,10 @@ function drawOverlay(){
     }
   }
   hint.classList.remove('warn');
-  if(DC.placing >= 0){ hint.textContent = `Click the centre of the painted number ${geo.labels[DC.placing]} on the deck.`; return; }
+  if(DC.placing >= 0){ hint.textContent = `Click the middle of Bay ${geo.labels[DC.placing]} on the centreline (its painted number).`; return; }
   hint.textContent = DC.step < 4
-    ? `Click the picture: ${STEP_TXT[DC.step][1].toLowerCase()}.`
-    : 'Drag a point to adjust it; arrow keys nudge the selected point (Shift = ×10). The bay lines should sit on the deck markings.';
+    ? `Click the picture: ${stepTexts()[DC.step][1]}. A magnifier follows the pointer.`
+    : 'Drag a point to adjust it; arrow keys nudge the selected point (Shift = ×10). The drawn bay lines should sit on the deck joints.';
 }
 
 function fmtRes(v){ return v == null ? '' : (v < 0.995 ? Math.round(v * 100) + ' cm' : v.toFixed(2) + ' m'); }
@@ -600,7 +652,7 @@ function renderResiduals(){
   DC.extra.forEach((e, k) => {
     const v = DC.res ? DC.res[4 + k] : null;
     const li = el('li', 'dc-step done' + (DC.sel === 4 + k ? ' cur' : ''));
-    li.innerHTML = `<span class="dc-step-n">${esc(DC.geo.labels[e.bay])}</span><span class="dc-step-t">Bay ${esc(DC.geo.labels[e.bay])} number</span><span class="dc-step-s${resClass(v)}">${fmtRes(v)}</span><button type="button" class="dc-del" title="Remove this point">✕</button>`;
+    li.innerHTML = `<span class="dc-step-n">${esc(DC.geo.labels[e.bay])}</span><span class="dc-step-t">Bay ${esc(DC.geo.labels[e.bay])} centre</span><span class="dc-step-s${resClass(v)}">${fmtRes(v)}</span><button type="button" class="dc-del" title="Remove this point">✕</button>`;
     li.addEventListener('click', ev => {
       if(ev.target.closest('.dc-del')){ DC.extra.splice(k, 1); DC.sel = -1; DC.dirty = true; drawOverlay(); return; }
       DC.sel = 4 + k; drawOverlay();
@@ -611,7 +663,7 @@ function renderResiduals(){
 function renderSteps(){
   const ol = DC.ov.querySelector('#dcSteps');
   ol.innerHTML = '';
-  STEP_TXT.forEach(([t], i) => {
+  stepTexts().forEach(([t], i) => {
     const li = el('li', 'dc-step' + (DC.pts[i] ? ' done' : '') + (i === DC.step ? ' cur' : ''));
     li.innerHTML = `<span class="dc-step-n">${i + 1}</span><span class="dc-step-t">${esc(t)}</span><span class="dc-step-s">${DC.pts[i] ? '✓' : ''}</span>`;
     li.addEventListener('click', () => { DC.step = i; DC.placing = -1; DC.sel = DC.pts[i] ? i : -1; renderSteps(); drawOverlay(); });
@@ -681,7 +733,7 @@ function bind(ov){
   $('#dcFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) openFile(f); e.target.value = ''; });
   $('#dcRotL').addEventListener('click', () => rotate(-90));
   $('#dcRotR').addEventListener('click', () => rotate(90));
-  $('#dcLine').addEventListener('change', e => { DC.line = +e.target.value; DC.dirty = true; drawOverlay(); });
+  $('#dcLine').addEventListener('change', e => { DC.line = +e.target.value; DC.dirty = true; renderSteps(); drawOverlay(); });
   ['#dcOvGrid', '#dcOvCargo', '#dcOvAlpha'].forEach(s => $(s).addEventListener('input', () => drawOverlay()));
   $('#dcResetPts').addEventListener('click', () => { DC.pts = [null, null, null, null]; DC.extra = []; DC.placing = -1; DC.step = 0; DC.sel = -1; DC.dirty = true; renderSteps(); drawOverlay(); });
   $('#dcAddExtra').addEventListener('click', () => {

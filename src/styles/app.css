@@ -18454,3 +18454,25 @@ html:not([data-theme="dark"]) .shell-ribbon .rc-brand .brand-dcp{
 .about-licence:empty{ display: none; }
 [data-theme="dark"] .lic-ov:not(.locked){ background: rgba(0,0,0,.55); }
 [data-theme="dark"] .lic-card{ box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06); }
+
+/* v3.38.1 — deck camera calibration: deck map with the next point ringed */
+.dc-ov{ --dc-pt: #ffd60a; --dc-pt-ink: #1a1400; }
+.dc-cal{ display:grid; grid-template-columns:92px 1fr; gap:10px; align-items:start; }
+.dc-cal-r{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.dc-cal .dc-steps .dc-step{ padding:6px 8px; font-size:12px; }
+.dc-map{ border:1px solid var(--dc-line); border-radius:10px; background:var(--dc-field); padding:4px 2px; }
+.dc-map svg{ display:block; width:100%; height:auto; font-family:'Inter',sans-serif; }
+.dc-map .m-deck{ fill:var(--surf); stroke:var(--txt3); stroke-width:1; }
+.dc-map .m-joint{ stroke:var(--txt4); stroke-width:.8; }
+.dc-map .m-joint.sel{ stroke:var(--acc); stroke-width:2.2; }
+.dc-map .m-bay{ fill:var(--txt3); font-size:8px; font-weight:700; text-anchor:middle; }
+.dc-map .m-side, .dc-map .m-end{ fill:var(--txt3); font-size:7.5px; font-weight:700; letter-spacing:.08em; }
+.dc-map .m-done circle{ fill:var(--dc-pt); stroke:var(--dc-pt-ink); stroke-width:.8; }
+.dc-map .m-done text{ fill:var(--dc-pt-ink); font-size:6.5px; font-weight:800; }
+.dc-map .m-xdone{ fill:var(--dc-pt); opacity:.75; }
+.dc-map .m-target{ fill:none; stroke:var(--acc); stroke-width:2; transform-box:fill-box; transform-origin:center; animation:dcMapPulse 1.4s ease-in-out infinite; }
+.dc-map .m-target-dot{ fill:var(--acc); }
+@keyframes dcMapPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.35); opacity:.55; } }
+@media (prefers-reduced-motion: reduce){ .dc-map .m-target{ animation:none; } }
+html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-target{ animation:none; }
+.dc-map-cap{ font-size:12.5px; line-height:1.4; color:var(--txt); font-weight:600; padding:8px 10px; border-radius:8px; background:color-mix(in srgb, var(--acc) 9%, transparent); border:1px solid color-mix(in srgb, var(--acc) 35%, transparent); }

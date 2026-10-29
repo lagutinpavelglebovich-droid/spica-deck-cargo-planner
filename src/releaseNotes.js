@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.38.1',
+    date: '2026-10-29',
+    highlights: [ 'Deck camera calibration you can follow' ],
+    changes: [
+      { type: 'ui', text: 'Calibration shows a deck map as the bridge camera sees it (stern at the top, port on the right) with the spot to click next ringed, and says it in words: "Click where the joint between Bay 3 and Bay 2 meets the PORT side"' },
+      { type: 'ui', text: 'Plain names: stern corner port / starboard, Bay 3/2 joint port / starboard; optional bay centres explained (middle of the bay on the centreline, where the number is painted)' },
+    ],
+  },
+  {
     version: '3.38.0',
     date: '2026-10-29',
     highlights: [ 'Licence keys — enter your vessel\u2019s key once' ],
