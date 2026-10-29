@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.39.0',
+    date: '2026-10-29',
+    highlights: [ 'Calibrate the deck camera even when corners are hidden or outside the picture' ],
+    changes: [
+      { type: 'feature', text: 'Guide lines: draw a line over any deck line you can see — the foot of the port or starboard crash barrier, the stern edge or a bay joint — even a short stretch of it. Both deck edges plus two cross lines are enough, no corner needed' },
+      { type: 'feature', text: 'Corner points are optional and can be placed beside the picture: tick "Room around the picture" to get space around the frame' },
+      { type: 'feature', text: 'Fine-tune: move, rotate, size and tilt (top/bottom, left/right) the drawn deck by hand, Lightroom-style' },
+      { type: 'feature', text: 'Lens curvature correction with an Auto button — bend a guide line onto a curved deck edge with its middle handle and press Auto' },
+      { type: 'ui', text: 'Every point and line shows its error in metres; a point or line can be removed with ✕' },
+    ],
+  },
+  {
     version: '3.38.1',
     date: '2026-10-29',
     highlights: [ 'Deck camera calibration you can follow' ],

@@ -18476,3 +18476,25 @@ html:not([data-theme="dark"]) .shell-ribbon .rc-brand .brand-dcp{
 @media (prefers-reduced-motion: reduce){ .dc-map .m-target{ animation:none; } }
 html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-target{ animation:none; }
 .dc-map-cap{ font-size:12.5px; line-height:1.4; color:var(--txt); font-weight:600; padding:8px 10px; border-radius:8px; background:color-mix(in srgb, var(--acc) 9%, transparent); border:1px solid color-mix(in srgb, var(--acc) 35%, transparent); }
+
+/* v3.39 — deck camera: guide lines, points beside the picture, fine-tune */
+.dc-frame svg{ overflow:visible; }
+.dc-ov{ --dc-guide: #22d3ee; }
+.dc-guide-l{ fill:none; stroke:var(--dc-guide); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+.dc-guide.sel .dc-guide-l{ stroke-width:3.5; }
+.dc-guide-h{ fill:rgba(8,12,18,.55); stroke:var(--dc-guide); stroke-width:2; }
+.dc-guide-h.mid{ fill:var(--dc-guide); }
+.dc-guide-h.on{ stroke-width:3; r:7; }
+.dc-guide-t{ fill:var(--dc-guide); font:800 11px 'Inter',sans-serif; paint-order:stroke; stroke:rgba(0,0,0,.65); stroke-width:3px; }
+.dc-guide-draw{ stroke:var(--dc-guide); stroke-width:2.5; stroke-dasharray:6 5; }
+.dc-step .dc-gl-n{ background:color-mix(in srgb, var(--dc-guide) 22%, transparent); color:var(--txt); border-color:var(--dc-guide); }
+.dc-map .m-guide{ stroke:var(--dc-guide); stroke-width:1.6; opacity:.55; }
+.dc-map .m-guide.on{ stroke-width:3; opacity:1; }
+.dc-tune{ border:1px solid var(--dc-line); border-radius:10px; padding:6px 10px; background:var(--dc-field); }
+.dc-tune > summary{ cursor:pointer; font-size:12px; font-weight:700; color:var(--txt2); padding:2px 0; }
+.dc-tune[open] > summary{ margin-bottom:6px; }
+.dc-tune-row{ display:grid; grid-template-columns:96px 1fr 46px auto; align-items:center; gap:6px; font-size:11.5px; color:var(--txt2); margin:4px 0; }
+.dc-tune-row input[type=range]{ width:100%; min-width:0; }
+.dc-tune-row output{ font:600 11px ui-monospace, Menlo, monospace; color:var(--txt); text-align:right; }
+.dc-btn.dc-sm{ height:24px; padding:0 8px; font-size:11px; }
+.dc-btn:disabled{ opacity:.5; cursor:default; }

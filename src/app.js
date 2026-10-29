@@ -766,15 +766,28 @@ function _normaliseCamera(c, nBays){
   const out = { rotation: [0, 90, 180, 270].includes(c.rotation) ? c.rotation : 0 };
   if(c.deviceLabel) out.deviceLabel = String(c.deviceLabel).slice(0, 120);
   const k = c.calib;
-  if(k && Array.isArray(k.pts) && k.pts.length === 4 && k.pts.every(q => Array.isArray(q) && q.length === 2 && q.every(v => isFinite(+v)))){
+  /* v3.39 — corner points may be missing (hidden by cargo / outside the
+     picture) when guide lines along deck edges and joints carry the
+     calibration; lens curvature and manual fine-tune are kept too. */
+  const pt = q => Array.isArray(q) && q.length === 2 && q.every(v => isFinite(+v)) ? [Math.min(1.5, Math.max(-0.5, +q[0])), Math.min(1.5, Math.max(-0.5, +q[1]))] : null;
+  const FEAT = /^(port|stbd|stern|fwd|j\d{1,2})$/;
+  if(k && Array.isArray(k.pts) && k.pts.length === 4 && k.pts.every(q => q == null || pt(q))){
+    const num = (v, lo, hi, d) => isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : d;
     out.calib = {
-      pts: k.pts.map(q => [Math.min(1.5, Math.max(-0.5, +q[0])), Math.min(1.5, Math.max(-0.5, +q[1]))]),
+      v: 2,
+      pts: k.pts.map(q => q == null ? null : pt(q)),
       line: Math.min(Math.max(0, nBays - 2), Math.max(0, parseInt(k.line, 10) || 0)),
       aspect: isFinite(+k.aspect) ? +k.aspect : 0,
       extra: (Array.isArray(k.extra) ? k.extra : []).slice(0, 24)
         .filter(e => e && isFinite(+e.u) && isFinite(+e.v) && parseInt(e.bay, 10) >= 0 && parseInt(e.bay, 10) < nBays)
         .map(e => ({ bay: parseInt(e.bay, 10), u: +e.u, v: +e.v })),
+      guides: (Array.isArray(k.guides) ? k.guides : []).slice(0, 24)
+        .filter(g => g && FEAT.test(String(g.f)) && (!/^j/.test(g.f) || parseInt(String(g.f).slice(1), 10) < nBays - 1) && Array.isArray(g.p) && g.p.length === 3 && g.p.every(q => pt(q)))
+        .map(g => ({ f: String(g.f), mid: !!g.mid, p: g.p.map(pt) })),
+      k: num(k.k, -0.5, 0.5, 0),
     };
+    if(k.tf && typeof k.tf === 'object') out.calib.tf = { dx: num(k.tf.dx, -0.5, 0.5, 0), dy: num(k.tf.dy, -0.5, 0.5, 0), rot: num(k.tf.rot, -45, 45, 0),
+      scale: num(k.tf.scale, 0.5, 2, 1), tv: num(k.tf.tv, -1, 1, 0), th: num(k.tf.th, -1, 1, 0) };
     if(k.at) out.calib.at = String(k.at).slice(0, 40);
   }
   return out;
@@ -15693,8 +15706,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.38.1';
-const APP_VERSION   = '3.38.1';
+const CURRENT_BUILD = 'v3.39.0';
+const APP_VERSION   = '3.39.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

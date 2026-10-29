@@ -19,6 +19,8 @@
    touches planner state directly.
 ════════════════════════════════════════════════════════════ */
 
+import { solveH, makeModel, residuals as camResiduals, autoLens, equationCount, T_NONE, isIdentityT } from './camModel.js';
+
 let API = null;
 let DC = null;            /* panel state while open */
 let CAM = null;           /* live camera — outlives the panel while recording */
@@ -123,15 +125,34 @@ function refPoints(geo, line){
 
 /* Calibration stored on the vessel → homography, or null. */
 export function calibrationH(cam, geo){
-  if(!cam || !cam.calib || !Array.isArray(cam.calib.pts) || cam.calib.pts.length !== 4) return null;
-  if(cam.calib.pts.some(p => !p)) return null;
-  const line = Math.min(geo.bays.length - 2, Math.max(0, cam.calib.line | 0));
-  const src = refPoints(geo, line), dst = cam.calib.pts.slice();
-  (cam.calib.extra || []).forEach(e => {
-    if(e && e.bay >= 0 && e.bay < geo.bays.length){ src.push([bayCentreX(geo, e.bay), geo.width / 2]); dst.push([e.u, e.v]); }
-  });
-  return homographyLS(src, dst);
+  if(!cam || !cam.calib) return null;
+  const c = cam.calib, line = Math.min(geo.bays.length - 2, Math.max(0, c.line | 0));
+  const pts = Array.isArray(c.pts) ? c.pts : [], ref = refPoints(geo, line), cons = [];
+  pts.forEach((p, i) => { if(p && i < 4) cons.push({ type: 'pt', img: p, deck: ref[i] }); });
+  (c.extra || []).forEach(e => { if(e && e.bay >= 0 && e.bay < geo.bays.length) cons.push({ type: 'pt', img: [e.u, e.v], deck: [bayCentreX(geo, e.bay), geo.width / 2] }); });
+  (c.guides || []).forEach(g => { const f = featLine(geo, g.f); if(f) (g.p || []).forEach(p => cons.push({ type: f.axis, val: f.val, img: p })); });
+  return solveH(cons, geoLen(geo), c.k || 0, c.aspect || 9 / 16);
 }
+
+/* v3.39 — guide lines: deck lines a guide can be drawn along */
+function geoLen(geo){ return { length: geo.bays.reduce((a, b) => a + b, 0) + geo.joint * (geo.bays.length - 1), width: geo.width }; }
+function featLine(geo, f){
+  const L = geoLen(geo).length, W = geo.width;
+  if(f === 'port')  return { axis: 'y', val: 0, name: 'Port deck edge', short: 'Port edge' };
+  if(f === 'stbd')  return { axis: 'y', val: W, name: 'Starboard deck edge', short: 'Stbd edge' };
+  if(f === 'stern') return { axis: 'x', val: 0, name: 'Stern edge', short: 'Stern' };
+  if(f === 'fwd')   return { axis: 'x', val: L, name: 'Forward end of the deck', short: 'Fwd end' };
+  const m = /^j(\d+)$/.exec(String(f || ''));
+  if(m && +m[1] < geo.bays.length - 1){ const k = +m[1]; return { axis: 'x', val: boundaryX(geo, k), name: `Bay ${geo.labels[k]}/${geo.labels[k + 1]} joint`, short: `${geo.labels[k]}/${geo.labels[k + 1]}` }; }
+  return null;
+}
+function featOptions(geo){
+  const o = [['port', 'Port deck edge — foot of the crash barrier'], ['stbd', 'Starboard deck edge — foot of the crash barrier'], ['stern', 'Stern edge']];
+  for(let k = 0; k < geo.bays.length - 1; k++) o.push(['j' + k, `Bay ${geo.labels[k]} / Bay ${geo.labels[k + 1]} joint`]);
+  o.push(['fwd', 'Forward end of the deck']);
+  return o;
+}
+const GH = 1000;            /* handle id base for guide handles: GH + guide × 3 + handle */
 
 /* ── panel ─────────────────────────────────────────────────── */
 /* v3.38.1 — plain names: what to click, in deck words (was "Bay line · PORT") */
@@ -150,7 +171,9 @@ function stepTexts(){
 function renderMap(){
   if(!DC) return;
   const box = DC.ov.querySelector('#dcMap'); if(!box) return;
-  const sig = [DC.step, DC.placing, DC.line, DC.pts.map(p => p ? 1 : 0).join(''), DC.extra.map(e => e.bay).join(',')].join('|');
+  const selG = DC.sel >= GH ? DC.guides[Math.floor((DC.sel - GH) / 3)] : null;
+  const feat = DC.drawing ? DC.drawing.f : selG ? selG.f : '';
+  const sig = [DC.step, DC.placing, DC.line, DC.pts.map(p => p ? 1 : 0).join(''), DC.extra.map(e => e.bay).join(','), DC.guides.map(g => g.f).join(','), feat].join('|');
   if(box._sig === sig) return;   /* drawOverlay runs per video frame */
   box._sig = sig;
   const g = DC.geo, L = g.bays.reduce((a, b) => a + b, 0) + g.joint * (g.bays.length - 1), Wm = g.width;
@@ -168,19 +191,28 @@ function renderMap(){
   o += `<text class="m-side" x="${X0 + DW + 3}" y="${Y0 + DH / 2}" transform="rotate(90 ${X0 + DW + 3} ${Y0 + DH / 2})" text-anchor="middle" dy="-1">PORT</text>`;
   o += `<text class="m-side" x="${X0 - 3}" y="${Y0 + DH / 2}" transform="rotate(-90 ${X0 - 3} ${Y0 + DH / 2})" text-anchor="middle" dy="-1">STBD</text>`;
   o += `<text class="m-end" x="${X0 + DW / 2}" y="${Y0 + DH + 12}" text-anchor="middle">BRIDGE</text>`;
+  /* guide lines drawn, and the one being drawn / selected */
+  const fl = f => { const L2 = featLine(g, f); if(!L2) return ''; return L2.axis === 'x'
+    ? `x1="${X0 - 2}" y1="${PX(L2.val).toFixed(1)}" x2="${X0 + DW + 2}" y2="${PX(L2.val).toFixed(1)}"`
+    : `x1="${PY(L2.val).toFixed(1)}" y1="${Y0 - 2}" x2="${PY(L2.val).toFixed(1)}" y2="${Y0 + DH + 2}"`; };
+  DC.guides.forEach(gd => { if(gd.f !== feat) o += `<line class="m-guide" ${fl(gd.f)}/>`; });
+  if(feat) o += `<line class="m-guide on" ${fl(feat)}/>`;
   const ref = refPoints(g, DC.line);
   DC.pts.forEach((p, i) => { if(p) o += `<g class="m-done"><circle cx="${PY(ref[i][1]).toFixed(1)}" cy="${PX(ref[i][0]).toFixed(1)}" r="4.5"/><text x="${PY(ref[i][1]).toFixed(1)}" y="${(PX(ref[i][0]) + 2.8).toFixed(1)}" text-anchor="middle">${i + 1}</text></g>`; });
   DC.extra.forEach(e => { o += `<circle class="m-xdone" cx="${PY(Wm / 2).toFixed(1)}" cy="${PX(bayCentreX(g, e.bay)).toFixed(1)}" r="3.5"/>`; });
   let t = null;
-  if(DC.placing >= 0) t = [bayCentreX(g, DC.placing), Wm / 2];
+  if(DC.drawing) t = null;
+  else if(DC.placing >= 0) t = [bayCentreX(g, DC.placing), Wm / 2];
   else if(DC.step < 4) t = ref[DC.step];
   if(t) o += `<circle class="m-target" cx="${PY(t[1]).toFixed(1)}" cy="${PX(t[0]).toFixed(1)}" r="7"/><circle class="m-target-dot" cx="${PY(t[1]).toFixed(1)}" cy="${PX(t[0]).toFixed(1)}" r="2.5"/>`;
   box.innerHTML = o + '</svg>';
   const cap = DC.ov.querySelector('#dcMapCap');
   if(cap){
-    cap.textContent = DC.placing >= 0 ? `Click the middle of Bay ${g.labels[DC.placing]} on the centreline (its painted number)`
+    cap.textContent = DC.drawing ? `Draw along: ${featLine(g, DC.drawing.f).name} (highlighted on the map) — press, drag along it, release`
+      : DC.placing >= 0 ? `Click the middle of Bay ${g.labels[DC.placing]} on the centreline (its painted number)`
       : DC.step < 4 ? `Click ${stepTexts()[DC.step][1]}`
-      : 'All 4 points placed. Check that the drawn bay lines sit on the deck joints in the picture; drag a point to correct it.';
+      : DC.pts.every(Boolean) ? 'All 4 points placed. Check that the drawn bay lines sit on the deck joints in the picture; drag a point to correct it.'
+      : 'Check that the drawn deck sits on the picture. Drag any point or line handle to correct it, add guide lines, or click a corner step to place it.';
   }
 }
 
@@ -234,6 +266,7 @@ function buildPanel(){
               <input type="range" id="dcSeek" min="0" max="1000" value="0" aria-label="Position">
               <span class="dc-time" id="dcTime">0:00</span>
             </div>
+            <label class="dc-check"><input type="checkbox" id="dcRoomy"> Room around the picture — to place corners that are outside it</label>
             <div class="dc-row">
               <span class="dc-lbl">Rotate</span>
               <button type="button" class="dc-btn dc-icon" id="dcRotL" title="Rotate left">⟲</button>
@@ -282,6 +315,13 @@ function buildPanel(){
             </div>
             <label class="dc-field"><span>Joint for points 3 and 4 — pick one you can see clearly, far from the stern</span>
               <select class="dc-select" id="dcLine"></select></label>
+            <div class="dc-sub">Guide lines <span class="dc-sec-meta">(when corners are hidden by cargo or outside the picture)</span></div>
+            <div class="dc-note">Draw a line over a deck line you can see — even a short stretch of it: press, drag along it, release. If the lens bends the line, drag its middle handle onto it. Both deck edges and two cross lines are enough without any corner points.</div>
+            <div class="dc-row">
+              <select class="dc-select" id="dcGuideFeat" aria-label="Deck line"></select>
+              <button type="button" class="dc-btn" id="dcGuideDraw">Draw line</button>
+            </div>
+            <ol class="dc-steps" id="dcGuides"></ol>
             <div class="dc-sub">Optional · bay centres <span class="dc-sec-meta">(more accuracy — points near the camera help most)</span></div>
             <div class="dc-note">Click the middle of a bay on the centreline, where its number is painted.</div>
             <div class="dc-row">
@@ -290,7 +330,19 @@ function buildPanel(){
             </div>
             <ol class="dc-steps" id="dcExtras"></ol>
             <div class="dc-hint" id="dcHint">Click the picture to place the highlighted point. Drag a point to adjust it; arrow keys nudge it (Shift = ×10).</div>
-            <div class="dc-row"><button type="button" class="dc-btn dc-quiet" id="dcResetPts">Clear points</button></div>
+            <details class="dc-tune" id="dcTune">
+              <summary>Fine-tune — lens and transform</summary>
+              <div class="dc-tune-row"><span>Lens curvature</span><input type="range" id="dcTk" min="-0.35" max="0.35" step="0.005"><output id="dcTkV"></output><button type="button" class="dc-btn dc-sm" id="dcTkAuto" title="Bend the lens until all points and lines agree">Auto</button></div>
+              <div class="dc-tune-row"><span>Move ←→</span><input type="range" id="dcTdx" min="-0.25" max="0.25" step="0.002"><output id="dcTdxV"></output></div>
+              <div class="dc-tune-row"><span>Move ↑↓</span><input type="range" id="dcTdy" min="-0.25" max="0.25" step="0.002"><output id="dcTdyV"></output></div>
+              <div class="dc-tune-row"><span>Rotate</span><input type="range" id="dcTrot" min="-10" max="10" step="0.1"><output id="dcTrotV"></output></div>
+              <div class="dc-tune-row"><span>Size</span><input type="range" id="dcTscale" min="0.8" max="1.2" step="0.002"><output id="dcTscaleV"></output></div>
+              <div class="dc-tune-row"><span>Tilt top / bottom</span><input type="range" id="dcTtv" min="-0.5" max="0.5" step="0.005"><output id="dcTtvV"></output></div>
+              <div class="dc-tune-row"><span>Tilt left / right</span><input type="range" id="dcTth" min="-0.5" max="0.5" step="0.005"><output id="dcTthV"></output></div>
+              <div class="dc-row"><button type="button" class="dc-btn dc-quiet" id="dcTreset">Reset fine-tune</button></div>
+              <div class="dc-note">Fine-tune moves the drawn deck over the picture by hand. Prefer points and guide lines — they tell the camera where the deck really is; use these sliders for the last few centimetres.</div>
+            </details>
+            <div class="dc-row"><button type="button" class="dc-btn dc-quiet" id="dcResetPts">Clear points and lines</button></div>
           </section>
 
           <section class="dc-sec">
@@ -325,12 +377,16 @@ export function openDeckCamera(tab){
     pts: cam.calib && Array.isArray(cam.calib.pts) && cam.calib.pts.length === 4 ? cam.calib.pts.map(p => p && [p[0], p[1]]) : [null, null, null, null],
     savedAspect: cam.calib && cam.calib.aspect || 0,
     extra: cam.calib && Array.isArray(cam.calib.extra) ? cam.calib.extra.filter(e => e && e.bay < geo.bays.length).map(e => ({ bay: e.bay, p: [e.u, e.v] })) : [],
+    guides: cam.calib && Array.isArray(cam.calib.guides) ? cam.calib.guides.filter(g => g && featLine(geo, g.f) && Array.isArray(g.p) && g.p.length === 3).map(g => ({ f: g.f, p: g.p.map(q => [q[0], q[1]]), mid: !!g.mid })) : [],
+    k: cam.calib && Number.isFinite(cam.calib.k) ? cam.calib.k : 0,
+    tf: Object.assign({}, T_NONE, cam.calib && cam.calib.tf || {}),
+    drawing: null,          /* { f, p0, p1 } while a guide line is being drawn */
     placing: -1,            /* bay index while placing a bay-number point */
     step: 0, drag: -1, sel: -1, dirty: false,
     src: null, kind: '', stream: null, url: '', raf: 0,
     sw: 0, sh: 0,
   };
-  DC.step = DC.pts.findIndex(p => !p); if(DC.step < 0) DC.step = 4;
+  DC.step = DC.pts.findIndex(p => !p); if(DC.step < 0 || (DC.guides.length && DC.pts.every(p => !p))) DC.step = 4;
   ov.querySelector('#dcTitle').textContent = API.vesselName();
   const ls = ov.querySelector('#dcLine');
   ls.innerHTML = '';
@@ -341,6 +397,9 @@ export function openDeckCamera(tab){
     ls.appendChild(o);
   }
   ls.value = String(DC.line);
+  const gf = ov.querySelector('#dcGuideFeat');
+  gf.innerHTML = featOptions(geo).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
+  syncTune();
   const xb = ov.querySelector('#dcExtraBay');
   xb.innerHTML = '';
   for(let i = geo.bays.length - 1; i >= 0; i--){
@@ -488,7 +547,8 @@ function layout(){
   const frame = DC.ov.querySelector('#dcFrame');
   const sr = stage.getBoundingClientRect();
   const { w, h } = DC.sw ? rotDims() : { w: 9, h: 16 };
-  const pad = 24, aw = Math.max(10, sr.width - pad * 2), ah = Math.max(10, sr.height - pad * 2);
+  /* "room around the picture": space to place hidden corners beside it */
+  const pad = DC.roomy ? Math.round(Math.min(sr.width, sr.height) * 0.2) : 24, aw = Math.max(10, sr.width - pad * 2), ah = Math.max(10, sr.height - pad * 2);
   const s = Math.min(aw / w, ah / h);
   const fw = Math.round(w * s), fh = Math.round(h * s);
   frame.style.width = fw + 'px'; frame.style.height = fh + 'px';
@@ -513,26 +573,40 @@ function drawFrame(){
   ctx.restore();
 }
 
-function pairs(){
-  const src = refPoints(DC.geo, DC.line), dst = DC.pts.slice();
-  DC.extra.forEach(e => { src.push([bayCentreX(DC.geo, e.bay), DC.geo.width / 2]); dst.push(e.p); });
-  return { src, dst };
+/* v3.39 — every clicked point and every guide handle is one constraint;
+   any mix that pins the deck down gives a model (camModel.js). */
+function aspect(){ if(DC.sw){ const d = rotDims(); return d.w / d.h; } return DC.savedAspect || 9 / 16; }
+function constraints(){
+  const g = DC.geo, ref = refPoints(g, DC.line), cons = [];
+  DC.pts.forEach((p, i) => { if(p) cons.push({ type: 'pt', img: p, deck: ref[i], id: i }); });
+  DC.extra.forEach((e, k) => cons.push({ type: 'pt', img: e.p, deck: [bayCentreX(g, e.bay), g.width / 2], id: 4 + k }));
+  DC.guides.forEach((gd, gi) => { const f = featLine(g, gd.f); if(f) gd.p.forEach((q, hi) => cons.push({ type: f.axis, val: f.val, img: q, id: GH + gi * 3 + hi })); });
+  return cons;
 }
-function currentH(){
-  if(DC.pts.some(p => !p)) return null;
-  const { src, dst } = pairs();
-  return homographyLS(src, dst);
+function currentModel(){
+  const cons = constraints();
+  const H = solveH(cons, geoLen(DC.geo), DC.k, aspect());
+  DC.cons = cons; DC.H = H;
+  return H ? makeModel(H, DC.tf, DC.k, aspect()) : null;
 }
-/* Per-point error in deck metres (image point mapped back onto the deck
-   vs where it should be). Only meaningful with more than 4 points. */
-function residuals(H){
-  const Hi = H && invert3(H);
-  if(!Hi) return null;
-  const { src, dst } = pairs();
-  return src.map((r, i) => {
-    const q = project(Hi, dst[i][0], dst[i][1]);
-    return q ? Math.hypot(q[0] - r[0], q[1] - r[1]) : null;
-  });
+/* error per constraint id, in deck metres */
+function residualMap(){
+  const m = new Map();
+  if(!DC.H) return m;
+  const r = camResiduals(DC.cons, DC.H, DC.k, aspect());
+  DC.cons.forEach((c, i) => { const key = c.id >= GH ? 'g' + Math.floor((c.id - GH) / 3) : c.id; m.set(key, Math.max(m.get(key) || 0, r[i] == null ? 99 : r[i])); });
+  return m;
+}
+/* why there is no model yet — in deck words */
+function missingText(){
+  const cons = DC.cons || constraints(), n = equationCount(cons);
+  const xs = new Set(), ys = new Set();
+  cons.forEach(c => { if(c.type !== 'y') xs.add(Math.round((c.type === 'pt' ? c.deck[0] : c.val) * 10)); if(c.type !== 'x') ys.add(Math.round((c.type === 'pt' ? c.deck[1] : c.val) * 10)); });
+  if(!n) return 'Place corner points, or draw guide lines along deck edges you can see.';
+  if(xs.size < 2) return 'Add a cross line further along the deck — a bay joint, or the stern edge.';
+  if(ys.size < 2) return 'Add a line along the other deck edge (foot of the crash barrier).';
+  if(n < 8) return `Add ${8 - n} more: another point, or a guide line (each line counts 2–3).`;
+  return 'These points and lines do not fix the deck yet — add a cross line (a bay joint) away from the ones you have.';
 }
 
 function drawOverlay(){
@@ -542,8 +616,8 @@ function drawOverlay(){
   const alpha = (+DC.ov.querySelector('#dcOvAlpha').value || 70) / 100;
   const showGrid = DC.ov.querySelector('#dcOvGrid').checked;
   const showCargo = DC.ov.querySelector('#dcOvCargo').checked;
-  const H = currentH();
-  const P = (X, Y) => { const p = H && project(H, X, Y); return p ? [p[0] * W, p[1] * Hh] : null; };
+  const MDL = currentModel(), H = MDL && MDL.H;
+  const P = (X, Y) => { const p = MDL && MDL.toImage(X, Y); return p && Math.abs(p[0]) < 4 && Math.abs(p[1]) < 4 ? [p[0] * W, p[1] * Hh] : null; };
   const poly = pts => pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
   let out = '';
   if(H && DC.sw){
@@ -592,6 +666,20 @@ function drawOverlay(){
     out += `<rect class="dc-an-box" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="4"/>`;
     if(DC.anText) out += `<text class="dc-an-t" x="${x.toFixed(1)}" y="${(y - 6).toFixed(1)}">${esc(DC.anText)}</text>`;
   }
+  /* guide lines */
+  const resM = residualMap();
+  if(DC.tab === 'calib') DC.guides.forEach((gd, gi) => {
+    const f = featLine(geo, gd.f); if(!f) return;
+    const q = gd.p.map(p => [p[0] * W, p[1] * Hh]);
+    const sel = DC.sel >= GH + gi * 3 && DC.sel < GH + gi * 3 + 3;
+    out += `<g class="dc-guide${sel ? ' sel' : ''}"><polyline points="${q.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" class="dc-guide-l"/>`;
+    q.forEach((p, hi) => { out += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${hi === 1 ? 4.5 : 6}" class="dc-guide-h${hi === 1 ? ' mid' : ''}${DC.sel === GH + gi * 3 + hi ? ' on' : ''}"/>`; });
+    out += `<text x="${(q[0][0] + 9).toFixed(1)}" y="${(q[0][1] - 8).toFixed(1)}" class="dc-guide-t">${esc(f.short)}</text></g>`;
+  });
+  if(DC.drawing && DC.drawing.p0){
+    const a = DC.drawing.p0, b = DC.drawing.p1 || a;
+    out += `<line class="dc-guide-draw" x1="${(a[0] * W).toFixed(1)}" y1="${(a[1] * Hh).toFixed(1)}" x2="${(b[0] * W).toFixed(1)}" y2="${(b[1] * Hh).toFixed(1)}"/>`;
+  }
   /* picked points */
   if(DC.tab === 'calib') DC.extra.forEach((e, k) => {
     const x = e.p[0] * W, y = e.p[1] * Hh, i = 4 + k;
@@ -612,14 +700,16 @@ function drawOverlay(){
   renderMap();
   /* status */
   const st = DC.ov.querySelector('#dcCalState');
-  const placed = DC.pts.filter(Boolean).length;
-  DC.res = H ? residuals(H) : null;
-  const worst = DC.res && DC.extra.length ? Math.max(...DC.res.filter(v => v != null)) : null;
-  st.textContent = placed === 4
-    ? (H ? (worst != null ? `· ready · worst point ${worst.toFixed(2)} m` : '· ready') : '· points do not form a deck')
-    : `· ${placed} of 4`;
+  DC.res = resM;
+  const over = DC.cons && equationCount(DC.cons) > 8;
+  const worst = H && over && resM.size ? Math.max(...resM.values()) : null;
+  st.textContent = H
+    ? '· ready' + (worst != null ? ` · worst ${fmtRes(worst)}` : '') + (isIdentityT(DC.tf) ? '' : ' · fine-tuned')
+    : `· ${equationCount(DC.cons || [])} of 8`;
+  st.title = H ? '' : missingText();
   renderResiduals();
   DC.ov.querySelector('#dcSave').disabled = !(H && DC.dirty) || !API.isOperator();
+  const tka = DC.ov.querySelector('#dcTkAuto'); if(tka) tka.disabled = !(DC.cons && equationCount(DC.cons) >= 10);
   /* aspect warning */
   const hint = DC.ov.querySelector('#dcHint');
   if(DC.savedAspect && DC.sw){
@@ -631,9 +721,11 @@ function drawOverlay(){
     }
   }
   hint.classList.remove('warn');
+  if(DC.drawing){ hint.textContent = `${featLine(geo, DC.drawing.f).name}: press on the picture where you can see it, drag along it, release. Esc cancels.`; return; }
+  if(!H && (DC.cons || []).length){ hint.textContent = missingText(); hint.classList.add('warn'); return; }
   if(DC.placing >= 0){ hint.textContent = `Click the middle of Bay ${geo.labels[DC.placing]} on the centreline (its painted number).`; return; }
   hint.textContent = DC.step < 4
-    ? `Click the picture: ${stepTexts()[DC.step][1]}. A magnifier follows the pointer.`
+    ? `Click the picture: ${stepTexts()[DC.step][1]}. Hidden by cargo or outside the picture? Click beside the picture where it would be, or skip it and use guide lines.`
     : 'Drag a point to adjust it; arrow keys nudge the selected point (Shift = ×10). The drawn bay lines should sit on the deck joints.';
 }
 
@@ -641,16 +733,30 @@ function fmtRes(v){ return v == null ? '' : (v < 0.995 ? Math.round(v * 100) + '
 function resClass(v){ return v == null ? '' : v < 0.25 ? ' good' : v < 0.6 ? ' fair' : ' bad'; }
 function renderResiduals(){
   if(!DC) return;
-  const show = DC.res && DC.extra.length;
+  const show = DC.H && DC.cons && equationCount(DC.cons) > 8;
+  const rv = key => DC.res && DC.res.has(key) ? DC.res.get(key) : null;
   DC.ov.querySelectorAll('#dcSteps .dc-step').forEach((li, i) => {
     const s = li.querySelector('.dc-step-s');
-    s.className = 'dc-step-s' + (show ? resClass(DC.res[i]) : '');
-    s.textContent = DC.pts[i] ? (show ? fmtRes(DC.res[i]) : '✓') : '';
+    s.className = 'dc-step-s' + (show ? resClass(rv(i)) : '');
+    s.textContent = DC.pts[i] ? (show ? fmtRes(rv(i)) : '✓') : '';
+  });
+  const gl = DC.ov.querySelector('#dcGuides');
+  gl.innerHTML = '';
+  DC.guides.forEach((gd, gi) => {
+    const f = featLine(DC.geo, gd.f), v = show ? rv('g' + gi) : null;
+    const sel = DC.sel >= GH + gi * 3 && DC.sel < GH + gi * 3 + 3;
+    const li = el('li', 'dc-step done dc-gl' + (sel ? ' cur' : ''));
+    li.innerHTML = `<span class="dc-step-n dc-gl-n">⁄</span><span class="dc-step-t">${esc(f ? f.name : gd.f)}</span><span class="dc-step-s${resClass(v)}">${v != null ? fmtRes(v) : '✓'}</span><button type="button" class="dc-del" title="Remove this line">✕</button>`;
+    li.addEventListener('click', ev => {
+      if(ev.target.closest('.dc-del')){ DC.guides.splice(gi, 1); DC.sel = -1; DC.dirty = true; drawOverlay(); return; }
+      DC.sel = GH + gi * 3 + 1; drawOverlay();
+    });
+    gl.appendChild(li);
   });
   const ol = DC.ov.querySelector('#dcExtras');
   ol.innerHTML = '';
   DC.extra.forEach((e, k) => {
-    const v = DC.res ? DC.res[4 + k] : null;
+    const v = show ? rv(4 + k) : null;
     const li = el('li', 'dc-step done' + (DC.sel === 4 + k ? ' cur' : ''));
     li.innerHTML = `<span class="dc-step-n">${esc(DC.geo.labels[e.bay])}</span><span class="dc-step-t">Bay ${esc(DC.geo.labels[e.bay])} centre</span><span class="dc-step-s${resClass(v)}">${fmtRes(v)}</span><button type="button" class="dc-del" title="Remove this point">✕</button>`;
     li.addEventListener('click', ev => {
@@ -665,8 +771,11 @@ function renderSteps(){
   ol.innerHTML = '';
   stepTexts().forEach(([t], i) => {
     const li = el('li', 'dc-step' + (DC.pts[i] ? ' done' : '') + (i === DC.step ? ' cur' : ''));
-    li.innerHTML = `<span class="dc-step-n">${i + 1}</span><span class="dc-step-t">${esc(t)}</span><span class="dc-step-s">${DC.pts[i] ? '✓' : ''}</span>`;
-    li.addEventListener('click', () => { DC.step = i; DC.placing = -1; DC.sel = DC.pts[i] ? i : -1; renderSteps(); drawOverlay(); });
+    li.innerHTML = `<span class="dc-step-n">${i + 1}</span><span class="dc-step-t">${esc(t)}</span><span class="dc-step-s">${DC.pts[i] ? '✓' : ''}</span>${DC.pts[i] ? '<button type="button" class="dc-del" title="Remove this point (hidden or not needed)">✕</button>' : ''}`;
+    li.addEventListener('click', ev => {
+      if(ev.target.closest('.dc-del')){ DC.pts[i] = null; DC.step = i; DC.sel = -1; DC.dirty = true; renderSteps(); drawOverlay(); return; }
+      DC.step = i; DC.placing = -1; DC.drawing = null; DC.sel = DC.pts[i] ? i : -1; renderSteps(); drawOverlay();
+    });
     ol.appendChild(li);
   });
   renderResiduals();
@@ -677,12 +786,33 @@ function toNorm(e){
   const r = DC.ov.querySelector('#dcFrame').getBoundingClientRect();
   return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
 }
-function ptAt(i){ return i < 4 ? DC.pts[i] : (DC.extra[i - 4] && DC.extra[i - 4].p); }
-function setPt(i, v){ if(i < 4) DC.pts[i] = v; else if(DC.extra[i - 4]) DC.extra[i - 4].p = v; }
+/* points may sit beside the picture (hidden corners): allowed range */
+const LIM0 = -0.5, LIM1 = 1.5;   /* same range the vessel profile keeps */
+const clampN = v => Math.min(LIM1, Math.max(LIM0, v));
+function ptAt(i){
+  if(i >= GH){ const g = DC.guides[Math.floor((i - GH) / 3)]; return g && g.p[(i - GH) % 3]; }
+  return i < 4 ? DC.pts[i] : (DC.extra[i - 4] && DC.extra[i - 4].p);
+}
+function setPt(i, v){
+  if(i >= GH){
+    const g = DC.guides[Math.floor((i - GH) / 3)], h = (i - GH) % 3; if(!g) return;
+    g.p[h] = v;
+    if(h === 1) g.mid = true;                       /* the user bent it */
+    else if(!g.mid) g.p[1] = [(g.p[0][0] + g.p[2][0]) / 2, (g.p[0][1] + g.p[2][1]) / 2];
+    return;
+  }
+  if(i < 4) DC.pts[i] = v; else if(DC.extra[i - 4]) DC.extra[i - 4].p = v;
+}
+function allIds(){
+  const ids = [0, 1, 2, 3];
+  DC.extra.forEach((_, k) => ids.push(4 + k));
+  DC.guides.forEach((_, gi) => ids.push(GH + gi * 3, GH + gi * 3 + 1, GH + gi * 3 + 2));
+  return ids;
+}
 function hitPoint(e){
   const r = DC.ov.querySelector('#dcFrame').getBoundingClientRect();
   let best = -1, bd = 16;
-  for(let i = 0; i < 4 + DC.extra.length; i++){
+  for(const i of allIds()){
     const p = ptAt(i);
     if(!p) continue;
     const d = Math.hypot(p[0] * r.width + r.left - e.clientX, p[1] * r.height + r.top - e.clientY);
@@ -718,6 +848,32 @@ function showLoupe(e){
   lp.style.left = lx + 'px'; lp.style.top = ly + 'px';
 }
 
+function finishGuide(){
+  const d = DC.drawing; if(!d || !d.p0 || !d.p1) return;
+  const mid = [(d.p0[0] + d.p1[0]) / 2, (d.p0[1] + d.p1[1]) / 2];
+  /* one line per deck feature: drawing it again replaces it */
+  const ex = DC.guides.findIndex(g => g.f === d.f);
+  const g = { f: d.f, p: [d.p0, mid, d.p1], mid: false };
+  if(ex >= 0) DC.guides[ex] = g; else DC.guides.push(g);
+  const gi = ex >= 0 ? ex : DC.guides.length - 1;
+  DC.sel = GH + gi * 3 + 1; DC.drawing = null; DC.dirty = true;
+  if(DC.pts.every(p => !p)) DC.step = 4;     /* working with lines: clicks no longer drop corner points */
+  renderSteps(); renderMap(true); drawOverlay();
+}
+function syncTune(){
+  if(!DC) return;
+  const $ = q => DC.ov.querySelector(q), t = DC.tf;
+  const set = (id, v, txt) => { const r = $(id); if(r && document.activeElement !== r) r.value = String(v); const o = $(id + 'V'); if(o) o.textContent = txt; };
+  set('#dcTk', DC.k, (DC.k > 0 ? '+' : '') + DC.k.toFixed(3));
+  set('#dcTdx', t.dx, (t.dx * 100).toFixed(1) + '%');
+  set('#dcTdy', t.dy, (t.dy * 100).toFixed(1) + '%');
+  set('#dcTrot', t.rot, t.rot.toFixed(1) + '°');
+  set('#dcTscale', t.scale, Math.round(t.scale * 100) + '%');
+  set('#dcTtv', t.tv, t.tv.toFixed(2));
+  set('#dcTth', t.th, t.th.toFixed(2));
+  const d = $('#dcTune'); if(d && (!isIdentityT(t) || DC.k) && !d.dataset.seen){ d.open = true; d.dataset.seen = '1'; }
+}
+
 function bind(ov){
   const $ = s => ov.querySelector(s);
   $('#dcClose').addEventListener('click', () => closeDeckCamera());
@@ -731,11 +887,33 @@ function bind(ov){
   $('#dcDevice').addEventListener('change', () => { if(DC && DC.kind === 'live') startCamera(); });
   $('#dcOpen').addEventListener('click', () => $('#dcFile').click());
   $('#dcFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) openFile(f); e.target.value = ''; });
+  $('#dcRoomy').addEventListener('change', e => { if(!DC) return; DC.roomy = e.target.checked; layout(); drawFrame(); drawOverlay(); });
   $('#dcRotL').addEventListener('click', () => rotate(-90));
   $('#dcRotR').addEventListener('click', () => rotate(90));
   $('#dcLine').addEventListener('change', e => { DC.line = +e.target.value; DC.dirty = true; renderSteps(); drawOverlay(); });
   ['#dcOvGrid', '#dcOvCargo', '#dcOvAlpha'].forEach(s => $(s).addEventListener('input', () => drawOverlay()));
-  $('#dcResetPts').addEventListener('click', () => { DC.pts = [null, null, null, null]; DC.extra = []; DC.placing = -1; DC.step = 0; DC.sel = -1; DC.dirty = true; renderSteps(); drawOverlay(); });
+  $('#dcResetPts').addEventListener('click', () => { DC.pts = [null, null, null, null]; DC.extra = []; DC.guides = []; DC.drawing = null; DC.placing = -1; DC.step = 0; DC.sel = -1; DC.dirty = true; renderSteps(); drawOverlay(); });
+  $('#dcGuideDraw').addEventListener('click', () => {
+    if(!DC || !DC.sw) return;
+    DC.drawing = { f: $('#dcGuideFeat').value, p0: null, p1: null }; DC.placing = -1; DC.sel = -1;
+    renderMap(true); drawOverlay();
+  });
+  $('#dcGuideFeat').addEventListener('change', () => { if(DC && DC.drawing){ DC.drawing.f = $('#dcGuideFeat').value; } renderMap(true); drawOverlay(); });
+  const TUNE = [['#dcTk', 'k'], ['#dcTdx', 'dx'], ['#dcTdy', 'dy'], ['#dcTrot', 'rot'], ['#dcTscale', 'scale'], ['#dcTtv', 'tv'], ['#dcTth', 'th']];
+  TUNE.forEach(([sel, key]) => $(sel).addEventListener('input', e => {
+    if(!DC) return;
+    const v = +e.target.value;
+    if(key === 'k') DC.k = v; else DC.tf[key] = v;
+    DC.dirty = true; syncTune(); drawOverlay();
+  }));
+  $('#dcTkAuto').addEventListener('click', () => {
+    if(!DC) return;
+    const k = autoLens(constraints(), geoLen(DC.geo), aspect());
+    if(k == null){ API.toast('Add more points or guide lines first — at least 10 handles, spread over the picture', 'info'); return; }
+    DC.k = k; DC.dirty = true; syncTune(); drawOverlay();
+    API.toast(`Lens curvature set to ${k > 0 ? '+' : ''}${k.toFixed(3)}`, 'ok');
+  });
+  $('#dcTreset').addEventListener('click', () => { if(!DC) return; DC.tf = Object.assign({}, T_NONE); DC.dirty = true; syncTune(); drawOverlay(); });
   $('#dcAddExtra').addEventListener('click', () => {
     if(!DC || !DC.sw) return;
     DC.placing = +$('#dcExtraBay').value; DC.sel = -1; drawOverlay();
@@ -753,9 +931,15 @@ function bind(ov){
   const stage = $('#dcStage');
   stage.addEventListener('pointerdown', e => {
     if(!DC || !DC.sw || e.button !== 0 || DC.tab !== 'calib') return;
-    const n = toNorm(e);
-    if(n[0] < 0 || n[1] < 0 || n[0] > 1 || n[1] > 1) return;
+    const n0 = toNorm(e);
+    if(n0[0] < LIM0 || n0[1] < LIM0 || n0[0] > LIM1 || n0[1] > LIM1) return;
+    const n = [clampN(n0[0]), clampN(n0[1])];
     const hit = hitPoint(e);
+    if(DC.drawing){
+      if(!DC.drawing.p0){ DC.drawing.p0 = n; DC.drawing.p1 = n; DC.drawing.down = true; }
+      else { DC.drawing.p1 = n; finishGuide(); }
+      stage.setPointerCapture(e.pointerId); showLoupe(e); drawOverlay(); return;
+    }
     if(DC.placing >= 0){
       const b = DC.placing, ex = DC.extra.findIndex(x => x.bay === b);
       if(ex >= 0) DC.extra[ex].p = n; else DC.extra.push({ bay: b, p: n });
@@ -774,29 +958,45 @@ function bind(ov){
   });
   stage.addEventListener('pointermove', e => {
     if(!DC) return;
-    if(DC.drag >= 0){
+    if(DC.drawing && DC.drawing.p0){
+      const n = toNorm(e); DC.drawing.p1 = [clampN(n[0]), clampN(n[1])]; drawOverlay();
+    }else if(DC.drag >= 0){
       const n = toNorm(e);
-      setPt(DC.drag, [Math.min(1, Math.max(0, n[0])), Math.min(1, Math.max(0, n[1]))]);
+      setPt(DC.drag, [clampN(n[0]), clampN(n[1])]);
       DC.dirty = true; drawOverlay();
     }
-    const placing = DC.tab === 'calib' && (DC.step < 4 || DC.placing >= 0 || DC.drag >= 0 || hitPoint(e) >= 0);
+    const placing = DC.tab === 'calib' && (DC.step < 4 || DC.placing >= 0 || DC.drag >= 0 || !!DC.drawing || hitPoint(e) >= 0);
     if(placing) showLoupe(e); else $('#dcLoupe').hidden = true;
     if(DC.tab !== 'calib'){ stage.style.cursor = 'default'; return; }
-    stage.style.cursor = DC.drag >= 0 ? 'grabbing' : (hitPoint(e) >= 0 && DC.placing < 0 ? 'grab' : ((DC.step < 4 || DC.placing >= 0) && DC.sw ? 'crosshair' : 'default'));
+    stage.style.cursor = DC.drag >= 0 ? 'grabbing' : (hitPoint(e) >= 0 && DC.placing < 0 && !DC.drawing ? 'grab' : ((DC.step < 4 || DC.placing >= 0 || DC.drawing) && DC.sw ? 'crosshair' : 'default'));
   });
-  const end = () => { if(DC){ DC.drag = -1; renderSteps(); } };
+  const end = () => {
+    if(!DC) return;
+    /* press–drag–release draws the guide; a plain click waits for a second click */
+    if(DC.drawing && DC.drawing.down && DC.drawing.p0 && DC.drawing.p1){
+      DC.drawing.down = false;
+      const dx = (DC.drawing.p1[0] - DC.drawing.p0[0]) * DC.fw, dy = (DC.drawing.p1[1] - DC.drawing.p0[1]) * DC.fh;
+      if(Math.hypot(dx, dy) > 14) finishGuide();
+      return;
+    }
+    DC.drag = -1; renderSteps();
+  };
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
   stage.addEventListener('pointerleave', () => { if(DC && DC.drag < 0) $('#dcLoupe').hidden = true; });
 
   ov.addEventListener('keydown', e => {
     if(!DC) return;
-    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeDeckCamera(); return; }
+    if(e.key === 'Escape'){
+      e.preventDefault(); e.stopPropagation();
+      if(DC.drawing || DC.placing >= 0){ DC.drawing = null; DC.placing = -1; renderMap(true); drawOverlay(); return; }
+      closeDeckCamera(); return;
+    }
     const k = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }[e.key];
     if(k && DC.sel >= 0 && ptAt(DC.sel) && !/INPUT|SELECT/.test(document.activeElement.tagName)){
       e.preventDefault();
       const s = e.shiftKey ? 10 : 1, p = ptAt(DC.sel);
-      setPt(DC.sel, [Math.min(1, Math.max(0, p[0] + k[0] * s / DC.fw)), Math.min(1, Math.max(0, p[1] + k[1] * s / DC.fh))]);
+      setPt(DC.sel, [clampN(p[0] + k[0] * s / DC.fw), clampN(p[1] + k[1] * s / DC.fh)]);
       DC.dirty = true; drawOverlay();
     }
   });
@@ -810,6 +1010,8 @@ function rotate(d){
   const rp = p => p && (d > 0 ? [1 - p[1], p[0]] : [p[1], 1 - p[0]]);
   DC.pts = DC.pts.map(rp);
   DC.extra.forEach(e => { e.p = rp(e.p); });
+  DC.guides.forEach(g => { g.p = g.p.map(rp); });
+  DC.tf = Object.assign({}, T_NONE); syncTune();
   DC.dirty = true;
   layout(); drawFrame(); drawOverlay();
 }
@@ -825,13 +1027,15 @@ function syncSeek(){
 
 function save(){
   if(!DC || !API.isOperator()) return;
-  const H = currentH();
-  if(!H){ API.toast('Place all four points first', 'warn'); return; }
+  const M = currentModel();
+  if(!M){ API.toast(missingText(), 'warn'); return; }
   const prev = API.getCamera() || {};
   const d = DC.sw ? rotDims() : null;
   const cam = Object.assign({}, prev, {
     rotation: DC.rotation,
-    calib: { pts: DC.pts.map(p => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]), line: DC.line,
+    calib: { v: 2, pts: DC.pts.map(p => p ? [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5] : null), line: DC.line,
+             guides: DC.guides.map(g => ({ f: g.f, mid: g.mid, p: g.p.map(q => [Math.round(q[0] * 1e5) / 1e5, Math.round(q[1] * 1e5) / 1e5]) })),
+             k: DC.k, tf: isIdentityT(DC.tf) ? null : Object.assign({}, DC.tf),
              extra: DC.extra.map(e => ({ bay: e.bay, u: Math.round(e.p[0] * 1e5) / 1e5, v: Math.round(e.p[1] * 1e5) / 1e5 })),
              aspect: d ? Math.round(d.w / d.h * 1e4) / 1e4 : (prev.calib && prev.calib.aspect) || 0,
              at: new Date().toISOString() },
@@ -1055,10 +1259,9 @@ function toDisp(u, v){
   }
 }
 function deckPointOf(at){
-  const H = currentH(); if(!H) return null;
-  const Hi = invert3(H); if(!Hi) return null;
+  const M = currentModel(); if(!M) return null;
   const d = toDisp(at[0], at[1]);
-  const p = project(Hi, d[0], d[1]);
+  const p = M.toDeck(d[0], d[1]);
   if(!p) return null;
   const g = DC.geo;
   if(p[0] < -1 || p[0] > g.length + 1 || p[1] < -1 || p[1] > g.width + 1) return null;
