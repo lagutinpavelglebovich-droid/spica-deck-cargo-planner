@@ -18403,3 +18403,54 @@ html:not([data-theme="dark"]) .shell-ribbon .rc-brand .brand-dcp{
   color: var(--brand-dcp-ink) !important;
   -webkit-text-fill-color: var(--brand-dcp-ink) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   v3.38 — LICENCE LOCK SCREEN / DIALOG
+══════════════════════════════════════════════════════════════════════ */
+.lic-ov{
+  position: fixed; inset: 0; z-index: 2147483000;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(20,22,18,.42);
+  padding: 24px;
+}
+:root{ --lic-cover: #e6e8e3; --lic-on-acc: #ffffff; --lic-field: #ffffff; }
+[data-theme="dark"]{ --lic-cover: #121417; --lic-on-acc: #0d1117; --lic-field: rgba(255,255,255,.04); }
+/* locked: the plan is not shown behind the screen */
+.lic-ov.locked{ background: var(--lic-cover); }
+.lic-ov.open{ display: flex; }
+.lic-card{
+  width: min(480px, 100%);
+  background: var(--modal-surf);
+  color: var(--txt);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.06);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.lic-brand{ font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--txt3); }
+.lic-title{ margin: 0; font-size: 20px; font-weight: 700; color: var(--txt); }
+.lic-msg{ margin: 0; font-size: 13px; line-height: 1.5; color: var(--txt2); }
+.lic-cur{ margin: 0; font-size: 12px; color: var(--txt2); }
+.lic-cur:empty{ display: none; }
+.lic-key{
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--txt4); background: var(--lic-field); color: var(--txt);
+}
+.lic-key:focus{ outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.lic-err{ min-height: 16px; font-size: 12px; color: var(--acc-warm); }
+.lic-actions{ display: flex; justify-content: flex-end; gap: 8px; }
+.lic-btn{
+  height: 34px; padding: 0 16px; border-radius: 9px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1; border: 1px solid var(--txt4);
+  background: transparent; color: var(--txt);
+}
+.lic-btn.pri{ background: var(--acc); border-color: var(--acc); color: var(--lic-on-acc); }
+.lic-btn:disabled{ opacity: .55; cursor: default; }
+.lic-foot{ margin-top: 4px; font-size: 11px; line-height: 1.45; color: var(--txt3); }
+.about-licence{ margin-top: 6px; font-size: 11px; color: var(--txt2); }
+.about-licence:empty{ display: none; }
+[data-theme="dark"] .lic-ov:not(.locked){ background: rgba(0,0,0,.55); }
+[data-theme="dark"] .lic-card{ box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06); }

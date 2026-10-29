@@ -20,3 +20,8 @@ taste-skill/
 
 # Tauri auto-generated schemas (regenerated on each build)
 src-tauri/gen/
+
+# licence signing keys — never commit
+*.pem
+licences-issued.csv
+Decargo-License/

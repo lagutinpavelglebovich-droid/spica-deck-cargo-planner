@@ -8,7 +8,17 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as Sync from './syncHub.js';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as _rawInvoke } from '@tauri-apps/api/core';
+/* v3.38 — every shell call goes through here: a write refused for an
+   invalid licence (it ended mid-session) brings the lock screen up at once
+   instead of leaving a screen whose saves silently fail. */
+async function invoke(cmd, args){
+  try{ return await _rawInvoke(cmd, args); }
+  catch(e){
+    if(/licence is not valid/i.test(String(e && e.message || e)) && typeof _licRefresh === 'function') setTimeout(() => _licRefresh(false), 0);
+    throw e;
+  }
+}
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile, parseWeightTonnes } from './manifestImport.js';
@@ -11375,7 +11385,7 @@ async function buildPDF(deckCanvas, data, opts){
   const ts  = `${dd} ${mon} ${yyyy} \u00B7 ${hh}:${mi} ${_utcOffsetLabel(now)}`;
   /* Left: Generated ts + brand wordmark + version. */
   doc.setFont('Inter','normal'); doc.setFontSize(6.5); doc.setTextColor(...C.footerInk); doc.setCharSpace(0.2);
-  doc.text('Generated ' + ts + '  \u00B7  Decargo v' + APP_VERSION, ML, fy + 4);
+  doc.text('Generated ' + ts + '  \u00B7  Decargo v' + APP_VERSION + (licLine() ? '  \u00B7  ' + licLine() : ''), ML, fy + 4);
   /* Right: page indicator + brand. Single-page output for now (multi-page work is post-Stage-2). */
   doc.text('Page 1 / 1' + (charterer ? '  \u00B7  ' + charterer : ''), ML + CW, fy + 4, {align:'right'});
   doc.setCharSpace(0);
@@ -14227,6 +14237,7 @@ async function exportExcel(){
     ['Voyage',voyageNum],
     ['Date',dateStr],
     ['Generated',ts],
+    ...(licLine() ? [['Licence', licLine()]] : []),
     ['',''],
     ['Total Lifts',S.cargo.length],
     ['Total Weight (T)',parseFloat(wt.toFixed(1))],
@@ -15682,8 +15693,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.37.4';
-const APP_VERSION   = '3.37.4';
+const CURRENT_BUILD = 'v3.38.0';
+const APP_VERSION   = '3.38.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -15970,6 +15981,7 @@ function bindMenuBar(){
     about:         () => document.getElementById('aboutOverlay').classList.add('open'),
     checkUpdate:   () => _checkForUpdates(true),
     releaseHistory:() => openReleaseHistory(),
+    licence:       () => openLicenceDialog(),
   };
 
   /* Wire each menu action — click fires the action and closes the menu */
@@ -18236,7 +18248,124 @@ function bindSyncSettings(){
   });
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3.38 — LICENCE
+   The key is verified in the Rust shell (license.rs: signature, expiry,
+   clock). Without a valid key the window is covered by the lock screen and
+   the shell refuses to write files, autosave or sync. Browser builds (dev
+   only, never shipped) skip the check.
+════════════════════════════════════════════════════════════ */
+const LIC = { st: null, locked: false, open: false };
+function _licDate(iso){ const d = new Date(String(iso || '') + 'T12:00:00Z'); return isNaN(d) ? String(iso || '') : fmtDate(d); }
+function licLine(st){
+  st = st || LIC.st;
+  if(!st || !st.valid) return '';
+  const who = st.vessel + (st.holder ? ' (' + st.holder + ')' : '');
+  const term = st.kind === 'owner' ? 'owner licence' : (st.kind === 'full' ? 'licence' : 'trial') + ' until ' + _licDate(st.until);
+  return 'Licensed to ' + who + ' · ' + term;
+}
+async function licInit(){
+  if(!_isTauri()) return;
+  _licBuild();
+  await _licRefresh(true);
+  setInterval(() => _licRefresh(false), 60 * 60 * 1000);   /* a licence can end mid-voyage */
+}
+async function _licRefresh(atLaunch){
+  let st = null;
+  try{ st = await invoke('license_status'); }catch(e){ console.warn('[licence]', e); return; }
+  LIC.st = st;
+  _licRenderAbout();
+  if(!st.valid){ _licShow(true); return; }
+  if(LIC.locked) _licHide();
+  if(atLaunch && st.kind !== 'owner' && st.daysLeft <= 30){
+    showToast(`Decargo licence ends ${st.daysLeft === 0 ? 'today' : 'in ' + st.daysLeft + ' day' + (st.daysLeft === 1 ? '' : 's')} (${_licDate(st.until)}) — ask for a new key`, st.daysLeft <= 7 ? 'warn' : 'info');
+  }
+}
+function _licRenderAbout(){
+  const el = document.getElementById('aboutLicence');
+  if(el) el.textContent = LIC.st && LIC.st.valid ? licLine() : 'Not licensed';
+}
+function _licBuild(){
+  if(document.getElementById('licOv')) return;
+  const ov = document.createElement('div');
+  ov.id = 'licOv'; ov.className = 'lic-ov';
+  ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-labelledby', 'licTitle');
+  ov.innerHTML = `<div class="lic-card">
+    <div class="lic-brand">Decargo</div>
+    <h2 class="lic-title" id="licTitle">Activate Decargo</h2>
+    <p class="lic-msg" id="licMsg"></p>
+    <p class="lic-cur" id="licCur"></p>
+    <textarea id="licKey" class="lic-key" rows="4" spellcheck="false" autocomplete="off" placeholder="Paste the licence key (DCL1.…)"></textarea>
+    <div class="lic-err" id="licErr" role="alert"></div>
+    <div class="lic-actions">
+      <button type="button" class="lic-btn" id="licClose">Close</button>
+      <button type="button" class="lic-btn pri" id="licActivate">Activate</button>
+    </div>
+    <div class="lic-foot">Licence keys are issued by the Decargo developer, Pavlo Lagutin. Your plans stay saved on this computer.</div>
+  </div>`;
+  document.body.appendChild(ov);
+  const key = ov.querySelector('#licKey'), err = ov.querySelector('#licErr'), btn = ov.querySelector('#licActivate');
+  btn.addEventListener('click', async () => {
+    const k = key.value.trim();
+    if(!k){ err.textContent = 'Paste the licence key first.'; key.focus(); return; }
+    btn.disabled = true; err.textContent = '';
+    try{
+      const st = await invoke('license_install', { key: k });
+      LIC.st = st; _licRenderAbout(); key.value = '';
+      _licHide();
+      showToast('Licence active — ' + licLine(st), 'ok');
+    }catch(e){
+      err.textContent = 'Not accepted: ' + String(e && e.message || e);
+    }finally{ btn.disabled = false; }
+  });
+  ov.querySelector('#licClose').addEventListener('click', async () => {
+    if(!LIC.locked){ _licHide(); return; }
+    try{ const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().destroy(); }catch(e){}
+  });
+  /* while locked nothing behind the screen reacts to the keyboard */
+  window.addEventListener('keydown', e => {
+    if(!LIC.open) return;
+    const inside = e.target && e.target.closest && e.target.closest('#licOv');
+    if(!inside){ e.preventDefault(); }
+    if(e.key === 'Escape' && !LIC.locked){ _licHide(); }
+    if(e.key === 'Enter' && (e.ctrlKey || e.metaKey) && inside){ btn.click(); }
+    e.stopImmediatePropagation();
+  }, true);
+}
+function _licShow(locked){
+  _licBuild();
+  const ov = document.getElementById('licOv'), st = LIC.st || {};
+  LIC.locked = !!locked; LIC.open = true;
+  const t = ov.querySelector('#licTitle'), m = ov.querySelector('#licMsg'), cur = ov.querySelector('#licCur');
+  const r = locked ? st.reason : 'change';
+  t.textContent = r === 'expired' ? 'Licence ended'
+    : r === 'clock' ? 'Check the computer’s date'
+    : r === 'invalid' ? 'Licence key not valid'
+    : r === 'missing' ? 'Activate Decargo' : 'Licence';
+  m.textContent = r === 'expired' ? `The licence for ${st.vessel || 'this vessel'} ended on ${_licDate(st.until)}. Enter a new key to continue.`
+    : r === 'clock' ? 'The date on this computer is earlier than the last time Decargo was used. Correct the date and time, then restart Decargo.'
+    : r === 'invalid' ? 'The stored licence could not be verified. Enter a new key.'
+    : r === 'missing' ? 'Enter the licence key you received for your vessel.'
+    : 'Enter a new key to extend or replace the current licence.';
+  cur.textContent = !locked && st.valid ? licLine(st) : '';
+  ov.querySelector('#licClose').textContent = locked ? 'Quit' : 'Close';
+  ov.querySelector('#licErr').textContent = '';
+  ov.classList.toggle('locked', !!locked);
+  ov.classList.add('open');
+  /* everything else is inert: no clicks, no focus, no screen reader */
+  if(locked) Array.from(document.body.children).forEach(el => { if(el !== ov) el.inert = true; });
+  setTimeout(() => ov.querySelector(r === 'clock' ? '#licClose' : '#licKey').focus(), 30);
+}
+function _licHide(){
+  const ov = document.getElementById('licOv');
+  if(ov) ov.classList.remove('open', 'locked');
+  if(LIC.locked) Array.from(document.body.children).forEach(el => { el.inert = false; });
+  LIC.locked = false; LIC.open = false;
+}
+function openLicenceDialog(){ if(!_isTauri()){ showToast('Licences apply to the desktop app', 'info'); return; } _licShow(false); }
+
 function init(){
+  licInit();           /* v3.38 — licence check first: the lock screen covers the app at once */
   bindMenuBar();
   bindAboutModal();
   bindModeButton();

@@ -3,6 +3,7 @@
 
 mod shared_sync;
 mod store;
+mod license;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -40,17 +41,20 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
 
 #[tauri::command]
 async fn write_file(path: String, contents: String) -> Result<(), String> {
+    license::require()?;
     blocking(move || store::atomic_write(std::path::Path::new(&path), contents.as_bytes()).map_err(|e| format!("Write failed: {}", e))).await
 }
 
 #[tauri::command]
 async fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    license::require()?;
     blocking(move || store::atomic_write(std::path::Path::new(&path), &bytes).map_err(|e| format!("Write failed: {}", e))).await
 }
 
 /* v3.36 — durable autosave + rolling backups in the app data folder */
 #[tauri::command]
 async fn autosave_store(contents: String, backup: bool) -> Result<Option<String>, String> {
+    license::require()?;
     tauri::async_runtime::spawn_blocking(move || store::autosave_store(&app_data_dir(), &contents, backup))
         .await
         .map_err(|e| e.to_string())?
@@ -126,6 +130,7 @@ fn add_recent_file(path: String, name: String) -> Vec<RecentFile> {
 /// header, percent-encoded so non-ASCII folder names survive.
 #[tauri::command]
 fn append_file_raw(request: tauri::ipc::Request<'_>) -> Result<u64, String> {
+    license::require()?;
     let path = request
         .headers()
         .get("x-path")
@@ -303,6 +308,7 @@ async fn shared_read(dir: String) -> Result<shared_sync::ReadResult, String> {
 
 #[tauri::command]
 async fn shared_commit(dir: String, expected: Option<String>, doc: String, force: bool) -> Result<shared_sync::CommitResult, String> {
+    license::require()?;
     tauri::async_runtime::spawn_blocking(move || shared_sync::commit_plan(&dir, expected, &doc, force))
         .await
         .map_err(|e| e.to_string())
@@ -313,6 +319,17 @@ async fn shared_probe(dir: String, write: bool) -> Result<shared_sync::ProbeResu
     tauri::async_runtime::spawn_blocking(move || shared_sync::probe(&dir, write))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// v3.38 — licence key status / install (see license.rs)
+#[tauri::command]
+fn license_status() -> license::Status {
+    license::status()
+}
+
+#[tauri::command]
+fn license_install(key: String) -> Result<license::Status, String> {
+    license::install(&key)
 }
 
 #[tauri::command]
@@ -415,6 +432,8 @@ fn main() {
             backup_read,
             launch_file,
             take_open_files,
+            license_status,
+            license_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

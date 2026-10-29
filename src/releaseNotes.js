@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.38.0',
+    date: '2026-10-29',
+    highlights: [ 'Licence keys — enter your vessel\u2019s key once' ],
+    changes: [
+      { type: 'breaking', text: 'Decargo now needs a licence key for your vessel. Paste it once in the window that opens (Help → Licence… to change it later). Keys are issued by the developer, Pavlo Lagutin' },
+      { type: 'feature', text: 'The licence holder is printed on every PDF and in the Excel summary, and shown in About' },
+      { type: 'feature', text: 'A reminder appears 30 days before a licence ends; without a valid key Decargo does not open the plan — your plans stay saved on this computer' },
+    ],
+  },
+  {
     version: '3.37.4',
     date: '2026-10-26',
     highlights: [ 'English only — language switch removed' ],

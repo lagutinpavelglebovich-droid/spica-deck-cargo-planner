@@ -43,6 +43,8 @@ Defined in `src-tauri/src/main.rs`:
 - `write_file_bytes(path, bytes)` — binary write (for PDF/Excel)
 - `read_file(path)` — string read
 - `get_recent_files()` / `add_recent_file(path, name)` — recent files list
+- `license_status()` / `license_install(key)` — licence keys (src-tauri/src/license.rs). `write_file`, `write_file_bytes`, `autosave_store`, `append_file_raw`, `shared_commit` refuse without a valid licence (`license::require()`); any new write command must call it too
+- Licence keys are signed with the owner's Ed25519 key, issued by `tools/make-license.mjs`; the private key (`*.pem`) must never enter the repo
 
 ## Build Commands
 
