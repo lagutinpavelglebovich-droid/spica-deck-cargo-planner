@@ -11,6 +11,17 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.1',
+    date: '2026-10-30',
+    highlights: [ 'Claymore CPP load lists no longer import as Claymore CAP', 'Set the location of many units at once' ],
+    changes: [
+      { type: 'fix', text: 'ASCO load lists: the location is read from the Loadlist ID and the Location together, and a member name (CPP, WOPS, Drill) wins over the group name — "CLAYMORE CPP 656- MAN-100908" with Location "CLAYMORE" is Claymore CPP, not Claymore CAP' },
+      { type: 'feature', text: 'The import preview shows the location each sheet goes to, and it can be changed before importing' },
+      { type: 'feature', text: 'Multi-select: "Set location for all" — move every selected unit to another location in one step (one undo)' },
+      { type: 'fix', text: 'Square mini containers now show their quarter turns: the door end is marked and turns with ↻ (hover shows which way the doors face)' },
+    ],
+  },
+  {
     version: '3.40.0',
     date: '2026-10-29',
     highlights: [ 'Watch lifts: the deck camera locks on the load, reads its number and shows where it comes down' ],

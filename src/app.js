@@ -4546,6 +4546,22 @@ function renderBlock(cv,cargo){
   idEl.textContent = cargo.ccu||'';
   b.appendChild(idEl);
 
+  /* v3.40.1 — a square-ish container (6ft mini 1.83 × 1.83 m) looks the same
+     after a quarter turn, so the turn was invisible. Its door end is marked
+     and turns with it (rot 0 → bow, 1 → stbd, 2 → stern, 3 → port). */
+  {
+    const _L = cargo.length_m || cargo.w / M, _W = cargo.width_m || cargo.h / YS;
+    if(!cargo.pipe && !isSpecial(cargo) && Math.abs(_L - _W) <= 0.35 && Math.max(_L, _W) <= 3.2
+       && /mini|container|\bcont\b|ccu|food|reefer/i.test(String(cargo.desc || '') + ' ' + String(cargo.ccu || ''))){
+      const r = ((cargo.rot || 0) % 4 + 4) % 4, side = ['e', 's', 'w', 'n'][r];
+      const d = document.createElement('div');
+      d.className = 'cb-door cb-door-' + side;
+      d.style.background = isDark(fill) ? 'rgba(255,255,255,.55)' : 'rgba(10,8,0,.42)';
+      b.appendChild(d);
+      b.title += '\nDoors: ' + ['bow', 'starboard', 'stern', 'port'][r] + ' (↻ turns them)';
+    }
+  }
+
   /* v3.19 — pipes and non-standard cargo: drawn from above inside the block */
   if(cargo.pipe || isSpecial(cargo)){
     const art = _cargoArtSvg(cargo, fill);
@@ -6761,12 +6777,57 @@ function inspPopulateMulti(){
       }
     });
   }
+  /* v3.40.1 — bulk location: every selected cargo to one location in one step */
+  const lg = document.getElementById('inspMultiLocGrid');
+  if(lg){
+    const uniLoc = cargos.every(c => c.platform === cargos[0].platform) ? cargos[0].platform : null;
+    const ids2 = [...new Set([...(S.activeLocs.length ? S.activeLocs : LOC_ALL.map(l => l.id)), ...cargos.map(c => c.platform).filter(Boolean)])];
+    lg.innerHTML = '';
+    ids2.map(id => locById(id)).filter(Boolean).forEach(loc => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'insp-loc' + (loc.id === uniLoc ? ' sel' : '');
+      el.style.setProperty('--lc', getLocBase(loc.id));
+      el.dataset.lid = loc.id;
+      el.title = `Set all ${cargos.length} to ${loc.name}`;
+      el.innerHTML = `<span class="insp-loc-dot"></span><span class="insp-loc-name">${escHtml(loc.name)}</span>`;
+      el.onclick = () => bulkSetLoc(Array.from(KB_SEL_SET), loc.id);
+      lg.appendChild(el);
+    });
+  }
   /* Bulk status control: highlight the status only when ALL share it */
   const mseg = document.getElementById('inspMultiStatusSeg');
   if(mseg){
     const uni = cargos.every(c => c.status === cargos[0].status) ? cargos[0].status : null;
     mseg.querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.s === uni));
   }
+}
+
+/* v3.40.1 — bulk location change — one undo step, selection kept. */
+function bulkSetLoc(ids, locId){
+  if(!isOperator() || !locById(locId)) return 0;
+  const want = new Set(ids.map(String));
+  const targets = S.cargo.filter(c => want.has(String(c.id)));
+  let changed = 0;
+  targets.forEach(c => { if(c.platform !== locId){ c.platform = locId; changed++; } });
+  if(!changed) return 0;
+  if(!S.activeLocs.includes(locId)){ S.activeLocs.push(locId); assignLocColor(locId); buildLocGrid(); }
+  renderAll();
+  KB_SEL_SET.forEach(id => {
+    const el = document.querySelector(`.cb[data-id="${id}"]`);
+    if(el) el.classList.add('kb-sel');
+  });
+  updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
+  targets.forEach(c => {
+    const el = document.querySelector(`.cb[data-id="${c.id}"]`);
+    if(!el) return;
+    el.classList.remove('cb-status-pulse'); void el.offsetWidth;
+    el.classList.add('cb-status-pulse');
+    el.addEventListener('animationend', () => el.classList.remove('cb-status-pulse'), { once:true });
+  });
+  if(document.body.classList.contains('insp-multi')) inspPopulateMulti();
+  showToast(`Location → ${locById(locId).name} — ${changed} cargo`, 'ok');
+  return changed;
 }
 
 /* Bulk status change — one undo step for the whole selection. Keeps the
@@ -8949,15 +9010,23 @@ function _matchImportedLocId(displayName){
      "CAPACITY"); plain substring only as a fallback (old behaviour). */
   const builtin = VESSEL && VESSEL.id === 'spica-tide';
   const pad = ' ' + dn + ' ';
+  const locs = [...LOC_ALL, ...S.customLocs];
+  const keysOf = l => [...(l.aliases || []), ...(builtin ? (SPICA_TIDE_LOC_ALIASES[l.id] || []) : []), l.name].map(norm).filter(Boolean);
+  /* v3.40.1 — a group's base name ("CLAYMORE") is only a fallback: it is an
+     alias of CAP, but it is also part of "CLAYMORE CPP", "CLAYMORE WOPS"…
+     A word that names one member ("CPP", "WOPS", "CLAYMORE CPP") wins over
+     it wherever it stands — "CLAYMORE CPP 656- MAN-100908" and
+     "CLAYMORE 656 CPP" are CPP, never CAP. */
+  const all = locs.map(l => ({ l, keys: keysOf(l) }));
+  const generic = (nk, id) => all.some(o => o.l.id !== id && o.keys.some(k => k !== nk && (' ' + k + ' ').includes(' ' + nk + ' ')));
   const scan = whole => {
     let id = null, best = 0;
-    [...LOC_ALL, ...S.customLocs].forEach(l => {
-      const keys = [...(l.aliases || []), ...(builtin ? (SPICA_TIDE_LOC_ALIASES[l.id] || []) : []), l.name];
-      keys.forEach(k => {
-        const nk = norm(k);
-        if(!nk || nk.length <= best) return;
+    all.forEach(({ l, keys }) => {
+      keys.forEach(nk => {
         const hit = whole ? pad.includes(' ' + nk + ' ') : (nk.length >= 4 && dn.includes(nk));
-        if(hit){ best = nk.length; id = l.id; }
+        if(!hit) return;
+        const score = generic(nk, l.id) ? nk.length * 0.3 : nk.length;
+        if(score > best){ best = score; id = l.id; }
       });
     });
     return id;
@@ -9477,13 +9546,22 @@ function parseASCOSheet(sheetName, sheetData){
      "CLAYMORE CAP - 462 - 100050 - 08.04.26 - SPICA TIDE"            */
   /* When the Loadlist ID is just a file name ("BLEOHOLM PRODUCTION
      LOADLIST 532 REV0.xls") it carries no " - " parts; use Location. */
-  const displayName = (loadlistId && loadlistId.includes(' - '))
+  /* v3.40.1 — the location is matched on the Loadlist ID and the Location
+     together ("CLAYMORE CPP 656- MAN-100908" + "CLAYMORE"); the ID is
+     the more specific one. Free-typed IDs ("CLAY CAP- 493", "CPP 656-")
+     have no fixed " - " layout, so nothing depends on the separators. */
+  const matchText = [loadlistId.replace(/\.xlsx?$/i, ''), sheetLocation].filter(Boolean).join(' ');
+  const locId = _matchImportedLocId(matchText) || _matchImportedLocId(sheetName) || '';
+  const L = locId && locById(locId);
+  const displayName = L ? L.name
+    : (loadlistId && loadlistId.includes(' - '))
     ? loadlistId.split(' - ')[0].trim()
     : (sheetLocation || loadlistId.replace(/\.xlsx?$/i, '').trim() || sheetName);
 
   return {
     sheetName,
     displayName,
+    locId,
     location:   sheetLocation || sheetName,
     loadlistId,
     noLifts,
@@ -9618,15 +9696,19 @@ function renderAscoContent(sheets, stats){
       <span class="asco-sheet-sel-all" data-si="${si}">Select all</span>`;
     section.appendChild(hdr);
     /* v3.14 — platform files: choose Load / Backload and the location */
-    if(sheet.source === 'generic'){
+    /* v3.40.1 — ASCO sheets show the location they were matched to, and it
+       can be changed before importing (a load list that names the platform
+       in an unusual way) */
+    if(sheet.source === 'generic' || sheet.loadlistId != null){
+      const gen = sheet.source === 'generic';
       const ctl = document.createElement('div');
       ctl.className = 'asco-gen-ctl';
       const locs = [...LOC_ALL, ...S.customLocs];
       ctl.innerHTML = `
-        <div class="asco-gen-seg" role="radiogroup" aria-label="Direction">
+        ${gen ? `<div class="asco-gen-seg" role="radiogroup" aria-label="Direction">
           <button type="button" data-v="BL" class="${sheet.status === 'BL' ? 'sel' : ''}">Backload</button>
           <button type="button" data-v="L" class="${sheet.status === 'L' ? 'sel' : ''}">Load</button>
-        </div>
+        </div>` : '<span class="asco-gen-lbl">Location</span>'}
         <select class="asco-gen-loc${sheet.locId ? '' : ' need'}" aria-label="Location">
           <option value="">Choose location…</option>
           ${locs.map(l => `<option value="${escHtml(l.id)}" ${l.id === sheet.locId ? 'selected' : ''}>${escHtml(l.name)}</option>`).join('')}
@@ -15706,8 +15788,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.40.0';
-const APP_VERSION   = '3.40.0';
+const CURRENT_BUILD = 'v3.40.1';
+const APP_VERSION   = '3.40.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
