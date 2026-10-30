@@ -18549,3 +18549,17 @@ html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-t
 .cb .cb-door-w{ left:2px;  top:20%; bottom:20%; width:3px; }
 .cb .cb-door-n{ top:2px;    left:20%; right:20%; height:3px; }
 .cb .cb-door-s{ bottom:2px; left:20%; right:20%; height:3px; }
+/* v3.40.1 — Help → Licence: what is installed */
+.lic-info{ display: flex; flex-direction: column; gap: 0; border: 1px solid var(--txt4); border-radius: 12px; background: var(--lic-field); padding: 4px 14px 10px; }
+.lic-state{ display: flex; align-items: center; gap: 8px; padding: 10px 0 8px; font-size: 14px; font-weight: 700; color: var(--s-L); }
+.lic-state.soon{ color: var(--warn, #b45309); }
+.lic-dot{ width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent); }
+.lic-row{ display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--txt) 8%, transparent); font-size: 12.5px; }
+.lic-row span{ color: var(--txt3); }
+.lic-row b{ color: var(--txt); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.lic-row b.mono{ font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.lic-row b.soon{ color: var(--warn, #b45309); }
+.lic-note{ margin-top: 8px; font-size: 11.5px; color: var(--txt3); }
+.lic-actions .lic-sp{ flex: 1; }
+.lic-entry[hidden], .lic-btn[hidden]{ display: none !important; }
+[data-theme="dark"] .lic-state.soon, [data-theme="dark"] .lic-row b.soon{ color: #f59e0b; }

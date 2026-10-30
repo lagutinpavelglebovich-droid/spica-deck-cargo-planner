@@ -15788,8 +15788,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.40.1';
-const APP_VERSION   = '3.40.1';
+const CURRENT_BUILD = 'v3.40.2';
+const APP_VERSION   = '3.40.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -18390,9 +18390,14 @@ function _licBuild(){
     <h2 class="lic-title" id="licTitle">Activate Decargo</h2>
     <p class="lic-msg" id="licMsg"></p>
     <p class="lic-cur" id="licCur"></p>
-    <textarea id="licKey" class="lic-key" rows="4" spellcheck="false" autocomplete="off" placeholder="Paste the licence key (DCL1.…)"></textarea>
-    <div class="lic-err" id="licErr" role="alert"></div>
+    <div class="lic-info" id="licInfo" hidden></div>
+    <div class="lic-entry" id="licEntry">
+      <textarea id="licKey" class="lic-key" rows="4" spellcheck="false" autocomplete="off" placeholder="Paste the licence key (DCL1.…)"></textarea>
+      <div class="lic-err" id="licErr" role="alert"></div>
+    </div>
     <div class="lic-actions">
+      <button type="button" class="lic-btn" id="licReplace" hidden>Enter a new key…</button>
+      <span class="lic-sp"></span>
       <button type="button" class="lic-btn" id="licClose">Close</button>
       <button type="button" class="lic-btn pri" id="licActivate">Activate</button>
     </div>
@@ -18412,6 +18417,11 @@ function _licBuild(){
     }catch(e){
       err.textContent = 'Not accepted: ' + String(e && e.message || e);
     }finally{ btn.disabled = false; }
+  });
+  ov.querySelector('#licReplace').addEventListener('click', () => {
+    ov.querySelector('#licEntry').hidden = false; ov.querySelector('#licActivate').hidden = false; ov.querySelector('#licReplace').hidden = true;
+    ov.querySelector('#licMsg').textContent = 'Paste the new key — it replaces the current licence once it is verified.';
+    key.focus();
   });
   ov.querySelector('#licClose').addEventListener('click', async () => {
     if(!LIC.locked){ _licHide(); return; }
@@ -18442,14 +18452,40 @@ function _licShow(locked){
     : r === 'invalid' ? 'The stored licence could not be verified. Enter a new key.'
     : r === 'missing' ? 'Enter the licence key you received for your vessel.'
     : 'Enter a new key to extend or replace the current licence.';
-  cur.textContent = !locked && st.valid ? licLine(st) : '';
+  /* v3.40.1 — Help → Licence with a valid licence shows what is installed
+     (like any desktop app's About-licence), the key box only on request */
+  const active = !locked && st.valid;
+  const info = ov.querySelector('#licInfo');
+  info.hidden = !active;
+  ov.querySelector('#licEntry').hidden = active;
+  ov.querySelector('#licActivate').hidden = active;
+  ov.querySelector('#licReplace').hidden = !active;
+  cur.textContent = '';
+  if(active){
+    t.textContent = 'Licence';
+    m.textContent = '';
+    const owner = st.kind === 'owner', soon = !owner && st.daysLeft <= 30;
+    const left = st.daysLeft === 0 ? 'ends today' : st.daysLeft + ' day' + (st.daysLeft === 1 ? '' : 's') + ' left';
+    const kind = owner ? 'Owner' : st.kind === 'full' ? 'Full' : 'Trial';
+    const row = (k, v, cls) => v ? `<div class="lic-row"><span>${k}</span><b${cls ? ` class="${cls}"` : ''}>${escHtml(v)}</b></div>` : '';
+    info.innerHTML = `
+      <div class="lic-state${soon ? ' soon' : ''}"><span class="lic-dot"></span>${soon ? 'Active — ' + escHtml(left) : 'Active'}</div>
+      ${row('Licensed to', st.vessel)}
+      ${row('Holder', st.holder)}
+      ${row('Type', kind + ' licence')}
+      ${row('Licence ID', st.id, 'mono')}
+      ${row('Key', st.keyTail ? 'DCL1-…' + st.keyTail : '', 'mono')}
+      ${row('Issued', st.issued ? _licDate(st.issued) : '')}
+      ${row('Expires', _licDate(st.until) + (owner ? '' : ' · ' + left), soon ? 'soon' : '')}
+      <div class="lic-note">Installed on this computer. Writing plans, PDFs and exports is enabled.</div>`;
+  }
   ov.querySelector('#licClose').textContent = locked ? 'Quit' : 'Close';
   ov.querySelector('#licErr').textContent = '';
   ov.classList.toggle('locked', !!locked);
   ov.classList.add('open');
   /* everything else is inert: no clicks, no focus, no screen reader */
   if(locked) Array.from(document.body.children).forEach(el => { if(el !== ov) el.inert = true; });
-  setTimeout(() => ov.querySelector(r === 'clock' ? '#licClose' : '#licKey').focus(), 30);
+  setTimeout(() => ov.querySelector(r === 'clock' || active ? '#licClose' : '#licKey').focus(), 30);
 }
 function _licHide(){
   const ov = document.getElementById('licOv');

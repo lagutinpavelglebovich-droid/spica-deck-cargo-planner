@@ -54,6 +54,9 @@ pub struct Status {
     pub until: String,
     pub kind: String,
     pub id: String,
+    pub issued: String,
+    /// last characters of the installed key (shown as "DCL1-…ABCD1234")
+    pub key_tail: String,
     pub days_left: i64,
 }
 
@@ -67,6 +70,8 @@ impl Status {
             until: String::new(),
             kind: String::new(),
             id: String::new(),
+            issued: String::new(),
+            key_tail: String::new(),
             days_left: 0,
         }
     }
@@ -134,6 +139,8 @@ pub fn evaluate(p: &Payload, now: i64, last_seen: i64) -> Status {
         until: p.until.clone(),
         kind: p.kind.clone(),
         id: p.id.clone(),
+        issued: p.issued.clone(),
+        key_tail: String::new(),
         days_left: until - eff,
     };
     if now + CLOCK_TOLERANCE_DAYS < last_seen {
@@ -184,6 +191,14 @@ fn write_seen(day: i64) {
 
 static CACHE: Mutex<Option<(Status, Instant)>> = Mutex::new(None);
 
+/// Last 8 characters of a key (its signature) — enough to tell keys apart
+/// in the Licence window without showing the whole key.
+pub fn key_tail(key: &str) -> String {
+    let k: String = key.chars().filter(|c| !c.is_whitespace()).collect();
+    let n = k.chars().count();
+    k.chars().skip(n.saturating_sub(8)).collect::<String>().to_uppercase()
+}
+
 /// Current licence status (reads the stored key; refreshes the cache).
 pub fn status() -> Status {
     let st = match std::fs::read_to_string(key_path()) {
@@ -193,7 +208,8 @@ pub fn status() -> Status {
             Ok(p) => {
                 let now = today();
                 let seen = read_seen();
-                let s = evaluate(&p, now, seen);
+                let mut s = evaluate(&p, now, seen);
+                s.key_tail = key_tail(&k);
                 if now > seen && s.reason != "clock" {
                     write_seen(now);
                 }
@@ -317,5 +333,6 @@ mod tests {
         let st = evaluate(&p, until - 10, until - 9);
         assert!(st.valid);
         assert_eq!(st.days_left, 9);
+        assert_eq!(key_tail("DCL1.abc.def ghij-K_LMNOP"), "IJ-K_LMNOP".chars().skip(2).collect::<String>().to_uppercase());
     }
 }

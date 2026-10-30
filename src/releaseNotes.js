@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.2',
+    date: '2026-10-30',
+    highlights: [ 'Help → Licence shows the active licence' ],
+    changes: [
+      { type: 'ui', text: 'Help → Licence now shows what is installed: Active, licensed to, holder, type, licence ID, the end of the key, issued and expiry date with days left. "Enter a new key…" opens the key box only when you want to replace it' },
+    ],
+  },
+  {
     version: '3.40.1',
     date: '2026-10-30',
     highlights: [ 'Claymore CPP load lists no longer import as Claymore CAP', 'Set the location of many units at once' ],

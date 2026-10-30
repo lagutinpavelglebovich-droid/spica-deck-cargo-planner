@@ -3858,7 +3858,7 @@ dependencies = [
 
 [[package]]
 name = "spica-tide"
-version = "3.40.1"
+version = "3.40.2"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
