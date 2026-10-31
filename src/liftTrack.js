@@ -37,7 +37,26 @@ export function createTracker(opts = {}){
     quietS: 25,
     minTravel: 0.06,      /* frame heights a lock must travel to count as a lift */           /* no new lock on a landed load for this long (slings, people) */
     lostS: 1.2,
+    zone: null,           /* deck outline in the picture ([[u,v]…], 0…1); null = whole picture */
+    zoneLift: 0.12,       /* …plus the air this far above it (a load hanging over the deck) */
+    widthM: null,         /* (u0, u1, v) → metres across at that row of the deck, from the calibration */
+    minWidthM: 1.0,       /* narrower than this is a person or the hook — smallest cargo ≈ 1.2 m */
+    minTexture: 7,        /* mean edge strength inside the lock: below it is steam, smoke, glare */
   }, opts);
+  /* v3.40.3 — only a load over the deck (or coming down onto it) is locked:
+     a platform crane's boom, its flare, the jacket legs, waves beside the
+     ship move too and used to steal the lock */
+  const inPoly = (P, x, y) => { let c = false; for(let i = 0, j = P.length - 1; i < P.length; j = i++){
+    const a = P[i], b = P[j]; if((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1] || 1e-9) + a[0]) c = !c; } return c; };
+  /* a load set down right at the stern edge has its foot on the edge line */
+  let zoneTop = O.zone && O.zone.length >= 3 ? Math.min(...O.zone.map(p => p[1])) : 0;
+  const onDeck = (x, y) => !O.zone || O.zone.length < 3 || inPoly(O.zone, x, y) || inPoly(O.zone, x, y + 0.03);
+  const metres = b => { if(!O.widthM) return null; try{ const m = O.widthM((b.x + off[0]) / W, (b.x + b.w + off[0]) / W, (b.y + b.h + off[1]) / H); return m > 0 ? m : null; }catch(e){ return null; } };
+  const texture = b => { let e = 0, n = 0;
+    for(let y = Math.max(1, Math.round(b.y)); y < Math.min(H - 1, b.y + b.h); y += 2) for(let x = Math.max(1, Math.round(b.x)); x < Math.min(W - 1, b.x + b.w); x += 2){
+      const k = y * W + x; e += Math.abs(gray[k + 1] - gray[k - 1]) + Math.abs(gray[k + W] - gray[k - W]); n++; }
+    return n ? e / n : 0; };
+  const inZone = (x, y) => !O.zone || O.zone.length < 3 || [0, 0.4, 0.7, 1].some(f => inPoly(O.zone, x, y + f * O.zoneLift));
   let W = 0, H = 0, N = 0, mu = null, sd = null, cur = null, gray = null, prevGray = null, fg = null, tmp = null, tmp2 = null;
   let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], nextId = 1;
   const events = [];
@@ -166,21 +185,29 @@ export function createTracker(opts = {}){
     if(!lab.a || lab.a.length !== N) lab.a = new Int32Array(N);
     const L = lab.a; L.fill(0);
     const out = [], st = [];
+    if(!lab.row || lab.row.length !== H){ lab.row = new Int32Array(H); }
+    const RW = lab.row;
     let id = 0;
     for(let k0 = 0; k0 < N; k0++){
       if(!fg[k0] || L[k0]) continue;
       id++; L[k0] = id; st.push(k0);
       let x0 = W, x1 = 0, y0 = H, y1 = 0, n = 0, sx = 0, sy = 0;
       while(st.length){
-        const k = st.pop(), x = k % W, y = (k - x) / W; n++; sx += x; sy += y;
+        const k = st.pop(), x = k % W, y = (k - x) / W; n++; sx += x; sy += y; RW[y]++;
         if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y;
         if(x > 0 && fg[k - 1] && !L[k - 1]){ L[k - 1] = id; st.push(k - 1); }
         if(x < W - 1 && fg[k + 1] && !L[k + 1]){ L[k + 1] = id; st.push(k + 1); }
         if(y > 0 && fg[k - W] && !L[k - W]){ L[k - W] = id; st.push(k - W); }
         if(y < H - 1 && fg[k + W] && !L[k + W]){ L[k + W] = id; st.push(k + W); }
       }
+      /* v3.40.3 — the crane wire above a load (lit and thick at night) is not
+         the load: rows much narrower than the widest are trimmed off the top */
+      let mw = 0; for(let y = y0; y <= y1; y++) if(RW[y] > mw) mw = RW[y];
+      let ty = y0; while(ty < y1 && RW[ty] < mw * 0.35) ty++;
+      let by = y1; while(by > ty && RW[by] < mw * 0.2) by--;
+      for(let y = y0; y <= y1; y++) RW[y] = 0;
       /* undo the 4-px dilation on the box (erosion already took 1) */
-      const b = { x: x0 + 3, y: y0 + 3, w: Math.max(2, x1 - x0 - 5), h: Math.max(2, y1 - y0 - 5), n, cx: sx / n, cy: sy / n, id };
+      const b = { x: x0 + 3, y: ty + 3, w: Math.max(2, x1 - x0 - 5), h: Math.max(2, by - ty - 5), n, cx: sx / n, cy: sy / n, id };
       if(n < O.minArea * N || n > O.maxArea * N) continue;
       /* long thin bands: a rail or deck edge shaken by the hand-held camera */
       if(Math.max(b.w, b.h) > 3.5 * Math.min(b.w, b.h)) continue;
@@ -261,8 +288,15 @@ export function createTracker(opts = {}){
       if(la) track.moves = la.id; }
     /* a lock dropped a moment ago right where this one begins is the same
        load (taking the strain, swinging off): keep where it all started */
-    const sb = c.startBg, pr = dropped.find(d => t - d.t < 2.5 && sb && Math.abs((sb.x + sb.w / 2) - (d.box.x + d.box.w / 2)) < Math.max(sb.w, d.box.w) && Math.abs((sb.y + sb.h / 2) - (d.box.y + d.box.h / 2)) < Math.max(sb.h, d.box.h));
-    if(pr){ Object.assign(track, { t0: pr.t0, start: pr.start, startBox: pr.startBox, startBg: pr.startBg, startPatch: pr.startPatch, fromRest: true }); }
+    /* v3.40.3 — and a lock lost a moment ago (a jerky frame, the load
+       swinging behind something) that picks up again near where it was */
+    const sb = c.startBg, pr = dropped.find(d => { const k = d.rest ? 1 : 2.2;
+      return t - d.t < (d.rest ? 2.5 : 3) && sb && Math.abs((sb.x + sb.w / 2) - (d.box.x + d.box.w / 2)) < k * Math.max(sb.w, d.box.w) && Math.abs((sb.y + sb.h / 2) - (d.box.y + d.box.h / 2)) < k * Math.max(sb.h, d.box.h); });
+    if(pr){
+      dropped.splice(dropped.indexOf(pr), 1);
+      Object.assign(track, { t0: pr.t0, start: pr.start, startBox: pr.startBox, startBg: pr.startBg, startPatch: pr.startPatch,
+        fromRest: pr.rest || pr.fromRest, startStill: pr.startStill, air: pr.air || track.air, moves: track.moves || pr.moves });
+    }
   }
 
   function updateTrack(bl, t, dt){
@@ -334,6 +368,13 @@ export function createTracker(opts = {}){
     tr.path.push({ t, foot: f });
     tr.travel = Math.max(tr.travel, Math.hypot((f[0] - tr.lockFoot[0]) * W / H, f[1] - tr.lockFoot[1]));
     tr.area = tr.box.w * tr.box.h;
+    { const tx = texture(tr.box); tr.texSum = (tr.texSum || 0) + tx; tr.texN = (tr.texN || 0) + 1;
+      tr.scSum = (tr.scSum || 0) + Math.max(0, tr.score || 0); }
+    /* has it been in the air over the deck (above the stern, over the side)? */
+    if(O.zone && !onDeck(f[0], f[1])) tr.air = true;
+    /* …or its top is well above the far edge of the deck (in the sky beyond
+       the stern), or it came in over the top of the picture */
+    if(tr.box.y + off[1] < H * Math.max(0.05, zoneTop - 0.04)) tr.air = true;
     while(tr.path.length > 2 && tr.path[0].t < t - 30) tr.path.shift();
     const back = tr.path.find(p => p.t >= t - 1.0);
     const disp = back && t - back.t > 0.6 ? Math.hypot((f[0] - back.foot[0]) * W / H, f[1] - back.foot[1]) : 1;
@@ -359,9 +400,28 @@ export function createTracker(opts = {}){
     else if(tr.stillSince && stillFor >= O.settleS) finish(t, 'settled');
   }
   function emit(kind, tr, foot, t, box){
-    const e = { kind, id: tr.id, t, t0: tr.t0, foot, box };
+    /* only cargo set down on / lifted off the deck itself counts: not the hook
+       hanging above it, not a person on it, not steam drifting over the rail */
+    const bb = kind === 'lifted' ? tr.startBg : tr.box;
+    const wm = bb ? metres(bb) : null, tex = tr.texN ? tr.texSum / tr.texN : 99;
+    /* a load comes down onto the deck through the air (or is the same load
+       moved on); a person walking on deck never was in the air. A lift-off
+       ends up in the air (or gone over the top of the picture). */
+    const lastF = tr.path.length ? tr.path[tr.path.length - 1].foot : foot;
+    const viaAir = !O.zone || tr.air || tr.moves || (tr.startBox && tr.startBox.y < 0.02);
+    const toAir = !O.zone || !onDeck(lastF[0], lastF[1]) || lastF[1] < 0.03;
+    /* set down = the whole width of its foot on deck, not half over the rail
+       (steam drifting past the crash barrier) */
+    const fb = kind === 'landed' && box ? box : null;
+    const wide = !fb || !O.zone || (onDeck(fb.x + fb.w * 0.25, fb.y + fb.h) && onDeck(fb.x + fb.w * 0.75, fb.y + fb.h));
+    const why = !onDeck(foot[0], foot[1]) || !wide ? 'not on the deck'
+      : kind === 'landed' && !viaAir ? 'never in the air (a person?)'
+      : kind === 'lifted' && !toAir ? 'did not go up off the deck' : wm != null && wm < O.minWidthM ? 'too small (' + wm.toFixed(1) + ' m)' : tex < O.minTexture ? 'no edges (steam, glare)' : '';
+    if(why){ events.push({ kind: 'ignored', was: kind, id: tr.id, t, foot, why, tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 }); return false; }
+    const e = { kind, id: tr.id, t, t0: tr.t0, foot, box, widthM: wm, tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 };
     if(tr.moves) e.moves = tr.moves;           /* the same load, set down a moment ago, moved on */
     events.push(e);
+    return true;
   }
   /* change pixels inside a box given in background coordinates */
   function bgPatch(b){
@@ -401,21 +461,24 @@ export function createTracker(opts = {}){
   function finish(t, why){
     const tr = track; track = null;
     if(!tr) return;
+    const nEv0 = events.length;
     if(why === 'junk' || why === 'replaced'){
-      dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch });
+      dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, rest: true });
       dropped.length = Math.min(dropped.length, 4);
       events.push({ kind: 'end', id: tr.id, t, why }); return;
     }
     /* set down now — or, when the video ends / is stopped, set down a moment ago
        (slings and people on it keep the lock twitching) */
     const sd0 = tr.stillSince && t - tr.stillSince.t >= O.setS ? tr.stillSince : (why === 'stopped' && tr.lastDown && t - tr.lastDown.seen < 3 ? tr.lastDown : null);
-    const down = sd0 && tr.travel >= O.minTravel;
+    /* held still high in the air (waiting over the deck, or the video ended
+       mid-lift) is not a set-down */
+    const down = sd0 && tr.travel >= O.minTravel && (!O.zone || onDeck(sd0.foot[0], sd0.foot[1]));
     if(down){
-      emit('landed', tr, sd0.foot, sd0.t, sd0.box);
+      const real = emit('landed', tr, sd0.foot, sd0.t, sd0.box);
       /* the landed load is deck now; slings and people on it are not new lifts for a while */
       learnBox(tr.box);
-      quiet.push({ id: tr.id, box: { x: tr.box.x - tr.box.w * 0.4, y: tr.box.y - tr.box.h * 0.6, w: tr.box.w * 1.8, h: tr.box.h * 1.8 }, until: t + O.quietS });
-      landedAt.push({ id: tr.id, t, box: Object.assign({}, tr.box) });
+      if(real) quiet.push({ id: tr.id, area: tr.box.w * tr.box.h, box: { x: tr.box.x - tr.box.w * 0.4, y: tr.box.y - tr.box.h * 0.6, w: tr.box.w * 1.8, h: tr.box.h * 1.8 }, until: t + O.quietS });
+      if(real) landedAt.push({ id: tr.id, t, box: Object.assign({}, tr.box) });
       if(landedAt.length > 12) landedAt.shift();
     }else{
       /* it began where it stood on deck (not coming in over an edge) and the
@@ -424,8 +487,12 @@ export function createTracker(opts = {}){
       /* what stood there before (learned background then) against the deck now */
       const ghost = sb ? Math.max(changedIn(sb), tr.startPatch ? 1 - Math.max(0, patchNcc(tr.startPatch)) : 0) : 0;
       /* the deck it left stays "changed" and still where it stood: that is where it came from */
-      const p0 = tr.path[0] ? tr.path[0].foot : tr.start;
-      const gone = why === 'left' || why === 'lost';
+      const p0 = tr.start || (tr.path[0] && tr.path[0].foot);
+      /* the video ended (or the camera was stopped) with the load high above
+         where it was picked up: that is a lift-off too */
+      const lastF = tr.path.length ? tr.path[tr.path.length - 1].foot : tr.start;
+      const risen = why === 'stopped' && tr.start && tr.start[1] - lastF[1] > 0.12;
+      const gone = why === 'left' || why === 'lost' || risen;
       const gh = !gone || tr.travel < O.minTravel * 2 ? null : cands.filter(c => c.n >= 8 && c.moved < 0.012)
         .map(c => ({ c, d: Math.hypot((c.box.x + c.box.w / 2 + off[0]) / W - p0[0], (c.box.y + c.box.h + off[1]) / H - p0[1]) }))
         .filter(o => o.d < 0.2).sort((x, y) => y.c.area - x.c.area)[0];
@@ -433,9 +500,12 @@ export function createTracker(opts = {}){
         const gb = gh.c.box;
         emit('lifted', tr, [(gb.x + gb.w / 2 + off[0]) / W, (gb.y + gb.h + off[1]) / H], tr.t0, toFrame(gb));
         learnBox(gb, 4);
-      }else if(sb && !fromEdge && gone && tr.travel >= O.minTravel * 2 && (ghost > 0.25 || tr.startStill || tr.fromRest) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
+      }else if(sb && !fromEdge && gone && tr.travel >= O.minTravel * 2 && (ghost > 0.25 || tr.startStill || tr.fromRest || (O.zone && tr.air && why === 'left')) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
         emit('lifted', tr, tr.start, tr.t0, tr.startBox);
       if(sb && ghost > 0.25) learnBox(sb, 4);
+      /* lost in mid-move without an outcome: the next lock nearby carries on with it */
+      if(why === 'lost' && !events.slice(nEv0).some(e => e.kind === 'lifted'))
+        { dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, fromRest: tr.fromRest, startStill: tr.startStill, rest: false }); dropped.length = Math.min(dropped.length, 4); }
     }
     events.push({ kind: 'end', id: tr.id, t, why });
     cands = [];
@@ -446,7 +516,13 @@ export function createTracker(opts = {}){
     const next = [];
     quiet = quiet.filter(q => q.until > t);
     bl.forEach(o => {
-      if(quiet.some(q => o.cx > q.box.x && o.cx < q.box.x + q.box.w && o.cy > q.box.y && o.cy < q.box.y + q.box.h)) return;
+      const fu = (o.x + o.w / 2 + off[0]) / W, fv = (o.y + o.h + off[1]) / H;
+      if(!inZone(fu, fv)) return;
+      /* standing on the deck and narrower than the smallest cargo: a person */
+      if(onDeck(fu, fv)){ const wm = metres(o); if(wm != null && wm < O.minWidthM * 0.8) return; }
+      /* slings and people on a load just set down stay quiet; the load itself
+         (as big as it was) moving on again does not */
+      if(quiet.some(q => o.cx > q.box.x && o.cx < q.box.x + q.box.w && o.cy > q.box.y && o.cy < q.box.y + q.box.h && o.w * o.h < 0.6 * q.area)) return;
       let c = null, bi = 0.15;
       cands.forEach(k => { const v = iou(k.box, o); if(v > bi){ bi = v; c = k; } });
       if(c){
@@ -484,14 +560,18 @@ export function createTracker(opts = {}){
       frames++;
       if(frames < 4) return this.state();
       const bl = blobs();
-      if(track) updateTrack(bl, t, dt);
-      if(!track){ const r = acquire(bl, t); if(r){ lockFrom(r, t); cands = []; } }
+      /* the camera itself is moving (turned, panned, a big wave of spray):
+         most of the picture changes and no shape in it can be trusted */
+      let nf = 0; for(let k = 0; k < N; k += 7) nf += fg[k];
+      const shaky = nf * 7 > N * 0.22;
+      if(track) updateTrack(shaky ? [] : bl, t, dt);
+      if(!track){ const r = shaky ? null : acquire(bl, t); if(r){ lockFrom(r, t); cands = []; } }
       else{
         /* keep watching the rest: a bigger load moving clearly elsewhere wins
            over a lock that has hardly gone anywhere */
         const b = track.box;
         const r = acquire(bl.filter(o => o.cx < b.x - 4 || o.cx > b.x + b.w + 4 || o.cy < b.y - 4 || o.cy > b.y + b.h + 4), t);
-        if(r && track.travel < O.minTravel && track.phase !== 'down'){ finish(t, 'replaced'); lockFrom(r, t); cands = []; }
+        if(r && t - track.tLock > 2 && track.travel < O.minTravel && track.phase !== 'down' && r.box.w * r.box.h >= 0.5 * track.area && r.box.w < track.box.w * 2.5){ finish(t, 'replaced'); lockFrom(r, t); cands = []; }
       }
       return this.state();
     },
@@ -500,11 +580,12 @@ export function createTracker(opts = {}){
         /* phase: 'moving' | 'down' (still ≥ setS: being set down / landed, final when the lock ends) */
         track: track ? { id: track.id, box: toFrame(track.box), foot: footFrame(track.box), score: track.score,
           phase: track.phase || 'moving', still: track.stillSince ? this._t - track.stillSince.t : 0,
-          downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0 } : null,
+          downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0, start: track.start, air: !!track.air } : null,
         shift: off.slice(),
       };
     },
     takeEvents(){ return events.splice(0); },
+    setZone(z, widthM){ O.zone = Array.isArray(z) && z.length >= 3 ? z.map(p => [+p[0], +p[1]]) : null; O.widthM = typeof widthM === 'function' ? widthM : null; zoneTop = O.zone ? Math.min(...O.zone.map(p => p[1])) : 0; },
     /* the video ended or was stopped: close the lock (a load set down counts as landed) */
     flush(){ if(track) finish(this._t || 0, 'stopped'); return events.splice(0); },
     reset(){ mu = null; },

@@ -1398,7 +1398,10 @@ function watchTick(){
   if(W_.lastT >= 0 && t >= W_.lastT && t - W_.lastT < 0.095) return;
   if(W_.lastT >= 0 && (t < W_.lastT - 0.3 || t > W_.lastT + 2.5)) W_.tracker = null;   /* jumped in the video */
   W_.lastT = t;
-  if(!W_.tracker) W_.tracker = LTM.createTracker();
+  if(!W_.tracker){ W_.tracker = LTM.createTracker(); W_.zoneKey = null; }
+  /* the calibrated deck tells the tracker where the deck is (the crane, the
+     sky, the sea are not) and how wide a shape is in metres */
+  if(!W_.zoneAt || t < W_.zoneAt || t - W_.zoneAt > 2 || W_.zoneKey === null){ W_.zoneAt = t; trackerZone(W_); }
   const img = grabWork();
   W_.st = W_.tracker.step(img.data, img.width, img.height, t, 4);
   const tr = W_.st.track;
@@ -1413,6 +1416,24 @@ function watchTick(){
   if(tr && !(W_.deckTile != null && W_.lastWasLoad)) maybeRead(tr); else scanDeck();
   watchRender(true);
   drawOverlay();
+}
+/* deck outline in the picture + metres across, from the calibration (none → the tracker works without) */
+function trackerZone(W_){
+  /* calibrated on a picture of another shape: the outline would be wrong */
+  const off = DC.savedAspect && DC.sw && Math.abs(rotDims().w / rotDims().h - DC.savedAspect) > 0.02;
+  const M = off ? null : currentModel();
+  const key = M ? M.H.map(v => v.toPrecision(6)).join(',') + '|' + M.k + '|' + JSON.stringify(DC.tf || null) : '';
+  if(key === W_.zoneKey) return;
+  W_.zoneKey = key;
+  if(!M){ W_.tracker.setZone(null, null); return; }
+  const g = geoLen(DC.geo), L = g.length, Wd = g.width, n = 16, poly = [];
+  const edge = (x0, y0, x1, y1) => { for(let i = 0; i < n; i++){ const p = M.toImage(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); if(p && isFinite(p[0]) && isFinite(p[1])) poly.push([Math.min(1.5, Math.max(-0.5, p[0])), Math.min(1.5, Math.max(-0.5, p[1]))]); } };
+  edge(0, 0, L, 0); edge(L, 0, L, Wd); edge(L, Wd, 0, Wd); edge(0, Wd, 0, 0);
+  /* most of the deck off the picture, or a broken model: better no zone than a wrong one */
+  const inPic = poly.filter(p => p[0] >= 0 && p[0] <= 1 && p[1] >= 0 && p[1] <= 1).length;
+  if(poly.length < 8 || inPic < 4){ W_.tracker.setZone(null, null); return; }
+  const widthM = (u0, u1, v) => { const a = M.toDeck(u0, v), b = M.toDeck(u1, v); return a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : null; };
+  W_.tracker.setZone(poly, widthM);
 }
 function watchFlush(){
   const W_ = DC && DC.w;
@@ -1453,7 +1474,11 @@ function maybeRead(tr){
   if(!OCRM || W_.busy) return;
   const now = performance.now();
   if(now - W_.ocrWall < 650) return;
-  const b = tr.box, d = rotDims();
+  const d = rotDims(), b0 = tr.box, wp = b0.w * d.w;
+  /* a tall thin box still holds the wire above the load (at night mostly):
+     read only the load at its bottom */
+  const hk = b0.h * d.h > 2.2 * wp ? 1.6 * wp / d.h : b0.h;
+  const b = { x: b0.x, y: b0.y + b0.h - hk, w: b0.w, h: hk };
   if(b.w * d.w < 28 || b.h * d.h < 28) return;                     /* too small to hold a readable number */
   const pad = 0.12;
   const x0 = clamp01(b.x - b.w * pad), y0 = clamp01(b.y - b.h * pad), x1 = clamp01(b.x + b.w * (1 + pad)), y1 = clamp01(b.y + b.h * (1 + pad));

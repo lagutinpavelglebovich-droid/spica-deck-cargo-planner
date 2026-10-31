@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.3',
+    date: '2026-10-31',
+    highlights: [ 'Watch lifts uses the camera calibration: only the deck counts', 'Fewer false landings — people, the hook, steam and the crane are ignored' ],
+    changes: [
+      { type: 'improvement', text: 'Watch lifts: with the camera calibrated, only shapes on the deck itself are followed — the crane boom, platform legs, the flare, the sea and steam over the rail are no longer locked onto' },
+      { type: 'improvement', text: 'Watch lifts: a shape narrower than 1 m standing on deck (a person), a load that never came through the air, and steam or glare without edges are not reported as landings or lift-offs' },
+      { type: 'fix', text: 'Watch lifts: a load hanging still high above the deck (waiting, or the video ends mid-lift) is no longer taken as set down — it is reported as lifted from where it stood' },
+      { type: 'fix', text: 'Watch lifts: a large blur when the camera pans no longer takes the lock from the real load; a load lifted away over the top of the picture is reported as lifted' },
+      { type: 'improvement', text: 'Watch lifts: number reading looks at the load itself, not the wire above it (night shots)' },
+    ],
+  },
+  {
     version: '3.40.2',
     date: '2026-10-30',
     highlights: [ 'Help → Licence shows the active licence' ],
