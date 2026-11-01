@@ -58,7 +58,7 @@ export function createTracker(opts = {}){
     return n ? e / n : 0; };
   const inZone = (x, y) => !O.zone || O.zone.length < 3 || [0, 0.4, 0.7, 1].some(f => inPoly(O.zone, x, y + f * O.zoneLift));
   let W = 0, H = 0, N = 0, mu = null, sd = null, cur = null, gray = null, prevGray = null, fg = null, tmp = null, tmp2 = null;
-  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], hist = [], seenPeople = { t: -1e9, list: [] }, nextId = 1;
+  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], hist = [], seenPeople = { t: -1e9, list: [] }, liftedAway = [], nextId = 1;
   const events = [];
 
   function init(w, h){
@@ -66,7 +66,7 @@ export function createTracker(opts = {}){
     mu = new Float32Array(N * 3); cur = new Float32Array(N * 3); sd = new Float32Array(N).fill(8);
     gray = new Float32Array(N); prevGray = new Float32Array(N);
     fg = new Uint8Array(N); tmp = new Uint8Array(N); tmp2 = new Uint8Array(N);
-    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = []; people = []; hist = [];
+    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = []; people = []; hist = []; liftedAway = [];
   }
 
   /* ── 1. steady: shift of this frame against the background ── */
@@ -292,6 +292,11 @@ export function createTracker(opts = {}){
        swinging behind something) that picks up again near where it was */
     const sb = c.startBg, pr = dropped.find(d => { const k = d.rest ? 1 : 2.2;
       return t - d.t < (d.rest ? 2.5 : 3) && sb && Math.abs((sb.x + sb.w / 2) - (d.box.x + d.box.w / 2)) < k * Math.max(sb.w, d.box.w) && Math.abs((sb.y + sb.h / 2) - (d.box.y + d.box.h / 2)) < k * Math.max(sb.h, d.box.h); });
+    /* the load reported lifted a moment ago, picked up again on its way up and
+       away (lost behind the boom, a jerky frame): not a second lift-off */
+    liftedAway = liftedAway.filter(l => t - l.t < 20);
+    if(sb && liftedAway.some(l => Math.hypot((sb.x + sb.w / 2) - (l.box.x + l.box.w / 2), (sb.y + sb.h / 2) - (l.box.y + l.box.h / 2)) < 3 * Math.max(sb.w, sb.h, l.box.w, l.box.h)))
+      track.liftedSent = true;
     if(pr){
       dropped.splice(dropped.indexOf(pr), 1);
       Object.assign(track, { t0: pr.t0, start: pr.start, startBox: pr.startBox, startBg: pr.startBg, startPatch: pr.startPatch,
@@ -513,6 +518,7 @@ export function createTracker(opts = {}){
     if(!tr) return;
     const nEv0 = events.length;
     if(why === 'person'){ events.push({ kind: 'end', id: tr.id, t, why }); cands = []; return; }
+    if(tr.liftedSent) liftedAway.push({ t, box: Object.assign({}, tr.box) });
     if(why === 'junk' || why === 'replaced'){
       dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, rest: true });
       dropped.length = Math.min(dropped.length, 4);
@@ -558,6 +564,7 @@ export function createTracker(opts = {}){
       if(why === 'lost' && !tr.liftedSent && !events.slice(nEv0).some(e => e.kind === 'lifted'))
         { dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, fromRest: tr.fromRest, startStill: tr.startStill, rest: false }); dropped.length = Math.min(dropped.length, 4); }
     }
+    if(!tr.liftedSent && events.slice(nEv0).some(e => e.kind === 'lifted')) liftedAway.push({ t, box: Object.assign({}, tr.box) });
     events.push({ kind: 'end', id: tr.id, t, why });
     cands = [];
   }
