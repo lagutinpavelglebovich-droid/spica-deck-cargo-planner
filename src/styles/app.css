@@ -18586,3 +18586,21 @@ html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-t
 .dc-w-person-t{ fill:#0369a1; font:700 11px 'Inter',system-ui,sans-serif; text-anchor:middle; paint-order:stroke; stroke:var(--dc-halo); stroke-width:3px; }
 [data-theme="dark"] .dc-w-person{ stroke:#38bdf8; }
 [data-theme="dark"] .dc-w-person-t{ fill:#7dd3fc; }
+
+/* v3.40.5 — unit the deck camera saw lifted off (until marked lifted or dismissed) */
+:root{ --cam-lift:#f59e0b; --cam-lift-ink:#3b2300; }
+[data-theme="dark"]{ --cam-lift:#fbbf24; --cam-lift-ink:#1f1300; }
+.cb.cb-cam-lifted{ outline:2.5px dashed var(--cam-lift); outline-offset:2px; animation:camLiftPulse 1.6s ease-in-out infinite; }
+.cb-cam-lift-badge{ position:absolute; left:50%; top:-11px; transform:translateX(-50%); z-index:6; display:flex; align-items:center; gap:3px;
+  font:800 8.5px/1 'Inter',system-ui,sans-serif; letter-spacing:.06em; padding:2px 5px; border-radius:6px;
+  background:var(--cam-lift); color:var(--cam-lift-ink); white-space:nowrap; box-shadow:0 1px 3px color-mix(in srgb, var(--cam-lift-ink) 35%, transparent); }
+@keyframes camLiftPulse{ 0%,100%{ outline-color:var(--cam-lift); } 50%{ outline-color:color-mix(in srgb, var(--cam-lift) 25%, transparent); } }
+@media (prefers-reduced-motion: reduce){ .cb.cb-cam-lifted{ animation:none; } }
+body.pdf-capture .cb.cb-cam-lifted{ outline:none; animation:none; }
+body.pdf-capture .cb-cam-lift-badge{ display:none; }
+.cb-cam-lift-badge span{ pointer-events:none; }
+.cb-cam-lift-badge button{ all:unset; cursor:pointer; font:800 9px/1 'Inter',system-ui,sans-serif; width:13px; height:13px; display:inline-grid; place-items:center; border-radius:4px;
+  background:color-mix(in srgb, var(--cam-lift-ink) 14%, transparent); color:var(--cam-lift-ink); }
+.cb-cam-lift-badge button:hover{ background:color-mix(in srgb, var(--cam-lift-ink) 28%, transparent); }
+.cb-cam-lift-badge button:focus-visible{ outline:2px solid var(--cam-lift-ink); outline-offset:1px; }
+

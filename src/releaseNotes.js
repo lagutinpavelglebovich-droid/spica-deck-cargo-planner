@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.5',
+    date: '2026-11-01',
+    highlights: [ 'A lift-off is matched to the unit on the plan and highlighted there', 'Set-downs at the stern after a slow lowering are caught' ],
+    changes: [
+      { type: 'feature', text: 'Watch lifts: when a load is lifted off, the unit it came from on the deck plan is marked "LIFTED?" (pulsing outline) until the operator confirms ✓ (marks it lifted) or dismisses ✕ — on the plan itself or on the card in Watch lifts' },
+      { type: 'improvement', text: 'Watch lifts: the unit lifted is found along the line of sight towards the camera — a load first seen once it has risen above the units around it no longer reads a bay or two further aft' },
+      { type: 'improvement', text: 'Watch lifts: the spot a load was picked up from is found from the deck as it was a few seconds before (the gap it left), not from where it was first locked' },
+      { type: 'improvement', text: 'Watch lifts: a lift-off is listed as soon as the load is up and clear of the deck, not when it leaves the picture' },
+      { type: 'fix', text: 'Watch lifts: a load lowered very slowly, or held still in the air beyond the stern while the crane waits, is followed until it really touches the deck — the set-down is no longer lost' },
+    ],
+  },
+  {
     version: '3.40.4',
     date: '2026-11-01',
     highlights: [ 'Calibration says why it cannot be saved — and offers the fix', 'People on deck are shown as "Person", not taken for loads' ],

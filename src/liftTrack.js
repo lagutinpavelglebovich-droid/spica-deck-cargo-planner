@@ -58,7 +58,7 @@ export function createTracker(opts = {}){
     return n ? e / n : 0; };
   const inZone = (x, y) => !O.zone || O.zone.length < 3 || [0, 0.4, 0.7, 1].some(f => inPoly(O.zone, x, y + f * O.zoneLift));
   let W = 0, H = 0, N = 0, mu = null, sd = null, cur = null, gray = null, prevGray = null, fg = null, tmp = null, tmp2 = null;
-  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], nextId = 1;
+  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], hist = [], nextId = 1;
   const events = [];
 
   function init(w, h){
@@ -66,7 +66,7 @@ export function createTracker(opts = {}){
     mu = new Float32Array(N * 3); cur = new Float32Array(N * 3); sd = new Float32Array(N).fill(8);
     gray = new Float32Array(N); prevGray = new Float32Array(N);
     fg = new Uint8Array(N); tmp = new Uint8Array(N); tmp2 = new Uint8Array(N);
-    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = []; people = [];
+    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = []; people = []; hist = [];
   }
 
   /* ── 1. steady: shift of this frame against the background ── */
@@ -375,14 +375,32 @@ export function createTracker(opts = {}){
     /* …or its top is well above the far edge of the deck (in the sky beyond
        the stern), or it came in over the top of the picture */
     if(tr.box.y + off[1] < H * Math.max(0.05, zoneTop - 0.04)) tr.air = true;
+    /* picked up from a spot on deck and now up in the air, off the deck:
+       that is a lift-off — say so now, not when it leaves the picture */
+    if(O.zone && !tr.liftedSent && tr.start && !onDeck(f[0], f[1]) && onDeck(tr.start[0], tr.start[1]) &&
+       tr.start[1] - f[1] > 0.12 && !(tr.startBox && tr.startBox.y < 0.02) && tr.travel >= O.minTravel * 2){
+      const sb = tr.startBg, ghost = sb ? Math.max(changedIn(sb), tr.startPatch ? 1 - Math.max(0, patchNcc(tr.startPatch)) : 0) : 0;
+      if(tr.startStill || tr.fromRest || ghost > 0.25){
+        tr.liftedSent = true;
+        const ps = pickupSpot(tr);
+        if(emit('lifted', tr, ps ? ps.foot : tr.start, tr.t0, ps ? ps.box : tr.startBox)){ if(sb) learnBox(sb, 4); if(ps) learnBox(ps.bg, 4); }
+      }
+    }
     while(tr.path.length > 2 && tr.path[0].t < t - 30) tr.path.shift();
     const back = tr.path.find(p => p.t >= t - 1.0);
     const disp = back && t - back.t > 0.6 ? Math.hypot((f[0] - back.foot[0]) * W / H, f[1] - back.foot[1]) : 1;
     tr.disp = disp;
     if(disp < O.stillDisp){ if(!tr.stillSince) tr.stillSince = { t: back.t, foot: back.foot, box: toFrame(tr.box) }; }
     else tr.stillSince = null;
+    /* it crept down so slowly it looked still all the way: it touches the deck now — count from here */
+    if(O.zone && tr.stillSince && !onDeck(tr.stillSince.foot[0], tr.stillSince.foot[1]) && onDeck(f[0], f[1])) tr.stillSince = { t, foot: f.slice(), box: toFrame(tr.box) };
     const stillFor = tr.stillSince ? t - tr.stillSince.t : 0;
-    tr.phase = stillFor >= O.setS ? 'down' : 'moving';
+    /* held still in the air above the deck (the crane driver waiting before
+       the last metre): not set down — keep following it */
+    const hover = !!(O.zone && tr.stillSince && tr.travel >= O.minTravel && !onDeck(tr.stillSince.foot[0], tr.stillSince.foot[1]) &&
+      inZone(tr.stillSince.foot[0], tr.stillSince.foot[1]) && tr.stillSince.foot[1] < zoneTop + 0.02);   /* beyond the far end of the deck, not beside it */
+    tr.hover = hover;
+    tr.phase = stillFor >= O.setS && !hover ? 'down' : 'moving';
     if(tr.phase === 'down') tr.lastDown = Object.assign({}, tr.stillSince, { seen: t });
     const bb = tr.box;
     const ccx = bb.x + bb.w / 2 + off[0], ccy = bb.y + bb.h / 2 + off[1];
@@ -397,7 +415,7 @@ export function createTracker(opts = {}){
     if(out || tr.miss > O.lostS) finish(t, out ? 'left' : 'lost');
     /* a lock that never really went anywhere was not a lift (shake, a person, a flapping cover) */
     else if(t - tr.tLock > 6 && tr.travel < O.minTravel * 0.5 && !tr.stillSince) finish(t, 'junk');
-    else if(tr.stillSince && stillFor >= O.settleS) finish(t, 'settled');
+    else if(tr.stillSince && stillFor >= (hover ? 90 : O.settleS)) finish(t, 'settled');
   }
   function emit(kind, tr, foot, t, box){
     /* only cargo set down on / lifted off the deck itself counts: not the hook
@@ -451,6 +469,37 @@ export function createTracker(opts = {}){
       for(let x = Math.max(0, Math.floor(b.x)); x < Math.min(W, b.x + b.w); x++){ n++; if(fg[y * W + x]) on++; }
     return n ? on / n : 0;
   }
+  /* where a lifted load really stood. It is often locked only once it rises
+     above the units around it — by then it looks (in perspective) a bay or two
+     further aft. The spot it left differs from the deck as it was before the
+     lock: find that spot below where the lock began. */
+  function pickupSpot(tr){
+    const sb = tr.startBg; if(!sb || !hist.length) return null;
+    const ref = [...hist].reverse().find(h => h.t <= tr.t0 - 2.5) || null;
+    if(!ref) return null;
+    const x0 = Math.max(0, Math.floor(sb.x - sb.w * 0.6)), x1 = Math.min(W - 1, Math.ceil(sb.x + sb.w * 1.6));
+    const y0 = Math.max(0, Math.floor(sb.y + sb.h * 0.3)), y1 = Math.min(H - 1, Math.ceil(sb.y + sb.h + H * 0.2));
+    const rw = x1 - x0 + 1, rh = y1 - y0 + 1; if(rw < 3 || rh < 3) return null;
+    const m = new Uint8Array(rw * rh);
+    for(let y = 0; y < rh; y++) for(let x = 0; x < rw; x++){
+      const k = (y + y0) * W + x + x0, g = cur[k * 3] * 0.299 + cur[k * 3 + 1] * 0.587 + cur[k * 3 + 2] * 0.114;
+      if(Math.abs(g - ref.g[k]) > 28) m[y * rw + x] = 1;
+    }
+    /* largest connected patch of change */
+    let best = null; const st = [];
+    for(let i = 0; i < m.length; i++){
+      if(m[i] !== 1) continue;
+      let n = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1; m[i] = 2; st.push(i);
+      while(st.length){ const j = st.pop(), x = j % rw, y = (j / rw) | 0; n++;
+        if(x < bx0) bx0 = x; if(x > bx1) bx1 = x; if(y < by0) by0 = y; if(y > by1) by1 = y;
+        for(const q of [j - 1, j + 1, j - rw, j + rw]) if(q >= 0 && q < m.length && m[q] === 1 && Math.abs((q % rw) - x) <= 1){ m[q] = 2; st.push(q); } }
+      if(!best || n > best.n) best = { n, x: bx0 + x0, y: by0 + y0, w: bx1 - bx0 + 1, h: by1 - by0 + 1 };
+    }
+    if(!best || best.n < 0.25 * sb.w * sb.h || best.w < 0.5 * sb.w || best.w > 2.5 * sb.w) return null;
+    const foot = [(best.x + best.w / 2 + off[0]) / W, (best.y + best.h + off[1]) / H];
+    if(!onDeck(foot[0], foot[1]) || foot[1] < tr.start[1] - 0.01) return null;
+    return { foot, box: toFrame(best), bg: best };
+  }
   function learnBox(b, pad = 3){
     for(let y = Math.max(0, Math.floor(b.y - pad)); y < Math.min(H, b.y + b.h + pad + 1); y++)
       for(let x = Math.max(0, Math.floor(b.x - pad)); x < Math.min(W, b.x + b.w + pad + 1); x++){
@@ -494,18 +543,18 @@ export function createTracker(opts = {}){
       const lastF = tr.path.length ? tr.path[tr.path.length - 1].foot : tr.start;
       const risen = why === 'stopped' && tr.start && tr.start[1] - lastF[1] > 0.12;
       const gone = why === 'left' || why === 'lost' || risen;
-      const gh = !gone || tr.travel < O.minTravel * 2 ? null : cands.filter(c => c.n >= 8 && c.moved < 0.012)
+      const gh = tr.liftedSent || !gone || tr.travel < O.minTravel * 2 ? null : cands.filter(c => c.n >= 8 && c.moved < 0.012)
         .map(c => ({ c, d: Math.hypot((c.box.x + c.box.w / 2 + off[0]) / W - p0[0], (c.box.y + c.box.h + off[1]) / H - p0[1]) }))
         .filter(o => o.d < 0.2).sort((x, y) => y.c.area - x.c.area)[0];
       if(gh){
         const gb = gh.c.box;
         emit('lifted', tr, [(gb.x + gb.w / 2 + off[0]) / W, (gb.y + gb.h + off[1]) / H], tr.t0, toFrame(gb));
         learnBox(gb, 4);
-      }else if(sb && !fromEdge && gone && tr.travel >= O.minTravel * 2 && (ghost > 0.25 || tr.startStill || tr.fromRest || (O.zone && tr.air && why === 'left')) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
-        emit('lifted', tr, tr.start, tr.t0, tr.startBox);
+      }else if(!tr.liftedSent && sb && !fromEdge && gone && tr.travel >= O.minTravel * 2 && (ghost > 0.25 || tr.startStill || tr.fromRest || (O.zone && tr.air && why === 'left')) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
+        { const ps = pickupSpot(tr); emit('lifted', tr, ps ? ps.foot : tr.start, tr.t0, ps ? ps.box : tr.startBox); if(ps) learnBox(ps.bg, 4); }
       if(sb && ghost > 0.25) learnBox(sb, 4);
       /* lost in mid-move without an outcome: the next lock nearby carries on with it */
-      if(why === 'lost' && !events.slice(nEv0).some(e => e.kind === 'lifted'))
+      if(why === 'lost' && !tr.liftedSent && !events.slice(nEv0).some(e => e.kind === 'lifted'))
         { dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, fromRest: tr.fromRest, startStill: tr.startStill, rest: false }); dropped.length = Math.min(dropped.length, 4); }
     }
     events.push({ kind: 'end', id: tr.id, t, why });
@@ -573,6 +622,13 @@ export function createTracker(opts = {}){
       off = measureShift(px, ch, dt);
       change(px, ch, true);
       frames++;
+      /* the deck as it was a few seconds ago (once a second, 25 s kept): where a
+         load is picked up shows as the difference against now */
+      if(!hist.length || t - hist[hist.length - 1].t >= 1){
+        const g = new Uint8Array(N);
+        for(let k = 0; k < N; k++) g[k] = cur[k * 3] * 0.299 + cur[k * 3 + 1] * 0.587 + cur[k * 3 + 2] * 0.114;
+        hist.push({ t, g }); while(hist.length > 1 && hist[0].t < t - 25) hist.shift();
+      }
       if(frames < 4) return this.state();
       const bl = blobs();
       /* the camera itself is moving (turned, panned, a big wave of spray):

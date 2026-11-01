@@ -4498,6 +4498,22 @@ function renderBlock(cv,cargo){
   }
   const _dgList = cargo.dgClasses || [];
   if(_dgList.length > 0) b.dataset.dg = _dgList[0];
+  /* v3.40.5 — the deck camera saw this unit lifted off */
+  if(CAM_LIFTED.has(cargo.id)){
+    const _cl = CAM_LIFTED.get(cargo.id) || {};
+    b.classList.add('cb-cam-lifted');
+    b.title = 'Camera: lifted off' + (_cl.when ? ' at ' + _cl.when : '') + ' — mark it lifted, or dismiss in Deck camera → Watch lifts\n' + b.title;
+    const _bd = document.createElement('div'); _bd.className = 'cb-cam-lift-badge';
+    _bd.innerHTML = '<span>LIFTED?</span>' + (isOperator() ? '<button type="button" class="cb-cl-yes" title="Yes — mark it lifted">✓</button><button type="button" class="cb-cl-no" title="Not this one — clear the mark">✕</button>' : '');
+    const _stop = ev => ev.stopPropagation();
+    ['pointerdown', 'mousedown', 'touchstart', 'dblclick', 'contextmenu'].forEach(k => _bd.addEventListener(k, _stop));
+    _bd.addEventListener('click', ev => {
+      ev.stopPropagation();
+      if(ev.target.closest('.cb-cl-yes')) markLifted([cargo.id]);
+      else if(ev.target.closest('.cb-cl-no')){ CAM_LIFTED.delete(cargo.id); renderAll(); }
+    });
+    b.appendChild(_bd);
+  }
   /* Premium tactile finish — subtle inset highlight + ambient shadow */
   const shadowCol = isDark(fill) ? 'rgba(0,0,0,.22)' : 'rgba(49,51,44,.10)';
   const hlCol     = isDark(fill) ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.55)';
@@ -5115,6 +5131,9 @@ function animateCargoLanding(id){
 
 /* Mark cargo as lifted off the deck (discharged at the platform).
    Removes it from the plan with the crane animation; Undo restores. */
+/* v3.40.5 — units the deck camera saw lifted off: highlighted on the plan until
+   the operator marks them lifted or says "not this one". Not saved. */
+const CAM_LIFTED = new Map();
 function markLifted(ids){
   if(!isOperator()) return;
   const list = (Array.isArray(ids) ? ids : [ids]).filter(id => S.cargo.some(c => c.id === id));
@@ -5122,7 +5141,7 @@ function markLifted(ids){
   const names = list.map(id => { const c = S.cargo.find(x => x.id === id); return c && (c.ccu || c.desc) || ''; });
   animateCargoLift(list);
   S.cargo = S.cargo.filter(c => !list.includes(c.id));
-  list.forEach(id => dgEvictDeletedCargo(id));
+  list.forEach(id => { dgEvictDeletedCargo(id); CAM_LIFTED.delete(id); });
   if(typeof inspSelId !== 'undefined' && list.includes(inspSelId)) inspClose();
   if(typeof kbDeselect === 'function') kbDeselect();
   renderAll(); updateStats(); buildActiveLocStrip(); checkSeg(); updateDGSummary(); save();
@@ -15788,8 +15807,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.40.4';
-const APP_VERSION   = '3.40.4';
+const CURRENT_BUILD = 'v3.40.5';
+const APP_VERSION   = '3.40.5';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -19515,6 +19534,13 @@ initDeckCamera({
     const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), n = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     return { onDeck: S.cargo.some(c => n(c.ccu) === k), inQueue: IMPORT_QUEUE.some(q => n(q.ccu) === k) };
   },
+  /* v3.40.5 — highlight a unit the camera saw lifted / clear it */
+  flagLift: (id, on, info) => {
+    if(on && S.cargo.some(c => c.id === id)) CAM_LIFTED.set(id, info || {}); else CAM_LIFTED.delete(id);
+    renderAll();
+  },
+  isFlagged: id => CAM_LIFTED.has(id),
+  markLiftedId: id => { if(S.cargo.some(c => c.id === id)) markLifted([id]); },
   markLifted: ccu => {
     const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const c = S.cargo.find(x => String(x.ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === k);

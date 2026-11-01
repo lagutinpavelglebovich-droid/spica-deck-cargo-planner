@@ -1650,7 +1650,7 @@ function footprint(box, foot){
   const px = -uy, py = ux;
   const corner = (a, b) => [c[0] + ux * a * d / 2 + px * b * d / 2, c[1] + uy * a * d / 2 + py * b * d / 2];
   return { centre: [Math.min(g.length, Math.max(0, c[0])), Math.min(g.width, Math.max(0, c[1]))], size: d,
-    poly: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] };
+    poly: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], toCam: [-ux, -uy] };
 }
 function whereText(pt){
   if(!pt) return '';
@@ -1665,16 +1665,37 @@ function whereOf(fp){ return fp ? whereText({ x: fp.centre[0], y: fp.centre[1] }
 function onTrackEvent(e){
   if(!DC || (e.kind !== 'landed' && e.kind !== 'lifted')) return;
   const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
-  let guess = null;
-  if(e.kind === 'lifted' && fp){
-    /* which planned unit stood there */
-    const [X, Y] = fp.centre;
-    const near = API.cargo().map(c => ({ c, d: Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) }))
-      .filter(o => o.d < 1.5 && o.c.ccu).sort((a, b) => a.d - b.d)[0];
-    if(near) guess = near.c.ccu;
+  let guess = null, guessId = null;
+  if(e.kind === 'lifted'){
+    /* which planned unit stood there: the number read, if it is on deck;
+       otherwise the unit under the pick-up spot (or the nearest within 1.5 m) */
+    const all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const byNum = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
+    let near = null;
+    if(!byNum && fp){
+      /* A load is often locked only once it rises clear of the units around it;
+         seen from the bridge it then looks further from the camera than the spot
+         it left. Walk from where it was first seen back towards the camera and
+         take the first planned unit on that line; failing that, the nearest. */
+      const [X, Y] = fp.centre, inU = (c, x, y, m) => x >= c.x0 - m && x <= c.x1 + m && y >= c.y0 - m && y <= c.y1 + m;
+      const tc = fp.toCam;
+      if(tc) for(let s = -1; s <= 9 && !near; s += 0.25){
+        const x = X + tc[0] * s, y = Y + tc[1] * s;
+        const hit = all.filter(c => inU(c, x, y, 0.2)).sort((a, b) => (a.x1 - a.x0) * (a.y1 - a.y0) - (b.x1 - b.x0) * (b.y1 - b.y0))[0];
+        if(hit) near = { c: hit, d: Math.abs(s) };
+      }
+      if(!near) near = all.map(c => ({ c, d: Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) }))
+        .filter(o => o.d < 1.5).sort((a, b) => a.d - b.d || (a.c.x1 - a.c.x0) * (a.c.y1 - a.c.y0) - (b.c.x1 - b.c.x0) * (b.c.y1 - b.c.y0))[0];
+    }
+    const u = byNum || (near && near.c);
+    if(u){ guessId = u.id; guess = u.ccu || u.desc || 'unit'; }
   }
-  const ev = { id: e.id, kind: e.kind, t: e.t, live: DC.kind === 'live', at: new Date(), fp, where: whereOf(fp), reading: rd,
-    thumb: W_.thumbs.get(e.id) || null, guess };
+  const gu = guessId != null ? API.cargo().find(c => c.id === guessId) : null;
+  const ev = { id: e.id, kind: e.kind, t: e.t, live: DC.kind === 'live', at: new Date(), fp,
+    where: gu ? whereText({ x: (gu.x0 + gu.x1) / 2, y: (gu.y0 + gu.y1) / 2 }) : whereOf(fp), reading: rd,
+    thumb: W_.thumbs.get(e.id) || null, guess, guessId };
+  /* show it on the deck plan until the operator confirms or dismisses it */
+  if(guessId != null && API.flagLift) API.flagLift(guessId, true, { when: ev.live ? ev.at.toTimeString().slice(0, 5) : tFmt(e.t), where: ev.where });
   /* the same load set down a moment ago and moved on: the earlier card is history */
   const prev = e.moves != null && DC.wEvents.find(o => o.id === e.moves);
   if(prev){
@@ -1743,9 +1764,14 @@ function watchRender(quick){
     if(e.movedOn){ card.classList.add('moved'); act.innerHTML = `<span class="dc-an-note">Moved on — see the newer card${e.done ? ' (✓ ' + esc(e.done) + ' here — move it on the plan)' : ''}</span>`; }
     else if(e.done){ act.innerHTML = `<span class="dc-an-done">✓ ${esc(e.done)}</span>`; }
     else if(API.isOperator()){
-      const unit = ccu || (e.kind === 'lifted' ? e.guess : null);
-      const ui = unit ? API.unitInfo(unit) : {};
-      if(e.kind === 'lifted' && unit && ui.onDeck) addBtn('Mark ' + unit + ' lifted', () => API.markLifted(unit), !!(rd && rd.sure));
+      if(e.kind === 'lifted'){
+        const onDeck = e.guessId != null && API.cargo().some(c => c.id === e.guessId);
+        if(onDeck && API.markLiftedId){
+          addBtn('Mark ' + e.guess + ' lifted', () => API.markLiftedId(e.guessId), true);
+          addBtn('Not this one', () => { API.flagLift(e.guessId, false); }, false);
+        }else if(ccu && API.unitInfo(ccu).onDeck) addBtn('Mark ' + ccu + ' lifted', () => API.markLifted(ccu), !!(rd && rd.sure));
+        else if(!onDeck && e.guessId == null) act.innerHTML = '<span class="dc-an-note">No unit on the plan at that spot</span>';
+      }
       if(e.kind === 'landed' && e.fp){
         if(ccu && info.inQueue) addBtn('Place ' + ccu + ' here', () => API.placeQueued(ccu, e.fp.centre[0], e.fp.centre[1]), rd.sure);
         else{
@@ -1766,4 +1792,4 @@ function watchRender(quick){
 }
 
 /* test hooks */
-export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, footprint, watchFlush, cropDisp, ocr: () => OCRM };
+export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, footprint, watchFlush, cropDisp, ocr: () => OCRM, api: () => API, onTrackEvent, watchRender };
