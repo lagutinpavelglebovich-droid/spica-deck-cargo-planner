@@ -14,11 +14,13 @@ Everything is pinned (package versions, Hugging Face revisions, SHA-256 of the
 OCR files). The detector is exported here from the official Roboflow weights
 (export_rfdetr.py) — that needs torch + transformers.
 
-usage: python tools/vision/fetch-vision.py [--platform win|linux] [--out DIR] [--skip-detector]
+usage: python tools/vision/fetch-vision.py [--platform win|linux|mac] [--out DIR] [--skip-detector]
+(mac: for `tauri dev` on an Apple Silicon Mac — the app then reads src-tauri/vision directly)
 """
 import argparse, hashlib, os, shutil, subprocess, sys, tempfile, urllib.request, zipfile, glob, json
 
 ORT_OV = "onnxruntime-openvino==1.24.1"
+ORT_MAC = "onnxruntime==1.24.1"          # macOS (Apple Silicon) dev builds: plain CPU runtime, no OpenVINO
 OPENVINO = "openvino==2025.4.1"          # the version ORT-OpenVINO 1.24.1 is built against
 OCR_REPO = "monkt/paddleocr-onnx"
 OCR_REV = "7b02d0a30a07ba2b92ad1ff5a8941ae2c633de65"
@@ -67,6 +69,8 @@ def pip_download(spec, platform, tmp):
     args = [sys.executable, "-m", "pip", "download", "-q", "--no-deps", "--only-binary=:all:", "-d", tmp, spec]
     if platform == "win":
         args[4:4] = ["--platform", "win_amd64", "--python-version", "3.12"]
+    elif platform == "mac":
+        args[4:4] = ["--platform", "macosx_14_0_arm64", "--python-version", "3.12"]
     subprocess.check_call(args)
     name = spec.split("==")[0].replace("-", "_")
     return glob.glob(os.path.join(tmp, name + "-*.whl"))[0]
@@ -75,6 +79,14 @@ def pip_download(spec, platform, tmp):
 def runtime(platform, out):
     rt = os.path.join(out, "runtime")
     os.makedirs(rt, exist_ok=True)
+    if platform == "mac":
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp, zipfile.ZipFile(pip_download(ORT_MAC, platform, tmp)) as z:
+            for i in z.infolist():
+                if i.filename.endswith(".dylib"):
+                    with z.open(i) as s, open(os.path.join(rt, os.path.basename(i.filename)), "wb") as d:
+                        shutil.copyfileobj(s, d)
+        print("runtime (mac):", os.listdir(rt))
+        return
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp, zipfile.ZipFile(pip_download(ORT_OV, platform, tmp)) as ort:
         if platform == "win":
             for n in WIN_ORT_DLLS:
@@ -126,7 +138,7 @@ def detector(out):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--platform", default="win" if os.name == "nt" else "linux", choices=["win", "linux"])
+    ap.add_argument("--platform", default="win" if os.name == "nt" else "linux", choices=["win", "linux", "mac"])
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "..", "src-tauri", "vision"))
     ap.add_argument("--skip-detector", action="store_true")
     a = ap.parse_args()

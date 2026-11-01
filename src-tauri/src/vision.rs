@@ -83,6 +83,13 @@ fn base_dir(app: &tauri::AppHandle) -> PathBuf {
         if let Ok(d) = std::env::var("DECARGO_VISION_DIR") {
             return PathBuf::from(d);
         }
+        /* `tauri dev` on the Mac: the pack lives in src-tauri/vision of the checkout */
+        if cfg!(debug_assertions) {
+            let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vision");
+            if dev.join("runtime").exists() {
+                return dev;
+            }
+        }
         app.path().resource_dir().map(|r| r.join("vision")).unwrap_or_else(|_| PathBuf::from("vision"))
     })
     .clone()
