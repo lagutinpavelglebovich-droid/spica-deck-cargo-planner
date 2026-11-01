@@ -1514,7 +1514,8 @@ function maybeDetect(){
   const W_ = DC && DC.w;
   if(!W_ || !OCRM || !OCRM.detectObjects || W_.detBusy || W_.noDet) return;
   const now = performance.now();
-  if(now - (W_.detWall || 0) < 1000) return;
+  /* a slow computer runs it less often: at most a third of the time on people */
+  if(now - (W_.detWall || 0) < Math.max(1000, 3 * (W_.detCost || 0))) return;
   W_.detWall = now;
   const r = W_.zoneBox || { x0: 0, y0: 0.3, x1: 1, y1: 1 }, d = rotDims();
   const pw = (r.x1 - r.x0) * d.w, ph = (r.y1 - r.y0) * d.h, side = Math.min(pw, ph);
@@ -1541,7 +1542,7 @@ function maybeDetect(){
     const keep = [];
     ppl.forEach(p => { if(!keep.some(q => Math.abs(q.x + q.w / 2 - p.x - p.w / 2) < Math.max(q.w, p.w) * 0.6 && Math.abs(q.y + q.h / 2 - p.y - p.h / 2) < Math.max(q.h, p.h) * 0.6)) keep.push(p); });
     if(W_.tracker) W_.tracker.setPeople(keep, t);
-  })().catch(() => {}).finally(() => { W_.detBusy = false; });
+  })().catch(() => {}).finally(() => { W_.detBusy = false; W_.detCost = performance.now() - now; });
 }
 /* deck outline in the picture + metres across, from the calibration (none → the tracker works without) */
 function trackerZone(W_){
@@ -1601,20 +1602,32 @@ function maybeRead(tr){
   const W_ = DC.w;
   if(!OCRM || W_.busy) return;
   const now = performance.now();
-  if(now - W_.ocrWall < 650) return;
+  /* how fast the load moves in the picture (frame heights per second): a
+     swinging, fast-moving load is blurred — wait for a steadier moment, but
+     never more than 2.5 s; a load standing still (set down) is read more often */
+  const lf = W_.lastFoot, sp = lf && now > lf.at ? Math.hypot(tr.foot[0] - lf.foot[0], tr.foot[1] - lf.foot[1]) / ((now - lf.at) / 1000) : 0;
+  W_.lastFoot = { foot: tr.foot.slice(), at: now };
+  if(now - W_.ocrWall < (tr.phase === 'down' ? 400 : 650)) return;
+  if(sp > 0.3 && now - W_.ocrWall < 2500) return;
   const d = rotDims(), b0 = tr.box, wp = b0.w * d.w;
   /* a tall thin box still holds the wire above the load (at night mostly):
      read only the load at its bottom */
   const hk = b0.h * d.h > 2.2 * wp ? 1.6 * wp / d.h : b0.h;
-  const b = { x: b0.x, y: b0.y + b0.h - hk, w: b0.w, h: hk };
-  if(b.w * d.w < 28 || b.h * d.h < 28) return;                     /* too small to hold a readable number */
+  const bl = { x: b0.x, y: b0.y + b0.h - hk, w: b0.w, h: hk };
+  if(bl.w * d.w < 28 || bl.h * d.h < 28) return;                   /* too small to hold a readable number */
+  /* every other read looks only at the side facing the camera — the lower
+     part of the box from the bridge. Numbers on open frames and tanks are on
+     the sides; cropping to that face gives the text-finder more pixels per letter */
+  W_.readTurn = (W_.readTurn || 0) + 1;
+  const side = W_.readTurn % 2 === 0 && bl.h * d.h >= 40;
+  const b = side ? { x: bl.x, y: bl.y + bl.h * 0.45, w: bl.w, h: bl.h * 0.55 } : bl;
   const pad = 0.12;
   const x0 = clamp01(b.x - b.w * pad), y0 = clamp01(b.y - b.h * pad), x1 = clamp01(b.x + b.w * (1 + pad)), y1 = clamp01(b.y + b.h * (1 + pad));
   if(x1 - x0 < 0.01 || y1 - y0 < 0.01) return;
   W_.busy = true; W_.ocrWall = now; W_.lastWasLoad = true;
   const id = tr.id, c = cropDisp(x0, y0, x1, y1, 900);
   /* a small picture of the load for its card */
-  if(!W_.thumbs.has(id) || (W_.reads.get(id) || {}).n % 3 === 0){
+  if(!side && (!W_.thumbs.has(id) || (W_.reads.get(id) || {}).n % 3 === 0)){
     const k = Math.min(1, 160 / Math.max(c.width, c.height)), th = document.createElement('canvas');
     th.width = Math.max(1, Math.round(c.width * k)); th.height = Math.max(1, Math.round(c.height * k));
     th.getContext('2d').drawImage(c, 0, 0, th.width, th.height);
@@ -1624,7 +1637,7 @@ function maybeRead(tr){
   /* the load itself inside the crop (text in the margin is a unit on deck) */
   const cx0 = (b.x - x0) / (x1 - x0), cx1 = (b.x + b.w - x0) / (x1 - x0), cy0 = (b.y - y0) / (y1 - y0), cy1 = (b.y + b.h - y0) / (y1 - y0);
   const match = W_.match, cw = c.width, ch = c.height;
-  const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+  const bx = bl.x + bl.w / 2, by = bl.y + bl.h / 2;     /* the whole load, whichever part was cropped */
   OCRM.readTextAsync(img, { both: true }).then(res => {
     if(!DC || DC.w !== W_) return;
     const rec = W_.reads.get(id) || { raw: new Map(), m: new Map(), n: 0 };

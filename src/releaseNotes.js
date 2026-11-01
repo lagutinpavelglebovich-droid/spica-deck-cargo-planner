@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.41.2',
+    date: '2026-11-01',
+    highlights: [ 'Number reading looks at the side facing the camera too', 'Recognition eases off on slower computers' ],
+    changes: [
+      { type: 'improvement', text: 'Watch lifts: every other read looks only at the side of the load facing the camera — numbers on open frames and tanks are on the sides — so the text finder gets more pixels per letter' },
+      { type: 'improvement', text: 'Watch lifts: reads wait for a steadier moment when the load swings fast (blur), and come more often once it is set down and still' },
+      { type: 'improvement', text: 'The people detector runs less often on a slow computer (at most a third of its time), so the rest stays responsive' },
+    ],
+  },
+  {
     version: '3.41.1',
     date: '2026-11-01',
     highlights: [ 'Number reading and the people detector run side by side', 'Speed test picks CPU or graphics chip for each' ],
