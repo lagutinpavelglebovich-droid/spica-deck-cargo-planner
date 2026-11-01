@@ -11,6 +11,18 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.41.0',
+    date: '2026-11-01',
+    highlights: [ 'New recognition engine built into the app (Intel OpenVINO)', 'Stronger number reading (PP-OCRv5) and a real people detector' ],
+    changes: [
+      { type: 'feature', text: 'Deck camera: recognition now runs natively in the app on ONNX Runtime with Intel OpenVINO instead of inside the window — several times faster on the bridge PC, so stronger models fit' },
+      { type: 'improvement', text: 'Number reading: PP-OCRv5 (server text detection + English recognition) replaces PP-OCRv4 — on a test frame it reads "KA 1807" and a tag number the old reader missed' },
+      { type: 'feature', text: 'Watch lifts: people on deck are found by an object detector (RF-DETR), labelled "Person" and never taken for a load' },
+      { type: 'ui', text: 'Watch lifts shows which recognition engine is in use, with a "Speed test" for this computer' },
+      { type: 'improvement', text: 'The installer is larger (≈ 250 MB) because the recognition engine and its models are built in — nothing is downloaded while working' },
+    ],
+  },
+  {
     version: '3.40.5',
     date: '2026-11-01',
     highlights: [ 'A lift-off is matched to the unit on the plan and highlighted there', 'Set-downs at the stern after a slow lowering are caught' ],

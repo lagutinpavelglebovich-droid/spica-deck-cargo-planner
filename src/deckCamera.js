@@ -1513,7 +1513,7 @@ function maybeDetect(){
   const W_ = DC && DC.w;
   if(!W_ || !OCRM || !OCRM.detectObjects || W_.detBusy || W_.noDet) return;
   const now = performance.now();
-  if(now - (W_.detWall || 0) < 450) return;
+  if(now - (W_.detWall || 0) < 1000) return;
   W_.detWall = now;
   const r = W_.zoneBox || { x0: 0, y0: 0.3, x1: 1, y1: 1 }, d = rotDims();
   const pw = (r.x1 - r.x0) * d.w, ph = (r.y1 - r.y0) * d.h, side = Math.min(pw, ph);
@@ -1757,8 +1757,23 @@ function watchRender(quick){
   if(eng && W_ && OCRM && OCRM.visionStatus && !W_._engShown){
     W_._engShown = true;
     OCRM.visionStatus().then(vs => {
-      eng.textContent = vs && vs.ok ? `Recognition: ${vs.device}${vs.ocr ? ' · PP-OCRv5' : ''}${vs.detector ? ' · people detector' : ''}` : 'Recognition: built-in reader';
+      eng.innerHTML = '';
+      const tx = el('span', '', esc(vs && vs.ok ? `Recognition: ${vs.device}${vs.ocr ? ' · PP-OCRv5' : ''}${vs.detector ? ' · people detector' : ''}` : 'Recognition: built-in reader'));
+      eng.appendChild(tx);
       eng.title = vs && !vs.ok && vs.error ? vs.error : '';
+      if(vs && vs.ok){
+        /* how fast it is on this computer */
+        const b = el('button', 'dc-an-time dc-w-bench', 'Speed test'); b.type = 'button';
+        b.addEventListener('click', async () => {
+          b.disabled = true; b.textContent = 'testing…';
+          try{
+            const r = await API.invoke('vision_bench');
+            b.textContent = [r.detector_ms != null ? `people ${Math.round(r.detector_ms)} ms` : '', r.ocr_ms != null ? `reading ${Math.round(r.ocr_ms)} ms` : ''].filter(Boolean).join(' · ') || 'done';
+          }catch(e){ b.textContent = 'test failed'; b.title = String(e && e.message || e); }
+          b.disabled = false;
+        });
+        eng.appendChild(document.createTextNode(' · ')); eng.appendChild(b);
+      }
     });
   }
   const st = $('#dcWState');
