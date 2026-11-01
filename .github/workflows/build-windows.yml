@@ -43,6 +43,8 @@ jobs:
       - name: Build vision pack (ONNX Runtime + OpenVINO + models)
         if: steps.vision-cache.outputs.cache-hit != 'true'
         shell: bash
+        env:
+          PYTHONUTF8: '1'
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu

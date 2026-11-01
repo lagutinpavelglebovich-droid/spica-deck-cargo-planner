@@ -58,7 +58,7 @@ def sha256(p):
 
 
 def fetch(url, dst):
-    print("  ↓", url)
+    print("  get", url)
     with urllib.request.urlopen(url) as r, open(dst, "wb") as f:
         shutil.copyfileobj(r, f)
 
