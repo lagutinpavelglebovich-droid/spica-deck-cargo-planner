@@ -75,16 +75,15 @@ def pip_download(spec, platform, tmp):
 def runtime(platform, out):
     rt = os.path.join(out, "runtime")
     os.makedirs(rt, exist_ok=True)
-    with tempfile.TemporaryDirectory() as tmp:
-        ort = zipfile.ZipFile(pip_download(ORT_OV, platform, tmp))
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp, zipfile.ZipFile(pip_download(ORT_OV, platform, tmp)) as ort:
         if platform == "win":
             for n in WIN_ORT_DLLS:
                 with ort.open("onnxruntime/capi/" + n) as s, open(os.path.join(rt, n), "wb") as d:
                     shutil.copyfileobj(s, d)
-            ov = zipfile.ZipFile(pip_download(OPENVINO, platform, tmp))
-            for n in WIN_OV_FILES:
-                with ov.open("openvino/libs/" + n) as s, open(os.path.join(rt, n), "wb") as d:
-                    shutil.copyfileobj(s, d)
+            with zipfile.ZipFile(pip_download(OPENVINO, platform, tmp)) as ov:
+                for n in WIN_OV_FILES:
+                    with ov.open("openvino/libs/" + n) as s, open(os.path.join(rt, n), "wb") as d:
+                        shutil.copyfileobj(s, d)
             sysdir = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
             for n in WIN_CRT:
                 p = os.path.join(sysdir, n)
