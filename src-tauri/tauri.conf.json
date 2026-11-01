@@ -37,7 +37,9 @@
       "icons/icon.png",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": {
+      "vision/": "vision/"
+    },
     "copyright": "\u00a9 2026 Decargo. Developed by Pavlo Lagutin. All rights reserved.",
     "category": "Productivity",
     "shortDescription": "Deck cargo planner for offshore supply vessels",

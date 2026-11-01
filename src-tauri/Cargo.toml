@@ -24,3 +24,5 @@ serde_json = "1"
 dirs = "5"
 ed25519-dalek = "2"
 base64 = "0.22"
+# v3.41 — native vision engine (ONNX Runtime loaded at run time from vision/runtime)
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "std", "api-24", "openvino"] }

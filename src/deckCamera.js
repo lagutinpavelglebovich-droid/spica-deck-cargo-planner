@@ -302,6 +302,7 @@ function buildPanel(){
 
           <section class="dc-sec dc-pane" data-pane="watch" hidden>
             <div class="dc-sec-title">Watch lifts <span class="dc-sec-meta" id="dcWState"></span></div>
+            <div class="dc-w-eng" id="dcWEng"></div>
             <div class="dc-note">Play the video or start the camera. The load moving on the hook is locked and followed; its number is read when it can be seen; the shadow on the deck shows where it is coming down. Set-downs and lift-offs are listed below with the bay. A load list is not needed — when there is one, the number read is checked against it.</div>
             <div class="dc-w-now" id="dcWNow">
               <div class="dc-w-thumb" id="dcWThumb"></div>
@@ -1500,10 +1501,46 @@ function watchTick(){
     W_.match = cands.length && LRM ? LRM.makeMatcher(cands) : null;
   }
   W_.tracker.takeEvents().forEach(onTrackEvent);
+  maybeDetect();
   /* one reader: the load first, the deck scan in between */
   if(tr && !(W_.deckTile != null && W_.lastWasLoad)) maybeRead(tr); else scanDeck();
   watchRender(true);
   drawOverlay();
+}
+/* v3.41 — people on deck from the native object detector (RF-DETR), a few
+   times a second, over the deck in square tiles at full picture detail */
+function maybeDetect(){
+  const W_ = DC && DC.w;
+  if(!W_ || !OCRM || !OCRM.detectObjects || W_.detBusy || W_.noDet) return;
+  const now = performance.now();
+  if(now - (W_.detWall || 0) < 450) return;
+  W_.detWall = now;
+  const r = W_.zoneBox || { x0: 0, y0: 0.3, x1: 1, y1: 1 }, d = rotDims();
+  const pw = (r.x1 - r.x0) * d.w, ph = (r.y1 - r.y0) * d.h, side = Math.min(pw, ph);
+  if(side < 64) return;
+  /* square tiles along the longer side, overlapping by a quarter, at most 3 */
+  const n = Math.min(3, Math.max(1, Math.ceil((Math.max(pw, ph) - side) / (side * 0.75)) + 1));
+  const tiles = [];
+  for(let i = 0; i < n; i++){
+    const f = n === 1 ? 0 : i / (n - 1);
+    if(pw >= ph){ const x = r.x0 + f * (pw - side) / d.w; tiles.push([x, r.y0, x + side / d.w, r.y1]); }
+    else{ const y = r.y0 + f * (ph - side) / d.h; tiles.push([r.x0, y, r.x1, y + side / d.h]); }
+  }
+  const t = W_.lastT;
+  W_.detBusy = true;
+  (async () => {
+    const ppl = [];
+    for(const [x0, y0, x1, y1] of tiles){
+      const c = cropDisp(x0, y0, x1, y1, 1024), img = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      const res = await OCRM.detectObjects(img, 0.45);
+      if(res == null){ W_.noDet = true; return; }
+      res.filter(o => o.label === 'person').forEach(o => ppl.push({ x: x0 + o.x / c.width * (x1 - x0), y: y0 + o.y / c.height * (y1 - y0), w: o.w / c.width * (x1 - x0), h: o.h / c.height * (y1 - y0) }));
+    }
+    /* the same person in two overlapping tiles */
+    const keep = [];
+    ppl.forEach(p => { if(!keep.some(q => Math.abs(q.x + q.w / 2 - p.x - p.w / 2) < Math.max(q.w, p.w) * 0.6 && Math.abs(q.y + q.h / 2 - p.y - p.h / 2) < Math.max(q.h, p.h) * 0.6)) keep.push(p); });
+    if(W_.tracker) W_.tracker.setPeople(keep, t);
+  })().catch(() => {}).finally(() => { W_.detBusy = false; });
 }
 /* deck outline in the picture + metres across, from the calibration (none → the tracker works without) */
 function trackerZone(W_){
@@ -1513,15 +1550,17 @@ function trackerZone(W_){
   const key = M ? M.H.map(v => v.toPrecision(6)).join(',') + '|' + M.k + '|' + JSON.stringify(DC.tf || null) : '';
   if(key === W_.zoneKey) return;
   W_.zoneKey = key;
-  if(!M){ W_.tracker.setZone(null, null); return; }
+  if(!M){ W_.tracker.setZone(null, null); W_.zoneBox = null; return; }
   const g = geoLen(DC.geo), L = g.length, Wd = g.width, n = 16, poly = [];
   const edge = (x0, y0, x1, y1) => { for(let i = 0; i < n; i++){ const p = M.toImage(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); if(p && isFinite(p[0]) && isFinite(p[1])) poly.push([Math.min(1.5, Math.max(-0.5, p[0])), Math.min(1.5, Math.max(-0.5, p[1]))]); } };
   edge(0, 0, L, 0); edge(L, 0, L, Wd); edge(L, Wd, 0, Wd); edge(0, Wd, 0, 0);
   /* most of the deck off the picture, or a broken model: better no zone than a wrong one */
   const inPic = poly.filter(p => p[0] >= 0 && p[0] <= 1 && p[1] >= 0 && p[1] <= 1).length;
-  if(poly.length < 8 || inPic < 4){ W_.tracker.setZone(null, null); return; }
+  if(poly.length < 8 || inPic < 4){ W_.tracker.setZone(null, null); W_.zoneBox = null; return; }
   const widthM = (u0, u1, v) => { const a = M.toDeck(u0, v), b = M.toDeck(u1, v); return a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : null; };
   W_.tracker.setZone(poly, widthM);
+  const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+  W_.zoneBox = { x0: Math.max(0, Math.min(...xs)), y0: Math.max(0, Math.min(...ys) - 0.05), x1: Math.min(1, Math.max(...xs)), y1: Math.min(1, Math.max(...ys)) };
 }
 function watchFlush(){
   const W_ = DC && DC.w;
@@ -1714,6 +1753,14 @@ function watchRender(quick){
   const $ = q => DC.ov.querySelector(q);
   const W_ = DC.w, tr = W_ && W_.st && W_.st.track;
   const calibrated = !!currentModel();
+  const eng = $('#dcWEng');
+  if(eng && W_ && OCRM && OCRM.visionStatus && !W_._engShown){
+    W_._engShown = true;
+    OCRM.visionStatus().then(vs => {
+      eng.textContent = vs && vs.ok ? `Recognition: ${vs.device}${vs.ocr ? ' · PP-OCRv5' : ''}${vs.detector ? ' · people detector' : ''}` : 'Recognition: built-in reader';
+      eng.title = vs && !vs.ok && vs.error ? vs.error : '';
+    });
+  }
   const st = $('#dcWState');
   st.textContent = !DC.wOn ? '· off' : !DC.src ? '· no picture' : DC.kind === 'image' ? '· needs a video or the camera'
     : (DC.kind === 'video' && DC.src.paused) ? '· press play' : tr ? (tr.phase === 'down' ? '· set down' : '· locked') : '· watching';

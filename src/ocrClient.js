@@ -1,6 +1,28 @@
 /* v3.40 — text reading through the OCR worker; falls back to the main
    thread when a worker cannot start (old WebView). */
+import { invoke } from '@tauri-apps/api/core';
 let worker = null, broken = false, seq = 0;
+
+/* v3.41 — the native engine in the desktop app (ONNX Runtime + OpenVINO,
+   PP-OCRv5, RF-DETR). Used whenever it is there; the WASM reader stays as
+   the fallback (browser, dev builds, a machine where it cannot start). */
+let native = null, nativeStatus = null, nativeTry = null;
+const inTauri = () => typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
+export async function visionStatus(){
+  if(native !== null) return nativeStatus;
+  if(!inTauri()){ native = false; return null; }
+  if(!nativeTry) nativeTry = invoke('vision_status').then(st => { nativeStatus = st || null; native = !!(st && st.ok); return nativeStatus; })
+    .catch(() => { native = false; return null; });
+  return nativeTry;
+}
+const rawOf = img => new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength);
+/* img: ImageData → [{ label, score, x, y, w, h }] in its pixels, or null without the native engine */
+export async function detectObjects(img, minScore = 0.35){
+  const st = await visionStatus();
+  if(!st || !st.ok || !st.detector) return null;
+  try{ return await invoke('vision_detect', rawOf(img), { headers: { 'x-w': String(img.width), 'x-h': String(img.height), 'x-min': String(minScore) } }); }
+  catch(e){ console.warn('[vision] detector', e); return null; }
+}
 const waiting = new Map();
 
 function start(){
@@ -23,6 +45,12 @@ function start(){
 
 /* img: ImageData. → [{ text, score, cx, cy, w, h, a }] in its pixels */
 export async function readTextAsync(img, opts){
+  const st = await visionStatus();
+  if(st && st.ok && st.ocr){
+    try{
+      return await invoke('vision_ocr', rawOf(img), { headers: { 'x-w': String(img.width), 'x-h': String(img.height), 'x-both': opts && opts.both === false ? '0' : '1' } });
+    }catch(e){ console.warn('[vision] native OCR failed — using the built-in reader', e); nativeStatus = Object.assign({}, st, { ocr: false }); }
+  }
   const w = start();
   if(!w){
     const { readText } = await import('./vision.js');

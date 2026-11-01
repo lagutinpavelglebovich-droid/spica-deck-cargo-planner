@@ -58,7 +58,7 @@ export function createTracker(opts = {}){
     return n ? e / n : 0; };
   const inZone = (x, y) => !O.zone || O.zone.length < 3 || [0, 0.4, 0.7, 1].some(f => inPoly(O.zone, x, y + f * O.zoneLift));
   let W = 0, H = 0, N = 0, mu = null, sd = null, cur = null, gray = null, prevGray = null, fg = null, tmp = null, tmp2 = null;
-  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], hist = [], nextId = 1;
+  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], hist = [], seenPeople = { t: -1e9, list: [] }, nextId = 1;
   const events = [];
 
   function init(w, h){
@@ -512,6 +512,7 @@ export function createTracker(opts = {}){
     const tr = track; track = null;
     if(!tr) return;
     const nEv0 = events.length;
+    if(why === 'person'){ events.push({ kind: 'end', id: tr.id, t, why }); cands = []; return; }
     if(why === 'junk' || why === 'replaced'){
       dropped.unshift({ t, box: tr.box, t0: tr.t0, start: tr.start, startBox: tr.startBox, startBg: tr.startBg, startPatch: tr.startPatch, air: tr.air, moves: tr.moves, rest: true });
       dropped.length = Math.min(dropped.length, 4);
@@ -563,7 +564,15 @@ export function createTracker(opts = {}){
 
   /* a person standing on deck: narrower than the smallest cargo (calibrated),
      or — without a calibration — a small upright shape in the lower picture */
+  /* people found by the object detector (frame-normalised boxes, fresh for 1.2 s) */
+  function detPerson(o){
+    if(this_t() - seenPeople.t > 1.2 || !seenPeople.list.length) return false;
+    const fx = (o.x + off[0]) / W, fy = (o.y + off[1]) / H, fw = o.w / W, fh = o.h / H, cx = fx + fw / 2, cy = fy + fh / 2;
+    return seenPeople.list.some(p => (cx > p.x - p.w * 0.25 && cx < p.x + p.w * 1.25 && cy > p.y - p.h * 0.25 && cy < p.y + p.h * 1.25 && fw < p.w * 2.2 && fh < p.h * 2.2));
+  }
+  let lastT = 0; const this_t = () => lastT;
   function personLike(o){
+    if(detPerson(o)) return true;
     const fu = (o.x + o.w / 2 + off[0]) / W, fv = (o.y + o.h + off[1]) / H;
     if(O.zone){ if(!onDeck(fu, fv)) return false; const wm = metres(o); return wm != null && (wm < O.minWidthM * 0.8 || (wm < O.minWidthM * 1.1 && o.h >= o.w * 1.2)); }
     return fv > 0.4 && o.w <= W * 0.05 && o.h >= o.w * 1.6;
@@ -607,7 +616,7 @@ export function createTracker(opts = {}){
       const px = smooth(px0, ch0), ch = 3;
       const dt = this._t == null ? 0.1 : Math.max(0.01, t - this._t);
       if(this._t != null && t < this._t - 0.5) init(w, h);      /* jumped back in the video */
-      this._t = t;
+      this._t = t; lastT = t;
       /* a blank frame (video not decoded yet, camera starting) teaches nothing;
          a whole new picture (camera turned, another clip) starts afresh */
       let sum = 0, sum2 = 0, dm = 0, n = 0;
@@ -636,6 +645,7 @@ export function createTracker(opts = {}){
       let nf = 0; for(let k = 0; k < N; k += 7) nf += fg[k];
       const shaky = nf * 7 > N * 0.22;
       people = people.filter(p => t - p.seen < 0.8 && !(track && iou(p.box, track.box) > 0.3));
+      if(track && !track.air && !track.moves && detPerson(track.box) && t - track.tLock > 0.6){ seenPerson(track.box, t); finish(t, 'person'); }
       if(track) updateTrack(shaky ? [] : bl, t, dt);
       if(!track){ const r = shaky ? null : acquire(bl, t); if(r){ lockFrom(r, t); cands = []; } }
       else{
@@ -655,10 +665,13 @@ export function createTracker(opts = {}){
           downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0, start: track.start, air: !!track.air } : null,
         shift: off.slice(),
         /* people on deck (not followed as loads) */
-        people: people.filter(p => p.n >= 3).map(p => ({ box: toFrame(p.box) })),
+        people: lastT - seenPeople.t <= 1.2 && seenPeople.list.length ? seenPeople.list.map(p => ({ box: p, src: 'detector' }))
+          : people.filter(p => p.n >= 3).map(p => ({ box: toFrame(p.box) })),
       };
     },
     takeEvents(){ return events.splice(0); },
+    /* people from the object detector: [{x, y, w, h}] in frame fractions, seen at time t */
+    setPeople(list, t){ seenPeople = { t, list: (list || []).map(p => ({ x: +p.x, y: +p.y, w: +p.w, h: +p.h })) }; },
     setZone(z, widthM){ O.zone = Array.isArray(z) && z.length >= 3 ? z.map(p => [+p[0], +p[1]]) : null; O.widthM = typeof widthM === 'function' ? widthM : null; zoneTop = O.zone ? Math.min(...O.zone.map(p => p[1])) : 0; },
     /* the video ended or was stopped: close the lock (a load set down counts as landed) */
     flush(){ if(track) finish(this._t || 0, 'stopped'); return events.splice(0); },

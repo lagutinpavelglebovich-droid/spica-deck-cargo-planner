@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod shared_sync;
+mod vision;
 mod store;
 mod license;
 
@@ -434,6 +435,10 @@ fn main() {
             take_open_files,
             license_status,
             license_install,
+            vision::vision_status,
+            vision::vision_ocr,
+            vision::vision_detect,
+            vision::vision_bench,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

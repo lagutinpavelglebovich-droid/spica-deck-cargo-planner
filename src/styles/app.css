@@ -18604,3 +18604,6 @@ body.pdf-capture .cb-cam-lift-badge{ display:none; }
 .cb-cam-lift-badge button:hover{ background:color-mix(in srgb, var(--cam-lift-ink) 28%, transparent); }
 .cb-cam-lift-badge button:focus-visible{ outline:2px solid var(--cam-lift-ink); outline-offset:1px; }
 
+/* v3.41 — which recognition engine Watch lifts uses */
+.dc-w-eng{ font-size:11px; color:var(--txt2, var(--txt)); opacity:.75; margin:-2px 0 4px; }
+.dc-w-eng:empty{ display:none; }

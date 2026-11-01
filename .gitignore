@@ -25,3 +25,7 @@ src-tauri/gen/
 *.pem
 licences-issued.csv
 Decargo-License/
+
+# v3.41 — native vision pack (runtime DLLs + models), built by tools/vision/fetch-vision.py
+src-tauri/vision/*
+!src-tauri/vision/README.md
