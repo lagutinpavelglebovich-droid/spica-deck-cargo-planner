@@ -20,17 +20,30 @@ use ort::value::Tensor;
 use serde::Serialize;
 use tauri::Manager;
 
-struct Engine {
-    device: String,
-    det: Option<Session>,
-    rec: Option<Session>,
+/* number reading and the people detector are separate, each behind its own
+   lock, so they run side by side on different cores */
+struct Ocr {
+    det: Session,
+    rec: Session,
     keys: Vec<String>,
-    obj: Option<Session>,
-    obj_res: usize,
+    device: String,
+}
+struct Obj {
+    s: Session,
+    res: usize,
     labels: Vec<String>,
+    device: String,
+}
+struct Engine {
+    ocr: Mutex<Option<Ocr>>,
+    obj: Mutex<Option<Obj>>,
+    models: PathBuf,
+    cache: PathBuf,
+    conf: PathBuf,
+    openvino: bool,
 }
 
-static ENGINE: OnceLock<Mutex<Result<Engine, String>>> = OnceLock::new();
+static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 static BASE: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Serialize, Clone)]
@@ -89,11 +102,16 @@ fn runtime_lib(dir: &Path) -> Option<PathBuf> {
     })
 }
 
-/// Which OpenVINO device to ask for: DECARGO_VISION_DEVICE, else CPU (the
-/// bridge PC's 20-core CPU beats its small iGPU on these models; `vision_bench`
-/// measures both).
-fn wanted_device() -> String {
-    std::env::var("DECARGO_VISION_DEVICE").unwrap_or_else(|_| "CPU".into())
+/// The device each part uses ("CPU" / "GPU"), saved by the speed test in
+/// vision.json next to the app's settings. Default CPU; DECARGO_VISION_DEVICE
+/// overrides both.
+fn devices(conf: &Path) -> (String, String) {
+    if let Ok(d) = std::env::var("DECARGO_VISION_DEVICE") {
+        return (d.clone(), d);
+    }
+    let v: serde_json::Value = std::fs::read_to_string(conf).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let pick = |k: &str| v[k].as_str().filter(|d| *d == "CPU" || d.starts_with("GPU")).unwrap_or("CPU").to_string();
+    (pick("ocr"), pick("detector"))
 }
 
 fn session(path: &Path, device: &str, cache: &Path, openvino: bool) -> Result<Session, String> {
@@ -109,49 +127,24 @@ fn session(path: &Path, device: &str, cache: &Path, openvino: bool) -> Result<Se
     b.commit_from_file(path).map_err(|e| e.to_string())
 }
 
-fn load(base: &Path) -> Result<Engine, String> {
-    let rt = base.join("runtime");
-    let models = base.join("models");
-    let lib = runtime_lib(&rt).ok_or_else(|| format!("no ONNX Runtime in {}", rt.display()))?;
-    /* the OpenVINO provider and its plugins sit next to onnxruntime: let Windows find them */
-    if cfg!(windows) {
-        let path = std::env::var("PATH").unwrap_or_default();
-        std::env::set_var("PATH", format!("{};{}", rt.display(), path));
-    }
-    ort::init_from(&lib).map_err(|e| format!("ONNX Runtime: {e}"))?.with_name("decargo-vision").commit();
-    let cache = dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("Decargo").join("vision-cache");
-    let _ = std::fs::create_dir_all(&cache);
-    let dev = wanted_device();
-    /* OpenVINO first; if it cannot start on this machine, the plain CPU provider */
-    let mut openvino = std::env::var("DECARGO_VISION_EP").map(|v| v != "cpu").unwrap_or(true);
-    let mut device = format!("OpenVINO {dev}");
-    let mut open = |name: &str| -> Result<Option<Session>, String> {
-        let p = models.join(name);
-        if !p.exists() {
-            return Ok(None);
-        }
-        if openvino {
-            match session(&p, &dev, &cache, true) {
-                Ok(s) => return Ok(Some(s)),
-                Err(e) => {
-                    eprintln!("[vision] OpenVINO unavailable ({e}); using the CPU provider");
-                    openvino = false;
-                }
-            }
-        }
-        session(&p, &dev, &cache, false).map(Some)
-    };
-    let det = open("ocr-det.onnx")?;
-    let rec = open("ocr-rec.onnx")?;
-    let obj = open("detector.onnx")?;
-    if !openvino {
-        device = "CPU".into();
+fn open_ocr(models: &Path, cache: &Path, openvino: bool, dev: &str) -> Result<Option<Ocr>, String> {
+    let (d, r) = (models.join("ocr-det.onnx"), models.join("ocr-rec.onnx"));
+    if !d.exists() || !r.exists() {
+        return Ok(None);
     }
     let keys = std::fs::read_to_string(models.join("ocr-keys.txt")).unwrap_or_default();
     let mut kv: Vec<String> = vec!["blank".into()];
     kv.extend(keys.lines().map(|l| l.to_string()));
     kv.push(" ".into());
-    let (obj_res, labels) = std::fs::read_to_string(models.join("detector.json"))
+    Ok(Some(Ocr { det: session(&d, dev, cache, openvino)?, rec: session(&r, dev, cache, openvino)?, keys: kv, device: if openvino { dev.to_string() } else { "CPU".into() } }))
+}
+
+fn open_obj(models: &Path, cache: &Path, openvino: bool, dev: &str) -> Result<Option<Obj>, String> {
+    let p = models.join("detector.onnx");
+    if !p.exists() {
+        return Ok(None);
+    }
+    let (res, labels) = std::fs::read_to_string(models.join("detector.json"))
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .map(|v| {
@@ -169,14 +162,68 @@ fn load(base: &Path) -> Result<Engine, String> {
             (res, l)
         })
         .unwrap_or((512, vec![]));
-    if det.is_none() && obj.is_none() {
-        return Err(format!("no models in {}", models.display()));
-    }
-    Ok(Engine { device, det, rec, keys: kv, obj, obj_res, labels })
+    Ok(Some(Obj { s: session(&p, dev, cache, openvino)?, res, labels, device: if openvino { dev.to_string() } else { "CPU".into() } }))
 }
 
-fn engine(app: &tauri::AppHandle) -> &'static Mutex<Result<Engine, String>> {
-    ENGINE.get_or_init(|| Mutex::new(load(&base_dir(app))))
+fn load(base: &Path, conf: PathBuf) -> Result<Engine, String> {
+    let rt = base.join("runtime");
+    let models = base.join("models");
+    let lib = runtime_lib(&rt).ok_or_else(|| format!("no ONNX Runtime in {}", rt.display()))?;
+    /* the OpenVINO provider and its plugins sit next to onnxruntime: let Windows find them */
+    if cfg!(windows) {
+        let path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{};{}", rt.display(), path));
+    }
+    ort::init_from(&lib).map_err(|e| format!("ONNX Runtime: {e}"))?.with_name("decargo-vision").commit();
+    let cache = dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("Decargo").join("vision-cache");
+    let _ = std::fs::create_dir_all(&cache);
+    let (d_ocr, d_obj) = devices(&conf);
+    let mut openvino = std::env::var("DECARGO_VISION_EP").map(|v| v != "cpu").unwrap_or(true);
+    /* OpenVINO first (on the saved device, then its CPU); if it cannot start
+       on this machine, the plain CPU provider */
+    let mut try_part = |f: &dyn Fn(bool, &str) -> Result<bool, String>, dev: &str| -> Result<(), String> {
+        if openvino {
+            if f(true, dev).is_ok() {
+                return Ok(());
+            }
+            if dev != "CPU" && f(true, "CPU").is_ok() {
+                return Ok(());
+            }
+            eprintln!("[vision] OpenVINO unavailable; using the CPU provider");
+            openvino = false;
+        }
+        f(false, "CPU").map(|_| ())
+    };
+    let ocr: Mutex<Option<Ocr>> = Mutex::new(None);
+    let obj: Mutex<Option<Obj>> = Mutex::new(None);
+    try_part(&|ov, dev| open_ocr(&models, &cache, ov, dev).map(|o| { let some = o.is_some(); *ocr.lock().unwrap() = o; some }), &d_ocr)?;
+    try_part(&|ov, dev| open_obj(&models, &cache, ov, dev).map(|o| { let some = o.is_some(); *obj.lock().unwrap() = o; some }), &d_obj)?;
+    if ocr.lock().unwrap().is_none() && obj.lock().unwrap().is_none() {
+        return Err(format!("no models in {}", models.display()));
+    }
+    Ok(Engine { ocr, obj, models, cache, conf, openvino })
+}
+
+fn engine(app: &tauri::AppHandle) -> Result<&'static Engine, String> {
+    ENGINE
+        .get_or_init(|| {
+            let conf = app.path().app_config_dir().map(|d| d.join("vision.json")).unwrap_or_else(|_| PathBuf::from("vision.json"));
+            load(&base_dir(app), conf)
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
+}
+
+fn device_text(e: &Engine) -> String {
+    let o = e.ocr.lock().unwrap().as_ref().map(|o| o.device.clone());
+    let d = e.obj.lock().unwrap().as_ref().map(|d| d.device.clone());
+    let base = if e.openvino { "OpenVINO" } else { "ONNX Runtime" };
+    match (o, d) {
+        (Some(a), Some(b)) if a == b => format!("{base} {a}"),
+        (Some(a), Some(b)) => format!("{base} · reading {a} · people {b}"),
+        (Some(a), None) | (None, Some(a)) => format!("{base} {a}"),
+        _ => base.into(),
+    }
 }
 
 /* ── pixels ────────────────────────────────────────────────── */
@@ -427,11 +474,8 @@ fn recognise(rec: &mut Session, keys: &[String], img: &Img, b: &TBox, flip: bool
     Ok((text, if cnt > 0 { sc / cnt as f32 } else { 0.0 }))
 }
 
-fn read_text(e: &mut Engine, img: &Img, both: bool, max: usize) -> Result<Vec<TextHit>, String> {
-    let (det, rec) = match (e.det.as_mut(), e.rec.as_mut()) {
-        (Some(d), Some(r)) => (d, r),
-        _ => return Err("OCR models missing".into()),
-    };
+fn read_text(e: &mut Ocr, img: &Img, both: bool, max: usize) -> Result<Vec<TextHit>, String> {
+    let (det, rec) = (&mut e.det, &mut e.rec);
     let boxes = detect_text(det, img)?;
     let mut res = vec![];
     for b in boxes.iter().take(max) {
@@ -446,9 +490,9 @@ fn read_text(e: &mut Engine, img: &Img, both: bool, max: usize) -> Result<Vec<Te
 }
 
 /* ── objects: RF-DETR (cx, cy, w, h normalised; sigmoid class scores) ── */
-fn detect_objects(e: &mut Engine, img: &Img, min_score: f32) -> Result<Vec<ObjHit>, String> {
-    let r = e.obj_res;
-    let obj = e.obj.as_mut().ok_or("detector model missing")?;
+fn detect_objects(e: &mut Obj, img: &Img, min_score: f32) -> Result<Vec<ObjHit>, String> {
+    let r = e.res;
+    let obj = &mut e.s;
     let data = img.tensor(r, r, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225], false);
     let t = Tensor::from_array(([1usize, 3, r, r], data)).map_err(|e| e.to_string())?;
     let out = obj.run(ort::inputs![t]).map_err(|e| e.to_string())?;
@@ -502,12 +546,9 @@ fn frame(req: &tauri::ipc::Request) -> Result<(Vec<u8>, usize, usize), String> {
 #[tauri::command]
 pub async fn vision_status(app: tauri::AppHandle) -> Status {
     let dir = base_dir(&app);
-    tauri::async_runtime::spawn_blocking(move || {
-        let g = engine(&app).lock().unwrap();
-        match &*g {
-            Ok(e) => Status { ok: true, device: e.device.clone(), error: String::new(), ocr: e.det.is_some() && e.rec.is_some(), detector: e.obj.is_some(), dir: dir.display().to_string() },
-            Err(err) => Status { ok: false, device: String::new(), error: err.clone(), ocr: false, detector: false, dir: dir.display().to_string() },
-        }
+    tauri::async_runtime::spawn_blocking(move || match engine(&app) {
+        Ok(e) => Status { ok: true, device: device_text(e), error: String::new(), ocr: e.ocr.lock().unwrap().is_some(), detector: e.obj.lock().unwrap().is_some(), dir: dir.display().to_string() },
+        Err(err) => Status { ok: false, device: String::new(), error: err, ocr: false, detector: false, dir: dir.display().to_string() },
     })
     .await
     .unwrap_or(Status { ok: false, device: String::new(), error: "vision thread failed".into(), ocr: false, detector: false, dir: String::new() })
@@ -518,9 +559,10 @@ pub async fn vision_ocr(app: tauri::AppHandle, request: tauri::ipc::Request<'_>)
     let (px, w, h) = frame(&request)?;
     let both = request.headers().get("x-both").map(|v| v != "0").unwrap_or(true);
     tauri::async_runtime::spawn_blocking(move || {
-        let mut g = engine(&app).lock().unwrap();
-        let e = g.as_mut().map_err(|e| e.clone())?;
-        read_text(e, &Img { px: &px, w, h }, both, 40)
+        let e = engine(&app)?;
+        let mut g = e.ocr.lock().unwrap();
+        let o = g.as_mut().ok_or("OCR models missing")?;
+        read_text(o, &Img { px: &px, w, h }, both, 40)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -531,41 +573,114 @@ pub async fn vision_detect(app: tauri::AppHandle, request: tauri::ipc::Request<'
     let (px, w, h) = frame(&request)?;
     let min = request.headers().get("x-min").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.35);
     tauri::async_runtime::spawn_blocking(move || {
-        let mut g = engine(&app).lock().unwrap();
-        let e = g.as_mut().map_err(|e| e.clone())?;
-        detect_objects(e, &Img { px: &px, w, h }, min)
+        let e = engine(&app)?;
+        let mut g = e.obj.lock().unwrap();
+        let d = g.as_mut().ok_or("detector model missing")?;
+        detect_objects(d, &Img { px: &px, w, h }, min)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Times each model on this machine (ms per run, after a warm-up).
+/* the speed test: typical work for each part (one 512 px detector pass; one
+   text search on a 640×224 crop plus 8 line reads, both directions) */
+fn time_obj(d: &mut Obj, img: &Img) -> Result<f64, String> {
+    detect_objects(d, img, 0.99)?;
+    let t = Instant::now();
+    for _ in 0..3 {
+        detect_objects(d, img, 0.99)?;
+    }
+    Ok(t.elapsed().as_secs_f64() * 1000.0 / 3.0)
+}
+fn time_ocr(o: &mut Ocr, img: &Img) -> Result<f64, String> {
+    let b = TBox { cx: 160.0, cy: 112.0, w: 240.0, h: 40.0, a: 0.0 };
+    let run = |o: &mut Ocr| -> Result<(), String> {
+        detect_text(&mut o.det, img)?;
+        for _ in 0..8 {
+            recognise(&mut o.rec, &o.keys, img, &b, false)?;
+        }
+        Ok(())
+    };
+    run(o)?;
+    let t = Instant::now();
+    for _ in 0..2 {
+        run(o)?;
+    }
+    Ok(t.elapsed().as_secs_f64() * 1000.0 / 2.0)
+}
+
+/// Times both parts on this computer's CPU and — with OpenVINO — its graphics
+/// chip, keeps the faster device for each, and remembers the choice.
 #[tauri::command]
 pub async fn vision_bench(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut g = engine(&app).lock().unwrap();
-        let e = g.as_mut().map_err(|e| e.clone())?;
-        let (w, h) = (960usize, 960usize);
-        let px: Vec<u8> = (0..w * h * 4).map(|i| ((i * 7919) % 251) as u8).collect();
-        let img = Img { px: &px, w, h };
-        let mut out = serde_json::json!({ "device": e.device });
-        if e.obj.is_some() {
-            detect_objects(e, &img, 0.99)?;
-            let t = Instant::now();
-            for _ in 0..3 {
-                detect_objects(e, &img, 0.99)?;
+        let e = engine(&app)?;
+        let pic = |w: usize, h: usize| -> Vec<u8> { (0..w * h * 4).map(|i| { let (x, y) = (i / 4 % w, i / 4 / w); (((x / 7) ^ (y / 5)) * 37 % 256) as u8 }).collect() };
+        let (p512, p640) = (pic(512, 512), pic(640, 224));
+        let (i512, i640) = (Img { px: &p512, w: 512, h: 512 }, Img { px: &p640, w: 640, h: 224 });
+        let devs: Vec<&str> = if e.openvino { vec!["CPU", "GPU"] } else { vec!["CPU"] };
+        let mut out = serde_json::json!({});
+        let mut chosen = serde_json::json!({});
+        /* people detector */
+        if e.obj.lock().unwrap().is_some() {
+            let mut best: Option<(f64, Obj)> = None;
+            for dev in &devs {
+                let part = if *dev == e.obj.lock().unwrap().as_ref().map(|d| d.device.clone()).unwrap_or_default() {
+                    e.obj.lock().unwrap().take()
+                } else {
+                    open_obj(&e.models, &e.cache, e.openvino, dev).ok().flatten()
+                };
+                if let Some(mut p) = part {
+                    match time_obj(&mut p, &i512) {
+                        Ok(ms) => {
+                            out["detector"][*dev] = serde_json::json!(ms.round());
+                            if best.as_ref().map(|b| ms < b.0).unwrap_or(true) {
+                                best = Some((ms, p));
+                            }
+                        }
+                        Err(err) => out["detector"][*dev] = serde_json::json!(err),
+                    }
+                }
             }
-            out["detector_ms"] = serde_json::json!(t.elapsed().as_millis() as f64 / 3.0);
-        }
-        if e.det.is_some() && e.rec.is_some() {
-            let crop = Img { px: &px[..320 * 320 * 4], w: 320, h: 320 };
-            read_text(e, &crop, false, 4)?;
-            let t = Instant::now();
-            for _ in 0..3 {
-                read_text(e, &crop, true, 8)?;
+            if let Some((ms, p)) = best {
+                chosen["detector"] = serde_json::json!(p.device);
+                out["detector_ms"] = serde_json::json!(ms.round());
+                *e.obj.lock().unwrap() = Some(p);
             }
-            out["ocr_ms"] = serde_json::json!(t.elapsed().as_millis() as f64 / 3.0);
         }
+        /* number reading */
+        if e.ocr.lock().unwrap().is_some() {
+            let mut best: Option<(f64, Ocr)> = None;
+            for dev in &devs {
+                let part = if *dev == e.ocr.lock().unwrap().as_ref().map(|o| o.device.clone()).unwrap_or_default() {
+                    e.ocr.lock().unwrap().take()
+                } else {
+                    open_ocr(&e.models, &e.cache, e.openvino, dev).ok().flatten()
+                };
+                if let Some(mut p) = part {
+                    match time_ocr(&mut p, &i640) {
+                        Ok(ms) => {
+                            out["ocr"][*dev] = serde_json::json!(ms.round());
+                            if best.as_ref().map(|b| ms < b.0).unwrap_or(true) {
+                                best = Some((ms, p));
+                            }
+                        }
+                        Err(err) => out["ocr"][*dev] = serde_json::json!(err),
+                    }
+                }
+            }
+            if let Some((ms, p)) = best {
+                chosen["ocr"] = serde_json::json!(p.device);
+                out["ocr_ms"] = serde_json::json!(ms.round());
+                *e.ocr.lock().unwrap() = Some(p);
+            }
+        }
+        if let Some(d) = e.conf.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        let _ = std::fs::write(&e.conf, serde_json::to_string_pretty(&chosen).unwrap_or_default());
+        out["device"] = serde_json::json!(device_text(e));
+        out["chosen"] = chosen;
         Ok(out)
     })
     .await
@@ -589,33 +704,39 @@ mod tests {
     #[test]
     fn engine_reads_and_detects() {
         let Ok(dir) = std::env::var("DECARGO_VISION_DIR") else { return };
-        let mut e = load(Path::new(&dir)).expect("engine");
-        eprintln!("device {}", e.device);
+        let e = load(Path::new(&dir), std::env::temp_dir().join("decargo-vision-test.json")).expect("engine");
+        eprintln!("device {}", device_text(&e));
+        let mut og = e.ocr.lock().unwrap();
+        let mut dg = e.obj.lock().unwrap();
         /* CI on Windows: the OpenVINO build must start, and every model must run */
         if std::env::var("DECARGO_EXPECT_OPENVINO").is_ok() {
-            assert!(e.device.starts_with("OpenVINO"), "OpenVINO did not start: {}", e.device);
-            assert!(e.det.is_some() && e.rec.is_some() && e.obj.is_some(), "a model is missing");
+            assert!(e.openvino, "OpenVINO did not start: {}", device_text(&e));
+            assert!(og.is_some() && dg.is_some(), "a model is missing");
             let (w, h) = (640usize, 480usize);
             let px: Vec<u8> = (0..w * h * 4).map(|i| ((i / 4 % w) as u8) ^ ((i / 4 / w) as u8)).collect();
             let img = Img { px: &px, w, h };
             let t = Instant::now();
-            read_text(&mut e, &img, true, 8).expect("ocr runs");
-            detect_objects(&mut e, &img, 0.5).expect("detector runs");
+            read_text(og.as_mut().unwrap(), &img, true, 8).expect("ocr runs");
+            detect_objects(dg.as_mut().unwrap(), &img, 0.5).expect("detector runs");
             eprintln!("synthetic run ok in {} ms", t.elapsed().as_millis());
         }
-        if let Ok(p) = std::env::var("DECARGO_TEST_OCR") {
+        if let (Ok(p), Some(o)) = (std::env::var("DECARGO_TEST_OCR"), og.as_mut()) {
             let (px, w, h) = rgba(&p);
-            read_text(&mut e, &Img { px: &px, w, h }, true, 40).unwrap();
+            read_text(o, &Img { px: &px, w, h }, true, 40).unwrap();
             let t = Instant::now();
-            let r = read_text(&mut e, &Img { px: &px, w, h }, true, 40).unwrap();
+            let r = read_text(o, &Img { px: &px, w, h }, true, 40).unwrap();
             eprintln!("ocr (warm) {} ms: {:?}", t.elapsed().as_millis(), r.iter().map(|x| (x.text.clone(), (x.score * 100.0).round())).collect::<Vec<_>>());
         }
-        if let Ok(p) = std::env::var("DECARGO_TEST_DET") {
+        if let (Ok(p), Some(d)) = (std::env::var("DECARGO_TEST_DET"), dg.as_mut()) {
             let (px, w, h) = rgba(&p);
-            detect_objects(&mut e, &Img { px: &px, w, h }, 0.35).unwrap();
+            detect_objects(d, &Img { px: &px, w, h }, 0.35).unwrap();
             let t = Instant::now();
-            let r = detect_objects(&mut e, &Img { px: &px, w, h }, 0.35).unwrap();
+            let r = detect_objects(d, &Img { px: &px, w, h }, 0.35).unwrap();
             eprintln!("det {} ms: {:?}", t.elapsed().as_millis(), r.iter().map(|x| (x.label.clone(), (x.score * 100.0).round(), x.x as i32, x.y as i32, x.w as i32, x.h as i32)).collect::<Vec<_>>());
+        }
+        if let (Some(o), Some(d)) = (og.as_mut(), dg.as_mut()) {
+            let (p512, p640): (Vec<u8>, Vec<u8>) = ((0..512 * 512 * 4).map(|i| (i % 251) as u8).collect(), (0..640 * 224 * 4).map(|i| (i % 241) as u8).collect());
+            eprintln!("bench: detector {:.0} ms, reading {:.0} ms", time_obj(d, &Img { px: &p512, w: 512, h: 512 }).unwrap(), time_ocr(o, &Img { px: &p640, w: 640, h: 224 }).unwrap());
         }
     }
 }

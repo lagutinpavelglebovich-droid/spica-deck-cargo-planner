@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.41.1',
+    date: '2026-11-01',
+    highlights: [ 'Number reading and the people detector run side by side', 'Speed test picks CPU or graphics chip for each' ],
+    changes: [
+      { type: 'improvement', text: 'Recognition: number reading and the people detector no longer wait for each other — they run at the same time on different cores' },
+      { type: 'feature', text: 'Speed test now times the CPU and the graphics chip for each part, keeps the faster one and remembers it' },
+      { type: 'ui', text: 'Watch lifts: the label over the load says "no number seen" after three tries instead of "reading…" for ever' },
+    ],
+  },
+  {
     version: '3.41.0',
     date: '2026-11-01',
     highlights: [ 'New recognition engine built into the app (Intel OpenVINO)', 'Stronger number reading (PP-OCRv5) and a real people detector' ],

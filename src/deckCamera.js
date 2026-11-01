@@ -820,7 +820,7 @@ function drawOverlay(){
       const br = (px, py, dx, dy) => `M${(px + dx * k).toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${(py + dy * k).toFixed(1)}`;
       out += `<path class="dc-w-lock${down ? ' down' : ''}" d="${br(x, y, 1, 1)}${br(x + w, y, -1, 1)}${br(x, y + h, 1, -1)}${br(x + w, y + h, -1, -1)}"/>`;
       const rd = bestReading(tr.id);
-      const lab = (rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : 'reading…') + (fp ? '  →  ' + whereOf(fp) : '');
+      const lab = (rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : rd && rd.n >= 3 ? 'no number seen' : 'reading…') + (fp ? '  →  ' + whereOf(fp) : '');
       out += `<text class="dc-w-lab" x="${x.toFixed(1)}" y="${Math.max(12, y - 7).toFixed(1)}">${esc(lab)}</text>`;
     }
   }
@@ -1765,10 +1765,13 @@ function watchRender(quick){
         /* how fast it is on this computer */
         const b = el('button', 'dc-an-time dc-w-bench', 'Speed test'); b.type = 'button';
         b.addEventListener('click', async () => {
-          b.disabled = true; b.textContent = 'testing…';
+          b.disabled = true; b.textContent = 'testing CPU and graphics chip… (the first time takes up to a minute)';
           try{
-            const r = await API.invoke('vision_bench');
-            b.textContent = [r.detector_ms != null ? `people ${Math.round(r.detector_ms)} ms` : '', r.ocr_ms != null ? `reading ${Math.round(r.ocr_ms)} ms` : ''].filter(Boolean).join(' · ') || 'done';
+            const r = await API.invoke('vision_bench'), ch = r.chosen || {};
+            const both = k => r[k] ? Object.entries(r[k]).map(([d, v]) => `${d} ${typeof v === 'number' ? v + ' ms' : '—'}`).join(', ') : '';
+            b.textContent = [r.detector_ms != null ? `people ${Math.round(r.detector_ms)} ms on ${ch.detector || '?'}` : '', r.ocr_ms != null ? `reading ${Math.round(r.ocr_ms)} ms on ${ch.ocr || '?'}` : ''].filter(Boolean).join(' · ') || 'done';
+            b.title = `People: ${both('detector')}\nReading: ${both('ocr')}\nThe faster one is kept and remembered.`;
+            if(r.device) tx.textContent = `Recognition: ${r.device} · PP-OCRv5 · people detector`;
           }catch(e){ b.textContent = 'test failed'; b.title = String(e && e.message || e); }
           b.disabled = false;
         });
