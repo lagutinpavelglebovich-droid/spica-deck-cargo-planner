@@ -173,7 +173,7 @@ function renderMap(){
   const box = DC.ov.querySelector('#dcMap'); if(!box) return;
   const selG = DC.sel >= GH ? DC.guides[Math.floor((DC.sel - GH) / 3)] : null;
   const feat = DC.drawing ? DC.drawing.f : selG ? selG.f : '';
-  const sig = [DC.step, DC.placing, DC.line, DC.pts.map(p => p ? 1 : 0).join(''), DC.extra.map(e => e.bay).join(','), DC.guides.map(g => g.f).join(','), feat].join('|');
+  const sig = [DC.step, DC.placing, DC.line, DC.pts.map(p => p ? 1 : 0).join(''), DC.extra.map(e => e.bay).join(','), DC.guides.map(g => g.f).join(','), feat, DC.H ? 1 : 0, DC.diag ? DC.diag.kind + DC.diag.key + DC.diag.i : ''].join('|');
   if(box._sig === sig) return;   /* drawOverlay runs per video frame */
   box._sig = sig;
   const g = DC.geo, L = g.bays.reduce((a, b) => a + b, 0) + g.joint * (g.bays.length - 1), Wm = g.width;
@@ -208,8 +208,10 @@ function renderMap(){
   box.innerHTML = o + '</svg>';
   const cap = DC.ov.querySelector('#dcMapCap');
   if(cap){
+    cap.classList.toggle('warn', !DC.drawing && DC.placing < 0 && !DC.H && (DC.cons || []).length > 0 && (DC.step >= 4 || !!DC.diag));
     cap.textContent = DC.drawing ? `Draw along: ${featLine(g, DC.drawing.f).name} (highlighted on the map) — press, drag along it, release`
       : DC.placing >= 0 ? `Click the middle of Bay ${g.labels[DC.placing]} on the centreline (its painted number)`
+      : !DC.H && (DC.cons || []).length && (DC.step >= 4 || DC.diag) ? fitProblem()
       : DC.step < 4 ? `Click ${stepTexts()[DC.step][1]}`
       : DC.pts.every(Boolean) ? 'All 4 points placed. Check that the drawn bay lines sit on the deck joints in the picture; drag a point to correct it.'
       : 'Check that the drawn deck sits on the picture. Drag any point or line handle to correct it, add guide lines, or click a corner step to place it.';
@@ -370,6 +372,7 @@ function buildPanel(){
           </section>
         </div>
         <footer class="dc-foot">
+          <div class="dc-save-why dc-pane" data-pane="calib" id="dcSaveWhy" aria-live="polite"></div>
           <button type="button" class="dc-btn dc-quiet" id="dcCancel">Close</button>
           <button type="button" class="dc-btn dc-primary dc-pane" data-pane="calib" id="dcSave" disabled>Save calibration</button>
         </footer>
@@ -666,6 +669,71 @@ function missingText(){
   return 'These points and lines do not fix the deck yet — add a cross line (a bay joint) away from the ones you have.';
 }
 
+/* enough points and lines, but no deck fits them all: find what does not fit —
+   two points swapped (the usual slip: PORT is on the RIGHT in a bridge view),
+   or one point / line that disagrees with the rest */
+function diagnoseFit(){
+  const cons = DC.cons || constraints();
+  const key = JSON.stringify(cons.map(c => [c.id, c.img])) + '|' + DC.k + '|' + DC.line;
+  if(DC.diagKey === key) return DC.diag;
+  DC.diagKey = key;
+  const geo = geoLen(DC.geo), a = aspect();
+  const fits = cs => equationCount(cs) >= 8 && !!solveH(cs, geo, DC.k, a);
+  const imgOf = id => (cons.find(c => c.id === id) || {}).img;
+  for(const [i, j] of [[2, 3], [0, 1], [0, 2], [1, 3]]){
+    if(!DC.pts[i] || !DC.pts[j]) continue;
+    if(fits(cons.map(c => c.id === i ? Object.assign({}, c, { img: imgOf(j) }) : c.id === j ? Object.assign({}, c, { img: imgOf(i) }) : c))) return { kind: 'swap', i, j };
+  }
+  const groups = [];
+  DC.pts.forEach((p, i) => { if(p) groups.push({ key: i, ids: [i] }); });
+  DC.extra.forEach((e, k) => groups.push({ key: 4 + k, ids: [4 + k] }));
+  DC.guides.forEach((g, gi) => groups.push({ key: 'g' + gi, ids: [GH + gi * 3, GH + gi * 3 + 1, GH + gi * 3 + 2] }));
+  for(const gr of groups) if(fits(cons.filter(c => !gr.ids.includes(c.id)))) return { kind: 'one', key: gr.key };
+  return { kind: 'none' };
+}
+function itemName(key){
+  if(typeof key === 'number' && key < 4) return `Point ${key + 1} (${stepTexts()[key][0]})`;
+  if(typeof key === 'number'){ const e = DC.extra[key - 4]; return e ? `The Bay ${DC.geo.labels[e.bay]} centre point` : 'A bay centre point'; }
+  const g = DC.guides[+String(key).slice(1)], f = g && featLine(DC.geo, g.f);
+  return `The guide line "${f ? f.name : '?'}"`;
+}
+/* why the drawn deck does not appear yet — and what to do */
+function fitProblem(){
+  const d = DC.diag;
+  if(!d) return missingText();
+  if(d.kind === 'swap'){
+    const t = stepTexts(), sides = d.j === d.i + 1 && d.i % 2 === 0;
+    return sides ? `Points ${d.i + 1} and ${d.j + 1} are on the wrong sides: ${d.i + 1} goes on the PORT side, ${d.j + 1} on STARBOARD. In this view PORT is on the RIGHT (see the map). Press "Swap ${d.i + 1} ↔ ${d.j + 1}" below.`
+      : `Points ${d.i + 1} and ${d.j + 1} are swapped: ${d.i + 1} is "${t[d.i][0]}", ${d.j + 1} is "${t[d.j][0]}". Press "Swap ${d.i + 1} ↔ ${d.j + 1}" below.`;
+  }
+  if(d.kind === 'one') return `${itemName(d.key)} does not fit the others — drag it onto its spot, or remove it (✕). It is marked red in the list.`;
+  return 'The points and lines contradict each other. Check each one is on its spot: STERN at the top of the map, PORT on the right.';
+}
+/* the line beside "Save calibration": what is missing before it can be saved */
+function saveWhy(H){
+  const box = DC.ov.querySelector('#dcSaveWhy'); if(!box) return;
+  const cons = DC.cons || [], n = equationCount(cons);
+  let txt = '', bad = false, act = '';
+  if(!API.isOperator()){ txt = 'Viewer mode — switch to Operator to save'; bad = true; }
+  else if(H){ txt = DC.dirty ? 'Ready to save' : 'Saved — nothing changed'; }
+  else if(!cons.length){ txt = 'To save: place the 4 points (or draw guide lines)'; bad = true; }
+  else if(n < 8 || !DC.diag){ txt = 'To save: ' + missingText(); bad = true; }
+  else{
+    bad = true;
+    txt = DC.diag.kind === 'swap' ? `Can't save: points ${DC.diag.i + 1} and ${DC.diag.j + 1} are swapped`
+      : DC.diag.kind === 'one' ? `Can't save: ${itemName(DC.diag.key).replace(/^The /, 'the ')} does not fit`
+      : 'Can\'t save: points and lines contradict each other';
+    if(DC.diag.kind === 'swap') act = `<button type="button" class="dc-btn dc-sm" id="dcSwap">Swap ${DC.diag.i + 1} ↔ ${DC.diag.j + 1}</button>`;
+  }
+  const html = `<span>${esc(txt)}</span>${act}`;
+  if(box._html !== html){ box._html = html; box.innerHTML = html; }
+  box.classList.toggle('bad', bad); box.classList.toggle('ok', !bad && !!H && DC.dirty);
+}
+function swapPts(i, j){
+  const t = DC.pts[i]; DC.pts[i] = DC.pts[j]; DC.pts[j] = t;
+  DC.sel = -1; DC.dirty = true; renderSteps(); drawOverlay();
+}
+
 function drawOverlay(){
   if(!DC) return;
   const svg = DC.ov.querySelector('#dcSvg');
@@ -674,6 +742,7 @@ function drawOverlay(){
   const showGrid = DC.ov.querySelector('#dcOvGrid').checked;
   const showCargo = DC.ov.querySelector('#dcOvCargo').checked;
   const MDL = currentModel(), H = MDL && MDL.H;
+  DC.diag = !H && equationCount(DC.cons) >= 8 ? diagnoseFit() : null;
   const P = (X, Y) => { const p = MDL && MDL.toImage(X, Y); return p && Math.abs(p[0]) < 4 && Math.abs(p[1]) < 4 ? [p[0] * W, p[1] * Hh] : null; };
   const poly = pts => pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
   let out = '';
@@ -727,6 +796,12 @@ function drawOverlay(){
       const c = Pn(e.fp.centre[0], e.fp.centre[1]);
       out += `<polygon class="dc-w-past ${e.kind}" points="${pg}" style="opacity:${(1 - i * 0.13).toFixed(2)}"/>`;
       if(c) out += `<text class="dc-w-past-t" x="${c[0].toFixed(1)}" y="${c[1].toFixed(1)}">${esc(e.reading && e.reading.text ? e.reading.text : e.kind === 'landed' ? 'set down' : 'lifted')}</text>`;
+    });
+    /* people on deck: shown as people, never followed as loads */
+    ((DC.w.st && DC.w.st.people) || []).forEach(p => {
+      const x = p.box.x * W, y = p.box.y * Hh, w = p.box.w * W, h = p.box.h * Hh;
+      out += `<rect class="dc-w-person" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3"/>`;
+      out += `<text class="dc-w-person-t" x="${(x + w / 2).toFixed(1)}" y="${Math.max(10, y - 4).toFixed(1)}">Person</text>`;
     });
     const tr = DC.w.st && DC.w.st.track;
     if(tr){
@@ -787,10 +862,12 @@ function drawOverlay(){
   const worst = H && over && resM.size ? Math.max(...resM.values()) : null;
   st.textContent = H
     ? '· ready' + (worst != null ? ` · worst ${fmtRes(worst)}` : '') + (isIdentityT(DC.tf) ? '' : ' · fine-tuned')
-    : `· ${equationCount(DC.cons || [])} of 8`;
-  st.title = H ? '' : missingText();
+    : DC.diag ? '· does not fit' : `· ${equationCount(DC.cons || [])} of 8`;
+  st.title = H ? '' : fitProblem();
+  st.classList.toggle('bad', !H && !!DC.diag);
   renderResiduals();
   DC.ov.querySelector('#dcSave').disabled = !(H && DC.dirty) || !API.isOperator();
+  saveWhy(H);
   const tka = DC.ov.querySelector('#dcTkAuto'); if(tka) tka.disabled = !(DC.cons && equationCount(DC.cons) >= 10);
   /* aspect warning */
   const hint = DC.ov.querySelector('#dcHint');
@@ -804,13 +881,20 @@ function drawOverlay(){
   }
   hint.classList.remove('warn');
   if(DC.drawing){ hint.textContent = `${featLine(geo, DC.drawing.f).name}: press on the picture where you can see it, drag along it, release. Esc cancels.`; return; }
-  if(!H && (DC.cons || []).length){ hint.textContent = missingText(); hint.classList.add('warn'); return; }
+  if(!H && (DC.cons || []).length){ hint.textContent = fitProblem(); hint.classList.add('warn'); return; }
   if(DC.placing >= 0){ hint.textContent = `Click the middle of Bay ${geo.labels[DC.placing]} on the centreline (its painted number).`; return; }
   hint.textContent = DC.step < 4
     ? `Click the picture: ${stepTexts()[DC.step][1]}. Hidden by cargo or outside the picture? Click beside the picture where it would be, or skip it and use guide lines.`
     : 'Drag a point to adjust it; arrow keys nudge the selected point (Shift = ×10). The drawn bay lines should sit on the deck joints.';
 }
 
+/* '⇄' / '✗' when this list item is what keeps the deck from fitting */
+function culprit(key){
+  const d = DC && DC.diag; if(!d) return '';
+  if(d.kind === 'swap') return key === d.i || key === d.j ? '⇄ swapped' : '';
+  if(d.kind === 'one') return key === d.key ? '✗ off' : '';
+  return '';
+}
 function fmtRes(v){ return v == null ? '' : (v < 0.995 ? Math.round(v * 100) + ' cm' : v.toFixed(2) + ' m'); }
 function resClass(v){ return v == null ? '' : v < 0.25 ? ' good' : v < 0.6 ? ' fair' : ' bad'; }
 function renderResiduals(){
@@ -819,16 +903,19 @@ function renderResiduals(){
   const rv = key => DC.res && DC.res.has(key) ? DC.res.get(key) : null;
   DC.ov.querySelectorAll('#dcSteps .dc-step').forEach((li, i) => {
     const s = li.querySelector('.dc-step-s');
-    s.className = 'dc-step-s' + (show ? resClass(rv(i)) : '');
-    s.textContent = DC.pts[i] ? (show ? fmtRes(rv(i)) : '✓') : '';
+    const off = culprit(i);
+    s.className = 'dc-step-s' + (off ? ' bad' : show ? resClass(rv(i)) : '');
+    s.textContent = DC.pts[i] ? (off ? off : show ? fmtRes(rv(i)) : '✓') : '';
+    li.classList.toggle('off', !!off);
   });
   const gl = DC.ov.querySelector('#dcGuides');
   gl.innerHTML = '';
   DC.guides.forEach((gd, gi) => {
     const f = featLine(DC.geo, gd.f), v = show ? rv('g' + gi) : null;
     const sel = DC.sel >= GH + gi * 3 && DC.sel < GH + gi * 3 + 3;
-    const li = el('li', 'dc-step done dc-gl' + (sel ? ' cur' : ''));
-    li.innerHTML = `<span class="dc-step-n dc-gl-n">⁄</span><span class="dc-step-t">${esc(f ? f.name : gd.f)}</span><span class="dc-step-s${resClass(v)}">${v != null ? fmtRes(v) : '✓'}</span><button type="button" class="dc-del" title="Remove this line">✕</button>`;
+    const off = culprit('g' + gi);
+    const li = el('li', 'dc-step done dc-gl' + (sel ? ' cur' : '') + (off ? ' off' : ''));
+    li.innerHTML = `<span class="dc-step-n dc-gl-n">⁄</span><span class="dc-step-t">${esc(f ? f.name : gd.f)}</span><span class="dc-step-s${off ? ' bad' : resClass(v)}">${off || (v != null ? fmtRes(v) : '✓')}</span><button type="button" class="dc-del" title="Remove this line">✕</button>`;
     li.addEventListener('click', ev => {
       if(ev.target.closest('.dc-del')){ DC.guides.splice(gi, 1); DC.sel = -1; DC.dirty = true; drawOverlay(); return; }
       DC.sel = GH + gi * 3 + 1; drawOverlay();
@@ -838,9 +925,9 @@ function renderResiduals(){
   const ol = DC.ov.querySelector('#dcExtras');
   ol.innerHTML = '';
   DC.extra.forEach((e, k) => {
-    const v = show ? rv(4 + k) : null;
-    const li = el('li', 'dc-step done' + (DC.sel === 4 + k ? ' cur' : ''));
-    li.innerHTML = `<span class="dc-step-n">${esc(DC.geo.labels[e.bay])}</span><span class="dc-step-t">Bay ${esc(DC.geo.labels[e.bay])} centre</span><span class="dc-step-s${resClass(v)}">${fmtRes(v)}</span><button type="button" class="dc-del" title="Remove this point">✕</button>`;
+    const v = show ? rv(4 + k) : null, off = culprit(4 + k);
+    const li = el('li', 'dc-step done' + (DC.sel === 4 + k ? ' cur' : '') + (off ? ' off' : ''));
+    li.innerHTML = `<span class="dc-step-n">${esc(DC.geo.labels[e.bay])}</span><span class="dc-step-t">Bay ${esc(DC.geo.labels[e.bay])} centre</span><span class="dc-step-s${off ? ' bad' : resClass(v)}">${off || fmtRes(v)}</span><button type="button" class="dc-del" title="Remove this point">✕</button>`;
     li.addEventListener('click', ev => {
       if(ev.target.closest('.dc-del')){ DC.extra.splice(k, 1); DC.sel = -1; DC.dirty = true; drawOverlay(); return; }
       DC.sel = 4 + k; drawOverlay();
@@ -1002,6 +1089,7 @@ function bind(ov){
     DC.placing = +$('#dcExtraBay').value; DC.sel = -1; drawOverlay();
   });
   $('#dcSave').addEventListener('click', () => save());
+  $('#dcSaveWhy').addEventListener('click', ev => { if(ev.target.closest('#dcSwap') && DC.diag && DC.diag.kind === 'swap') swapPts(DC.diag.i, DC.diag.j); });
   $('#dcPlay').addEventListener('click', () => {
     if(!DC || DC.kind !== 'video') return;
     if(DC.src.paused) DC.src.play().catch(() => {}); else DC.src.pause();

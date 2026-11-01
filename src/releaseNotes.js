@@ -11,6 +11,16 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.40.4',
+    date: '2026-11-01',
+    highlights: [ 'Calibration says why it cannot be saved — and offers the fix', 'People on deck are shown as "Person", not taken for loads' ],
+    changes: [
+      { type: 'ui', text: 'Camera calibration: a line above "Save calibration" says what is still needed (or "Ready to save" / "Saved"). When the points do not fit, the step that is wrong is marked red and the box over the map explains it' },
+      { type: 'fix', text: 'Camera calibration: points placed on the wrong sides (PORT is on the RIGHT in a bridge view) are detected — "Swap 3 ↔ 4" fixes them in one click. Before, Save just stayed grey with "26 of 8"' },
+      { type: 'feature', text: 'Watch lifts: crew on deck are framed and labelled "Person" and are never followed or listed as a load set down' },
+    ],
+  },
+  {
     version: '3.40.3',
     date: '2026-10-31',
     highlights: [ 'Watch lifts uses the camera calibration: only the deck counts', 'Fewer false landings — people, the hook, steam and the crane are ignored' ],

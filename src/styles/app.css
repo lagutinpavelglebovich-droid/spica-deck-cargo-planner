@@ -18563,3 +18563,26 @@ html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-t
 .lic-actions .lic-sp{ flex: 1; }
 .lic-entry[hidden], .lic-btn[hidden]{ display: none !important; }
 [data-theme="dark"] .lic-state.soon, [data-theme="dark"] .lic-row b.soon{ color: #f59e0b; }
+
+/* v3.40.4 — calibration: why it cannot be saved yet */
+.dc-foot{ flex-wrap:wrap; align-items:center; }
+.dc-save-why{ flex:1 1 100%; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; line-height:1.35; font-weight:600; color:var(--txt2, var(--txt)); }
+.dc-save-why:empty{ display:none; }
+.dc-save-why.bad{ color:#b91c1c; }
+.dc-save-why.ok{ color:#15803d; }
+.dc-save-why .dc-btn{ flex:0 0 auto; }
+.dc-map-cap.warn{ color:#b91c1c; background:color-mix(in srgb, #dc2626 9%, transparent); border-color:color-mix(in srgb, #dc2626 45%, transparent); }
+.dc-sec-meta.bad{ color:#b91c1c; font-weight:700; }
+.dc-step.off{ background:color-mix(in srgb, #dc2626 10%, transparent); box-shadow:inset 3px 0 0 #dc2626; }
+[data-theme="dark"] .dc-save-why.bad,
+[data-theme="dark"] .dc-sec-meta.bad,
+[data-theme="dark"] .dc-map-cap.warn{ color:#fca5a5; }
+[data-theme="dark"] .dc-save-why.ok{ color:#86efac; }
+[data-theme="dark"] .dc-map-cap.warn{ background:color-mix(in srgb, #f87171 12%, transparent); border-color:color-mix(in srgb, #f87171 45%, transparent); }
+[data-theme="dark"] .dc-step.off{ background:color-mix(in srgb, #f87171 12%, transparent); box-shadow:inset 3px 0 0 #f87171; }
+
+/* v3.40.4 — people on deck in Watch lifts */
+.dc-w-person{ fill:none; stroke:#0ea5e9; stroke-width:1.6px; stroke-dasharray:4 3; }
+.dc-w-person-t{ fill:#0369a1; font:700 11px 'Inter',system-ui,sans-serif; text-anchor:middle; paint-order:stroke; stroke:var(--dc-halo); stroke-width:3px; }
+[data-theme="dark"] .dc-w-person{ stroke:#38bdf8; }
+[data-theme="dark"] .dc-w-person-t{ fill:#7dd3fc; }

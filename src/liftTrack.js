@@ -58,7 +58,7 @@ export function createTracker(opts = {}){
     return n ? e / n : 0; };
   const inZone = (x, y) => !O.zone || O.zone.length < 3 || [0, 0.4, 0.7, 1].some(f => inPoly(O.zone, x, y + f * O.zoneLift));
   let W = 0, H = 0, N = 0, mu = null, sd = null, cur = null, gray = null, prevGray = null, fg = null, tmp = null, tmp2 = null;
-  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], nextId = 1;
+  let off = [0, 0], frames = 0, track = null, cands = [], quiet = [], dropped = [], landedAt = [], people = [], nextId = 1;
   const events = [];
 
   function init(w, h){
@@ -66,7 +66,7 @@ export function createTracker(opts = {}){
     mu = new Float32Array(N * 3); cur = new Float32Array(N * 3); sd = new Float32Array(N).fill(8);
     gray = new Float32Array(N); prevGray = new Float32Array(N);
     fg = new Uint8Array(N); tmp = new Uint8Array(N); tmp2 = new Uint8Array(N);
-    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = [];
+    frames = 0; off = [0, 0]; track = null; cands = []; quiet = []; dropped = []; landedAt = []; people = [];
   }
 
   /* ── 1. steady: shift of this frame against the background ── */
@@ -414,10 +414,11 @@ export function createTracker(opts = {}){
        (steam drifting past the crash barrier) */
     const fb = kind === 'landed' && box ? box : null;
     const wide = !fb || !O.zone || (onDeck(fb.x + fb.w * 0.25, fb.y + fb.h) && onDeck(fb.x + fb.w * 0.75, fb.y + fb.h));
-    const why = !onDeck(foot[0], foot[1]) || !wide ? 'not on the deck'
+    const why = kind === 'landed' && tr.box && personLike(tr.box) ? 'a person'
+      : !onDeck(foot[0], foot[1]) || !wide ? 'not on the deck'
       : kind === 'landed' && !viaAir ? 'never in the air (a person?)'
       : kind === 'lifted' && !toAir ? 'did not go up off the deck' : wm != null && wm < O.minWidthM ? 'too small (' + wm.toFixed(1) + ' m)' : tex < O.minTexture ? 'no edges (steam, glare)' : '';
-    if(why){ events.push({ kind: 'ignored', was: kind, id: tr.id, t, foot, why, tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 }); return false; }
+    if(why){ events.push({ kind: 'ignored', was: kind, id: tr.id, t, foot, why, widthM: wm, box: toFrame(tr.box), tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 }); return false; }
     const e = { kind, id: tr.id, t, t0: tr.t0, foot, box, widthM: wm, tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 };
     if(tr.moves) e.moves = tr.moves;           /* the same load, set down a moment ago, moved on */
     events.push(e);
@@ -511,6 +512,20 @@ export function createTracker(opts = {}){
     cands = [];
   }
 
+  /* a person standing on deck: narrower than the smallest cargo (calibrated),
+     or — without a calibration — a small upright shape in the lower picture */
+  function personLike(o){
+    const fu = (o.x + o.w / 2 + off[0]) / W, fv = (o.y + o.h + off[1]) / H;
+    if(O.zone){ if(!onDeck(fu, fv)) return false; const wm = metres(o); return wm != null && (wm < O.minWidthM * 0.8 || (wm < O.minWidthM * 1.1 && o.h >= o.w * 1.2)); }
+    return fv > 0.4 && o.w <= W * 0.05 && o.h >= o.w * 1.6;
+  }
+  /* people are followed loosely, only to be shown as people */
+  function seenPerson(o, t){
+    let p = null, bi = 0.1;
+    people.forEach(q => { const v = iou(q.box, o); if(v > bi){ bi = v; p = q; } });
+    if(p){ p.box = { x: o.x, y: o.y, w: o.w, h: o.h }; p.n++; p.seen = t; }
+    else people.push({ box: { x: o.x, y: o.y, w: o.w, h: o.h }, n: 1, seen: t });
+  }
   function acquire(bl, t){
     /* follow candidate shapes frame to frame; lock one that keeps moving */
     const next = [];
@@ -519,7 +534,7 @@ export function createTracker(opts = {}){
       const fu = (o.x + o.w / 2 + off[0]) / W, fv = (o.y + o.h + off[1]) / H;
       if(!inZone(fu, fv)) return;
       /* standing on the deck and narrower than the smallest cargo: a person */
-      if(onDeck(fu, fv)){ const wm = metres(o); if(wm != null && wm < O.minWidthM * 0.8) return; }
+      if(personLike(o)){ seenPerson(o, t); return; }
       /* slings and people on a load just set down stay quiet; the load itself
          (as big as it was) moving on again does not */
       if(quiet.some(q => o.cx > q.box.x && o.cx < q.box.x + q.box.w && o.cy > q.box.y && o.cy < q.box.y + q.box.h && o.w * o.h < 0.6 * q.area)) return;
@@ -564,6 +579,7 @@ export function createTracker(opts = {}){
          most of the picture changes and no shape in it can be trusted */
       let nf = 0; for(let k = 0; k < N; k += 7) nf += fg[k];
       const shaky = nf * 7 > N * 0.22;
+      people = people.filter(p => t - p.seen < 0.8 && !(track && iou(p.box, track.box) > 0.3));
       if(track) updateTrack(shaky ? [] : bl, t, dt);
       if(!track){ const r = shaky ? null : acquire(bl, t); if(r){ lockFrom(r, t); cands = []; } }
       else{
@@ -582,6 +598,8 @@ export function createTracker(opts = {}){
           phase: track.phase || 'moving', still: track.stillSince ? this._t - track.stillSince.t : 0,
           downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0, start: track.start, air: !!track.air } : null,
         shift: off.slice(),
+        /* people on deck (not followed as loads) */
+        people: people.filter(p => p.n >= 3).map(p => ({ box: toFrame(p.box) })),
       };
     },
     takeEvents(){ return events.splice(0); },
