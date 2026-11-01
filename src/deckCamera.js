@@ -1785,22 +1785,44 @@ function watchRender(quick){
       const tx = el('span', '', esc(vs && vs.ok ? `Recognition: ${vs.device}${vs.ocr ? ' · PP-OCRv5' : ''}${vs.detector ? ' · people detector' : ''}` : 'Recognition: built-in reader'));
       eng.appendChild(tx);
       eng.title = vs && !vs.ok && vs.error ? vs.error : '';
-      if(vs && vs.ok){
-        /* how fast it is on this computer */
-        const b = el('button', 'dc-an-time dc-w-bench', 'Speed test'); b.type = 'button';
-        b.addEventListener('click', async () => {
-          b.disabled = true; b.textContent = 'testing CPU and graphics chip… (the first time takes up to a minute)';
-          try{
-            const r = await API.invoke('vision_bench'), ch = r.chosen || {};
-            const both = k => r[k] ? Object.entries(r[k]).map(([d, v]) => `${d} ${typeof v === 'number' ? v + ' ms' : '—'}`).join(', ') : '';
-            b.textContent = [r.detector_ms != null ? `people ${Math.round(r.detector_ms)} ms on ${ch.detector || '?'}` : '', r.ocr_ms != null ? `reading ${Math.round(r.ocr_ms)} ms on ${ch.ocr || '?'}` : ''].filter(Boolean).join(' · ') || 'done';
-            b.title = `People: ${both('detector')}\nReading: ${both('ocr')}\nThe faster one is kept and remembered.`;
-            if(r.device) tx.textContent = `Recognition: ${r.device} · PP-OCRv5 · people detector`;
-          }catch(e){ b.textContent = 'test failed'; b.title = String(e && e.message || e); }
-          b.disabled = false;
-        });
-        eng.appendChild(document.createTextNode(' · ')); eng.appendChild(b);
+      const verdict = el('div', 'dc-w-verdict');
+      if(!(vs && vs.ok)){
+        verdict.className = 'dc-w-verdict ok';
+        verdict.textContent = 'Works, with the simpler built-in reader: loads are followed, numbers are read less well.';
+        eng.appendChild(verdict);
+        return;
       }
+      /* how fast it is on this computer: measured once by itself, again on request */
+      const b = el('button', 'dc-an-time dc-w-bench', 'Speed test'); b.type = 'button';
+      eng.appendChild(document.createTextNode(' · ')); eng.appendChild(b); eng.appendChild(verdict);
+      const show = r => {
+        const ch = r.chosen || {};
+        const both = k => r[k] ? Object.entries(r[k]).map(([d, v]) => `${d} ${typeof v === 'number' ? v + ' ms' : '—'}`).join(', ') : '';
+        b.textContent = [r.detector_ms != null ? `people ${Math.round(r.detector_ms)} ms on ${ch.detector || '?'}` : '', r.ocr_ms != null ? `reading ${Math.round(r.ocr_ms)} ms on ${ch.ocr || '?'}` : ''].filter(Boolean).join(' · ') || 'Speed test';
+        b.title = `People: ${both('detector')}\nReading: ${both('ocr')}\nThe faster one is kept and remembered. Click to test again.`;
+        if(r.device) tx.textContent = `Recognition: ${r.device} · PP-OCRv5 · people detector`;
+        /* in plain words: what to expect from this computer (it never blocks anything) */
+        const p = r.detector_ms != null ? r.detector_ms : 0, o = r.ocr_ms != null ? r.ocr_ms : 0;
+        const lvl = p <= 400 && o <= 2500 ? 'good' : p <= 1000 && o <= 6000 ? 'ok' : 'weak';
+        verdict.className = 'dc-w-verdict ' + lvl;
+        verdict.textContent = lvl === 'good' ? 'This computer is ready for live lifts.'
+          : lvl === 'ok' ? 'Works on this computer, slower: numbers are read less often, people checked less often.'
+          : 'This computer is slow for live watching — it still works; use the bridge PC for live lifts, or play videos at 0.5×.';
+      };
+      const run = async auto => {
+        b.disabled = true; b.textContent = auto ? 'checking this computer (once)…' : 'testing CPU and graphics chip… (the first time takes up to a minute)';
+        try{
+          const r = await API.invoke('vision_bench');
+          try{ localStorage.setItem('decargo_visionBench', JSON.stringify(Object.assign({ at: Date.now(), engine: vs.device }, r))); }catch(_){}
+          show(r);
+        }catch(e){ b.textContent = 'test failed'; b.title = String(e && e.message || e); }
+        b.disabled = false;
+      };
+      b.addEventListener('click', () => run(false));
+      let saved = null;
+      try{ saved = JSON.parse(localStorage.getItem('decargo_visionBench') || 'null'); }catch(_){}
+      if(saved && saved.detector_ms != null) show(saved);
+      else setTimeout(() => run(true), 1500);
     });
   }
   const st = $('#dcWState');
