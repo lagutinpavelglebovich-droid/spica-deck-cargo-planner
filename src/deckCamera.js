@@ -820,7 +820,8 @@ function drawOverlay(){
       const br = (px, py, dx, dy) => `M${(px + dx * k).toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${py.toFixed(1)}L${px.toFixed(1)} ${(py + dy * k).toFixed(1)}`;
       out += `<path class="dc-w-lock${down ? ' down' : ''}" d="${br(x, y, 1, 1)}${br(x + w, y, -1, 1)}${br(x, y + h, 1, -1)}${br(x + w, y + h, -1, -1)}"/>`;
       const rd = bestReading(tr.id);
-      const lab = (rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : rd && rd.n >= 3 ? 'no number seen' : 'reading…') + (fp ? '  →  ' + whereOf(fp) : '');
+      const from = liftedFrom(tr);
+      const lab = (rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : rd && rd.n >= 3 ? 'no number seen' : 'reading…') + (from ? '  ↑ from ' + from : fp ? '  →  ' + whereOf(fp) : '');
       out += `<text class="dc-w-lab" x="${x.toFixed(1)}" y="${Math.max(12, y - 7).toFixed(1)}">${esc(lab)}</text>`;
     }
   }
@@ -1701,6 +1702,16 @@ function whereText(pt){
 }
 const tFmt = s => `${Math.floor(s / 60)}:${pad(Math.floor(s) % 60)}`;
 function whereOf(fp){ return fp ? whereText({ x: fp.centre[0], y: fp.centre[1] }) : ''; }
+/* a load being lifted off: where it came from (the spot the lock began on the
+   deck), not the shadow of a load already high above it */
+function liftedFrom(tr){
+  if(!tr || !tr.start || !(tr.start[1] - tr.foot[1] > 0.03)) return '';
+  const M = currentModel(); if(!M) return '';
+  const p = M.toDeck(tr.start[0], tr.start[1]), g = DC.geo;
+  if(!p || p[0] < -0.5 || p[0] > geoLen(g).length + 0.5 || p[1] < -0.5 || p[1] > g.width + 0.5) return '';
+  /* the foot is the near edge; the unit reaches a little further aft */
+  return whereText({ x: Math.max(0, p[0] - 1), y: Math.min(g.width, Math.max(0, p[1])) });
+}
 function onTrackEvent(e){
   if(!DC || (e.kind !== 'landed' && e.kind !== 'lifted')) return;
   const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
@@ -1789,7 +1800,8 @@ function watchRender(quick){
     num.textContent = rd && rd.text ? rd.text + (rd.sure ? '' : ' ?') : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…';
     num.classList.toggle('dim', !(rd && rd.text));
     const fp = footprint(tr.box, tr.foot);
-    where.textContent = !calibrated ? 'Calibrate the camera to see the bay' : fp ? (tr.phase === 'down' ? '' : '→ ') + whereOf(fp) : 'Over the side';
+    const from = calibrated ? liftedFrom(tr) : '';
+    where.textContent = !calibrated ? 'Calibrate the camera to see the bay' : from ? '↑ lifted from ' + from : fp ? (tr.phase === 'down' ? '' : '→ ') + whereOf(fp) : 'Over the side';
     phase.textContent = tr.phase === 'down' ? `Set down ${Math.floor(tr.still)} s — confirming` : 'On the hook, moving';
     const t = W_.thumbs.get(tr.id);
     if(t && th.firstChild !== t){ th.innerHTML = ''; th.appendChild(t); }

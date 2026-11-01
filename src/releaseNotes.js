@@ -19,6 +19,7 @@ export const RELEASE_NOTES = [
       { type: 'feature', text: 'Speed test now times the CPU and the graphics chip for each part, keeps the faster one and remembers it' },
       { type: 'ui', text: 'Watch lifts: the label over the load says "no number seen" after three tries instead of "reading…" for ever' },
       { type: 'fix', text: 'Watch lifts: a lifted load picked up again by the tracker on its way up (behind the crane boom, a jerky frame) is no longer listed as a second lift-off' },
+      { type: 'ui', text: 'Watch lifts: while a load is being lifted off, the label shows where it came from ("↑ lifted from Bay 10 · centre") instead of the bay its shadow is passing over' },
     ],
   },
   {
