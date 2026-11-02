@@ -18543,12 +18543,6 @@ html[data-motion="off"] .dc-map .m-target, html[data-motion="calm"] .dc-map .m-t
 .asco-gen-lbl{ font-size:11px; font-weight:700; color:var(--txt3); letter-spacing:.3px; }
 .insp-multi-locgrid{ margin-bottom:10px; }
 .insp-multi-locgrid .insp-loc{ text-align:left; }
-/* v3.40.1 — door end of a square-ish container (shows its quarter turns) */
-.cb .cb-door{ position:absolute; pointer-events:none; border-radius:2px; }
-.cb .cb-door-e{ right:2px; top:20%; bottom:20%; width:3px; }
-.cb .cb-door-w{ left:2px;  top:20%; bottom:20%; width:3px; }
-.cb .cb-door-n{ top:2px;    left:20%; right:20%; height:3px; }
-.cb .cb-door-s{ bottom:2px; left:20%; right:20%; height:3px; }
 /* v3.40.1 — Help → Licence: what is installed */
 .lic-info{ display: flex; flex-direction: column; gap: 0; border: 1px solid var(--txt4); border-radius: 12px; background: var(--lic-field); padding: 4px 14px 10px; }
 .lic-state{ display: flex; align-items: center; gap: 8px; padding: 10px 0 8px; font-size: 14px; font-weight: 700; color: var(--s-L); }

@@ -4562,22 +4562,6 @@ function renderBlock(cv,cargo){
   idEl.textContent = cargo.ccu||'';
   b.appendChild(idEl);
 
-  /* v3.40.1 — a square-ish container (6ft mini 1.83 × 1.83 m) looks the same
-     after a quarter turn, so the turn was invisible. Its door end is marked
-     and turns with it (rot 0 → bow, 1 → stbd, 2 → stern, 3 → port). */
-  {
-    const _L = cargo.length_m || cargo.w / M, _W = cargo.width_m || cargo.h / YS;
-    if(!cargo.pipe && !isSpecial(cargo) && Math.abs(_L - _W) <= 0.35 && Math.max(_L, _W) <= 3.2
-       && /mini|container|\bcont\b|ccu|food|reefer/i.test(String(cargo.desc || '') + ' ' + String(cargo.ccu || ''))){
-      const r = ((cargo.rot || 0) % 4 + 4) % 4, side = ['e', 's', 'w', 'n'][r];
-      const d = document.createElement('div');
-      d.className = 'cb-door cb-door-' + side;
-      d.style.background = isDark(fill) ? 'rgba(255,255,255,.55)' : 'rgba(10,8,0,.42)';
-      b.appendChild(d);
-      b.title += '\nDoors: ' + ['bow', 'starboard', 'stern', 'port'][r] + ' (↻ turns them)';
-    }
-  }
-
   /* v3.19 — pipes and non-standard cargo: drawn from above inside the block */
   if(cargo.pipe || isSpecial(cargo)){
     const art = _cargoArtSvg(cargo, fill);

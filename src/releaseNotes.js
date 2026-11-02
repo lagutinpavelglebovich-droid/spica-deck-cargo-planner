@@ -18,6 +18,7 @@ export const RELEASE_NOTES = [
       { type: 'improvement', text: 'Watch lifts: every other read looks only at the side of the load facing the camera — numbers on open frames and tanks are on the sides — so the text finder gets more pixels per letter' },
       { type: 'improvement', text: 'Watch lifts: reads wait for a steadier moment when the load swings fast (blur), and come more often once it is set down and still' },
       { type: 'improvement', text: 'The people detector runs less often on a slow computer (at most a third of its time), so the rest stays responsive' },
+      { type: 'ui', text: 'Removed the door-end strip on square mini containers — it confused more than it helped' },
       { type: 'feature', text: 'Watch lifts checks the computer once by itself and says in plain words what to expect: ready for live lifts / works, slower / slow for live watching. It never blocks anything — calibration and recording always work' },
     ],
   },
