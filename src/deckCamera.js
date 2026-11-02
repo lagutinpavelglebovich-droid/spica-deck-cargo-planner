@@ -1686,6 +1686,7 @@ function maybeRead(tr){
     /* "AME" and "3130" read as two pieces → "AME3130" */
     parts.forEach(a => parts.forEach(c => { if(a !== c && /^[A-Z]{2,5}$/.test(a.n) && /^\d{3,7}$/.test(c.n)){ vote(rec.raw, a.n + c.n, 0.9, c.at); if(match){ const m = match(a.n + ' ' + c.n); if(m) vote(rec.m, m.c.ccu, 0.8, c.at); } } }));
     W_.reads.set(id, rec);
+    reconsiderLift(id);
     watchRender(true);
   }).catch(() => {}).finally(() => { if(DC && DC.w === W_) W_.busy = false; });
 }
@@ -1789,6 +1790,38 @@ function liftedFrom(tr){
   /* the foot is the near edge; the unit reaches a little further aft */
   return whereText({ x: Math.max(0, p[0] - 1), y: Math.min(g.width, Math.max(0, p[1])) });
 }
+/* v3.42 — a lift-off already reported, read again on its way up: when the
+   number now points clearly to another unit standing on the plan, move the
+   "LIFTED?" mark to it (only while the operator has not answered). Seen on
+   2379: the first read caught "KA 2158" on the container next to it; four
+   later reads said GB 609. */
+function reconsiderLift(id){
+  const W_ = DC && DC.w, ev = W_ && W_.liftEv && W_.liftEv.get(id);
+  if(!ev || ev.done || !API.flagLift) return;
+  const rd = bestReading(id), all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const u = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
+  if(!u || u.id === ev.guessId) return;
+  /* clearly: a sure reading, or more than twice the support of the old one —
+     whole-number reads plus pieces of digits that fit only one of the two */
+  const rec = W_.reads.get(id), oldU = all.find(c => c.id === ev.guessId);
+  const dg = c => c ? nk(c.ccu).replace(/\D/g, '') : '';
+  const support = (c, other) => {
+    if(!c) return 0;
+    const o = rec && rec.m.get(c.ccu); let v = o ? voteWeight(o, c.ccu) : 0;
+    fragsOf(id).forEach(f => { if(dg(c).includes(f.d) && !dg(other).includes(f.d)) v += f.s; });
+    return v;
+  };
+  if(!(rd.sure || support(u, oldU) >= 2 * Math.max(0.5, support(oldU, u)))) return;
+  const prevId = ev.guessId;
+  ev.guessId = u.id; ev.guess = u.ccu || u.desc || 'unit'; ev.reading = rd; ev.partial = null;
+  ev.where = whereText({ x: (u.x0 + u.x1) / 2, y: (u.y0 + u.y1) / 2 });
+  if(API.camUpdate) API.camUpdate(ev.key, { guessId: u.id, guess: ev.guess, where: ev.where, text: rd.text, ccu: rd.ccu || '', sure: !!rd.sure, frag: '' });
+  /* new mark first: the plan side sees the event still waiting on the new unit */
+  API.flagLift(u.id, true, { when: ev.live ? ev.at.toTimeString().slice(0, 5) : tFmt(ev.t), where: ev.where, key: ev.key });
+  if(prevId != null) API.flagLift(prevId, false);
+  miniFlash(`Lifted off · ${ev.guess} (read on its way up)`);
+  watchRender();
+}
 /* the planned unit that stood at a deck spot. A load is often locked only once
    it rises clear of the units around it; seen from the bridge it then looks
    further from the camera than the spot it left. Walk from the spot back
@@ -1850,6 +1883,9 @@ function onTrackEvent(e){
   if(moveId != null){ const mu = all.find(c => c.id === moveId); ev.movedFrom = whereText({ x: (mu.x0 + mu.x1) / 2, y: (mu.y0 + mu.y1) / 2 }); }
   /* show it on the deck plan until the operator confirms or dismisses it */
   if(guessId != null && API.flagLift) API.flagLift(guessId, true, { when: ev.live ? ev.at.toTimeString().slice(0, 5) : tFmt(e.t), where: ev.where, key: ev.key });
+  /* a lift-off is reported early (as soon as the load rises clear): the
+     number is often read better on its way up — keep listening (reconsiderLift) */
+  if(e.kind === 'lifted') (W_.liftEv || (W_.liftEv = new Map())).set(e.id, ev);
   /* the same load set down a moment ago and moved on: the earlier card is history */
   const prev = e.moves != null && DC.wEvents.find(o => o.id === e.moves);
   if(prev){
@@ -1928,7 +1964,8 @@ function watchRender(quick){
     num.classList.toggle('dim', !(rd && rd.text));
     const fp = footprint(tr.box, tr.foot);
     const from = calibrated ? liftedFrom(tr) : '';
-    where.textContent = !calibrated ? 'Calibrate the camera to see the bay' : from ? '↑ lifted from ' + from : fp ? (tr.phase === 'down' ? '' : '→ ') + whereOf(fp) : 'Over the side';
+    const lu = calibrated ? liftUnit(tr) : null;
+    where.textContent = !calibrated ? 'Calibrate the camera to see the bay' : lu ? '↑ lifted from ' + (lu.ccu ? lu.ccu + ', ' : '') + unitWhere(lu) : from ? '↑ lifted from ' + from : fp ? (tr.phase === 'down' ? '' : '→ ') + whereOf(fp) : 'Over the side';
     phase.textContent = tr.phase === 'down' ? `Set down ${Math.floor(tr.still)} s — confirming` : 'On the hook, moving';
     const t = W_.thumbs.get(tr.id);
     if(t && th.firstChild !== t){ th.innerHTML = ''; th.appendChild(t); }
@@ -2072,13 +2109,33 @@ function liveGuess(tr){
 const roseFromDeck = tr => !!(tr && tr.start && tr.start[1] - tr.foot[1] > 0.03);
 const isLoad = tr => !!(tr && (tr.air || tr.moves || roseFromDeck(tr)));
 function settingDown(tr, fp){ return !!(tr && tr.phase === 'down' && isLoad(tr) && fp && fp.inDeck); }
+/* the planned unit a load lifted from the deck came from: its number, a piece
+   of it, or the unit on the line back towards the camera from where the lock
+   began (a rising load is seen further aft than it stood); kept per lock */
+function liftUnit(tr){
+  if(!tr || !roseFromDeck(tr) || !DC || !DC.w) return null;
+  const W_ = DC.w, M = currentModel(); if(!M) return null;
+  const all = API.cargo(), rd = bestReading(tr.id), lg = !(rd && rd.text) ? liveGuess(tr) : null;
+  const k = NRM(rd && (rd.ccu || rd.text) || (lg && lg.ccu) || '');
+  let u = k ? all.find(c => NRM(c.ccu) === k) : null;
+  if(!u && W_.liveUnit && W_.liveUnit.tr === tr.id) u = all.find(c => c.id === W_.liveUnit.id) || null;
+  if(!u){
+    const p = M.toDeck(tr.start[0], tr.start[1]), fp = footprint(tr.box, tr.foot);
+    if(fp) W_.liveToCam = fp.toCam;
+    if(p) u = unitAt(all, Math.min(geoLen(DC.geo).length, Math.max(0, p[0])), Math.min(DC.geo.width, Math.max(0, p[1])), W_.liveToCam || null);
+  }
+  if(u) W_.liveUnit = { tr: tr.id, id: u.id };
+  return u;
+}
+const unitWhere = u => whereText({ x: (u.x0 + u.x1) / 2, y: (u.y0 + u.y1) / 2 });
 /* what the camera sees now, in a few words (mini window) */
 function nowState(){
   const W_ = DC && DC.w, tr = W_ && W_.st && W_.st.track, cal = !!currentModel();
   if(!DC || !DC.src) return { num: 'No picture', l2: 'The camera stopped', dim: true };
   if(DC.kind === 'video' && DC.src.paused) return { num: 'Paused', l2: 'The video is paused', dim: true };
   if(!tr || !isLoad(tr)) return { num: 'Watching', l2: cal ? 'Waiting for a load on the hook' : 'Not calibrated — bays are not shown', dim: true };
-  const rd = bestReading(tr.id), fp = cal ? footprint(tr.box, tr.foot) : null, from = cal ? liftedFrom(tr) : '';
+  const lu = cal ? liftUnit(tr) : null;
+  const rd = bestReading(tr.id), fp = cal ? footprint(tr.box, tr.foot) : null, from = cal ? (lu ? (lu.ccu ? lu.ccu + ', ' : '') + unitWhere(lu) : liftedFrom(tr)) : '';
   const down = cal ? settingDown(tr, fp) : tr.phase === 'down', lg = !(rd && rd.text) ? liveGuess(tr) : null;
   return {
     num: rd && rd.text ? rd.text : lg ? lg.ccu + '?' : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…',
@@ -2229,12 +2286,8 @@ function bgTick(tr){
   if(from && !down){
     /* on the unit it came from, when that unit is known (its number, a piece
        of it, or the spot); kept for the whole lift once found */
-    const all = API.cargo(), k = NRM(rd && (rd.ccu || rd.text) || (lg && lg.ccu) || '');
-    const W_ = DC.w; if(fp) W_.liveToCam = fp.toCam;
-    let u = k ? all.find(c => NRM(c.ccu) === k) : null;
-    if(!u && W_.liveUnit && W_.liveUnit.tr === tr.id) u = all.find(c => c.id === W_.liveUnit.id) || null;
-    if(!u) u = unitAt(all, from[0], from[1], W_.liveToCam || null);
-    if(u){ W_.liveUnit = { tr: tr.id, id: u.id }; liveOut({ lifted: true, onUnit: true, unitId: u.id, xM: (u.x0 + u.x1) / 2, yM: (u.y0 + u.y1) / 2, wM: u.x1 - u.x0 + 0.6, hM: u.y1 - u.y0 + 0.6, sizeM: 2.4, text: text || u.ccu || '', sure }); }
+    const u = liftUnit(tr);
+    if(u){ liveOut({ lifted: true, onUnit: true, unitId: u.id, xM: (u.x0 + u.x1) / 2, yM: (u.y0 + u.y1) / 2, wM: u.x1 - u.x0 + 0.6, hM: u.y1 - u.y0 + 0.6, sizeM: 2.4, text: text || u.ccu || '', sure }); }
     else liveOut({ lifted: true, xM: from[0], yM: from[1], sizeM: 2.4, text, sure });
     return;
   }

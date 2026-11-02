@@ -19885,6 +19885,8 @@ initDeckCamera({
   /* v3.42 — camera events on the plan */
   camEvent: ev => camEvent(ev),
   camResolve: (key, st, label) => camResolve(key, st, label),
+  /* a lift-off re-read on its way up points to another unit: re-label it (before the flags move) */
+  camUpdate: (key, patch) => { const e = camFind(key); if(e && e.status === 'pending') Object.assign(e, patch); },
   camLive: v => camLive(v),
   camState: on => camState(on),
   camPendingCount: () => camPendingCount(),

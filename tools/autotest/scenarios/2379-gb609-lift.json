@@ -1,9 +1,113 @@
-{ "note": "Night. GB 609 (half-height 20 ft basket) lifted off the deck, number readable. Neighbours around it so the place alone is not enough. Clip: 31.10 IMG_2379, 33–58 s.",
-  "clip": "2379", "rate": 0.25, "calib": {"pts":[[0.6821,0.52599],[0.30893,0.52723],[0.88104,0.76485],[0.06299,0.76733]],"line":6,"aspect":0.5625,"k":0},
-  "units": [
-    { "ccu": "GB 609", "desc": "Half Height 20ft", "xM": 28.0, "yM": 7.5, "l": 6.06, "w": 2.44 },
-    { "ccu": "TK 4410", "desc": "Tank 6ft", "xM": 24.0, "yM": 3.0, "l": 2.44, "w": 2.44 },
-    { "ccu": "TK 4411", "desc": "Tank 6ft", "xM": 24.0, "yM": 11.0, "l": 2.44, "w": 2.44 },
-    { "ccu": "KA 1807", "desc": "10ft Container", "xM": 32.5, "yM": 3.0, "l": 2.99, "w": 2.44 },
-    { "ccu": "KN 189", "desc": "10ft Open Top", "xM": 15.0, "yM": 12.5, "l": 2.99, "w": 2.44 } ],
-  "expect": [ { "kind": "lifted", "t": [0, 22], "unit": "GB 609", "flagged": "GB 609" } ] }
+{
+ "note": "Night. GB 609 lifted off Bay 5, port side, standing across the deck \u2014 positions from the owner's deck plan of 31.10.2026 (PDF, 06:10 UTC). Clip: 31.10 IMG_2379, 33\u201358 s.",
+ "clip": "2379",
+ "rate": 0.25,
+ "calib": {
+  "pts": [
+   [
+    0.6821,
+    0.52599
+   ],
+   [
+    0.30893,
+    0.52723
+   ],
+   [
+    0.88104,
+    0.76485
+   ],
+   [
+    0.06299,
+    0.76733
+   ]
+  ],
+  "line": 6,
+  "aspect": 0.5625,
+  "k": 0
+ },
+ "units": [
+  {
+   "ccu": "GB 609",
+   "desc": "Half Height 20ft",
+   "xM": 33.14,
+   "yM": 2.93,
+   "l": 2.29,
+   "w": 5.86
+  },
+  {
+   "ccu": "GCA 545",
+   "desc": "Container",
+   "xM": 28.97,
+   "yM": 3.71,
+   "l": 6.04,
+   "w": 2.43
+  },
+  {
+   "ccu": "KA 1807",
+   "desc": "10ft Container",
+   "xM": 30.48,
+   "yM": 1.25,
+   "l": 3.02,
+   "w": 2.5
+  },
+  {
+   "ccu": "KA 1931",
+   "desc": "10ft Container",
+   "xM": 27.46,
+   "yM": 1.25,
+   "l": 3.02,
+   "w": 2.5
+  },
+  {
+   "ccu": "CA 873",
+   "desc": "10ft Container",
+   "xM": 35.79,
+   "yM": 1.25,
+   "l": 3.02,
+   "w": 2.5
+  },
+  {
+   "ccu": "40666",
+   "desc": "Container",
+   "xM": 35.79,
+   "yM": 3.81,
+   "l": 3.02,
+   "w": 2.24
+  },
+  {
+   "ccu": "KA 2158",
+   "desc": "10ft Container",
+   "xM": 35.79,
+   "yM": 6.18,
+   "l": 3.02,
+   "w": 2.35
+  },
+  {
+   "ccu": "AME 6469",
+   "desc": "Mini",
+   "xM": 32.81,
+   "yM": 6.74,
+   "l": 1.83,
+   "w": 1.6
+  },
+  {
+   "ccu": "KH 169",
+   "desc": "10ft Open Top",
+   "xM": 30.59,
+   "yM": 6.18,
+   "l": 2.61,
+   "w": 2.35
+  }
+ ],
+ "expect": [
+  {
+   "kind": "lifted",
+   "t": [
+    0,
+    22
+   ],
+   "unit": "GB 609",
+   "flagged": "GB 609"
+  }
+ ]
+}

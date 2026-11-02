@@ -30,11 +30,14 @@ function engine(){
   const s = net.createConnection(PORT, '127.0.0.1'); let buf = ''; const q = [];
   s.on('data', d => { buf += d; let i; while((i = buf.indexOf('\n')) >= 0){ const line = buf.slice(0, i); buf = buf.slice(i + 1); const w = q.shift(); if(w) w(JSON.parse(line)); } });
   let chain = Promise.resolve();
-  return (cmd, raw, h) => (chain = chain.then(() => new Promise(res => {
+  /* the engine serves one connection at a time: close it when a scenario ends */
+  const call = (cmd, raw, h) => (chain = chain.then(() => new Promise(res => {
     q.push(res);
     const head = { cmd: cmd === 'vision_ocr' ? 'ocr' : cmd === 'vision_detect' ? 'det' : 'status', w: +h['x-w'] || 0, h: +h['x-h'] || 0, both: h['x-both'] !== '0', min: +(h['x-min'] || 0.45) };
     s.write(JSON.stringify(head) + '\n'); if(raw) s.write(raw);
   })));
+  call.close = () => s.end();
+  return call;
 }
 
 async function run(name){
@@ -88,10 +91,15 @@ async function run(name){
   });
   const extra = s.ev.filter(e => !checks.some(c => c.got === e));
   const tracker = await pg.evaluate(() => window.__decargoTrackLog || []);
-  const rep = { tracker, scenario: name, clip: sc.clip, engine: st.device, rate: sc.rate || 0.25, wallS: Math.round((Date.now() - t0) / 1000), checks, extra, lifted: s.lifted, ghosts: s.ghosts, errors: errs.slice(0, 5), trace };
+  /* every number read per lock, with where it was seen (picture) against where the load was */
+  const reads = await pg.evaluate(() => { const W_ = window.__dcm._dc.state().w; const o = {};
+    W_.reads.forEach((r, id) => { o[id] = { n: r.n, m: [...r.m].map(([k, v]) => [k, +v.s.toFixed(2), v.occ.map(a => a.map(x => +x.toFixed(3)))]), raw: [...r.raw].map(([k, v]) => [k, +v.s.toFixed(2), v.occ.length]), frag: [...(r.frag || [])].map(([k, v]) => [k, +v.s.toFixed(2), v.occ.length]) }; });
+    return { reads: o, deck: (W_.deck || []).map(d => d.n) }; });
+  const rep = { reads, tracker, scenario: name, clip: sc.clip, engine: st.device, rate: sc.rate || 0.25, wallS: Math.round((Date.now() - t0) / 1000), checks, extra, lifted: s.lifted, ghosts: s.ghosts, errors: errs.slice(0, 5), trace };
   fs.writeFileSync(path.join(OUT, name + '.json'), JSON.stringify(rep, null, 1));
   console.log(name, checks.map(c => (c.ok ? 'PASS ' : 'FAIL ') + c.expect.kind + (c.expect.unit ? ' ' + c.expect.unit : '') + (c.why ? ' — ' + c.why : '')).join(' · '), extra.length ? '· extra: ' + extra.map(e => `${e.t}s ${e.kind} ${e.where}`).join(', ') : '');
   await br.close();
+  eng.close();
   return checks.every(c => c.ok) && !extra.length;
 }
 (async () => {
