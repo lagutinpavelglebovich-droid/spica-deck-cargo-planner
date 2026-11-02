@@ -5320,7 +5320,8 @@ function camCardOpen(key, anchor){
   const card = document.createElement('div');
   card.className = 'cam-card'; card.id = 'camCard'; card.setAttribute('role', 'dialog');
   card.setAttribute('aria-label', e.kind === 'moved' ? 'Camera — unit moved' : 'Camera — set down');
-  const num = e.text ? `${_camEsc(e.text)}${e.sure ? '' : ' <span class="cam-q">(not sure)</span>'}` : '<span class="cam-q">not read</span>';
+  const num = e.frag ? `${_camEsc(e.text)}? <span class="cam-q">— only …${_camEsc(e.frag)} read, the one unit still to come with it</span>`
+    : e.text ? `${_camEsc(e.text)}${e.sure ? '' : ' <span class="cam-q">(not sure)</span>'}` : '<span class="cam-q">not read</span>';
   card.innerHTML = `
     <div class="cam-card-hd"><span class="cam-card-k">${e.kind === 'moved' ? '⇄ MOVED ON DECK' : '⬇ SET DOWN ON DECK'}</span><span class="cam-card-t">${_camEsc(_camTime(e))}</span><button type="button" class="cam-card-x" title="Close">✕</button></div>
     <div class="cam-card-bd"><div class="cam-card-th"></div><dl class="cam-card-f">
@@ -5341,7 +5342,7 @@ function camCardOpen(key, anchor){
     if(e.kind === 'landed') row.appendChild(btn('Choose unit…', '', () => camChooser(card, e)));
     row.appendChild(btn('Dismiss', '', () => { camResolve(e.key, 'no', 'dismissed'); camCardClose(); }));
     ac.appendChild(row);
-    if(e.kind === 'landed' && !sg) ac.insertAdjacentHTML('beforeend', `<div class="cam-card-note">${e.ccu ? _camEsc(e.ccu) + ' was read, but it is not in Imported — choose the unit, or place it from the Library and dismiss this.' : 'No number read — choose the unit from Imported, or dismiss.'}</div>`);
+    if(e.kind === 'landed' && !sg) ac.insertAdjacentHTML('beforeend', `<div class="cam-card-note">${e.ccu ? _camEsc(e.ccu) + (e.frag ? ' (from …' + _camEsc(e.frag) + ')' : ' was read, but it') + ' is not in Imported — choose the unit, or place it from the Library and dismiss this.' : 'No number read — choose the unit from Imported, or dismiss.'}</div>`);
   }
   card.querySelector('.cam-card-x').addEventListener('click', camCardClose);
   document.body.appendChild(card);
@@ -5456,7 +5457,8 @@ function camLogRender(){
   const n = camPendingCount(), op = isOperator();
   const rows = CAM_EV.filter(e => _camLogTab === 'all' || e.status === 'pending');
   const evName = e => e.kind === 'lifted' ? '⬆ Lifted off' : e.kind === 'moved' ? '⇄ Moved' : '⬇ Set down';
-  const unit = e => e.kind === 'landed' ? (e.text ? _camEsc(e.text) + (e.sure ? '' : '?') : '<span class="cam-q">?</span>') : _camEsc(e.guess || '?') + (e.kind === 'lifted' && e.text && e.sure ? '' : '?');
+  const unit = e => (e.kind === 'landed' ? (e.text ? _camEsc(e.text) + (e.sure ? '' : '?') : '<span class="cam-q">?</span>') : _camEsc(e.guess || '?') + (e.kind === 'lifted' && e.text && e.sure ? '' : '?'))
+    + (e.frag ? ` <span class="cam-frag" title="Only this part of the number was read">…${_camEsc(e.frag)}</span>` : '');
   lg.innerHTML = `
     <div class="cam-log-hd"><div><div class="cam-log-t">Camera events</div><div class="cam-log-s">The plan changes only when you confirm ✓</div></div>
       <div class="cam-log-tabs"><button type="button" data-tab="all" class="${_camLogTab === 'all' ? 'on' : ''}">All</button><button type="button" data-tab="pend" class="${_camLogTab === 'pend' ? 'on' : ''}">Waiting${n ? ' (' + n + ')' : ''}</button></div></div>
@@ -19880,6 +19882,14 @@ initDeckCamera({
   camPendingCount: () => camPendingCount(),
   camOpenLog: a => camOpenLog(a),
   moveUnit: (id, xM, yM) => camMoveUnit(id, xM, yM),
+  /* v3.42 — units still to come aboard (Imported, then the load list), not on deck */
+  waitingUnits: () => {
+    const on = new Set(S.cargo.map(c => _camNk(c.ccu)).filter(Boolean)), seen = new Set(), out = [];
+    const add = (ccu, src, l, w) => { const k = _camNk(ccu); if(k.length < 3 || on.has(k) || seen.has(k)) return; seen.add(k); out.push({ id: src + ':' + k, ccu: String(ccu).trim(), src, l: l || null, w: w || null }); };
+    IMPORT_QUEUE.forEach(q => add(q.ccu, 'Imported', q.length_m, q.width_m));
+    ((S.loadList && S.loadList.items) || []).forEach(i => add(i.ccu, 'Load list'));
+    return out;
+  },
   /* v3.17 — Read lifts */
   candidates: () => {
     const seen = new Map(), add = (ccu, src) => { const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if(k.length >= 3 && !seen.has(k)) seen.set(k, { ccu: String(ccu).trim(), src }); };

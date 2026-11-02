@@ -18819,3 +18819,4 @@ body.pdf-capture .cb.cb-cam-moved{ outline:none; opacity:1; }
 .dcm.is-tiny .dcm-top{ position:absolute; right:4px; top:4px; padding:0; }
 .dcm.is-tiny .dcm-rt{ position:relative; }
 .dcm.is-tiny .dcm-st{ justify-content:center; padding:0 64px 0 12px; }
+.cam-frag{ font:600 10.5px ui-monospace, Menlo, monospace; color:var(--txt3); }

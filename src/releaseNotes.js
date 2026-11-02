@@ -24,6 +24,7 @@ export const RELEASE_NOTES = [
       { type: 'feature', text: 'A unit moved on deck shows an arrow from its planned place to a ghost where it now stands; ✓ moves it on the plan' },
       { type: 'feature', text: 'Camera log: the number on the Camera tile opens the list of events — time, event, unit, bay, done or waiting — with ✓ / ✕ in the row' },
       { type: 'feature', text: 'Sounds for lifted off, set down and moved (Smart Tools → Sound → Camera)' },
+      { type: 'feature', text: 'Numbers read only in pieces now count: a piece of digits ("09", "221") that fits exactly one of the units that can be the load — those around the spot it was lifted from, or those still to come aboard (Imported, load list) — picks that unit. Two-digit pieces must be seen twice; the card and the log show which piece was read' },
       { type: 'improvement', text: 'Nothing on the plan changes until the operator confirms. Camera marks are not saved with the plan and never show in the PDF' },
     ],
   },

@@ -1661,7 +1661,7 @@ function maybeRead(tr){
   const bx = bl.x + bl.w / 2, by = bl.y + bl.h / 2;     /* the whole load, whichever part was cropped */
   OCRM.readTextAsync(img, { both: true }).then(res => {
     if(!DC || DC.w !== W_) return;
-    const rec = W_.reads.get(id) || { raw: new Map(), m: new Map(), n: 0 };
+    const rec = W_.reads.get(id) || { raw: new Map(), m: new Map(), frag: new Map(), n: 0 };
     rec.n++;
     /* every sighting keeps where it was in the picture and where the load was:
        a number painted on the load moves with it, one on a unit on deck does not */
@@ -1676,6 +1676,8 @@ function maybeRead(tr){
       const at = [x0 + u * (x1 - x0), y0 + v * (y1 - y0), bx, by];
       parts.push({ n, at });
       if(/\d/.test(n) && n.length >= 3) vote(rec.raw, n, q.score, at);
+      /* v3.42 — pieces of digits, for a unit picked from a short list */
+      if(LRM && LRM.digitPieces) LRM.digitPieces(q.text).forEach(d => vote(rec.frag, d, q.score, at));
       if(match){ const m = match(q.text); if(m) vote(rec.m, m.c.ccu, m.how === 'text' ? 1 : m.how === 'near' ? 0.4 : 0.8, at); }
     });
     /* "AME" and "3130" read as two pieces → "AME3130" */
@@ -1684,24 +1686,49 @@ function maybeRead(tr){
     watchRender(true);
   }).catch(() => {}).finally(() => { if(DC && DC.w === W_) W_.busy = false; });
 }
+/* how much a set of sightings of one text counts: not where the same text
+   stood on deck before the load came, and little when it stayed put in the
+   picture while the load moved (a unit standing on deck under it) */
+function voteWeight(o, key){
+  const spread = pts => { const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, my = pts.reduce((a, p) => a + p[1], 0) / pts.length; return pts.reduce((a, p) => a + Math.hypot(p[0] - mx, p[1] - my), 0) / pts.length; };
+  const deck = (DC && DC.w && DC.w.deck) || [];
+  const occ = o.occ.filter(a => !deck.some(d => Math.hypot(d.x - a[0], d.y - a[1]) < 0.07 && sameText(d.n, NRM(key))));
+  if(!occ.length) return 0;
+  o = { s: o.s * occ.length / o.occ.length, occ };
+  if(o.occ.length < 2) return o.s;
+  const sAbs = spread(o.occ.map(a => [a[0], a[1]])), sRel = spread(o.occ.map(a => [a[0] - a[2], a[1] - a[3]]));
+  const loadMoved = spread(o.occ.map(a => [a[2], a[3]]));
+  return loadMoved > 0.01 && sAbs < 0.6 * sRel ? o.s * 0.15 : o.s;
+}
+/* v3.42 — the digit pieces read on a load, weighed */
+function fragsOf(id){
+  const rec = DC && DC.w && DC.w.reads.get(id);
+  if(!rec || !rec.frag) return [];
+  return [...rec.frag.entries()].map(([d, o]) => ({ d, s: voteWeight(o, d) })).filter(f => f.s > 0);
+}
+/* v3.42 — the planned units that can be the load picked up at a deck spot:
+   those on the line back towards the camera (it is often locked only once it
+   rises clear) and those within 3 m */
+function unitsNear(all, X, Y, tc){
+  const inU = (c, x, y, m) => x >= c.x0 - m && x <= c.x1 + m && y >= c.y0 - m && y <= c.y1 + m;
+  const out = new Set();
+  if(tc) for(let s = -1; s <= 9; s += 0.25){ const x = X + tc[0] * s, y = Y + tc[1] * s; all.forEach(c => { if(inU(c, x, y, 0.3)) out.add(c); }); }
+  all.forEach(c => { if(Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) <= 3) out.add(c); });
+  return [...out];
+}
+/* v3.42 — the units still to come aboard that fit the size seen */
+function waitingFor(fp){
+  const list = API.waitingUnits ? API.waitingUnits() : [];
+  const sz = fp && fp.size;
+  return list.filter(u => !(sz && u.l && u.w && (Math.max(u.l, u.w) < 0.4 * sz || Math.min(u.l, u.w) > 2.5 * sz)));
+}
 /* best number for a lock: a unit on the lists, else the most read text */
 function bestReading(id){
   const rec = DC.w.reads.get(id);
   if(!rec) return null;
   /* a reading that stays put in the picture while the load moves is a unit
-     standing on deck under it — it hardly counts */
-  const spread = pts => { const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, my = pts.reduce((a, p) => a + p[1], 0) / pts.length; return pts.reduce((a, p) => a + Math.hypot(p[0] - mx, p[1] - my), 0) / pts.length; };
-  const deck = DC.w.deck || [];
-  const weigh = (o, key) => {
-    /* sightings right where the same text stood on deck before the load came */
-    const occ = o.occ.filter(a => !deck.some(d => Math.hypot(d.x - a[0], d.y - a[1]) < 0.07 && sameText(d.n, NRM(key))));
-    if(!occ.length) return 0;
-    o = { s: o.s * occ.length / o.occ.length, occ };
-    if(o.occ.length < 2) return o.s;
-    const sAbs = spread(o.occ.map(a => [a[0], a[1]])), sRel = spread(o.occ.map(a => [a[0] - a[2], a[1] - a[3]]));
-    const loadMoved = spread(o.occ.map(a => [a[2], a[3]]));
-    return loadMoved > 0.01 && sAbs < 0.6 * sRel ? o.s * 0.15 : o.s;
-  };
+     standing on deck under it — it hardly counts (voteWeight) */
+  const weigh = voteWeight;
   const top = m => [...m.entries()].map(([k, o]) => [k, weigh(o, k)]).sort((a, b) => b[1] - a[1]);
   const mm = top(rec.m), rr = top(rec.raw);
   if(mm.length && mm[0][1] >= 1) return { text: mm[0][0], ccu: mm[0][0], sure: mm[0][1] >= 2 && (!mm[1] || mm[0][1] >= 2 * mm[1][1]), n: rec.n };
@@ -1770,11 +1797,18 @@ function onTrackEvent(e){
   const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
   const all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const byNum = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
-  let guess = null, guessId = null, moveId = null;
+  let guess = null, guessId = null, moveId = null, partial = null;
   if(e.kind === 'lifted'){
     /* which planned unit stood there: the number read, if it is on deck;
-       otherwise the unit under the pick-up spot (or the nearest within 1.5 m) */
-    const u = byNum || (fp ? unitAt(all, fp.centre[0], fp.centre[1], fp.toCam) : null);
+       else a piece of its number that fits only one of the units near the
+       pick-up spot; else the unit under that spot (or the nearest within 1.5 m) */
+    const posU = fp ? unitAt(all, fp.centre[0], fp.centre[1], fp.toCam) : null;
+    let pu = null;
+    if(!byNum && fp && LRM && LRM.pickByFragments){
+      const pk = LRM.pickByFragments(fragsOf(e.id), unitsNear(all, fp.centre[0], fp.centre[1], fp.toCam).filter(c => c.ccu));
+      if(pk){ pu = pk.c; partial = { frag: pk.frag, sure: pk.sure || !!(posU && posU.id === pk.c.id) }; }
+    }
+    const u = byNum || pu || posU;
     if(u){ guessId = u.id; guess = u.ccu || u.desc || 'unit'; }
   }else if(fp){
     /* v3.42 — set down: a unit already on the plan moved to another spot — its
@@ -1786,11 +1820,16 @@ function onTrackEvent(e){
     }
     /* not a move when it was set down on its own planned place */
     if(u && !(fp.centre[0] >= u.x0 && fp.centre[0] <= u.x1 && fp.centre[1] >= u.y0 && fp.centre[1] <= u.y1)){ moveId = u.id; guess = u.ccu || u.desc || 'unit'; }
+    /* v3.42 — no whole number: a piece of it that fits only one unit still to come aboard */
+    if(moveId == null && !(rd && rd.ccu) && LRM && LRM.pickByFragments){
+      const pk = LRM.pickByFragments(fragsOf(e.id), waitingFor(fp));
+      if(pk) partial = { frag: pk.frag, sure: pk.sure, ccu: pk.c.ccu, src: pk.c.src };
+    }
   }
   const gu = guessId != null ? API.cargo().find(c => c.id === guessId) : null;
   const ev = { id: e.id, kind: e.kind, t: e.t, live: DC.kind === 'live', at: new Date(), fp,
     where: gu ? whereText({ x: (gu.x0 + gu.x1) / 2, y: (gu.y0 + gu.y1) / 2 }) : whereOf(fp), reading: rd,
-    thumb: W_.thumbs.get(e.id) || null, guess, guessId, moveId,
+    thumb: W_.thumbs.get(e.id) || null, guess, guessId, moveId, partial,
     key: `${e.kind}:${e.id}:${Math.round(e.t * 10)}:${Date.now() % 1e6}` };
   if(moveId != null){ const mu = all.find(c => c.id === moveId); ev.movedFrom = whereText({ x: (mu.x0 + mu.x1) / 2, y: (mu.y0 + mu.y1) / 2 }); }
   /* show it on the deck plan until the operator confirms or dismisses it */
@@ -1900,8 +1939,8 @@ function watchRender(quick){
     card.innerHTML = `
       <div class="dc-an-thumb"></div>
       <div class="dc-an-main">
-        <div class="dc-an-top"><span class="dc-an-ccu">${txt ? esc(txt) : e.guess ? esc(e.guess) + '?' : '—'}</span>
-          <span class="dc-an-conf ${conf}">${e.guess && !txt ? 'Stood there' : confTxt}</span></div>
+        <div class="dc-an-top"><span class="dc-an-ccu">${txt ? esc(txt) : e.guess ? esc(e.guess) + '?' : e.partial && e.partial.ccu ? esc(e.partial.ccu) + '?' : '—'}</span>
+          <span class="dc-an-conf ${e.partial ? (e.partial.sure ? 'high' : 'low') : conf}">${e.partial ? 'Number …' + esc(e.partial.frag) : e.guess && !txt ? 'Stood there' : confTxt}</span></div>
         <div class="dc-an-sub">${e.live ? `<span>${timeTxt}</span>` : `<button type="button" class="dc-an-time" title="Show in the video">${timeTxt}</button>`} · <b>${e.kind === 'landed' ? (e.movedFrom ? 'Moved to' : 'Set down') : 'Lifted off'}</b>${e.where ? ' · ' + esc(e.where) : ''}${e.movedFrom ? ` <span class="dc-an-note">(from ${esc(e.movedFrom)})</span>` : ''}</div>
         <div class="dc-an-act"></div>
       </div>`;
@@ -1971,10 +2010,11 @@ function planOut(ev, prev){
   API.camEvent({ key: ev.key, kind: ev.kind === 'lifted' ? 'lifted' : ev.moveId != null ? 'moved' : 'landed',
     at: ev.at, live: ev.live, t: ev.t, where: ev.where, movedFrom: ev.movedFrom || '',
     xM: ev.fp ? ev.fp.centre[0] : null, yM: ev.fp ? ev.fp.centre[1] : null, sizeM: ev.fp ? ev.fp.size : null,
-    text: rd && rd.text || '', ccu: rd && rd.ccu || '', sure: !!(rd && rd.sure),
+    text: rd && rd.text || (ev.partial && ev.partial.ccu) || '', ccu: rd && rd.ccu || (ev.partial && ev.partial.ccu) || '',
+    sure: rd && rd.text ? !!rd.sure : !!(ev.partial && ev.partial.sure), frag: ev.partial ? ev.partial.frag : '',
     guess: ev.guess, guessId: ev.guessId, moveId: ev.moveId, thumb: ev.thumb, supersedes: prev ? prev.key : null });
   miniFlash(ev.kind === 'lifted' ? `Lifted off${ev.guess ? ' · ' + ev.guess + '?' : ''}${ev.where ? ' · ' + ev.where : ''}`
-    : ev.moveId != null ? `Moved · ${ev.guess}? → ${ev.where}` : `Set down${rd && rd.text ? ' · ' + rd.text + (rd.sure ? '' : '?') : ''}${ev.where ? ' · ' + ev.where : ''}`);
+    : ev.moveId != null ? `Moved · ${ev.guess}? → ${ev.where}` : `Set down${rd && rd.text ? ' · ' + rd.text + (rd.sure ? '' : '?') : ev.partial ? ' · ' + ev.partial.ccu + '?' : ''}${ev.where ? ' · ' + ev.where : ''}`);
 }
 function hidePanel(){
   if(!DC) return;
@@ -1993,6 +2033,22 @@ function showPanel(tab){
   setTab(tab || 'watch');
   miniRender(true);
 }
+/* v3.42 — while a load lifted from the deck is on the hook: the unit a piece
+   of its number points to, among those that stood around the spot it left */
+let guessCache = { id: -1, at: 0, v: null };
+function liveGuess(tr){
+  if(!tr || !LRM || !LRM.pickByFragments || !tr.start || !(tr.start[1] - tr.foot[1] > 0.03)) return null;
+  const now = performance.now();
+  if(guessCache.id === tr.id && now - guessCache.at < 800) return guessCache.v;
+  let v = null;
+  const M = currentModel(), p = M && M.toDeck(tr.start[0], tr.start[1]), fp = footprint(tr.box, tr.foot);
+  if(p){
+    const pk = LRM.pickByFragments(fragsOf(tr.id), unitsNear(API.cargo(), p[0], p[1], fp && fp.toCam).filter(c => c.ccu));
+    if(pk) v = { ccu: pk.c.ccu, frag: pk.frag, sure: pk.sure };
+  }
+  guessCache = { id: tr.id, at: now, v };
+  return v;
+}
 /* what the camera sees now, in a few words (mini window) */
 function nowState(){
   const W_ = DC && DC.w, tr = W_ && W_.st && W_.st.track, cal = !!currentModel();
@@ -2000,10 +2056,10 @@ function nowState(){
   if(DC.kind === 'video' && DC.src.paused) return { num: 'Paused', l2: 'The video is paused', dim: true };
   if(!tr) return { num: 'Watching', l2: cal ? 'Waiting for a load on the hook' : 'Not calibrated — bays are not shown', dim: true };
   const rd = bestReading(tr.id), fp = cal ? footprint(tr.box, tr.foot) : null, from = cal ? liftedFrom(tr) : '';
-  const down = tr.phase === 'down';
+  const down = tr.phase === 'down', lg = !(rd && rd.text) ? liveGuess(tr) : null;
   return {
-    num: rd && rd.text ? rd.text : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…',
-    dim: !(rd && rd.text), chip: rd && rd.text ? (rd.sure ? 'number ✓' : 'number ?') : '', sure: !!(rd && rd.sure),
+    num: rd && rd.text ? rd.text : lg ? lg.ccu + '?' : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…',
+    dim: !(rd && rd.text) && !lg, chip: rd && rd.text ? (rd.sure ? 'number ✓' : 'number ?') : lg ? '…' + lg.frag : '', sure: !!(rd && rd.sure) || !!(lg && lg.sure),
     pre: down ? 'Set down: ' : 'On the hook: ', down,
     l2: !cal ? 'Calibrate the camera to see the bay' : down ? (fp ? whereOf(fp) + ' — confirming' : 'confirming') : [from ? '↑ from ' + from : '', fp ? '→ over ' + whereOf(fp) : 'over the side'].filter(Boolean).join(' '),
   };
@@ -2138,7 +2194,8 @@ function bgTick(tr){
   const rd = bestReading(tr.id), M = currentModel();
   let from = null;
   if(tr.start && tr.start[1] - tr.foot[1] > 0.03 && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [p[0], p[1]]; }
-  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(6.5, Math.max(1.2, fp.size)), text: rd && rd.text || '', sure: !!(rd && rd.sure), down: tr.phase === 'down', from });
+  const lg = !(rd && rd.text) ? liveGuess(tr) : null;
+  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(6.5, Math.max(1.2, fp.size)), text: rd && rd.text || (lg ? lg.ccu : ''), sure: rd && rd.text ? !!rd.sure : false, down: tr.phase === 'down', from });
 }
 /* the top-bar Camera tile */
 export function cameraIsOn(){ return BG_ON; }

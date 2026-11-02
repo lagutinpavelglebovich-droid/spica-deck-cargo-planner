@@ -75,3 +75,37 @@ export function makeMatcher(cands){
     return null;
   };
 }
+
+/* v3.42 — a number read only in pieces ("09", "60"). Within a short list of
+   units that can be the load — the ones that stood where it was picked up, or
+   the ones still waiting to come aboard — a piece of digits that fits exactly
+   one of them picks it. A 2-digit piece counts only when it was seen at least
+   twice; pieces that fit several units say nothing; the winner must have at
+   least twice the support of the next.
+   frags: [{ d: '609', s: weight }]  cands: [{ id, ccu, … }]
+   → { c, frag, score, sure } or null */
+export function pickByFragments(frags, cands){
+  const list = (cands || []).map(c => ({ c, d: N(c.ccu).replace(/\D/g, '') })).filter(o => o.d.length >= 2);
+  const good = (frags || []).filter(f => f && f.d && f.d.length >= 2 && (f.d.length >= 3 ? f.s >= 0.6 : f.s >= 1.2));
+  if(!list.length || !good.length) return null;
+  const score = new Map();
+  good.forEach(f => {
+    const hits = list.filter(o => o.d.includes(f.d));
+    if(hits.length !== 1) return;
+    const w = f.s * (f.d.length >= 4 ? 3 : f.d.length === 3 ? 2 : 1);
+    score.set(hits[0], (score.get(hits[0]) || 0) + w);
+  });
+  const top = [...score.entries()].sort((a, b) => b[1] - a[1]);
+  if(!top.length || (top[1] && top[1][1] > top[0][1] * 0.5)) return null;
+  const [best, sc] = top[0];
+  const frag = good.filter(f => best.d.includes(f.d)).sort((a, b) => b.d.length - a.d.length || b.s - a.s)[0].d;
+  return { c: best.c, frag, score: Math.round(sc * 100) / 100, sure: sc >= 2.4 };
+}
+/* digit pieces of one reading: runs of 2+ digits ("GB 6O9" → "609"); sizes
+   and weights ("20FT", "2500KG") are not pieces of a unit number */
+export function digitPieces(text){
+  if(WEIGHT_WORDS.test(String(text || ''))) return [];
+  const n = N(text).replace(/(\d)O(?=\d)/g, '$10');
+  if(/^\d+(FT|KGS?|LBS?|T|M3|CBM|MM|CM|M)$/.test(n)) return [];
+  return n.match(/\d{2,}/g) || [];
+}
