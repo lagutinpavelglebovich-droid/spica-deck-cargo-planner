@@ -18757,10 +18757,10 @@ body.pdf-capture .cb-cam-lift-badge{ display:none; }
 
 /* ── mini camera window (bottom left; the panels slide in from the right) ── */
 .dcm{ position:fixed; z-index:9000; left:max(16px, env(safe-area-inset-left, 0px)); bottom:14px; font-family:Inter, system-ui, sans-serif; color:var(--dcm-txt); }
-.dcm-full{ display:flex; width:500px; max-width:calc(100vw - 32px); height:164px; border-radius:14px; overflow:hidden; background:var(--dcm-bg);
+.dcm-full{ display:flex; width:calc(var(--dcm-h, 164px) * 1.305 + 286px); max-width:calc(100vw - 32px); height:var(--dcm-h, 164px); border-radius:14px; overflow:hidden; background:var(--dcm-bg);
   border:1px solid var(--dcm-brd); box-shadow:var(--dcm-sh); }
 .dcm.is-pill .dcm-full{ display:none; }
-.dcm-pic{ position:relative; width:214px; flex:none; background:var(--dcm-black); }
+.dcm-pic{ position:relative; width:calc(var(--dcm-h, 164px) * 1.305); flex:none; background:var(--dcm-black); }
 .dcm-pic canvas{ width:100%; height:100%; display:block; }
 .dcm-live{ position:absolute; left:8px; top:8px; display:flex; align-items:center; gap:5px; padding:4px 6px; border-radius:5px;
   background:color-mix(in srgb, var(--dcm-black) 60%, transparent); font:800 10px/1 Inter, system-ui, sans-serif; letter-spacing:.06em; color:var(--dcm-txt); }
@@ -18807,3 +18807,15 @@ body.pdf-capture .cb.cb-cam-moved{ outline:none; opacity:1; }
 .dc-w-bg{ width:100%; margin:4px 0 2px; }
 .cam-ghost-pill.at-l{ transform:none; }
 .cam-ghost-pill.at-r{ transform:translateX(-100%); }
+/* small screens: less room under the deck → a lower window */
+.dcm.is-compact .dcm-top{ padding-top:6px; }
+.dcm.is-compact .dcm-st{ padding-top:4px; gap:3px; }
+.dcm.is-compact .dcm-l1{ font-size:13px; }
+.dcm.is-compact .dcm-l2{ font-size:11.5px; -webkit-line-clamp:1; }
+.dcm.is-compact .dcm-ft{ padding:3px 8px; }
+.dcm.is-compact .dcm-live{ left:6px; top:6px; padding:3px 5px; font-size:9px; }
+.dcm.is-tiny .dcm-ft{ display:none; }
+.dcm.is-tiny .dcm-src{ display:none; }
+.dcm.is-tiny .dcm-top{ position:absolute; right:4px; top:4px; padding:0; }
+.dcm.is-tiny .dcm-rt{ position:relative; }
+.dcm.is-tiny .dcm-st{ justify-content:center; padding:0 64px 0 12px; }

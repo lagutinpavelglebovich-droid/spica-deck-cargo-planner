@@ -18,6 +18,7 @@ export const RELEASE_NOTES = [
       { type: 'feature', text: 'Camera tile on the top bar: one click switches watching on (red dot) or off; "Switch on" in the toast undoes an accidental off. The first time without a calibration it opens the calibration' },
       { type: 'feature', text: 'With the Camera on, closing the camera window keeps watching. "Close and keep watching" in Watch lifts does the same for a video file' },
       { type: 'feature', text: 'Small camera window bottom left: the picture follows the load on the hook, with its number and bay in words. "—" folds it into a small pill that lights up on each event; the choice is remembered' },
+      { type: 'ui', text: 'The small camera window never covers the deck: it takes the room under the deck and gets lower on a small screen (laptops); with no room left it folds into the pill by itself — click the pill to see the picture anyway' },
       { type: 'feature', text: 'The load on the hook is shadowed on the deck plan as it moves, with a dotted trail from the spot it was lifted from' },
       { type: 'feature', text: 'A set-down leaves a dashed ghost on the plan with "SET DOWN ✓ ✕". Click it for the card: picture, bay, number read, "Place … here" when the number matches a unit in Imported, "Choose unit…", "Dismiss"' },
       { type: 'feature', text: 'A unit moved on deck shows an arrow from its planned place to a ghost where it now stands; ✓ moves it on the plan' },

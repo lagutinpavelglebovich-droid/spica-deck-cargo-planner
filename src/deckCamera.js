@@ -2029,20 +2029,41 @@ function miniBuild(){
   MINI.addEventListener('click', ev => {
     const b = ev.target.closest('[data-a]'); if(!b) return;
     const a = b.dataset.a;
-    if(a === 'pill' || a === 'full'){ try{ localStorage.setItem(MINI_KEY, a); }catch(_){} miniRender(true); }
+    if(a === 'pill' || a === 'full'){ try{ localStorage.setItem(MINI_KEY, a); }catch(_){} miniForce = a === 'full'; miniRender(true); }
     else if(a === 'open') showPanel('watch');
     else if(a === 'log' && API.camOpenLog) API.camOpenLog(b);
   });
   document.body.appendChild(MINI);
   return MINI;
 }
+/* v3.42 — the window never covers the deck: it takes the room under the deck
+   (164 px when there is room, down to 76 px on a small screen) and
+   folds into the pill when there is less. Opening the pill by hand there
+   shows the compact window anyway, over the deck — the operator asked for it. */
+let miniForce = false;
+const MINI_H = 164, MINI_HMIN = 76;
+function miniRoom(){
+  const dk = document.getElementById('cvDECK');
+  if(!dk) return MINI_H;
+  const r = dk.getBoundingClientRect();
+  if(!r.height) return MINI_H;
+  return Math.floor(window.innerHeight - r.bottom - 14 - 10);
+}
 export function miniRender(full){
   if(!API) return;
   const show = !!(DC && DC.bg && BG_ON);
   if(!show){ if(MINI) MINI.hidden = true; return; }
-  const m = miniBuild(), mode = miniMode();
+  const m = miniBuild(), saved = miniMode(), room = miniRoom();
+  if(room >= MINI_HMIN) miniForce = false;
+  const auto = saved === 'full' && room < MINI_HMIN && !miniForce;
+  const mode = auto ? 'pill' : saved;
+  const h = Math.max(MINI_HMIN, Math.min(MINI_H, room));
+  m.style.setProperty('--dcm-h', h + 'px');
+  m.classList.toggle('is-compact', h < 140);
+  m.classList.toggle('is-tiny', h < 112);
   m.hidden = false;
   m.classList.toggle('is-pill', mode === 'pill');
+  m.querySelector('.dcm-pill').title = auto ? 'Show the camera picture (it will cover part of the deck — little room on this screen)' : 'Show the camera picture';
   const n = API.camPendingCount ? API.camPendingCount() : 0;
   const $ = q => m.querySelector(q);
   $('.dcm-pp').textContent = n ? ` · ${n} waiting` : '';
