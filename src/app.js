@@ -22,7 +22,7 @@ async function invoke(cmd, args){
 import { FEATURE_BADGE_REGISTRY } from './badgeRegistry.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { readManifestFile, parseWeightTonnes } from './manifestImport.js';
-import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged } from './deckCamera.js';
+import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as dcPlanChanged, cameraToggle, cameraIsOn, cameraResolved, miniRender } from './deckCamera.js';
 import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, refresh as fieldWxRefresh } from './fieldWeather.js';
 import { initWeatherMap, openWeatherMap } from './weatherMap.js';
 import { checkPositionOnMap } from './locMap.js';
@@ -4387,6 +4387,7 @@ function renderAll(){
      a rebuild (Viewer mode and remote updates never re-ran checkSeg) */
   if(typeof _dgReapplyHighlights==='function') _dgReapplyHighlights();
   motionAfterRender(S.cargo, cv);   /* v3.25 — several new blocks land in a wave */
+  if(CAM_EV.length) camRefresh();   /* v3.42 — camera ghosts / arrows over the new blocks */
 }
 
 /* Edge-aware side for the selection action buttons (×/↻/+). They live in a
@@ -5139,6 +5140,370 @@ function markLifted(ids){
     else showToast('The plan changed since the lift — use Ctrl+Z to step back', 'info');
   });
 }
+
+/* ════════════════════════════════════════════════════════════
+   v3.42 — CAMERA ON THE PLAN
+   Events from the deck camera wait on the plan for the operator: a lift-off
+   marks the unit (CAM_LIFTED, above), a set-down leaves a dashed "ghost"
+   where the load stands, a unit moved on deck leaves a ghost with an arrow
+   from its planned place. ✓ applies it, ✕ dismisses it; the plan never
+   changes by itself. While the Camera is on and its window closed, the load
+   on the hook is shadowed live. The log (Camera tile badge) lists them all.
+   Session only — not saved with the plan.
+════════════════════════════════════════════════════════════ */
+const CAM_EV = [];          /* newest first */
+let CAM_LIVE = null;
+let _camCardKey = null;
+const _camNk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const _camEsc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function camPendingCount(){ return CAM_EV.filter(e => e.status === 'pending').length; }
+function camFind(key){ return CAM_EV.find(e => e.key === key); }
+/* the unit from Imported the number read points to */
+function camSuggest(e){
+  if(e.kind !== 'landed' || !e.ccu) return null;
+  const k = _camNk(e.ccu), qi = IMPORT_QUEUE.findIndex(q => _camNk(q.ccu) === k);
+  return qi < 0 ? null : { ccu: String(IMPORT_QUEUE[qi].ccu).trim(), item: IMPORT_QUEUE[qi] };
+}
+function camEvent(ev){
+  if(ev.supersedes){ const o = camFind(ev.supersedes); if(o && o.status === 'pending'){ o.status = 'gone'; o.done = 'moved on'; } }
+  const e = Object.assign({ status: 'pending', done: '' }, ev);
+  if(e.kind === 'lifted' && e.guessId == null){ e.status = 'seen'; e.done = 'no unit on the plan there'; }
+  if(e.kind !== 'lifted' && e.xM == null){ e.status = 'seen'; e.done = 'bay unknown — camera not calibrated'; }
+  if(e.kind === 'moved' && !S.cargo.some(c => c.id === e.moveId)){ e.kind = 'landed'; e.moveId = null; }
+  CAM_EV.unshift(e);
+  if(CAM_EV.length > 200) CAM_EV.length = 200;
+  camRefresh();
+}
+function camResolve(key, status, label){
+  const e = camFind(key);
+  if(!e || e.status !== 'pending') return;
+  e.status = status; e.done = label || (status === 'ok' ? 'done' : 'dismissed');
+  if(e.kind === 'lifted' && status !== 'ok' && CAM_LIFTED.has(e.guessId) && (CAM_LIFTED.get(e.guessId) || {}).key === key){ CAM_LIFTED.delete(e.guessId); renderAll(); }
+  try{ cameraResolved(key, e.done); }catch(_){}
+  camRefresh();
+}
+/* a lift-off answered on the unit's own badge (or the unit removed by hand) */
+function camSync(){
+  CAM_EV.forEach(e => {
+    if(e.status !== 'pending') return;
+    if(e.kind === 'lifted'){
+      const f = CAM_LIFTED.get(e.guessId);
+      if(f && f.key === e.key) return;
+      const gone = !S.cargo.some(c => c.id === e.guessId);
+      e.status = gone ? 'ok' : 'no'; e.done = gone ? 'lifted' : (f ? 'superseded' : 'not this one');
+      try{ cameraResolved(e.key, e.done); }catch(_){}
+    }else if(e.kind === 'moved' && !S.cargo.some(c => c.id === e.moveId)){ e.status = 'gone'; e.done = 'unit no longer on the plan'; }
+  });
+}
+function camRefresh(){
+  camSync();
+  camRenderPlan();
+  camBadge();
+  camLogRender();
+  try{ miniRender(true); }catch(_){}
+}
+function camGhostRect(e){
+  let w = 0, h = 0;
+  if(e.kind === 'moved'){ const c = S.cargo.find(x => x.id === e.moveId); if(c){ w = c.w; h = c.h; } }
+  else{ const sg = camSuggest(e); if(sg){ w = sg.item.w || 0; h = sg.item.h || 0; } }
+  if(!w || !h){ const sz = Math.min(6.5, Math.max(1.2, e.sizeM || 2)); w = m2px_w(sz); h = m2px_h(sz); }
+  const cx = metersToDeckX(e.xM), cy = e.yM * YS;
+  return { x: Math.max(0, Math.min(TW - w, cx - w / 2)), y: Math.max(0, Math.min(CVH - h, cy - h / 2)), w, h };
+}
+function camGhostLabel(e){
+  if(e.kind === 'moved') return { pill: `MOVED · ${e.guess || 'unit'}?`, inside: (e.guess || '') + '?' };
+  const t = e.text ? e.text + (e.sure ? '' : '?') : '';
+  return { pill: t ? `SET DOWN · ${t}` : 'SET DOWN ?', inside: t || '?' };
+}
+function camRenderPlan(){
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return;
+  cv.querySelectorAll('.cam-ghost, .cam-ghost-pill, .cam-arrows').forEach(n => n.remove());
+  cv.querySelectorAll('.cb.cb-cam-moved').forEach(n => n.classList.remove('cb-cam-moved'));
+  const list = CAM_EV.filter(e => e.status === 'pending' && (e.kind === 'landed' || e.kind === 'moved')).slice().reverse();
+  if(!list.length) return;
+  const op = isOperator();
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'cam-arrows'); svg.setAttribute('viewBox', `0 0 ${TW} ${CVH}`); svg.setAttribute('preserveAspectRatio', 'none');
+  svg.innerHTML = '<defs><marker id="camArrowHd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="cam-arrow-hd"/></marker></defs>';
+  list.forEach(e => {
+    const r = camGhostRect(e), lb = camGhostLabel(e);
+    const g = document.createElement('div');
+    g.className = 'cam-ghost' + (e.kind === 'moved' ? ' is-move' : '');
+    g.dataset.key = e.key;
+    g.style.left = r.x + 'px'; g.style.top = r.y + 'px'; g.style.width = r.w + 'px'; g.style.height = r.h + 'px';
+    g.title = (e.kind === 'moved' ? 'Camera: moved here' : 'Camera: set down here') + ' — click for details';
+    const tx = document.createElement('span'); tx.className = 'cam-ghost-tx'; tx.textContent = lb.inside; g.appendChild(tx);
+    cv.appendChild(g);
+    const p = document.createElement('div');
+    p.className = 'cam-ghost-pill'; p.dataset.key = e.key;
+    /* centred over the ghost; kept inside the deck at its ends */
+    const pc = r.x + r.w / 2;
+    if(pc < 70){ p.classList.add('at-l'); p.style.left = r.x + 'px'; }
+    else if(pc > TW - 70){ p.classList.add('at-r'); p.style.left = (r.x + r.w) + 'px'; }
+    else p.style.left = pc + 'px';
+    p.style.top = Math.max(-2, r.y - 22) + 'px';
+    p.innerHTML = `<span>${_camEsc(lb.pill)}</span>` + (op ? '<button type="button" class="cam-yes" title="Yes — put it on the plan">✓</button><button type="button" class="cam-no" title="No — dismiss">✕</button>' : '');
+    cv.appendChild(p);
+    if(e.kind === 'moved'){
+      const c = S.cargo.find(x => x.id === e.moveId);
+      if(c){
+        const ax = c.x + c.w / 2, ay = c.y + c.h / 2, bx = r.x + r.w / 2, by = r.y + r.h / 2;
+        /* stop at the ghost's edge */
+        const dx = bx - ax, dy = by - ay;
+        const tEnd = Math.max(0, 1 - Math.min(1, (r.w / 2 + 4) / Math.max(1e-6, Math.abs(dx)), (r.h / 2 + 4) / Math.max(1e-6, Math.abs(dy))));
+        const ex = ax + dx * tEnd, ey = ay + dy * tEnd;
+        svg.insertAdjacentHTML('beforeend', `<path d="M${ax.toFixed(1)},${ay.toFixed(1)} Q ${((ax + ex) / 2).toFixed(1)},${(Math.min(ay, ey) - 40).toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}" class="cam-arrow" marker-end="url(#camArrowHd)"/>`);
+        const src = cv.querySelector(`.cb[data-id="${c.id}"]`); if(src) src.classList.add('cb-cam-moved');
+      }
+    }
+  });
+  if(svg.querySelector('path.cam-arrow')) cv.appendChild(svg);
+}
+/* ghost / pill clicks (delegated once) */
+function camPlanClick(ev){
+  const pill = ev.target.closest('.cam-ghost-pill'), gh = ev.target.closest('.cam-ghost');
+  if(!pill && !gh) return;
+  ev.stopPropagation(); ev.preventDefault();
+  const key = (pill || gh).dataset.key, e = camFind(key);
+  if(!e) return;
+  if(pill && ev.target.closest('.cam-no')){ camResolve(key, 'no', 'dismissed'); camCardClose(); return; }
+  if(pill && ev.target.closest('.cam-yes')){
+    if(e.kind === 'moved' || camSuggest(e)){ camApply(e); camCardClose(); return; }
+  }
+  const anchor = document.querySelector(`.cam-ghost[data-key="${CSS.escape(key)}"]`) || pill || gh;
+  camCardOpen(key, anchor);
+}
+/* ✓: put it on the plan */
+function camApply(e, ccu){
+  if(!isOperator()){ showToast('Switch to Operator mode to change the plan', 'warn'); return false; }
+  if(e.kind === 'moved'){
+    if(!camMoveUnit(e.moveId, e.xM, e.yM)) return false;
+    camResolve(e.key, 'ok', 'moved on the plan'); return true;
+  }
+  const pick = ccu || (camSuggest(e) || {}).ccu;
+  if(!pick) return false;
+  const k = _camNk(pick), qi = IMPORT_QUEUE.findIndex(q => _camNk(q.ccu) === k);
+  if(qi < 0){ showToast(`${pick} is not in Imported any more`, 'warn'); return false; }
+  selectQueueItem(qi);
+  placeAt(metersToDeckX(e.xM), e.yM * YS, true);
+  showToast(`${pick} placed from the camera`, 'ok');
+  camResolve(e.key, 'ok', 'placed ' + pick);
+  return true;
+}
+function camMoveUnit(id, xM, yM){
+  if(!isOperator()) return false;
+  const c = S.cargo.find(x => x.id === id);
+  if(!c) return false;
+  const cx = metersToDeckX(xM), cy = yM * YS;
+  c.x = Math.max(0, Math.min(TW - c.w, Math.round(cx - c.w / 2)));
+  c.y = Math.max(0, Math.min(CVH - c.h, Math.round(cy - c.h / 2)));
+  renderAll(); updateStats(); checkSeg(); save();
+  showToast(`${c.ccu || c.desc || 'Unit'} moved from the camera`, 'ok');
+  return true;
+}
+function _camThumb(e, cls){
+  if(!e.thumb) return null;
+  const c = document.createElement('canvas'); c.className = cls;
+  c.width = e.thumb.width; c.height = e.thumb.height;
+  try{ c.getContext('2d').drawImage(e.thumb, 0, 0); }catch(_){}
+  return c;
+}
+const _camTime = e => e.live && e.at ? e.at.toTimeString().slice(0, 8) : `video ${Math.floor((e.t || 0) / 60)}:${String(Math.floor(e.t || 0) % 60).padStart(2, '0')}`;
+/* the card next to a ghost: details + Place / Choose / Dismiss */
+function camCardOpen(key, anchor){
+  const e = camFind(key);
+  if(!e) return;
+  camCardClose();
+  _camCardKey = key;
+  const op = isOperator(), sg = camSuggest(e);
+  const card = document.createElement('div');
+  card.className = 'cam-card'; card.id = 'camCard'; card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', e.kind === 'moved' ? 'Camera — unit moved' : 'Camera — set down');
+  const num = e.text ? `${_camEsc(e.text)}${e.sure ? '' : ' <span class="cam-q">(not sure)</span>'}` : '<span class="cam-q">not read</span>';
+  card.innerHTML = `
+    <div class="cam-card-hd"><span class="cam-card-k">${e.kind === 'moved' ? '⇄ MOVED ON DECK' : '⬇ SET DOWN ON DECK'}</span><span class="cam-card-t">${_camEsc(_camTime(e))}</span><button type="button" class="cam-card-x" title="Close">✕</button></div>
+    <div class="cam-card-bd"><div class="cam-card-th"></div><dl class="cam-card-f">
+      <dt>Where</dt><dd>${_camEsc(e.where || '—')}</dd>
+      ${e.kind === 'moved' ? `<dt>Unit</dt><dd>${_camEsc(e.guess || '—')}</dd><dt>From</dt><dd>${_camEsc(e.movedFrom || '—')}</dd>` : `<dt>Number</dt><dd>${num}</dd>`}
+      ${e.sizeM ? `<dt>Size</dt><dd>≈ ${(+e.sizeM).toFixed(1)} m across</dd>` : ''}
+    </dl></div>
+    <div class="cam-card-ac"></div>`;
+  const th = _camThumb(e, 'cam-card-img'); if(th) card.querySelector('.cam-card-th').appendChild(th); else card.querySelector('.cam-card-th').remove();
+  const ac = card.querySelector('.cam-card-ac');
+  const btn = (label, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'cam-btn ' + (cls || ''); b.innerHTML = label; b.addEventListener('click', fn); return b; };
+  if(e.status !== 'pending') ac.innerHTML = `<div class="cam-card-done">${e.status === 'ok' ? '✓' : '✕'} ${_camEsc(e.done)}</div>`;
+  else if(!op) ac.innerHTML = '<div class="cam-card-note">Viewer mode — the operator confirms camera events.</div>';
+  else{
+    if(e.kind === 'moved') ac.appendChild(btn(`Move ${_camEsc(e.guess || 'unit')} here`, 'pr', () => { if(camApply(e)) camCardClose(); }));
+    else if(sg) ac.appendChild(btn(`Place ${_camEsc(sg.ccu)} here <small>· Imported</small>`, 'pr', () => { if(camApply(e)) camCardClose(); }));
+    const row = document.createElement('div'); row.className = 'cam-card-row';
+    if(e.kind === 'landed') row.appendChild(btn('Choose unit…', '', () => camChooser(card, e)));
+    row.appendChild(btn('Dismiss', '', () => { camResolve(e.key, 'no', 'dismissed'); camCardClose(); }));
+    ac.appendChild(row);
+    if(e.kind === 'landed' && !sg) ac.insertAdjacentHTML('beforeend', `<div class="cam-card-note">${e.ccu ? _camEsc(e.ccu) + ' was read, but it is not in Imported — choose the unit, or place it from the Library and dismiss this.' : 'No number read — choose the unit from Imported, or dismiss.'}</div>`);
+  }
+  card.querySelector('.cam-card-x').addEventListener('click', camCardClose);
+  document.body.appendChild(card);
+  /* beside the ghost, inside the window */
+  const r = anchor.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+  let x = r.right + 14; if(x + cw > vw - 10) x = r.left - cw - 14; x = Math.max(10, Math.min(vw - cw - 10, x));
+  let y = r.top + r.height / 2 - ch / 2; y = Math.max(10, Math.min(vh - ch - 10, y));
+  card.style.left = x + 'px'; card.style.top = y + 'px';
+  setTimeout(() => document.addEventListener('pointerdown', _camCardOutside, true), 0);
+}
+function _camCardOutside(ev){
+  const c = document.getElementById('camCard');
+  if(!c){ document.removeEventListener('pointerdown', _camCardOutside, true); return; }
+  if(c.contains(ev.target) || ev.target.closest('.cam-ghost, .cam-ghost-pill, #camLog')) return;
+  camCardClose();
+}
+function camCardClose(){
+  const c = document.getElementById('camCard'); if(c) c.remove();
+  _camCardKey = null;
+  document.removeEventListener('pointerdown', _camCardOutside, true);
+}
+function camChooser(card, e){
+  let box = card.querySelector('.cam-choose');
+  if(box){ box.remove(); return; }
+  box = document.createElement('div'); box.className = 'cam-choose';
+  const items = IMPORT_QUEUE.map(q => ({ ccu: String(q.ccu || '').trim(), desc: q.desc || q.name || '' })).filter(q => q.ccu);
+  if(!items.length){ box.innerHTML = '<div class="cam-card-note">Nothing in Imported. Place the unit from the Library and dismiss this.</div>'; card.querySelector('.cam-card-ac').appendChild(box); return; }
+  box.innerHTML = '<input type="search" class="cam-choose-q" placeholder="Search by number…" aria-label="Search Imported by number" spellcheck="false" autocomplete="off"><div class="cam-choose-l"></div>';
+  const list = box.querySelector('.cam-choose-l'), q = box.querySelector('input');
+  const draw = () => {
+    const f = _camNk(q.value);
+    list.innerHTML = '';
+    items.filter(i => !f || _camNk(i.ccu).includes(f) || _camNk(i.desc).includes(f)).slice(0, 30).forEach(i => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'cam-choose-it';
+      b.innerHTML = `<b>${_camEsc(i.ccu)}</b><span>${_camEsc(i.desc)}</span><em>Imported</em>`;
+      b.addEventListener('click', () => { if(camApply(e, i.ccu)) camCardClose(); });
+      list.appendChild(b);
+    });
+    if(!list.children.length) list.innerHTML = '<div class="cam-card-note">No match in Imported.</div>';
+  };
+  q.addEventListener('input', draw); draw();
+  card.querySelector('.cam-card-ac').appendChild(box);
+  q.focus();
+  /* keep the card inside the window after it grew */
+  const rc = card.getBoundingClientRect(); if(rc.bottom > window.innerHeight - 10) card.style.top = Math.max(10, window.innerHeight - 10 - rc.height) + 'px';
+}
+/* the Camera tile */
+function camState(on){
+  const b = document.getElementById('btnCamera'); if(!b) return;
+  b.classList.toggle('is-on', !!on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.title = on ? 'Camera on — watching lifts. Click to switch off' : 'Camera off. Click to switch on and watch lifts';
+  if(!on) camLive(null);
+}
+function camBadge(){
+  const n = camPendingCount(), b = document.getElementById('camPendBadge');
+  if(!b) return;
+  b.textContent = n ? String(n) : '';
+  b.title = n ? `${n} camera event${n > 1 ? 's' : ''} waiting — open the log` : '';
+}
+/* the live shadow of the load on the hook */
+function camLive(v){
+  CAM_LIVE = v || null;
+  const cv = document.getElementById('cvDECK');
+  if(!cv) return;
+  let el = document.getElementById('camLiveEl'), sv = document.getElementById('camLiveSvg');
+  if(!CAM_LIVE){ if(el) el.remove(); if(sv) sv.remove(); return; }
+  if(!el){
+    el = document.createElement('div'); el.id = 'camLiveEl'; el.className = 'cam-live';
+    el.innerHTML = '<span class="cam-live-tag"><i></i><b></b></span><span class="cam-live-nm"></span>';
+    cv.appendChild(el);
+  }
+  const s = CAM_LIVE.sizeM, w = m2px_w(s), h = m2px_h(s), cx = metersToDeckX(CAM_LIVE.xM), cy = CAM_LIVE.yM * YS;
+  el.style.left = Math.round(cx - w / 2) + 'px'; el.style.top = Math.round(cy - h / 2) + 'px';
+  el.style.width = w + 'px'; el.style.height = h + 'px';
+  el.classList.toggle('is-down', !!CAM_LIVE.down);
+  el.querySelector('.cam-live-tag b').textContent = CAM_LIVE.down ? 'SETTING DOWN' : 'ON THE HOOK';
+  el.querySelector('.cam-live-nm').textContent = CAM_LIVE.text ? CAM_LIVE.text + (CAM_LIVE.sure ? '' : '?') : '';
+  if(CAM_LIVE.from){
+    if(!sv){
+      sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); sv.id = 'camLiveSvg'; sv.setAttribute('class', 'cam-live-svg');
+      sv.setAttribute('viewBox', `0 0 ${TW} ${CVH}`); sv.setAttribute('preserveAspectRatio', 'none');
+      sv.innerHTML = '<circle class="cam-live-from" r="5"/><path class="cam-live-trail"/>';
+      cv.appendChild(sv);
+    }
+    const fx = metersToDeckX(CAM_LIVE.from[0]), fy = CAM_LIVE.from[1] * YS;
+    sv.querySelector('circle').setAttribute('cx', fx); sv.querySelector('circle').setAttribute('cy', fy);
+    sv.querySelector('path').setAttribute('d', `M${fx},${fy} Q ${(fx + cx) / 2},${Math.min(fy, cy) - 50} ${cx},${cy}`);
+  }else if(sv) sv.remove();
+}
+/* the log: drops down from the Camera tile (or the mini window) */
+let _camLogTab = 'all';
+function camOpenLog(anchor){
+  let lg = document.getElementById('camLog');
+  if(lg){ lg.remove(); document.removeEventListener('pointerdown', _camLogOutside, true); return; }
+  lg = document.createElement('div');
+  lg.id = 'camLog'; lg.className = 'cam-log'; lg.setAttribute('role', 'dialog'); lg.setAttribute('aria-label', 'Camera events');
+  document.body.appendChild(lg);
+  lg._anchor = anchor || document.getElementById('btnCamera');
+  camLogRender();
+  setTimeout(() => document.addEventListener('pointerdown', _camLogOutside, true), 0);
+}
+function _camLogOutside(ev){
+  const lg = document.getElementById('camLog');
+  if(!lg){ document.removeEventListener('pointerdown', _camLogOutside, true); return; }
+  if(lg.contains(ev.target) || ev.target.closest('#btnCamera, #camCard, #dcMini')) return;
+  lg.remove(); document.removeEventListener('pointerdown', _camLogOutside, true);
+}
+function camLogRender(){
+  const lg = document.getElementById('camLog');
+  if(!lg) return;
+  const n = camPendingCount(), op = isOperator();
+  const rows = CAM_EV.filter(e => _camLogTab === 'all' || e.status === 'pending');
+  const evName = e => e.kind === 'lifted' ? '⬆ Lifted off' : e.kind === 'moved' ? '⇄ Moved' : '⬇ Set down';
+  const unit = e => e.kind === 'landed' ? (e.text ? _camEsc(e.text) + (e.sure ? '' : '?') : '<span class="cam-q">?</span>') : _camEsc(e.guess || '?') + (e.kind === 'lifted' && e.text && e.sure ? '' : '?');
+  lg.innerHTML = `
+    <div class="cam-log-hd"><div><div class="cam-log-t">Camera events</div><div class="cam-log-s">The plan changes only when you confirm ✓</div></div>
+      <div class="cam-log-tabs"><button type="button" data-tab="all" class="${_camLogTab === 'all' ? 'on' : ''}">All</button><button type="button" data-tab="pend" class="${_camLogTab === 'pend' ? 'on' : ''}">Waiting${n ? ' (' + n + ')' : ''}</button></div></div>
+    <div class="cam-log-body">${rows.length ? `<table class="cam-log-tb">${rows.map(e => `
+      <tr class="${e.status === 'pending' ? 'pend' : ''}" data-key="${_camEsc(e.key)}">
+        <td class="t">${_camEsc(_camTime(e))}</td><td class="e">${evName(e)}</td><td class="u">${unit(e)}</td>
+        <td class="b">${_camEsc(e.kind === 'moved' && e.movedFrom ? e.movedFrom + ' → ' + e.where : e.where || '—')}</td>
+        <td class="s">${e.status !== 'pending' ? `<span class="cam-st ${e.status === 'ok' ? 'ok' : 'no'}">${e.status === 'ok' ? '✓' : e.status === 'no' ? '✕' : '·'} ${_camEsc(e.done)}</span>`
+          : !op ? '<span class="cam-st p">waiting</span>'
+          : e.kind === 'landed' ? (camSuggest(e) ? `<button type="button" class="cam-sb y" data-do="yes">Place ${_camEsc(camSuggest(e).ccu)}</button><button type="button" class="cam-sb" data-do="card" title="Details / choose the unit">…</button>` : '<button type="button" class="cam-sb" data-do="card">Choose…</button>') + '<button type="button" class="cam-sb" data-do="no" title="Dismiss">✕</button>'
+          : '<button type="button" class="cam-sb y" data-do="yes" title="Yes">✓</button><button type="button" class="cam-sb" data-do="no" title="No">✕</button>'}</td>
+      </tr>`).join('')}</table>` : `<div class="cam-log-empty">${_camLogTab === 'pend' ? 'Nothing waiting.' : 'No camera events yet. Switch the Camera on (top bar) — set-downs, lift-offs and moves will appear here.'}</div>`}</div>
+    <div class="cam-log-ft"><span>Sounds: Smart Tools → Sound → Camera</span><button type="button" class="cam-log-clr"${CAM_EV.some(e => e.status !== 'pending') ? '' : ' disabled'}>Clear finished</button></div>`;
+  lg.querySelectorAll('.cam-log-tabs button').forEach(b => b.addEventListener('click', () => { _camLogTab = b.dataset.tab; camLogRender(); }));
+  lg.querySelector('.cam-log-clr').addEventListener('click', () => { for(let i = CAM_EV.length - 1; i >= 0; i--) if(CAM_EV[i].status !== 'pending') CAM_EV.splice(i, 1); camLogRender(); });
+  lg.querySelectorAll('tr[data-key]').forEach(tr => tr.addEventListener('click', ev => {
+    const e = camFind(tr.dataset.key); if(!e) return;
+    const d = ev.target.closest('[data-do]');
+    if(d && d.dataset.do === 'no'){
+      if(e.kind === 'lifted'){ CAM_LIFTED.delete(e.guessId); renderAll(); }
+      camResolve(e.key, 'no', 'dismissed'); return;
+    }
+    if(d && d.dataset.do === 'yes'){
+      if(e.kind === 'lifted') markLifted([e.guessId]);
+      else camApply(e);
+      return;
+    }
+    /* the row itself (or …): show it on the plan */
+    const g = document.querySelector(`.cam-ghost[data-key="${CSS.escape(e.key)}"]`);
+    const u = e.kind === 'lifted' && document.querySelector(`.cb[data-id="${e.guessId}"]`);
+    const tgt = g || u;
+    if(tgt){ tgt.classList.remove('cam-flash'); void tgt.offsetWidth; tgt.classList.add('cam-flash'); }
+    if(g && (d || e.kind === 'landed' || e.kind === 'moved')) camCardOpen(e.key, g);
+  }));
+  /* under its anchor, inside the window */
+  const a = lg._anchor && document.body.contains(lg._anchor) ? lg._anchor.getBoundingClientRect() : { left: window.innerWidth - 20, right: window.innerWidth - 20, bottom: 80, top: 80 };
+  const w = lg.offsetWidth, h = lg.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+  const below = a.bottom + 10 + h < vh - 10;
+  lg.style.left = Math.max(10, Math.min(vw - w - 10, a.right - w)) + 'px';
+  lg.style.top = (below ? a.bottom + 10 : Math.max(10, a.top - h - 10)) + 'px';
+}
+document.addEventListener('keydown', ev => {
+  if(ev.key !== 'Escape') return;
+  const c = document.getElementById('camCard'), lg = document.getElementById('camLog');
+  if(c){ camCardClose(); ev.stopPropagation(); return; }
+  if(lg){ lg.remove(); document.removeEventListener('pointerdown', _camLogOutside, true); ev.stopPropagation(); }
+}, true);
 
 /* ════════════════════════════════════════════════════════════
    v3.10 — RESIZE
@@ -15791,8 +16156,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.41.3';
-const APP_VERSION   = '3.41.3';
+const CURRENT_BUILD = 'v3.42.0';
+const APP_VERSION   = '3.42.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -17695,11 +18060,12 @@ const _sndCats = {
   results:   { on: true,  sounds: ['save', 'export', 'import', 'sync'] },
   alerts:    { on: true,  sounds: ['warning', 'resolved', 'error'] },
   interface: { on: false, sounds: ['open', 'close', 'toggleOn', 'toggleOff'] },
+  camera:    { on: true,  sounds: ['camLift', 'camLand', 'camMove'] },       /* v3.42 */
 };
 const _sndState = {}, _sndCatMap = {};
 Object.entries(_sndCats).forEach(([c, v]) => v.sounds.forEach(id => { _sndState[id] = id !== 'select'; _sndCatMap[id] = c; }));
 /* minimum gap between two plays of the same sound (ms) */
-const SND_GAP = { snap: 140, rotate: 140, select: 90, multi: 150, drop: 70, toggleOn: 60, toggleOff: 60, open: 150, close: 150, error: 450, warning: 900, sync: 1500, save: 400, export: 600, import: 600 };
+const SND_GAP = { camLift: 700, camLand: 700, camMove: 700, snap: 140, rotate: 140, select: 90, multi: 150, drop: 70, toggleOn: 60, toggleOff: 60, open: 150, close: 150, error: 450, warning: 900, sync: 1500, save: 400, export: 600, import: 600 };
 const SND_ALERT = { warning: 1, error: 1 };
 const SND_ROUTINE = { select: 1, snap: 1, rotate: 1, multi: 1, open: 1, close: 1, toggleOn: 1, toggleOff: 1 };
 let _sndCtx = null, _sndMaster = null, _sndAnalyser = null;
@@ -19505,7 +19871,15 @@ initDeckCamera({
   vesselName: () => (VESSEL && VESSEL.name) || 'VESSEL',
   isTauri: () => _isTauri(),
   invoke: (c, a, o) => invoke(c, a, o),
-  sound: () => playSound('select'),
+  sound: t => playSound(t || 'select'),
+  /* v3.42 — camera events on the plan */
+  camEvent: ev => camEvent(ev),
+  camResolve: (key, st, label) => camResolve(key, st, label),
+  camLive: v => camLive(v),
+  camState: on => camState(on),
+  camPendingCount: () => camPendingCount(),
+  camOpenLog: a => camOpenLog(a),
+  moveUnit: (id, xM, yM) => camMoveUnit(id, xM, yM),
   /* v3.17 — Read lifts */
   candidates: () => {
     const seen = new Map(), add = (ccu, src) => { const k = String(ccu || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if(k.length >= 3 && !seen.has(k)) seen.set(k, { ccu: String(ccu).trim(), src }); };
@@ -19548,5 +19922,28 @@ initDeckCamera({
       loc: q.locId || '', dg: q.dgClasses || [], l: q.length_m || null, w: q.width_m || null })),
   }),
 });
+
+/* v3.42 — the Camera tile (on / off; the badge opens the log) and the plan ghosts */
+(() => {
+  const b = document.getElementById('btnCamera');
+  if(b) b.addEventListener('click', async ev => {
+    if(ev.target.closest('#camPendBadge') && camPendingCount()){ camOpenLog(b); return; }
+    if(b.classList.contains('busy')) return;
+    const was = cameraIsOn();
+    b.classList.add('busy');
+    let on = was;
+    try{ on = await cameraToggle(); }catch(e){ console.warn('[camera]', e); }
+    b.classList.remove('busy');
+    camState(on);
+    playSound(on ? 'toggleOn' : 'toggleOff');
+    if(was && !on) showUndoToast('Camera off', 'Switch on', () => { cameraToggle().then(v => camState(v)); });
+  });
+  const cv = document.getElementById('cvDECK');
+  if(cv){
+    const stop = ev => { if(ev.target.closest('.cam-ghost, .cam-ghost-pill')) ev.stopPropagation(); };
+    ['pointerdown', 'mousedown', 'touchstart', 'dblclick', 'contextmenu'].forEach(k => cv.addEventListener(k, stop, true));
+    cv.addEventListener('click', camPlanClick, true);
+  }
+})();
 
 init();

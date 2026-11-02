@@ -25,6 +25,7 @@ let API = null;
 let DC = null;            /* panel state while open */
 let CAM = null;           /* live camera — outlives the panel while recording */
 let REC = null;           /* recording in progress */
+let BG_ON = false;        /* v3.42 — Camera switched on (top-bar tile): keeps watching with the window closed */
 
 export function initDeckCamera(api){ API = api; }
 
@@ -318,6 +319,7 @@ function buildPanel(){
                 <option value="1" selected>1×</option><option value="2">2×</option><option value="0.5">½×</option>
               </select>
             </div>
+            <button type="button" class="dc-btn dc-primary dc-w-bg" id="dcWBg" title="Close this window and keep watching — the Camera button on the top bar switches it off">Close and keep watching</button>
             <div class="dc-sub">Lifts <span class="dc-sec-meta" id="dcWCount"></span></div>
             <div class="dc-an-list" id="dcWList"></div>
           </section>
@@ -386,8 +388,12 @@ function buildPanel(){
 }
 
 /* ── open / close ──────────────────────────────────────────── */
-export function openDeckCamera(tab){
+export function openDeckCamera(tab, opts){
   if(!API) return;
+  /* v3.42 — watching in the background: just show the window again */
+  if(DC && DC.bg && !(opts && opts.hidden)){ showPanel(tab); return; }
+  if(DC && !(opts && opts.hidden)){ if(tab) setTab(tab); return; }
+  const hidden = !!(opts && opts.hidden);
   const ov = buildPanel();
   const geo = API.geo();
   const cam = API.getCamera() || {};
@@ -405,7 +411,7 @@ export function openDeckCamera(tab){
     placing: -1,            /* bay index while placing a bay-number point */
     step: 0, drag: -1, sel: -1, dirty: false,
     src: null, kind: '', stream: null, url: '', raf: 0,
-    sw: 0, sh: 0,
+    sw: 0, sh: 0, bg: hidden,
   };
   DC.step = DC.pts.findIndex(p => !p); if(DC.step < 0 || (DC.guides.length && DC.pts.every(p => !p))) DC.step = 4;
   ov.querySelector('#dcTitle').textContent = API.vesselName();
@@ -426,8 +432,7 @@ export function openDeckCamera(tab){
   for(let i = geo.bays.length - 1; i >= 0; i--){
     const o = document.createElement('option'); o.value = String(i); o.textContent = 'Bay ' + geo.labels[i] + ' centre'; xb.appendChild(o);
   }
-  ov.classList.add('open');
-  document.body.classList.add('dc-open');
+  if(!hidden){ ov.classList.add('open'); document.body.classList.add('dc-open'); }
   loadShot(cam);
   DC.wOn = ov.querySelector('#dcWOn').checked; DC.wEvents = []; watchReset();
   ov.querySelector('#dcEmpty').hidden = !!DC.shot;
@@ -438,7 +443,9 @@ export function openDeckCamera(tab){
   setTab(tab || (REC ? 'record' : cam.calib ? 'watch' : 'calib'));
   if(CAM) attachLive();
   recRender();
-  setTimeout(() => ov.querySelector('#dcClose').focus(), 30);
+  if(!hidden) setTimeout(() => ov.querySelector('#dcClose').focus(), 30);
+  miniRender(true);
+  stateOut();
 }
 function setTab(t){
   if(!DC) return;
@@ -449,14 +456,18 @@ function setTab(t){
   if(t === 'watch') watchStart();
   layout(); drawFrame(); drawOverlay(); recRender(); watchRender();
 }
-function closeDeckCamera(){
+function closeDeckCamera(force){
   if(!DC) return;
+  /* v3.42 — the Camera is switched on: closing the window keeps watching */
+  if(!force && BG_ON && DC.src && DC.kind !== 'image'){ hidePanel(); return; }
   stopSource();
   if(!REC) stopCam();                /* keep the camera only while recording */
   DC.ov.classList.remove('open');
   document.body.classList.remove('dc-open');
   DC = null;
   recRender();
+  liveOut(null); miniRender(true);
+  if(BG_ON){ BG_ON = false; stateOut(); }
 }
 function stopSource(){
   if(!DC) return;
@@ -563,10 +574,11 @@ function loop(){
   cancelAnimationFrame(DC.raf);
   const tick = () => {
     if(!DC || !DC.src) return;
-    drawFrame();
+    if(!DC.bg) drawFrame();
     if(DC.kind === 'video') syncSeek();
     watchTick();
-    DC.raf = requestAnimationFrame(tick);
+    if(DC && DC.bg) bgFrame();
+    if(DC) DC.raf = requestAnimationFrame(tick);
   };
   DC.raf = requestAnimationFrame(tick);
 }
@@ -1048,6 +1060,14 @@ function syncTune(){
 function bind(ov){
   const $ = s => ov.querySelector(s);
   $('#dcClose').addEventListener('click', () => closeDeckCamera());
+  /* v3.42 — switch the Camera on and close the window: watching goes on behind */
+  $('#dcWBg').addEventListener('click', () => {
+    if(!DC) return;
+    if(!currentModel()){ API.toast('Calibrate the camera first', 'info'); setTab('calib'); return; }
+    if(!DC.src || DC.kind === 'image'){ API.toast('Start the camera or open a video first', 'info'); return; }
+    const on = DC.ov.querySelector('#dcWOn'); if(on && !on.checked){ on.checked = true; DC.wOn = true; }
+    BG_ON = true; stateOut(); hidePanel();
+  });
   $('#dcTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if(b) setTab(b.dataset.tab); });
   $('#dcRecBtn').addEventListener('click', () => { if(REC) stopRecording(); else startRecording(); });
   $('#dcRecDirBtn').addEventListener('click', () => chooseRecFolder());
@@ -1506,7 +1526,8 @@ function watchTick(){
   /* one reader: the load first, the deck scan in between */
   if(tr && !(W_.deckTile != null && W_.lastWasLoad)) maybeRead(tr); else scanDeck();
   watchRender(true);
-  drawOverlay();
+  if(!DC.bg) drawOverlay();
+  bgTick(tr);
 }
 /* v3.41 — people on deck from the native object detector (RF-DETR), a few
    times a second, over the deck in square tiles at full picture detail */
@@ -1725,40 +1746,55 @@ function liftedFrom(tr){
   /* the foot is the near edge; the unit reaches a little further aft */
   return whereText({ x: Math.max(0, p[0] - 1), y: Math.min(g.width, Math.max(0, p[1])) });
 }
+/* the planned unit that stood at a deck spot. A load is often locked only once
+   it rises clear of the units around it; seen from the bridge it then looks
+   further from the camera than the spot it left. Walk from the spot back
+   towards the camera and take the first planned unit on that line; failing
+   that, the nearest within 1.5 m. */
+function unitAt(all, X, Y, tc, skip){
+  const inU = (c, x, y, m) => x >= c.x0 - m && x <= c.x1 + m && y >= c.y0 - m && y <= c.y1 + m;
+  const area = c => (c.x1 - c.x0) * (c.y1 - c.y0);
+  const list = skip ? all.filter(skip) : all;
+  let near = null;
+  if(tc) for(let s = -1; s <= 9 && !near; s += 0.25){
+    const x = X + tc[0] * s, y = Y + tc[1] * s;
+    const hit = list.filter(c => inU(c, x, y, 0.2)).sort((a, b) => area(a) - area(b))[0];
+    if(hit) near = { c: hit, d: Math.abs(s) };
+  }
+  if(!near) near = list.map(c => ({ c, d: Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) }))
+    .filter(o => o.d < 1.5).sort((a, b) => a.d - b.d || area(a.c) - area(b.c))[0];
+  return near ? near.c : null;
+}
 function onTrackEvent(e){
   if(!DC || (e.kind !== 'landed' && e.kind !== 'lifted')) return;
   const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
-  let guess = null, guessId = null;
+  const all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const byNum = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
+  let guess = null, guessId = null, moveId = null;
   if(e.kind === 'lifted'){
     /* which planned unit stood there: the number read, if it is on deck;
        otherwise the unit under the pick-up spot (or the nearest within 1.5 m) */
-    const all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const byNum = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
-    let near = null;
-    if(!byNum && fp){
-      /* A load is often locked only once it rises clear of the units around it;
-         seen from the bridge it then looks further from the camera than the spot
-         it left. Walk from where it was first seen back towards the camera and
-         take the first planned unit on that line; failing that, the nearest. */
-      const [X, Y] = fp.centre, inU = (c, x, y, m) => x >= c.x0 - m && x <= c.x1 + m && y >= c.y0 - m && y <= c.y1 + m;
-      const tc = fp.toCam;
-      if(tc) for(let s = -1; s <= 9 && !near; s += 0.25){
-        const x = X + tc[0] * s, y = Y + tc[1] * s;
-        const hit = all.filter(c => inU(c, x, y, 0.2)).sort((a, b) => (a.x1 - a.x0) * (a.y1 - a.y0) - (b.x1 - b.x0) * (b.y1 - b.y0))[0];
-        if(hit) near = { c: hit, d: Math.abs(s) };
-      }
-      if(!near) near = all.map(c => ({ c, d: Math.hypot(Math.max(c.x0 - X, 0, X - c.x1), Math.max(c.y0 - Y, 0, Y - c.y1)) }))
-        .filter(o => o.d < 1.5).sort((a, b) => a.d - b.d || (a.c.x1 - a.c.x0) * (a.c.y1 - a.c.y0) - (b.c.x1 - b.c.x0) * (b.c.y1 - b.c.y0))[0];
-    }
-    const u = byNum || (near && near.c);
+    const u = byNum || (fp ? unitAt(all, fp.centre[0], fp.centre[1], fp.toCam) : null);
     if(u){ guessId = u.id; guess = u.ccu || u.desc || 'unit'; }
+  }else if(fp){
+    /* v3.42 — set down: a unit already on the plan moved to another spot — its
+       number was read, or it was picked up from a planned unit's place */
+    let u = byNum;
+    if(!u && e.fromStill && e.start){
+      const M = currentModel(), p = M && M.toDeck(e.start[0], e.start[1]);
+      if(p && Math.hypot(p[0] - fp.centre[0], p[1] - fp.centre[1]) > 2) u = unitAt(all, p[0], p[1], fp.toCam);
+    }
+    /* not a move when it was set down on its own planned place */
+    if(u && !(fp.centre[0] >= u.x0 && fp.centre[0] <= u.x1 && fp.centre[1] >= u.y0 && fp.centre[1] <= u.y1)){ moveId = u.id; guess = u.ccu || u.desc || 'unit'; }
   }
   const gu = guessId != null ? API.cargo().find(c => c.id === guessId) : null;
   const ev = { id: e.id, kind: e.kind, t: e.t, live: DC.kind === 'live', at: new Date(), fp,
     where: gu ? whereText({ x: (gu.x0 + gu.x1) / 2, y: (gu.y0 + gu.y1) / 2 }) : whereOf(fp), reading: rd,
-    thumb: W_.thumbs.get(e.id) || null, guess, guessId };
+    thumb: W_.thumbs.get(e.id) || null, guess, guessId, moveId,
+    key: `${e.kind}:${e.id}:${Math.round(e.t * 10)}:${Date.now() % 1e6}` };
+  if(moveId != null){ const mu = all.find(c => c.id === moveId); ev.movedFrom = whereText({ x: (mu.x0 + mu.x1) / 2, y: (mu.y0 + mu.y1) / 2 }); }
   /* show it on the deck plan until the operator confirms or dismisses it */
-  if(guessId != null && API.flagLift) API.flagLift(guessId, true, { when: ev.live ? ev.at.toTimeString().slice(0, 5) : tFmt(e.t), where: ev.where });
+  if(guessId != null && API.flagLift) API.flagLift(guessId, true, { when: ev.live ? ev.at.toTimeString().slice(0, 5) : tFmt(e.t), where: ev.where, key: ev.key });
   /* the same load set down a moment ago and moved on: the earlier card is history */
   const prev = e.moves != null && DC.wEvents.find(o => o.id === e.moves);
   if(prev){
@@ -1769,7 +1805,8 @@ function onTrackEvent(e){
   }
   DC.wEvents.unshift(ev);
   if(DC.wEvents.length > 60) DC.wEvents.length = 60;
-  try{ API.sound(); }catch(_){}
+  try{ API.sound(e.kind === 'lifted' ? 'camLift' : moveId != null ? 'camMove' : 'camLand'); }catch(_){}
+  planOut(ev, prev);
   watchRender();
 }
 function watchRender(quick){
@@ -1872,7 +1909,7 @@ function watchRender(quick){
     const tb = card.querySelector('.dc-an-time');
     if(tb) tb.addEventListener('click', () => { if(DC && DC.kind === 'video'){ try{ DC.src.currentTime = Math.max(0, e.t - 1); }catch(_){} } });
     const act = card.querySelector('.dc-an-act');
-    const addBtn = (label, fn, primary) => { const b = el('button', 'dc-btn dc-sm' + (primary ? ' dc-primary' : ''), esc(label)); b.type = 'button'; b.addEventListener('click', () => { if(fn() === false) return; e.done = label; watchRender(); drawOverlay(); }); act.appendChild(b); };
+    const addBtn = (label, fn, primary, no) => { const b = el('button', 'dc-btn dc-sm' + (primary ? ' dc-primary' : ''), esc(label)); b.type = 'button'; b.addEventListener('click', () => { if(fn() === false) return; e.done = label; if(API.camResolve) API.camResolve(e.key, no ? 'no' : 'ok', label); watchRender(); drawOverlay(); }); act.appendChild(b); };
     if(e.movedOn){ card.classList.add('moved'); act.innerHTML = `<span class="dc-an-note">Moved on — see the newer card${e.done ? ' (✓ ' + esc(e.done) + ' here — move it on the plan)' : ''}</span>`; }
     else if(e.done){ act.innerHTML = `<span class="dc-an-done">✓ ${esc(e.done)}</span>`; }
     else if(API.isOperator()){
@@ -1880,11 +1917,14 @@ function watchRender(quick){
         const onDeck = e.guessId != null && API.cargo().some(c => c.id === e.guessId);
         if(onDeck && API.markLiftedId){
           addBtn('Mark ' + e.guess + ' lifted', () => API.markLiftedId(e.guessId), true);
-          addBtn('Not this one', () => { API.flagLift(e.guessId, false); }, false);
+          addBtn('Not this one', () => { API.flagLift(e.guessId, false); }, false, true);
         }else if(ccu && API.unitInfo(ccu).onDeck) addBtn('Mark ' + ccu + ' lifted', () => API.markLifted(ccu), !!(rd && rd.sure));
         else if(!onDeck && e.guessId == null) act.innerHTML = '<span class="dc-an-note">No unit on the plan at that spot</span>';
       }
-      if(e.kind === 'landed' && e.fp){
+      if(e.kind === 'landed' && e.fp && e.moveId != null && API.cargo().some(c => c.id === e.moveId)){
+        addBtn('Move ' + e.guess + ' here', () => API.moveUnit(e.moveId, e.fp.centre[0], e.fp.centre[1]), true);
+        addBtn('Not moved', () => {}, false, true);
+      }else if(e.kind === 'landed' && e.fp){
         if(ccu && info.inQueue) addBtn('Place ' + ccu + ' here', () => API.placeQueued(ccu, e.fp.centre[0], e.fp.centre[1]), rd.sure);
         else{
           /* nothing read / not on the lists: pick the unit from Imported */
@@ -1903,5 +1943,228 @@ function watchRender(quick){
   });
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3.42 — CAMERA IN THE BACKGROUND
+   The Camera tile on the top bar switches watching on and off. While it is
+   on, closing the camera window only hides it: the picture keeps being
+   watched, a small window (bottom left) shows it, the load on the hook is
+   shadowed on the deck plan and every set-down / lift-off / move goes to
+   the plan for the operator to confirm. Nothing on the plan changes by itself.
+════════════════════════════════════════════════════════════ */
+const MINI_KEY = 'decargo_camMini';
+let MINI = null, miniWall = 0, liveWall = 0, liveSent = false, flashTimer = 0;
+const miniMode = () => { try{ return localStorage.getItem(MINI_KEY) === 'pill' ? 'pill' : 'full'; }catch(_){ return 'full'; } };
+function stateOut(){
+  try{ API.camState && API.camState(BG_ON); }catch(_){}
+  /* the window's own buttons say what Close does */
+  if(DC){ const c = DC.ov.querySelector('#dcCancel'), k = DC.ov.querySelector('#dcWBg'); if(c) c.textContent = BG_ON ? 'Close — keeps watching' : 'Close'; if(k) k.hidden = BG_ON; }
+}
+function liveOut(v){
+  if(!API || !API.camLive) return;
+  if(v === null){ if(liveSent){ liveSent = false; API.camLive(null); } return; }
+  liveSent = true; API.camLive(v);
+}
+/* the plan side gets every event (also with the window open) */
+function planOut(ev, prev){
+  if(!API.camEvent) return;
+  const rd = ev.reading;
+  API.camEvent({ key: ev.key, kind: ev.kind === 'lifted' ? 'lifted' : ev.moveId != null ? 'moved' : 'landed',
+    at: ev.at, live: ev.live, t: ev.t, where: ev.where, movedFrom: ev.movedFrom || '',
+    xM: ev.fp ? ev.fp.centre[0] : null, yM: ev.fp ? ev.fp.centre[1] : null, sizeM: ev.fp ? ev.fp.size : null,
+    text: rd && rd.text || '', ccu: rd && rd.ccu || '', sure: !!(rd && rd.sure),
+    guess: ev.guess, guessId: ev.guessId, moveId: ev.moveId, thumb: ev.thumb, supersedes: prev ? prev.key : null });
+  miniFlash(ev.kind === 'lifted' ? `Lifted off${ev.guess ? ' · ' + ev.guess + '?' : ''}${ev.where ? ' · ' + ev.where : ''}`
+    : ev.moveId != null ? `Moved · ${ev.guess}? → ${ev.where}` : `Set down${rd && rd.text ? ' · ' + rd.text + (rd.sure ? '' : '?') : ''}${ev.where ? ' · ' + ev.where : ''}`);
+}
+function hidePanel(){
+  if(!DC) return;
+  if(DC.tab !== 'watch') setTab('watch');
+  DC.bg = true;
+  DC.ov.classList.remove('open');
+  document.body.classList.remove('dc-open');
+  miniRender(true);
+}
+function showPanel(tab){
+  if(!DC) return;
+  DC.bg = false;
+  DC.ov.classList.add('open');
+  document.body.classList.add('dc-open');
+  liveOut(null);
+  setTab(tab || 'watch');
+  miniRender(true);
+}
+/* what the camera sees now, in a few words (mini window) */
+function nowState(){
+  const W_ = DC && DC.w, tr = W_ && W_.st && W_.st.track, cal = !!currentModel();
+  if(!DC || !DC.src) return { num: 'No picture', l2: 'The camera stopped', dim: true };
+  if(DC.kind === 'video' && DC.src.paused) return { num: 'Paused', l2: 'The video is paused', dim: true };
+  if(!tr) return { num: 'Watching', l2: cal ? 'Waiting for a load on the hook' : 'Not calibrated — bays are not shown', dim: true };
+  const rd = bestReading(tr.id), fp = cal ? footprint(tr.box, tr.foot) : null, from = cal ? liftedFrom(tr) : '';
+  const down = tr.phase === 'down';
+  return {
+    num: rd && rd.text ? rd.text : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…',
+    dim: !(rd && rd.text), chip: rd && rd.text ? (rd.sure ? 'number ✓' : 'number ?') : '', sure: !!(rd && rd.sure),
+    pre: down ? 'Set down: ' : 'On the hook: ', down,
+    l2: !cal ? 'Calibrate the camera to see the bay' : down ? (fp ? whereOf(fp) + ' — confirming' : 'confirming') : [from ? '↑ from ' + from : '', fp ? '→ over ' + whereOf(fp) : 'over the side'].filter(Boolean).join(' '),
+  };
+}
+function miniBuild(){
+  if(MINI) return MINI;
+  MINI = el('div', 'dcm');
+  MINI.id = 'dcMini';
+  MINI.hidden = true;
+  MINI.setAttribute('role', 'region');
+  MINI.setAttribute('aria-label', 'Deck camera');
+  MINI.innerHTML = `
+    <div class="dcm-full">
+      <div class="dcm-pic"><canvas width="428" height="328"></canvas><span class="dcm-live"><i></i><b class="dcm-kind">LIVE</b></span></div>
+      <div class="dcm-rt">
+        <div class="dcm-top"><span class="dcm-src">Camera · watching</span>
+          <span class="dcm-ic"><button type="button" data-a="pill" title="Minimise">—</button><button type="button" data-a="open" title="Open the camera window">⤢</button></span></div>
+        <div class="dcm-st"><div class="dcm-l1"><span class="dcm-pre"></span><span class="dcm-num"></span><span class="dcm-ch"></span></div><div class="dcm-l2"></div></div>
+        <div class="dcm-ft"><button type="button" data-a="log">Log<span class="dcm-n"></span></button><button type="button" data-a="open">Camera window ›</button></div>
+      </div>
+    </div>
+    <button type="button" class="dcm-pill" data-a="full" title="Show the camera picture"><span class="dcm-dot"></span><span class="dcm-pt">Camera watching</span><span class="dcm-pp"></span></button>`;
+  MINI.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-a]'); if(!b) return;
+    const a = b.dataset.a;
+    if(a === 'pill' || a === 'full'){ try{ localStorage.setItem(MINI_KEY, a); }catch(_){} miniRender(true); }
+    else if(a === 'open') showPanel('watch');
+    else if(a === 'log' && API.camOpenLog) API.camOpenLog(b);
+  });
+  document.body.appendChild(MINI);
+  return MINI;
+}
+export function miniRender(full){
+  if(!API) return;
+  const show = !!(DC && DC.bg && BG_ON);
+  if(!show){ if(MINI) MINI.hidden = true; return; }
+  const m = miniBuild(), mode = miniMode();
+  m.hidden = false;
+  m.classList.toggle('is-pill', mode === 'pill');
+  const n = API.camPendingCount ? API.camPendingCount() : 0;
+  const $ = q => m.querySelector(q);
+  $('.dcm-pp').textContent = n ? ` · ${n} waiting` : '';
+  $('.dcm-n').textContent = n ? ` · ${n}` : '';
+  m.classList.toggle('has-pend', n > 0);
+  if(flashTimer && !full) return;
+  const st = nowState();
+  if(!flashTimer) $('.dcm-pt').textContent = st.down ? 'Set down — confirming' : st.pre ? 'On the hook' + (st.dim ? '' : ' · ' + st.num) : 'Camera watching';
+  if(mode === 'pill') return;
+  $('.dcm-kind').textContent = DC.kind === 'video' ? 'VIDEO' : 'LIVE';
+  $('.dcm-pre').textContent = st.pre || '';
+  const num = $('.dcm-num'); num.textContent = st.num; num.classList.toggle('dim', !!st.dim);
+  const ch = $('.dcm-ch'); ch.textContent = st.down ? 'confirming' : st.chip || ''; ch.className = 'dcm-ch' + (st.down ? ' warn' : st.chip ? (st.sure ? ' ok' : ' warn') : '');
+  $('.dcm-l2').textContent = st.l2 || '';
+  miniPicture();
+}
+/* the picture: the load and the deck around it (the deck when nothing is on
+   the hook), cropped to the window inside the frame, easing between the two */
+let miniView = null;
+function miniPicture(){
+  if(!MINI || !DC || !DC.src || !DC.sw) return;
+  const cv = MINI.querySelector('canvas'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const d = rotDims(), A = W / H, tr = DC.w && DC.w.st && DC.w.st.track;
+  const zb = (DC.w && DC.w.zoneBox) || { x0: 0, y0: 0, x1: 1, y1: 1 };
+  /* what to show, in pixels of the frame: the load with room around it, or the deck */
+  let cx, cy, w, h;
+  if(tr){ const b = tr.box; cx = (b.x + b.w / 2) * d.w; cy = (b.y + b.h / 2) * d.h; w = Math.max(b.w * d.w * 3.2, d.w * 0.45); h = Math.max(b.h * d.h * 3.2, d.h * 0.28); }
+  else{ cx = (zb.x0 + zb.x1) / 2 * d.w; cy = (zb.y0 + zb.y1) / 2 * d.h; w = (zb.x1 - zb.x0) * d.w; h = (zb.y1 - zb.y0) * d.h; }
+  /* the window's shape, never larger than the frame */
+  if(w / h < A) w = h * A; else h = w / A;
+  const s = Math.min(1, d.w / w, d.h / h); w *= s; h *= s;
+  const x = Math.min(d.w - w, Math.max(0, cx - w / 2)), y = Math.min(d.h - h, Math.max(0, cy - h / 2));
+  const tgt = [x, y, w];
+  if(!miniView || miniView.src !== DC.src) miniView = { src: DC.src, v: tgt.slice() };
+  else miniView.v = miniView.v.map((v, i) => v + (tgt[i] - v) * 0.25);
+  const [vx, vy, vw] = miniView.v, k = W / vw;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.translate(-vx * k, -vy * k); drawRotated(ctx, d.w * k, d.h * k); ctx.restore();
+  if(tr){
+    const b = tr.box, bx = (b.x * d.w - vx) * k, by = (b.y * d.h - vy) * k, bw = b.w * d.w * k, bh = b.h * d.h * k;
+    const down = tr.phase === 'down', col = down ? '#f59e0b' : '#3b82f6';
+    ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.strokeRect(bx, by, bw, bh);
+    const rd = bestReading(tr.id), lbl = rd && rd.text ? rd.text + (rd.sure ? ' ✓' : ' ?') : '';
+    if(lbl){
+      ctx.font = '700 20px Inter, system-ui, sans-serif';
+      const tw = ctx.measureText(lbl).width + 12, ly = Math.max(0, by - 28);
+      ctx.fillStyle = col; ctx.fillRect(bx - 2, ly, tw, 26);
+      ctx.fillStyle = down ? '#3b2300' : '#fff'; ctx.fillText(lbl, bx + 4, ly + 19);
+    }
+  }
+}
+function miniFlash(text){
+  if(!MINI || MINI.hidden) return;
+  clearTimeout(flashTimer);
+  MINI.classList.remove('flash'); void MINI.offsetWidth; MINI.classList.add('flash');
+  MINI.querySelector('.dcm-pt').textContent = text;
+  flashTimer = setTimeout(() => { flashTimer = 0; if(MINI){ MINI.classList.remove('flash'); miniRender(true); } }, 4500);
+}
+/* every frame watched: the mini window a few times a second, the shadow on the plan */
+function bgFrame(){
+  const now = performance.now();
+  if(now - miniWall > 200){ miniWall = now; miniRender(); }
+  if(DC.kind === 'video' && (DC.src.paused || DC.src.ended)) liveOut(null);
+}
+function bgTick(tr){
+  if(!DC.bg){ liveOut(null); return; }
+  const now = performance.now();
+  if(now - liveWall < 180) return;
+  liveWall = now;
+  const fp = tr ? footprint(tr.box, tr.foot) : null;
+  if(!fp){ liveOut(null); return; }
+  const rd = bestReading(tr.id), M = currentModel();
+  let from = null;
+  if(tr.start && tr.start[1] - tr.foot[1] > 0.03 && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [p[0], p[1]]; }
+  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(6.5, Math.max(1.2, fp.size)), text: rd && rd.text || '', sure: !!(rd && rd.sure), down: tr.phase === 'down', from });
+}
+/* the top-bar Camera tile */
+export function cameraIsOn(){ return BG_ON; }
+export async function cameraToggle(){
+  if(!API) return false;
+  if(BG_ON){ cameraOff(); return false; }
+  const cam = API.getCamera() || {};
+  if(DC){
+    if(!currentModel()){ API.toast('Calibrate the camera first — then switch it on', 'info'); showPanel('calib'); return false; }
+    BG_ON = true;
+    const on = DC.ov.querySelector('#dcWOn'); if(on && !on.checked){ on.checked = true; DC.wOn = true; }
+    if(!DC.src || DC.kind === 'image'){ await listDevices(false); await startCamera(); }
+    if(!DC || !DC.src){ BG_ON = false; stateOut(); return false; }
+    if(DC.tab !== 'watch') setTab('watch');
+    stateOut(); miniRender(true);
+    return true;
+  }
+  if(!cam.calib){ openDeckCamera('calib'); API.toast('Calibrate the camera first — then switch it on', 'info'); return false; }
+  BG_ON = true;
+  openDeckCamera('watch', { hidden: true });
+  DC.wOn = true;
+  await listDevices(false);
+  await startCamera();
+  if(!DC || !DC.src){ BG_ON = false; if(DC && DC.bg) closeDeckCamera(true); stateOut(); return false; }
+  stateOut(); miniRender(true);
+  return true;
+}
+function cameraOff(){
+  BG_ON = false;
+  liveOut(null);
+  if(DC && DC.bg) closeDeckCamera(true);
+  else if(DC && DC.kind === 'live'){
+    /* the window is open: stop the live picture there too */
+    stopSource(); if(!REC) stopCam();
+    DC.ov.querySelector('#dcEmpty').hidden = !!DC.shot; DC.ov.querySelector('#dcShotCap').hidden = !DC.shot;
+    srcState(); drawFrame(); drawOverlay(); watchRender();
+  }
+  miniRender(true);
+  stateOut();
+}
+/* the operator answered on the plan: mark the same card in the window */
+export function cameraResolved(key, label){
+  if(!DC || !DC.wEvents) return;
+  const e = DC.wEvents.find(o => o.key === key);
+  if(e && !e.done){ e.done = label || 'done'; watchRender(); }
+}
+export function cameraOpen(){ if(DC) showPanel(DC.tab === 'calib' ? 'calib' : 'watch'); else openDeckCamera(); }
+
 /* test hooks */
-export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, footprint, watchFlush, cropDisp, ocr: () => OCRM, api: () => API, onTrackEvent, watchRender };
+export const _dc = { state: () => DC, rec: () => REC, cam: () => CAM, boundaryX, refPoints, onPlanChanged, footprint, watchFlush, cropDisp, ocr: () => OCRM, api: () => API, onTrackEvent, watchRender, bgOn: () => BG_ON, setBg: v => { BG_ON = !!v; stateOut(); }, hidePanel, showPanel, nowState, model: () => currentModel() };

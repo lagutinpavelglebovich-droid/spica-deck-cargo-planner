@@ -11,6 +11,22 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.42.0',
+    date: '2026-11-02',
+    highlights: [ 'Camera button on the top bar: watching on / off', 'The camera keeps watching with its window closed — a small window shows the picture', 'Set-downs, lift-offs and moves wait on the deck plan for your ✓' ],
+    changes: [
+      { type: 'feature', text: 'Camera tile on the top bar: one click switches watching on (red dot) or off; "Switch on" in the toast undoes an accidental off. The first time without a calibration it opens the calibration' },
+      { type: 'feature', text: 'With the Camera on, closing the camera window keeps watching. "Close and keep watching" in Watch lifts does the same for a video file' },
+      { type: 'feature', text: 'Small camera window bottom left: the picture follows the load on the hook, with its number and bay in words. "—" folds it into a small pill that lights up on each event; the choice is remembered' },
+      { type: 'feature', text: 'The load on the hook is shadowed on the deck plan as it moves, with a dotted trail from the spot it was lifted from' },
+      { type: 'feature', text: 'A set-down leaves a dashed ghost on the plan with "SET DOWN ✓ ✕". Click it for the card: picture, bay, number read, "Place … here" when the number matches a unit in Imported, "Choose unit…", "Dismiss"' },
+      { type: 'feature', text: 'A unit moved on deck shows an arrow from its planned place to a ghost where it now stands; ✓ moves it on the plan' },
+      { type: 'feature', text: 'Camera log: the number on the Camera tile opens the list of events — time, event, unit, bay, done or waiting — with ✓ / ✕ in the row' },
+      { type: 'feature', text: 'Sounds for lifted off, set down and moved (Smart Tools → Sound → Camera)' },
+      { type: 'improvement', text: 'Nothing on the plan changes until the operator confirms. Camera marks are not saved with the plan and never show in the PDF' },
+    ],
+  },
+  {
     version: '3.41.3',
     date: '2026-11-02',
     highlights: [ 'Square mini containers: the door-end strip is gone' ],

@@ -187,7 +187,7 @@
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-action" data-action="licence">Licence…</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.41.3</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.42.0</div>
     </div>
   </div>
 </div>
@@ -215,7 +215,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.41.3<br>
+      Version 3.42.0<br>
       Release: Stable
     </div>
     <div class="about-licence" id="aboutLicence"></div>
@@ -777,6 +777,17 @@
          block (status-light pattern with animated accent bar). The cluster now
          carries only action pills. -->
     <div class="gp-cluster">
+
+      <!-- 0. Camera (v3.42) — click: watching on / off · badge: events waiting → log -->
+      <button class="gp gp-cam" id="btnCamera" aria-pressed="false" aria-label="Deck camera on or off" title="Camera off. Click to switch on and watch lifts">
+        <span class="gp-ico"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect x="3" y="7" width="12.5" height="10" rx="2.2"/>
+          <path d="M15.5 11.2l4.6-2.7v7l-4.6-2.7"/>
+        </svg></span>
+        <span class="gp-lbl">Camera</span>
+        <span class="gp-cam-dot" aria-hidden="true"></span>
+        <span class="gp-badge gp-cam-n" id="camPendBadge"></span>
+      </button>
 
       <!-- 1. Upload -->
       <button class="gp gp-upload" id="btnAscoUpload" aria-label="Upload cargo list" title="Upload cargo list">
@@ -1924,6 +1935,20 @@
             <div class="snd-item"><span class="snd-emoji snd-glyph">!</span><span class="snd-name">DG warning</span><button class="snd-preview" data-snd="warning" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-warning" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji snd-glyph">✓</span><span class="snd-name">DG cleared</span><button class="snd-preview" data-snd="resolved" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-resolved" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
             <div class="snd-item"><span class="snd-emoji snd-glyph">⊘</span><span class="snd-name">Not allowed</span><button class="snd-preview" data-snd="error" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-error" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+          </div>
+        </div>
+
+        <div class="snd-cat" id="sndCat-camera">
+          <div class="snd-cat-hd" id="sndCatHd-camera">
+            <span class="snd-dot" style="background:#f59e0b"></span>
+            <span class="snd-cat-title">Camera</span>
+            <span class="snd-badge" id="sndBadge-camera">3/3</span>
+            <label class="st-toggle st-toggle-sm"><input type="checkbox" id="sndCatTgl-camera" checked><div class="st-track"><div class="st-thumb"></div></div></label>
+          </div>
+          <div class="snd-cat-body" id="sndCatBody-camera" style="display:none">
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⬆</span><span class="snd-name">Lifted off</span><button class="snd-preview" data-snd="camLift" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-camLift" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⬇</span><span class="snd-name">Set down</span><button class="snd-preview" data-snd="camLand" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-camLand" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
+            <div class="snd-item"><span class="snd-emoji snd-glyph">⇄</span><span class="snd-name">Moved on deck</span><button class="snd-preview" data-snd="camMove" title="Listen">▶</button><label class="st-toggle st-toggle-xs"><input type="checkbox" id="sndTgl-camMove" checked><div class="st-track"><div class="st-thumb"></div></div></label></div>
           </div>
         </div>
 

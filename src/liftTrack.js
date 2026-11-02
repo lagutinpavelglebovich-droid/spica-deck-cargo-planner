@@ -444,6 +444,10 @@ export function createTracker(opts = {}){
     if(why){ events.push({ kind: 'ignored', was: kind, id: tr.id, t, foot, why, widthM: wm, box: toFrame(tr.box), tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 }); return false; }
     const e = { kind, id: tr.id, t, t0: tr.t0, foot, box, widthM: wm, tex: Math.round(tex * 10) / 10, rigid: tr.texN ? Math.round(tr.scSum / tr.texN * 100) / 100 : 0 };
     if(tr.moves) e.moves = tr.moves;           /* the same load, set down a moment ago, moved on */
+    /* v3.42 — where the lock began, and whether the load stood still there
+       (picked up from the deck): a set-down far from it is a unit moved on deck */
+    if(tr.start) e.start = tr.start.slice();
+    e.fromStill = !!(tr.startStill || tr.fromRest);
     events.push(e);
     return true;
   }
