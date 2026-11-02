@@ -2050,19 +2050,27 @@ function liveGuess(tr){
   guessCache = { id: tr.id, at: now, v };
   return v;
 }
+/* v3.42 — a still lock only counts as a load being set down when it came
+   through the air (or rose from the deck / was moved on) and stands over the
+   deck: a person standing at the rail, or a load hanging still high above the
+   stern, is not shown as "setting down" on the plan */
+const roseFromDeck = tr => !!(tr && tr.start && tr.start[1] - tr.foot[1] > 0.03);
+const isLoad = tr => !!(tr && (tr.air || tr.moves || roseFromDeck(tr)));
+function settingDown(tr, fp){ return !!(tr && tr.phase === 'down' && isLoad(tr) && fp && fp.inDeck); }
 /* what the camera sees now, in a few words (mini window) */
 function nowState(){
   const W_ = DC && DC.w, tr = W_ && W_.st && W_.st.track, cal = !!currentModel();
   if(!DC || !DC.src) return { num: 'No picture', l2: 'The camera stopped', dim: true };
   if(DC.kind === 'video' && DC.src.paused) return { num: 'Paused', l2: 'The video is paused', dim: true };
-  if(!tr) return { num: 'Watching', l2: cal ? 'Waiting for a load on the hook' : 'Not calibrated — bays are not shown', dim: true };
+  if(!tr || !isLoad(tr)) return { num: 'Watching', l2: cal ? 'Waiting for a load on the hook' : 'Not calibrated — bays are not shown', dim: true };
   const rd = bestReading(tr.id), fp = cal ? footprint(tr.box, tr.foot) : null, from = cal ? liftedFrom(tr) : '';
-  const down = tr.phase === 'down', lg = !(rd && rd.text) ? liveGuess(tr) : null;
+  const down = cal ? settingDown(tr, fp) : tr.phase === 'down', lg = !(rd && rd.text) ? liveGuess(tr) : null;
   return {
     num: rd && rd.text ? rd.text : lg ? lg.ccu + '?' : rd && rd.n >= 3 ? 'No number seen' : 'Reading the number…',
     dim: !(rd && rd.text) && !lg, chip: rd && rd.text ? (rd.sure ? 'number ✓' : 'number ?') : lg ? '…' + lg.frag : '', sure: !!(rd && rd.sure) || !!(lg && lg.sure),
     pre: down ? 'Set down: ' : 'On the hook: ', down,
-    l2: !cal ? 'Calibrate the camera to see the bay' : down ? (fp ? whereOf(fp) + ' — confirming' : 'confirming') : [from ? '↑ from ' + from : '', fp ? '→ over ' + whereOf(fp) : 'over the side'].filter(Boolean).join(' '),
+    l2: !cal ? 'Calibrate the camera to see the bay' : down ? (fp ? whereOf(fp) + ' — confirming' : 'confirming')
+      : [from ? '↑ from ' + from : '', fp && fp.inDeck && !from ? '→ over ' + whereOf(fp) : tr.phase === 'down' ? 'holding still' : from ? 'on its way' : 'over the side'].filter(Boolean).join(' · '),
   };
 }
 function miniBuild(){
@@ -2161,7 +2169,7 @@ function miniPicture(){
   ctx.save(); ctx.translate(-vx * k, -vy * k); drawRotated(ctx, d.w * k, d.h * k); ctx.restore();
   if(tr){
     const b = tr.box, bx = (b.x * d.w - vx) * k, by = (b.y * d.h - vy) * k, bw = b.w * d.w * k, bh = b.h * d.h * k;
-    const down = tr.phase === 'down', col = down ? '#f59e0b' : '#3b82f6';
+    const down = settingDown(tr, footprint(tr.box, tr.foot)), col = down ? '#f59e0b' : '#3b82f6';
     ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.strokeRect(bx, by, bw, bh);
     const rd = bestReading(tr.id), lbl = rd && rd.text ? rd.text + (rd.sure ? ' ✓' : ' ?') : '';
     if(lbl){
@@ -2190,20 +2198,34 @@ function bgTick(tr){
   const now = performance.now();
   if(now - liveWall < 180) return;
   liveWall = now;
-  const fp = tr ? footprint(tr.box, tr.foot) : null;
-  if(!fp){ liveOut(null); return; }
-  const rd = bestReading(tr.id), M = currentModel();
+  if(!tr){ liveOut(null); return; }
+  const fp = footprint(tr.box, tr.foot), rd = bestReading(tr.id), M = currentModel();
   let from = null;
-  if(tr.start && tr.start[1] - tr.foot[1] > 0.03 && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [Math.min(geoLen(DC.geo).length, Math.max(0, p[0])), Math.min(DC.geo.width, Math.max(0, p[1]))]; }
+  if(roseFromDeck(tr) && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [Math.min(geoLen(DC.geo).length, Math.max(0, p[0])), Math.min(DC.geo.width, Math.max(0, p[1]))]; }
   const lg = !(rd && rd.text) ? liveGuess(tr) : null;
   const text = rd && rd.text || (lg ? lg.ccu : ''), sure = rd && rd.text ? !!rd.sure : false;
   /* A load high in the air is seen against the deck far behind it: its
      "shadow" would wander over bays it is nowhere near (or off the deck).
-     A load lifted from the deck therefore only marks the spot it left;
-     a load coming aboard is shadowed once it is over the deck. */
-  if(from && tr.phase !== 'down'){ liveOut({ lifted: true, xM: from[0], yM: from[1], sizeM: 2.4, text, sure }); return; }
-  if(!fp.inDeck){ liveOut(null); return; }
-  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(4.5, Math.max(1.2, fp.size)), text, sure, down: tr.phase === 'down' });
+     A load lifted from the deck therefore only marks the spot it left — even
+     once it is over the side; a load coming aboard is shadowed once it is
+     over the deck. */
+  if(!isLoad(tr)){ liveOut(null); return; }
+  const down = settingDown(tr, fp);
+  if(from && !down){
+    /* on the unit it came from, when that unit is known (its number, a piece
+       of it, or the spot); kept for the whole lift once found */
+    const all = API.cargo(), k = NRM(rd && (rd.ccu || rd.text) || (lg && lg.ccu) || '');
+    const W_ = DC.w; if(fp) W_.liveToCam = fp.toCam;
+    let u = k ? all.find(c => NRM(c.ccu) === k) : null;
+    if(!u && W_.liveUnit && W_.liveUnit.tr === tr.id) u = all.find(c => c.id === W_.liveUnit.id) || null;
+    if(!u) u = unitAt(all, from[0], from[1], W_.liveToCam || null);
+    if(u){ W_.liveUnit = { tr: tr.id, id: u.id }; liveOut({ lifted: true, onUnit: true, unitId: u.id, xM: (u.x0 + u.x1) / 2, yM: (u.y0 + u.y1) / 2, wM: u.x1 - u.x0 + 0.6, hM: u.y1 - u.y0 + 0.6, sizeM: 2.4, text: text || u.ccu || '', sure }); }
+    else liveOut({ lifted: true, xM: from[0], yM: from[1], sizeM: 2.4, text, sure });
+    return;
+  }
+  if(!fp){ liveOut(null); return; }
+  if(!fp.inDeck || (tr.phase === 'down' && !down)){ liveOut(null); return; }
+  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(4.5, Math.max(1.2, fp.size)), text, sure, down });
 }
 /* the top-bar Camera tile */
 export function cameraIsOn(){ return BG_ON; }

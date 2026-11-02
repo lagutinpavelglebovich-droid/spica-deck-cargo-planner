@@ -5406,6 +5406,8 @@ function camBadge(){
 /* the live shadow of the load on the hook */
 function camLive(v){
   CAM_LIVE = v || null;
+  /* the unit it left is already marked "LIFTED? ✓ ✕": that says it all */
+  if(CAM_LIVE && CAM_LIVE.unitId != null && CAM_LIFTED.has(CAM_LIVE.unitId)) CAM_LIVE = null;
   const cv = document.getElementById('cvDECK');
   if(!cv) return;
   let el = document.getElementById('camLiveEl'), sv = document.getElementById('camLiveSvg');
@@ -5416,11 +5418,12 @@ function camLive(v){
     cv.appendChild(el);
   }
   /* always inside the deck */
-  const s = CAM_LIVE.sizeM, w = m2px_w(s), h = m2px_h(s), cx = metersToDeckX(CAM_LIVE.xM), cy = CAM_LIVE.yM * YS;
+  const s = CAM_LIVE.sizeM, w = m2px_w(CAM_LIVE.wM || s), h = m2px_h(CAM_LIVE.hM || s), cx = metersToDeckX(CAM_LIVE.xM), cy = CAM_LIVE.yM * YS;
   el.style.left = Math.round(Math.max(0, Math.min(TW - w, cx - w / 2))) + 'px'; el.style.top = Math.round(Math.max(0, Math.min(CVH - h, cy - h / 2))) + 'px';
   el.style.width = w + 'px'; el.style.height = h + 'px';
   el.classList.toggle('is-down', !!CAM_LIVE.down);
   el.classList.toggle('is-from', !!CAM_LIVE.lifted);
+  el.classList.toggle('on-unit', !!CAM_LIVE.onUnit);
   el.querySelector('.cam-live-tag b').textContent = CAM_LIVE.lifted ? 'LIFTED FROM HERE' : CAM_LIVE.down ? 'SETTING DOWN' : 'ON THE HOOK';
   el.querySelector('.cam-live-nm').textContent = CAM_LIVE.text ? CAM_LIVE.text + (CAM_LIVE.sure ? '' : '?') : '';
   if(CAM_LIVE.from){

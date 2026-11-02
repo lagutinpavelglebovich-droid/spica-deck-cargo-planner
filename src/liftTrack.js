@@ -673,7 +673,7 @@ export function createTracker(opts = {}){
         /* phase: 'moving' | 'down' (still ≥ setS: being set down / landed, final when the lock ends) */
         track: track ? { id: track.id, box: toFrame(track.box), foot: footFrame(track.box), score: track.score,
           phase: track.phase || 'moving', still: track.stillSince ? this._t - track.stillSince.t : 0,
-          downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0, start: track.start, air: !!track.air } : null,
+          downAt: track.stillSince ? track.stillSince.foot : null, t0: track.t0, start: track.start, air: !!track.air, moves: !!track.moves } : null,
         shift: off.slice(),
         /* people on deck (not followed as loads) */
         people: lastT - seenPeople.t <= 1.2 && seenPeople.list.length ? seenPeople.list.map(p => ({ box: p, src: 'detector' }))

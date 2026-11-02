@@ -18824,3 +18824,5 @@ body.pdf-capture .cb.cb-cam-moved{ outline:none; opacity:1; }
 .cam-live.is-from{ border-radius:50%; border-style:dashed; background:radial-gradient(circle, var(--cam-live-soft) 0 55%, transparent 70%); transition:none; animation:camFromPulse 1.4s ease-in-out infinite; }
 @keyframes camFromPulse{ 50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--cam-live) 25%, transparent); } }
 @media (prefers-reduced-motion: reduce){ .cam-live.is-from{ animation:none; } }
+.cam-live.is-from.on-unit{ border-radius:8px; background:var(--cam-live-soft); }
+.cam-live.is-from.on-unit .cam-live-nm{ display:none; }
