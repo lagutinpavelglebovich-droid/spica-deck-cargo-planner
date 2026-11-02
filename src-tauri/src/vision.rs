@@ -708,6 +708,41 @@ mod tests {
         (d[8..].to_vec(), w, h)
     }
 
+    /* Development only: the engine behind a local socket, so the web build of
+       the app can be driven headless against the real models (tools/vision/
+       autotest). Runs only with DECARGO_VISION_SERVE=<port> (and DECARGO_VISION_DIR).
+       Request: one JSON line {cmd: "ocr"|"det"|"status", w, h, both, min, max}
+       then w*h*4 RGBA bytes (none for status); reply: one JSON line. */
+    #[test]
+    fn serve() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let (Ok(port), Ok(dir)) = (std::env::var("DECARGO_VISION_SERVE"), std::env::var("DECARGO_VISION_DIR")) else { return };
+        let e = load(Path::new(&dir), std::env::temp_dir().join("decargo-vision-serve.json")).expect("engine");
+        eprintln!("vision serve on {port} · {}", device_text(&e));
+        let l = std::net::TcpListener::bind(format!("127.0.0.1:{port}")).expect("bind");
+        for conn in l.incoming() {
+            let Ok(c) = conn else { continue };
+            let mut rd = BufReader::new(c.try_clone().unwrap());
+            let mut wr = c;
+            loop {
+                let mut line = String::new();
+                if rd.read_line(&mut line).unwrap_or(0) == 0 { break; }
+                let q: serde_json::Value = match serde_json::from_str(line.trim()) { Ok(v) => v, Err(_) => break };
+                let cmd = q["cmd"].as_str().unwrap_or("");
+                let (w, h) = (q["w"].as_u64().unwrap_or(0) as usize, q["h"].as_u64().unwrap_or(0) as usize);
+                let mut px = vec![0u8; if cmd == "status" { 0 } else { w * h * 4 }];
+                if rd.read_exact(&mut px).is_err() { break; }
+                let img = Img { px: &px, w, h };
+                let out = match cmd {
+                    "ocr" => e.ocr.lock().unwrap().as_mut().map(|o| serde_json::to_string(&read_text(o, &img, q["both"].as_bool().unwrap_or(true), q["max"].as_u64().unwrap_or(40) as usize).unwrap_or_default()).unwrap()),
+                    "det" => e.obj.lock().unwrap().as_mut().map(|d| serde_json::to_string(&detect_objects(d, &img, q["min"].as_f64().unwrap_or(0.45) as f32).unwrap_or_default()).unwrap()),
+                    _ => Some(format!("{{\"ok\":true,\"device\":{}}}", serde_json::to_string(&device_text(&e)).unwrap())),
+                }.unwrap_or_else(|| "null".into());
+                if writeln!(wr, "{out}").is_err() { break; }
+            }
+        }
+    }
+
     #[test]
     fn engine_reads_and_detects() {
         let Ok(dir) = std::env::var("DECARGO_VISION_DIR") else { return };

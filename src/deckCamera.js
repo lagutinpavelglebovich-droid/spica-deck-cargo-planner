@@ -1521,7 +1521,10 @@ function watchTick(){
     const cands = API.candidates();
     W_.match = cands.length && LRM ? LRM.makeMatcher(cands) : null;
   }
-  W_.tracker.takeEvents().forEach(onTrackEvent);
+  const tev = W_.tracker.takeEvents();
+  /* development only: tools/autotest collects every tracker event (ends, ignored ones too) */
+  if(typeof window !== 'undefined' && Array.isArray(window.__decargoTrackLog)) tev.forEach(e => window.__decargoTrackLog.push({ t: +(+e.t).toFixed(2), kind: e.kind, was: e.was || '', why: e.why || '', foot: e.foot ? e.foot.map(v => +v.toFixed(3)) : null }));
+  tev.forEach(onTrackEvent);
   maybeDetect();
   /* one reader: the load first, the deck scan in between */
   if(tr && !(W_.deckTile != null && W_.lastWasLoad)) maybeRead(tr); else scanDeck();
@@ -1743,11 +1746,23 @@ function footprint(box, foot){
   const F = M.toDeck(foot[0], foot[1]), A = M.toDeck(box.x, box.y + box.h), B = M.toDeck(box.x + box.w, box.y + box.h);
   const U = M.toDeck(foot[0], Math.max(0, foot[1] - 0.02));
   if(!F || !A || !B || !U) return null;
-  const g = DC.geo;
-  if(F[0] < -2 || F[0] > g.length + 2 || F[1] < -2 || F[1] > g.width + 2) return null;
-  const d = Math.min(13, Math.max(1, Math.hypot(A[0] - B[0], A[1] - B[1])));
-  let ux = U[0] - F[0], uy = U[1] - F[1]; const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
-  const c = [F[0] + ux * d / 2, F[1] + uy * d / 2];
+  let edge = false;
+  const g = DC.geo, off = p => p[0] < -2 || p[0] > g.length + 2 || p[1] < -2 || p[1] > g.width + 2;
+  if(off(F)){
+    /* v3.42 — at the far (stern) end one pixel of the picture is most of a
+       metre: a foot a hair beyond the stern edge in the picture lands metres
+       beyond it on the deck. When a point a little nearer the camera is on
+       deck, the load stands at that edge. */
+    const G = M.toDeck(foot[0], Math.min(1, foot[1] + 0.035));
+    if(!G || off(G)) return null;
+    F[0] = Math.min(g.length, Math.max(0.3, F[0])); F[1] = Math.min(g.width, Math.max(0, F[1]));
+    edge = true;
+  }
+  /* at the edge the far projections are unreliable: a few metres, pointing aft */
+  const d = edge ? Math.min(4, Math.max(1.5, Math.hypot(A[0] - B[0], A[1] - B[1]))) : Math.min(13, Math.max(1, Math.hypot(A[0] - B[0], A[1] - B[1])));
+  let ux = edge ? -1 : U[0] - F[0], uy = edge ? 0 : U[1] - F[1]; const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+  /* standing at the edge: the whole load on this side of it */
+  const c = edge ? [Math.min(g.length - d / 2, Math.max(d / 2 + 0.2, F[0])), Math.min(g.width - 1, Math.max(1, F[1]))] : [F[0] + ux * d / 2, F[1] + uy * d / 2];
   const px = -uy, py = ux;
   const corner = (a, b) => [c[0] + ux * a * d / 2 + px * b * d / 2, c[1] + uy * a * d / 2 + py * b * d / 2];
   return { centre: [Math.min(g.length, Math.max(0, c[0])), Math.min(g.width, Math.max(0, c[1]))], size: d,

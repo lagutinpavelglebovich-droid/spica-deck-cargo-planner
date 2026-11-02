@@ -8,10 +8,14 @@ let worker = null, broken = false, seq = 0;
    the fallback (browser, dev builds, a machine where it cannot start). */
 let native = null, nativeStatus = null, nativeTry = null;
 const inTauri = () => typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
+/* v3.42 — development only: tools/autotest drives the web build headless and
+   hands the native engine in through this hook (never set by the app itself) */
+const hook = () => typeof window !== 'undefined' && typeof window.__decargoVisionHook === 'function' ? window.__decargoVisionHook : null;
+const call = (cmd, raw, headers) => hook() ? hook()(cmd, raw, headers || {}) : invoke(cmd, raw, headers ? { headers } : undefined);
 export async function visionStatus(){
   if(native !== null) return nativeStatus;
-  if(!inTauri()){ native = false; return null; }
-  if(!nativeTry) nativeTry = invoke('vision_status').then(st => { nativeStatus = st || null; native = !!(st && st.ok); return nativeStatus; })
+  if(!inTauri() && !hook()){ native = false; return null; }
+  if(!nativeTry) nativeTry = call('vision_status').then(st => { nativeStatus = st || null; native = !!(st && st.ok); return nativeStatus; })
     .catch(() => { native = false; return null; });
   return nativeTry;
 }
@@ -20,7 +24,7 @@ const rawOf = img => new Uint8Array(img.data.buffer, img.data.byteOffset, img.da
 export async function detectObjects(img, minScore = 0.35){
   const st = await visionStatus();
   if(!st || !st.ok || !st.detector) return null;
-  try{ return await invoke('vision_detect', rawOf(img), { headers: { 'x-w': String(img.width), 'x-h': String(img.height), 'x-min': String(minScore) } }); }
+  try{ return await call('vision_detect', rawOf(img), { 'x-w': String(img.width), 'x-h': String(img.height), 'x-min': String(minScore) }); }
   catch(e){ console.warn('[vision] detector', e); return null; }
 }
 const waiting = new Map();
@@ -48,7 +52,7 @@ export async function readTextAsync(img, opts){
   const st = await visionStatus();
   if(st && st.ok && st.ocr){
     try{
-      return await invoke('vision_ocr', rawOf(img), { headers: { 'x-w': String(img.width), 'x-h': String(img.height), 'x-both': opts && opts.both === false ? '0' : '1' } });
+      return await call('vision_ocr', rawOf(img), { 'x-w': String(img.width), 'x-h': String(img.height), 'x-both': opts && opts.both === false ? '0' : '1' });
     }catch(e){ console.warn('[vision] native OCR failed — using the built-in reader', e); nativeStatus = Object.assign({}, st, { ocr: false }); }
   }
   const w = start();

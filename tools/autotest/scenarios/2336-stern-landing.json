@@ -1,0 +1,4 @@
+{ "note": "Day. A tank frame lowered from the platform and set down at the stern, port side. Clip: 31.10 IMG_2336, 0–42 s.",
+  "clip": "2336", "rate": 0.25, "calib": {"pts":[[0.6821,0.52599],[0.30893,0.52723],[0.88104,0.76485],[0.06299,0.76733]],"line":6,"aspect":0.5625,"k":0},
+  "units": [], "loadList": ["KA 2210", "TRF 118"],
+  "expect": [ { "kind": "landed", "t": [26, 42], "bay": "12" } ] }

@@ -534,6 +534,8 @@ export function createTracker(opts = {}){
     /* held still high in the air (waiting over the deck, or the video ended
        mid-lift) is not a set-down */
     const down = sd0 && tr.travel >= O.minTravel && (!O.zone || onDeck(sd0.foot[0], sd0.foot[1]));
+    /* why a still load was not a set-down (for the autotest log) */
+    if(sd0 && !down) events.push({ kind: 'ignored', was: 'landed', id: tr.id, t, foot: sd0.foot, why: tr.travel < O.minTravel ? 'travel ' + tr.travel.toFixed(3) : 'off the deck' });
     if(down){
       const real = emit('landed', tr, sd0.foot, sd0.t, sd0.box);
       /* the landed load is deck now; slings and people on it are not new lifts for a while */
