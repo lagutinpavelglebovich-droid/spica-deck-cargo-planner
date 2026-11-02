@@ -1052,7 +1052,7 @@ const SPICA_TIDE_LOC_ALIASES = {
   CLAY_CAP:['CLAYMORE CAP','CLAY CAP','CLAYMORE','CAP'], CLAY_DRL:['CLAYMORE DRILL','CLAY DRILL','CLAYMORE DRILLING'],
   PIPER_WOP:['PIPER WOPS','PIPER WOP'], PIPER_DR:['PIPER DRILL','PIPER DR'], PIPER:['PIPER','PIPER BRAVO'],
   SALT:['SALTIRE','SALT'], TART:['TARTAN','TART'], BEAT:['BEATRICE','BEAT'], CLYDE:['CLYDE'],
-  FULMAR:['FULMAR'], ARBR:['ARBROATH','ARBR'], MONTR:['MONTROSE','MONTR'], BLEO:['BLEO'], GP3:['GP3'], AUK:['AUK'],
+  FULMAR:['FULMAR'], ARBR:['ARBROATH','ARBR'], MONTR:['MONTROSE','MONTR'], BLEO:['BLEO','BH'], GP3:['GP3'], AUK:['AUK'],
 };
 function spicaTideLocations(){
   return SPICA_TIDE_LOCS.map(l => Object.assign({}, l, { aliases: (SPICA_TIDE_LOC_ALIASES[l.id] || []).slice() }));
@@ -10856,8 +10856,11 @@ async function _processGenericFile(file, ascoBody){
   const sub = document.getElementById('ascoSubtitle');
   if(sub) sub.textContent = `Reading ${file.name}…`;
   try{
+    let _row = null;
     const res = await readManifestFile(file, pr => {
-      if(sub && pr && pr.phase === 'ocr') sub.textContent = `Scanned PDF — reading page ${pr.page}/${pr.pages}${pr.pct ? ' · ' + pr.pct + '%' : ''}… (on this computer)`;
+      /* the reader's own percentage keeps firing while the cells are read: keep the row count */
+      if(pr && pr.row) _row = pr; else if(pr && _row && _row.page === pr.page) pr = _row;
+      if(sub && pr && pr.phase === 'ocr') sub.textContent = pr.row ? `Scanned PDF — page ${pr.page}/${pr.pages} · reading row ${pr.row} of ${pr.rows}… (on this computer, about a minute)` : `Scanned PDF — finding the table on page ${pr.page}/${pr.pages}${pr.pct ? ' · ' + pr.pct + '%' : ''}… (on this computer)`;
     });
     const sheets = _genericSheets(res);
     if(!sheets.length){

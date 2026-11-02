@@ -110,6 +110,16 @@ function inferColumns(rows, hint){
   if(map.desc == null && textCols.length) map.desc = textCols.shift();
   if(map.dest == null && textCols.length) map.dest = textCols.shift();
   if(map.contents == null && textCols.length) map.contents = textCols.shift();
+  /* v3.42 — a hazard column without a header (a scanned backload: "LQ",
+     "4.1", "3" against a few rows only): sparse, every value a DG class */
+  if(map.dg == null){
+    const DG = /^(LQ|EQ|[1-9](\.[1-6])?[A-Z]?)([\s,\/&+]+(LQ|EQ|[1-9](\.[1-6])?[A-Z]?))*$/i;
+    const vals = i => rows.map(r => cellStr(r && r[i])).filter(Boolean);
+    /* …and at least one that can only be a class ("LQ", "4.1"), not a count */
+    const cand = stat.map((st, i) => i).filter(i => free(i) && stat[i].n >= 1 && stat[i].n <= rows.length * 0.6
+      && vals(i).every(v => DG.test(v)) && vals(i).some(v => /LQ|EQ|\d\.\d/i.test(v)));
+    if(cand.length === 1) map.dg = cand[0];
+  }
   return (map.ccu != null) ? map : null;
 }
 
@@ -416,12 +426,13 @@ function cleanOcrCell(t){
 
 /* Ruled table → per-cell OCR (single-line mode) — far more reliable on
    scanned manifests than whole-page reading. Returns null without a grid. */
-async function ocrRuledTable(worker, canvas, scan){
+async function ocrRuledTable(worker, canvas, scan, onRow){
   const { ink, W, hl, vl } = scan;
   if(hl.length < 3 || vl.length < 3) return null;
   await worker.setParameters({ tessedit_pageseg_mode: '7', preserve_interword_spaces: '1' });
   const rows = [];
   for(let r = 0; r < hl.length - 1; r++){
+    if(onRow) onRow(r + 1, hl.length - 1);
     const y0 = hl[r] + 4, y1 = hl[r + 1] - 4;
     if(y1 - y0 < 12) continue;
     const row = [];
@@ -505,7 +516,7 @@ async function gridsFromPdf(buf, onProgress){
     await page.render({ canvas, canvasContext: ctx, viewport: v2 }).promise;
     const scan = cleanScan(ctx, canvas.width, canvas.height);
     const worker = await ocrWorker(pct => onProgress && onProgress({ phase:'ocr', page:p, pages:pdf.numPages, pct }));
-    const ruled = await ocrRuledTable(worker, canvas, scan);
+    const ruled = await ocrRuledTable(worker, canvas, scan, (row, rows) => onProgress && onProgress({ phase:'ocr', page:p, pages:pdf.numPages, row, rows }));
     if(ruled){ grids.push({ name: 'Page ' + p, rows: ruled, ocr: true }); continue; }
     await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM, preserve_interword_spaces: '1' });
     const { data } = await worker.recognize(canvas);

@@ -27,6 +27,7 @@ export const RELEASE_NOTES = [
       { type: 'feature', text: 'Sounds for lifted off, set down and moved (Smart Tools → Sound → Camera)' },
       { type: 'feature', text: 'Numbers read only in pieces now count: a piece of digits ("09", "221") that fits exactly one of the units that can be the load — those around the spot it was lifted from, or those still to come aboard (Imported, load list) — picks that unit. Two-digit pieces must be seen twice; the card and the log show which piece was read' },
       { type: 'fix', text: 'A load set down right at the stern was placed metres beyond it (one pixel there is most of a metre) and got no bay; it now stands in Bay 12' },
+      { type: 'fix', text: 'Scanned backload lists: "BH" in the file name is Bleo Holm (the location no longer has to be picked by hand), a hazard column without a header ("LQ", "4.1", "3") is read as DG classes, and the window shows which row is being read instead of sitting at 100 %' },
       { type: 'improvement', text: 'Nothing on the plan changes until the operator confirms. Camera marks are not saved with the plan and never show in the PDF' },
     ],
   },
