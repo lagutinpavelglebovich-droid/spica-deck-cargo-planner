@@ -18820,3 +18820,7 @@ body.pdf-capture .cb.cb-cam-moved{ outline:none; opacity:1; }
 .dcm.is-tiny .dcm-rt{ position:relative; }
 .dcm.is-tiny .dcm-st{ justify-content:center; padding:0 64px 0 12px; }
 .cam-frag{ font:600 10.5px ui-monospace, Menlo, monospace; color:var(--txt3); }
+/* a load lifted from the deck: only the spot it left, as a ring */
+.cam-live.is-from{ border-radius:50%; border-style:dashed; background:radial-gradient(circle, var(--cam-live-soft) 0 55%, transparent 70%); transition:none; animation:camFromPulse 1.4s ease-in-out infinite; }
+@keyframes camFromPulse{ 50%{ box-shadow:0 0 0 6px color-mix(in srgb, var(--cam-live) 25%, transparent); } }
+@media (prefers-reduced-motion: reduce){ .cam-live.is-from{ animation:none; } }

@@ -1751,7 +1751,8 @@ function footprint(box, foot){
   const px = -uy, py = ux;
   const corner = (a, b) => [c[0] + ux * a * d / 2 + px * b * d / 2, c[1] + uy * a * d / 2 + py * b * d / 2];
   return { centre: [Math.min(g.length, Math.max(0, c[0])), Math.min(g.width, Math.max(0, c[1]))], size: d,
-    poly: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], toCam: [-ux, -uy] };
+    poly: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], toCam: [-ux, -uy],
+    inDeck: c[0] >= -0.3 && c[0] <= g.length + 0.3 && c[1] >= -0.3 && c[1] <= g.width + 0.3 };
 }
 function whereText(pt){
   if(!pt) return '';
@@ -2193,9 +2194,16 @@ function bgTick(tr){
   if(!fp){ liveOut(null); return; }
   const rd = bestReading(tr.id), M = currentModel();
   let from = null;
-  if(tr.start && tr.start[1] - tr.foot[1] > 0.03 && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [p[0], p[1]]; }
+  if(tr.start && tr.start[1] - tr.foot[1] > 0.03 && M){ const p = M.toDeck(tr.start[0], tr.start[1]); if(p && p[0] > -0.5 && p[0] < geoLen(DC.geo).length + 0.5 && p[1] > -0.5 && p[1] < DC.geo.width + 0.5) from = [Math.min(geoLen(DC.geo).length, Math.max(0, p[0])), Math.min(DC.geo.width, Math.max(0, p[1]))]; }
   const lg = !(rd && rd.text) ? liveGuess(tr) : null;
-  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(6.5, Math.max(1.2, fp.size)), text: rd && rd.text || (lg ? lg.ccu : ''), sure: rd && rd.text ? !!rd.sure : false, down: tr.phase === 'down', from });
+  const text = rd && rd.text || (lg ? lg.ccu : ''), sure = rd && rd.text ? !!rd.sure : false;
+  /* A load high in the air is seen against the deck far behind it: its
+     "shadow" would wander over bays it is nowhere near (or off the deck).
+     A load lifted from the deck therefore only marks the spot it left;
+     a load coming aboard is shadowed once it is over the deck. */
+  if(from && tr.phase !== 'down'){ liveOut({ lifted: true, xM: from[0], yM: from[1], sizeM: 2.4, text, sure }); return; }
+  if(!fp.inDeck){ liveOut(null); return; }
+  liveOut({ xM: fp.centre[0], yM: fp.centre[1], sizeM: Math.min(4.5, Math.max(1.2, fp.size)), text, sure, down: tr.phase === 'down' });
 }
 /* the top-bar Camera tile */
 export function cameraIsOn(){ return BG_ON; }

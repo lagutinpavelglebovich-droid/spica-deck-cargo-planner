@@ -5415,11 +5415,13 @@ function camLive(v){
     el.innerHTML = '<span class="cam-live-tag"><i></i><b></b></span><span class="cam-live-nm"></span>';
     cv.appendChild(el);
   }
+  /* always inside the deck */
   const s = CAM_LIVE.sizeM, w = m2px_w(s), h = m2px_h(s), cx = metersToDeckX(CAM_LIVE.xM), cy = CAM_LIVE.yM * YS;
-  el.style.left = Math.round(cx - w / 2) + 'px'; el.style.top = Math.round(cy - h / 2) + 'px';
+  el.style.left = Math.round(Math.max(0, Math.min(TW - w, cx - w / 2))) + 'px'; el.style.top = Math.round(Math.max(0, Math.min(CVH - h, cy - h / 2))) + 'px';
   el.style.width = w + 'px'; el.style.height = h + 'px';
   el.classList.toggle('is-down', !!CAM_LIVE.down);
-  el.querySelector('.cam-live-tag b').textContent = CAM_LIVE.down ? 'SETTING DOWN' : 'ON THE HOOK';
+  el.classList.toggle('is-from', !!CAM_LIVE.lifted);
+  el.querySelector('.cam-live-tag b').textContent = CAM_LIVE.lifted ? 'LIFTED FROM HERE' : CAM_LIVE.down ? 'SETTING DOWN' : 'ON THE HOOK';
   el.querySelector('.cam-live-nm').textContent = CAM_LIVE.text ? CAM_LIVE.text + (CAM_LIVE.sure ? '' : '?') : '';
   if(CAM_LIVE.from){
     if(!sv){
