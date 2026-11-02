@@ -1,0 +1,40 @@
+{
+ "note": "Red mini lifted off mid-deck. Clip 02.11 IMG_2443, 105\u2013142 s. Plan: the owner's saved plan of 02.11.2026 (planFile, kept beside the clips).",
+ "clip": "2443T",
+ "rate": 0.25,
+ "calib": {
+  "pts": [
+   [
+    0.6713,
+    0.50911
+   ],
+   [
+    0.29398,
+    0.50911
+   ],
+   [
+    0.88426,
+    0.75964
+   ],
+   [
+    0.08102,
+    0.75964
+   ]
+  ],
+  "line": 6,
+  "aspect": 0.5625,
+  "k": 0
+ },
+ "planFile": "plan0211.json",
+ "expect": [
+  {
+   "kind": "lifted",
+   "t": [
+    14,
+    30
+   ],
+   "unit": "AME1463",
+   "flagged": "AME1463"
+  }
+ ]
+}

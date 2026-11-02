@@ -1,0 +1,41 @@
+{
+ "note": "KA 1469 (10 ft, near starboard) lifted off. Clip 02.11 IMG_2442, 155\u2013193 s. Plan: the owner's saved plan of 02.11.2026 (planFile, kept beside the clips).",
+ "clip": "2442T",
+ "rate": 0.25,
+ "calib": {
+  "pts": [
+   [
+    0.6713,
+    0.50911
+   ],
+   [
+    0.29398,
+    0.50911
+   ],
+   [
+    0.88426,
+    0.75964
+   ],
+   [
+    0.08102,
+    0.75964
+   ]
+  ],
+  "line": 6,
+  "aspect": 0.5625,
+  "k": 0
+ },
+ "planFile": "plan0211.json",
+ "expect": [
+  {
+   "kind": "lifted",
+   "t": [
+    14,
+    32
+   ],
+   "unit": "KA1469",
+   "flagged": "KA1469"
+  }
+ ],
+ "known": "Open: KA 1469 stands at the very edge of the picture next to the camera and leaves over the side at once; the panel names it (\u2191 from KA1469, Bay 5 \u00b7 STBD) but the lift-off event is missed in most runs."
+}

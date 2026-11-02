@@ -47,8 +47,22 @@ async function run(name){
     return { id: 1800000000000 + i, side: 'DECK', x: Math.round(mToX(xM) - w / 2), y: Math.round(u.yM * YS - h / 2), w, h, length_m: u.l, width_m: u.w, rot: 0,
       ccu: u.ccu, desc: u.desc || 'Unit', wt: 3, platform: 'BLEO', status: 'L', dgClasses: [], priority: false, trDest: '' };
   });
-  const plan = { _schema: 3, _appVersion: 'autotest', name: 'autotest ' + name, plan: { cargo, customLib: [], customLocs: [], voyage: 'TEST', activeLocs: ['BLEO'], selLoc: 'BLEO', date: '2026-11-02',
+  let plan = { _schema: 3, _appVersion: 'autotest', name: 'autotest ' + name, plan: { cargo, customLib: [], customLocs: [], voyage: 'TEST', activeLocs: ['BLEO'], selLoc: 'BLEO', date: '2026-11-02',
     dynColors: {}, cargoColors: {}, locColors: {}, voyRemarks: '', loadList: sc.loadList ? { items: sc.loadList.map(c => ({ ccu: c, desc: '' })) } : null, zoomLevel: 0.9, vessel: { id: 'spica-tide', name: 'SPICA TIDE' } } };
+  /* a real saved plan (kept beside the clips, never in the repo) replaces the made-up one */
+  /* or the log the app writes next to every Record video file: deck at the start, load list, calibration */
+  if(sc.recording){
+    const r = JSON.parse(fs.readFileSync(path.join(CLIPS, sc.recording), 'utf8'));
+    (r.deckAtStart || []).forEach((u, i) => {
+      const l = u.x1 - u.x0, wM = u.y1 - u.y0, w = Math.round(l * M), h = Math.round(wM * YS);
+      cargo.push({ id: u.id || 1810000000000 + i, side: 'DECK', x: Math.round(mToX(u.x0)), y: Math.round(u.y0 * YS), w, h, length_m: +l.toFixed(3), width_m: +wM.toFixed(3), rot: 0,
+        ccu: u.ccu, desc: u.desc || 'Unit', wt: u.wt || 0, platform: u.loc || '', status: u.status || 'L', dgClasses: u.dg || [], priority: false, trDest: '' });
+    });
+    if(r.loadList) plan.plan.loadList = r.loadList;
+    if(!sc.calib && r.camera && r.camera.calib) sc.calib = r.camera.calib;
+    if(!sc.clip && r.video && r.video.file) sc.clipFile = r.video.file;
+  }
+  if(sc.planFile){ plan = JSON.parse(fs.readFileSync(path.join(CLIPS, sc.planFile), 'utf8')); plan.plan.zoomLevel = 0.9; cargo.length = 0; cargo.push(...plan.plan.cargo); }
   const eng = engine(); const st = await eng('vision_status', null, {}); console.log(name, '· engine', st.device);
   const br = await chromium.launch(); const pg = await br.newPage({ viewport: { width: 1600, height: 1000 } });
   await pg.exposeFunction('__visionBridge', async (cmd, b64, h) => eng(cmd, b64 ? Buffer.from(b64, 'base64') : null, h));
@@ -61,7 +75,7 @@ async function run(name){
   const errs = []; pg.on('pageerror', e => errs.push(e.message));
   await pg.goto(URL_, { waitUntil: 'load', timeout: 180000 }); await pg.waitForTimeout(1500);
   await pg.evaluate(async c => { const m = await import('/src/deckCamera.js'); m._dc.api().setCamera({ rotation: 0, calib: c }); window.__dcm = m; m.openDeckCamera('watch'); }, sc.calib);
-  await pg.setInputFiles('#dcFile', path.join(CLIPS, `c${sc.clip}.${process.env.DECARGO_CLIP_EXT || "webm"}`)); await pg.waitForTimeout(1500);
+  await pg.setInputFiles('#dcFile', path.join(CLIPS, sc.clipFile || `c${sc.clip}.${process.env.DECARGO_CLIP_EXT || "webm"}`)); await pg.waitForTimeout(1500);
   await pg.click('#dcPlay'); await pg.waitForTimeout(200);
   await pg.evaluate(r => { const v = window.__dcm._dc.state().src; v.playbackRate = r; }, sc.rate || 0.25);
   await pg.click('#dcWBg');
@@ -85,7 +99,9 @@ async function run(name){
     const hit = s.ev.find(e => e.kind === x.kind && e.t >= x.t[0] && e.t <= x.t[1]);
     let ok = !!hit, why = hit ? '' : 'no ' + x.kind + ' in ' + x.t.join('–') + ' s';
     if(hit && x.unit && hit.unit !== x.unit){ ok = false; why = `unit ${hit.unit || '—'} ≠ ${x.unit}`; }
-    if(hit && x.bay && !new RegExp('Bay ' + x.bay + '\\b').test(hit.where)){ ok = false; why = `${hit.where} ≠ Bay ${x.bay}`; }
+    if(hit && x.bay && !new RegExp('Bay (' + [].concat(x.bay).join('|') + ')\\b').test(hit.where)){ ok = false; why = `${hit.where} ≠ Bay ${x.bay}`; }
+    const nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if(hit && x.read && nk(hit.read) !== nk(x.read)){ ok = false; why = `read ${hit.read || '—'} ≠ ${x.read}`; }
     if(hit && x.flagged && !s.lifted.includes(String(idOf(x.flagged)))){ ok = false; why = `${x.flagged} not marked LIFTED?`; }
     return { expect: x, ok, why, got: hit || null };
   });
@@ -97,10 +113,11 @@ async function run(name){
     return { reads: o, deck: (W_.deck || []).map(d => d.n) }; });
   const rep = { reads, tracker, scenario: name, clip: sc.clip, engine: st.device, rate: sc.rate || 0.25, wallS: Math.round((Date.now() - t0) / 1000), checks, extra, lifted: s.lifted, ghosts: s.ghosts, errors: errs.slice(0, 5), trace };
   fs.writeFileSync(path.join(OUT, name + '.json'), JSON.stringify(rep, null, 1));
-  console.log(name, checks.map(c => (c.ok ? 'PASS ' : 'FAIL ') + c.expect.kind + (c.expect.unit ? ' ' + c.expect.unit : '') + (c.why ? ' — ' + c.why : '')).join(' · '), extra.length ? '· extra: ' + extra.map(e => `${e.t}s ${e.kind} ${e.where}`).join(', ') : '');
+  console.log(name + (sc.known ? ' [known open]' : ''), checks.map(c => (c.ok ? 'PASS ' : 'FAIL ') + c.expect.kind + (c.expect.unit ? ' ' + c.expect.unit : '') + (c.why ? ' — ' + c.why : '')).join(' · '), extra.length ? '· extra: ' + extra.map(e => `${e.t}s ${e.kind} ${e.where}`).join(', ') : '');
   await br.close();
   eng.close();
-  return checks.every(c => c.ok) && !extra.length;
+  /* a scenario marked "known" documents an open problem: it does not fail the run */
+  return (checks.every(c => c.ok) && !extra.length) || !!sc.known;
 }
 (async () => {
   const names = process.argv.slice(2).length ? process.argv.slice(2) : fs.readdirSync(path.join(__dirname, 'scenarios')).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));

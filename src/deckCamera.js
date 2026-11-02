@@ -1843,7 +1843,8 @@ function unitAt(all, X, Y, tc, skip){
 }
 function onTrackEvent(e){
   if(!DC || (e.kind !== 'landed' && e.kind !== 'lifted')) return;
-  const W_ = DC.w, fp = footprint(e.box, e.foot), rd = bestReading(e.id);
+  const W_ = DC.w, fp = footprint(e.box, e.foot);
+  let rd = bestReading(e.id);
   const all = API.cargo(), nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const byNum = rd && rd.text ? all.find(c => c.ccu && nk(c.ccu) === nk(rd.ccu || rd.text)) : null;
   let guess = null, guessId = null, moveId = null, partial = null;
@@ -1863,6 +1864,14 @@ function onTrackEvent(e){
     /* v3.42 — set down: a unit already on the plan moved to another spot — its
        number was read, or it was picked up from a planned unit's place */
     let u = byNum;
+    /* v3.42.1 — a load that came down out of the air is a unit on deck only
+       if it was picked up from the deck: by this lock, or seen lifted earlier.
+       Otherwise the number read belongs to a unit it passed in front of
+       (02.11 IMG_2443: a red mini lowered past CH270 read "CH270"). */
+    if(u && !e.fromStill && !e.moves){
+      const wasLifted = W_.liftEv && [...W_.liftEv.values()].some(l => l.guessId === u.id);
+      if(!wasLifted){ u = null; rd = null; }
+    }
     if(!u && e.fromStill && e.start){
       const M = currentModel(), p = M && M.toDeck(e.start[0], e.start[1]);
       if(p && Math.hypot(p[0] - fp.centre[0], p[1] - fp.centre[1]) > 2) u = unitAt(all, p[0], p[1], fp.toCam);

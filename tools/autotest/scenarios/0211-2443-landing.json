@@ -1,0 +1,40 @@
+{
+ "note": "Red mini lowered from the platform. Clip 02.11 IMG_2443, 0\u201336 s. Plan: the owner's saved plan of 02.11.2026 (planFile, kept beside the clips).",
+ "clip": "2443L",
+ "rate": 0.25,
+ "calib": {
+  "pts": [
+   [
+    0.6713,
+    0.50911
+   ],
+   [
+    0.29398,
+    0.50911
+   ],
+   [
+    0.88426,
+    0.75964
+   ],
+   [
+    0.08102,
+    0.75964
+   ]
+  ],
+  "line": 6,
+  "aspect": 0.5625,
+  "k": 0
+ },
+ "planFile": "plan0211.json",
+ "expect": [
+  {
+   "kind": "landed",
+   "t": [
+    18,
+    36
+   ],
+   "bay": "7",
+   "read": "AMD 1345"
+  }
+ ]
+}

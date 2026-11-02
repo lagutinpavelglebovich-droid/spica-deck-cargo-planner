@@ -29,6 +29,8 @@ export const RELEASE_NOTES = [
       { type: 'fix', text: 'A load set down right at the stern was placed metres beyond it (one pixel there is most of a metre) and got no bay; it now stands in Bay 12' },
       { type: 'fix', text: 'Scanned backload lists: "BH" in the file name is Bleo Holm (the location no longer has to be picked by hand), a hazard column without a header ("LQ", "4.1", "3") is read as DG classes, and the window shows which row is being read instead of sitting at 100 %' },
       { type: 'improvement', text: 'A lift-off is still read on its way up: when the number then clearly names another unit on the plan (the first read caught the container next to it), the "LIFTED?" mark moves to that unit. The camera window and the small window name the unit it came from and its bay' },
+      { type: 'fix', text: 'A load lowered from the platform past a unit already on deck could take that unit\'s number (a red mini set down in front of CH270 was offered as "CH270 moved"). A number of a unit on deck now counts as a move only if that unit was picked up from the deck' },
+      { type: 'improvement', text: 'A unit standing at the very side of the picture (close to the camera, half out of view) can be reported lifted off when it leaves; before, it was taken for a load coming in over that edge' },
       { type: 'improvement', text: 'Nothing on the plan changes until the operator confirms. Camera marks are not saved with the plan and never show in the PDF' },
     ],
   },

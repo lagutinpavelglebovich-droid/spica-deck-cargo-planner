@@ -11,5 +11,12 @@ moves. Nothing here ships in the app.
 - Videos are NOT in the repo (owner's footage). Put them in a folder as
   `c<clip>.webm` (VP9 — the test browser has no H.264) and point
   `DECARGO_CLIPS` at it. 10 fps is enough.
+- Real plans instead of made-up units:
+  - `"planFile": "plan.json"` — a plan saved from the app (File → Save),
+    read from the `DECARGO_CLIPS` folder;
+  - `"recording": "<name>.json"` — the log the app writes next to every
+    **Record video** file (deck at the start, load list, calibration). With
+    it a scenario needs only `expect`; the video is the file named in the log.
+  Both stay beside the clips, never in the repo.
 - Output: `out/<scenario>.json` (events, tracker log with why a still load
   was not a set-down, mini-window trace) and screenshots at every event.

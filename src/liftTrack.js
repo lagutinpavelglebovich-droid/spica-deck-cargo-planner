@@ -546,7 +546,11 @@ export function createTracker(opts = {}){
     }else{
       /* it began where it stood on deck (not coming in over an edge) and the
          deck it left shows as changed there → lifted from that spot */
-      const sb = tr.startBg, fromEdge = sb && (sb.y < 3 || sb.x < 3 || sb.x + sb.w > W - 3);
+      /* v3.42.1 — a unit standing still at the side of the picture (near the
+         camera, half out of view) was there all along: not one that came in
+         over that edge (02.11 IMG_2442, KA 1469) */
+      const sb = tr.startBg, rested = tr.startStill || tr.fromRest;
+      const fromEdge = sb && (sb.y < 3 || ((sb.x < 3 || sb.x + sb.w > W - 3) && !(rested && tr.start && (!O.zone || onDeck(tr.start[0], tr.start[1])))));
       /* what stood there before (learned background then) against the deck now */
       const ghost = sb ? Math.max(changedIn(sb), tr.startPatch ? 1 - Math.max(0, patchNcc(tr.startPatch)) : 0) : 0;
       /* the deck it left stays "changed" and still where it stood: that is where it came from */
@@ -556,6 +560,10 @@ export function createTracker(opts = {}){
       const lastF = tr.path.length ? tr.path[tr.path.length - 1].foot : tr.start;
       const risen = why === 'stopped' && tr.start && tr.start[1] - lastF[1] > 0.12;
       const gone = why === 'left' || why === 'lost' || risen;
+      /* v3.42.1 — stood still on deck, the deck there changed, and it went out of
+         the picture: gone up and away even with a short track (a big unit
+         near the camera leaves over the side at once — 02.11 IMG_2442) */
+      const leftFromRest = why === 'left' && rested && ghost > 0.25 && !fromEdge;
       const gh = tr.liftedSent || !gone || tr.travel < O.minTravel * 2 ? null : cands.filter(c => c.n >= 8 && c.moved < 0.012)
         .map(c => ({ c, d: Math.hypot((c.box.x + c.box.w / 2 + off[0]) / W - p0[0], (c.box.y + c.box.h + off[1]) / H - p0[1]) }))
         .filter(o => o.d < 0.2).sort((x, y) => y.c.area - x.c.area)[0];
@@ -563,8 +571,14 @@ export function createTracker(opts = {}){
         const gb = gh.c.box;
         emit('lifted', tr, [(gb.x + gb.w / 2 + off[0]) / W, (gb.y + gb.h + off[1]) / H], tr.t0, toFrame(gb));
         learnBox(gb, 4);
-      }else if(!tr.liftedSent && sb && !fromEdge && gone && tr.travel >= O.minTravel * 2 && (ghost > 0.25 || tr.startStill || tr.fromRest || (O.zone && tr.air && why === 'left')) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
+      }else if(!tr.liftedSent && sb && !fromEdge && gone && tr.travel >= O.minTravel * (leftFromRest ? 1 : 2) && (ghost > 0.25 || tr.startStill || tr.fromRest || (O.zone && tr.air && why === 'left')) && Math.hypot(tr.path[tr.path.length - 1].foot[0] - tr.start[0], tr.path[tr.path.length - 1].foot[1] - tr.start[1]) > 0.05)
         { const ps = pickupSpot(tr); emit('lifted', tr, ps ? ps.foot : tr.start, tr.t0, ps ? ps.box : tr.startBox); if(ps) learnBox(ps.bg, 4); }
+      /* why a load that went away was not a lift-off (for the autotest log) */
+      else if(!tr.liftedSent && gone && tr.travel >= O.minTravel * 0.5)
+        events.push({ kind: 'ignored', was: 'lifted', id: tr.id, t, foot: tr.start || null,
+          why: !sb ? 'no start' : fromEdge ? 'came in over the edge' : tr.travel < O.minTravel * (leftFromRest ? 1 : 2) ? 'travel ' + tr.travel.toFixed(3)
+            : !(ghost > 0.25 || rested || (O.zone && tr.air && why === 'left')) ? 'nothing stood there (ghost ' + ghost.toFixed(2) + ')' : 'hardly moved from the start',
+          rested: !!rested, ghost: Math.round(ghost * 100) / 100 });
       if(sb && ghost > 0.25) learnBox(sb, 4);
       /* lost in mid-move without an outcome: the next lock nearby carries on with it */
       if(why === 'lost' && !tr.liftedSent && !events.slice(nEv0).some(e => e.kind === 'lifted'))
