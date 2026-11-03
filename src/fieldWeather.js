@@ -185,7 +185,7 @@ export function fieldWxSummary(id){
   const r = nowRow(id);
   if(!r) return null;
   const u = windUnit();
-  return { ws: Math.round(windVal(r.ws, u)), wg: Math.round(windVal(r.wg, u)), unit: windLbl(u), dir: compass(r.wd), wd: r.wd,
+  return { ws: Math.round(windVal(r.ws, u)), wg: Math.round(windVal(r.wg, u)), unit: windLbl(u), dir: compass(r.wd), dirName: compassName(r.wd), wd: r.wd,
            hs: r.hs != null ? r.hs : null, hmax: r.hs != null ? r.hs * HMAX_K : null,
            wc: windColor(r.ws), hc: waveColor(r.hs), stale: Date.now() - DATA.at > 3 * 3600000, at: DATA.at };
 }
@@ -203,6 +203,10 @@ export function hasPosition(id){ return located().some(l => l.id === id); }
 
 const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 function compass(d){ return d == null || !isFinite(d) ? '—' : COMPASS[Math.round(((d % 360) + 360) % 360 / 22.5) % 16]; }
+/* v3.42.1 — the same 16 points in words (header pill tooltip) */
+const COMPASS_NAME = ['North','North-Northeast','Northeast','East-Northeast','East','East-Southeast','Southeast','South-Southeast',
+  'South','South-Southwest','Southwest','West-Southwest','West','West-Northwest','Northwest','North-Northwest'];
+function compassName(d){ return d == null || !isFinite(d) ? '' : COMPASS_NAME[Math.round(((d % 360) + 360) % 360 / 22.5) % 16]; }
 /* Arrow pointing where the wind / sea goes (downwind), like on Windy */
 export function arrowSvg(d, size){
   if(d == null || !isFinite(d)) return '';

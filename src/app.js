@@ -16166,8 +16166,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.42.0';
-const APP_VERSION   = '3.42.0';
+const CURRENT_BUILD = 'v3.42.1';
+const APP_VERSION   = '3.42.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -19807,7 +19807,7 @@ function updateHeaderFieldWx(){
   main.innerHTML = `<span class="info-label">Weather<span class="hfw-at"> · ${escHtml(loc ? loc.name : id)}</span></span>
     <div class="hfw-row">
       ${cond && cond.temperature != null ? `<span class="hfw-temp">${cond.temperature}°</span>` : ''}
-      <span class="hfw-arr" title="${wx.dir}">${arrowSvg(wx.wd, 17)}</span>
+      <span class="hfw-pair hfw-dir" title="Wind from ${wx.dirName || wx.dir}"><span class="hfw-v hfw-dirv">${arrowSvg(wx.wd, 13)}<b>${wx.dir}</b></span><span class="hfw-sub">wind<br>from</span></span>
       <span class="hfw-pair"><span class="hfw-v" style="background:${wx.wc.bg};color:${wx.wc.fg}">${wx.ws}</span><span class="hfw-sub">${wx.unit}<br>G ${wx.wg}</span></span>
       ${wx.hs != null ? `<span class="hfw-pair"><span class="hfw-v" style="background:${wx.hc.bg};color:${wx.hc.fg}">${wx.hs.toFixed(1)}</span><span class="hfw-sub">Hs m<br>max ${wx.hmax.toFixed(1)}</span></span>` : ''}
     </div>`;

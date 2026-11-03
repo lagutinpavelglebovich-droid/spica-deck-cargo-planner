@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.42.1',
+    date: '2026-11-03',
+    highlights: [ 'Wind direction in words in the header' ],
+    changes: [
+      { type: 'ui', text: 'Header weather: the wind direction has its own pill left of the wind speed — the arrow plus the point the wind blows from (NNW, W, SE…), "wind from" under it; the full name (North-Northwest) on hover. Before, there was only an arrow and the words only on hover' },
+    ],
+  },
+  {
     version: '3.42.0',
     date: '2026-11-02',
     highlights: [ 'Camera button on the top bar: watching on / off', 'The camera keeps watching with its window closed — a small window shows the picture', 'Set-downs, lift-offs and moves wait on the deck plan for your ✓' ],
