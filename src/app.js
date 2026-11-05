@@ -8369,15 +8369,37 @@ const TauriFileAdapter = {
 const _PLAN_BAD_KEYS = ['__proto__', 'constructor', 'prototype'];
 const _isObj = o => !!o && typeof o === 'object' && !Array.isArray(o);
 const _finNum = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v);
-function _planDict(o){
+/* v3.42.2 — colour maps hold small objects, not flat values:
+   dynColors   { locId: { base, palEntry:{h,hue,fam} } }
+   cargoColors { 'LOC|ST': { h, palEntry:{h,hue,fam} } }
+   locColors   { locId: { L:'#hex', BL:'#hex', … } }
+   _planDict kept only strings/numbers, so since v3.37 every opened file and
+   every plan from the other computer arrived with no colours at all and
+   each computer handed out its own — same cargo, different colours.
+   Plain objects up to `depth` levels, primitive leaves only. */
+function _planNested(o, depth){
   const r = {};
   if(!_isObj(o)) return r;
   for(const k of Object.keys(o)){
     if(_PLAN_BAD_KEYS.includes(k)) continue;
     const v = o[k];
-    if(typeof v === 'string' || typeof v === 'number') r[k] = v;
+    if(typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)) || typeof v === 'boolean') r[k] = v;
+    else if(depth > 1 && _isObj(v)) r[k] = _planNested(v, depth - 1);
   }
   return r;
+}
+/* a palette entry read from a file is a copy: point it back at the pool
+   entry so "already taken" checks (object identity) see it */
+function _relinkPal(map, hexKey){
+  for(const k of Object.keys(map)){
+    const e = map[k];
+    if(!_isObj(e) || typeof e[hexKey] !== 'string'){ delete map[k]; continue; }
+    const h = e[hexKey].toLowerCase();
+    const pe = e.palEntry && typeof e.palEntry.h === 'string' ? e.palEntry.h.toLowerCase() : h;
+    const pool = PALETTE_POOL.find(x => x.h.toLowerCase() === pe);
+    e.palEntry = pool || { h: e[hexKey], hue: +(e.palEntry && e.palEntry.hue) || 0, fam: 'custom' };
+  }
+  return map;
 }
 function _planCopy(v){
   return JSON.parse(JSON.stringify(v, (k, val) => _PLAN_BAD_KEYS.includes(k) ? undefined : val));
@@ -8417,9 +8439,9 @@ function _validatePlan(src){
   p.voyage = typeof d.voyage === 'string' ? d.voyage : (d.voyage == null ? '' : String(d.voyage));
   p.voyRemarks = typeof d.voyRemarks === 'string' ? d.voyRemarks : '';
   p.date = (typeof d.date === 'string' && !isNaN(new Date(d.date))) ? d.date : null;
-  p.dynColors = _planDict(d.dynColors);
-  p.cargoColors = d.cargoColors == null ? null : _planDict(d.cargoColors);
-  p.locColors = d.locColors == null ? null : _planDict(d.locColors);
+  p.dynColors = _relinkPal(_planNested(d.dynColors, 3), 'base');
+  p.cargoColors = d.cargoColors == null ? null : _relinkPal(_planNested(d.cargoColors, 3), 'h');
+  p.locColors = d.locColors == null ? null : _planNested(d.locColors, 2);
   p.loadList = (d.loadList && typeof d.loadList === 'object') ? d.loadList : null;
   p.zoomLevel = _finNum(d.zoomLevel) ? +d.zoomLevel : null;
   p.vessel = _isObj(d.vessel) ? { id: d.vessel.id != null ? String(d.vessel.id) : '', name: d.vessel.name != null ? String(d.vessel.name) : '' } : null;
@@ -16166,8 +16188,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.42.1';
-const APP_VERSION   = '3.42.1';
+const CURRENT_BUILD = 'v3.42.2';
+const APP_VERSION   = '3.42.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

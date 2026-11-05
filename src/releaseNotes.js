@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.42.2',
+    date: '2026-11-05',
+    highlights: [ 'Cargo colours match on both computers again' ],
+    changes: [
+      { type: 'fix', text: 'Since 3.37 the colours of a plan were dropped whenever it was read back — from the other computer, from a file or on start-up — and each computer handed out its own: the same cargo red on one screen, yellow on the other. Colours, including the ones picked by hand per location and status, now travel with the plan' },
+    ],
+  },
+  {
     version: '3.42.1',
     date: '2026-11-03',
     highlights: [ 'Wind direction in words in the header' ],
