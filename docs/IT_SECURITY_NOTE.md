@@ -6,7 +6,7 @@ Version 3.43.0 · prepared for Tidewater IT · technical detail with source refe
 
 A Windows desktop application (Tauri 2: a Rust program with the system WebView2 for the user interface) for planning deck cargo on a PSV. It was written by the vessel's Chief Officer.
 
-- **Installer:** `SPICA.TIDE.Deck.Cargo.Planner_3.43.0_x64-setup.exe` (NSIS), about 245 MB. Most of the size is the offline text and number recognition models.
+- **Installer:** `SPICA.TIDE.Deck.Cargo.Planner_3.43.0_x64-setup.exe` (NSIS), 245 MB. Most of the size is the offline text and number recognition models.
 - **Install scope:** per user, under `%LOCALAPPDATA%`. **No administrator rights** are needed. No service, scheduled task, auto-start or driver is installed.
 - **Registry and file types:** the standard per-user uninstall entry and Start menu shortcut. The only file type registered is `.spica`. Installing over an older version removes the `.json` association those versions added, so `.json` opens with the program Windows uses by default.
 - **WebView2:** required. It is built into Windows 11 and up-to-date Windows 10. If it is missing, the installer downloads Microsoft's WebView2 bootstrapper from Microsoft's download servers. This happens only at install time.
@@ -77,4 +77,5 @@ Everything else can be blocked. With all of them blocked, planning, export, Outl
 
 The installer and the program are **not yet Authenticode-signed**, so Windows SmartScreen shows "unknown publisher". To check the file, compare its SHA-256 with the value below (`certutil -hashfile <file> SHA256`). The update package is signed with minisign.
 
-- Installer SHA-256: `see the release notes of v3.43.0` <!-- filled in from the release build -->
+- Installer `SPICA.TIDE.Deck.Cargo.Planner_3.43.0_x64-setup.exe`, 245,056,488 bytes
+- SHA-256: `B1664F0F07661FF45EF79794AB358C1FD94F5C70D2ECC0CA11A04372948C3A7F`
