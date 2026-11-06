@@ -1,7 +1,9 @@
 {
   "identifier": "default",
   "description": "Default capabilities for SPICA TIDE desktop app",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -17,11 +19,16 @@
     "updater:allow-check",
     "updater:allow-download-and-install",
     "process:allow-restart",
-    "shell:allow-open",
-    "opener:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**/decargo-print-*.pdf" }, { "path": "**/spica-tide-print-*.pdf" }]
+      "allow": [
+        {
+          "path": "**/decargo-print-*.pdf"
+        },
+        {
+          "path": "**/spica-tide-print-*.pdf"
+        }
+      ]
     }
   ]
 }

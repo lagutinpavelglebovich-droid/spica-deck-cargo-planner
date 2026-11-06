@@ -323,7 +323,9 @@ foreach ($m in $items) {
       }
       $out.items += [ordered]@{ subject = $subject; from = [string]$m.SenderName; received = $m.ReceivedTime.ToString('o'); name = $name; size = [int]$a.Size; key = $key; idx = [int]$a.Index }
     }
-  } catch { }
+  } catch {
+    if ($fkey -ne '') { Emit ([ordered]@{ ok = $false; error = 'Could not copy the attachment: ' + $_.Exception.Message }); exit 0 }
+  }
 }
 if ($fkey -ne '') { Emit ([ordered]@{ ok = $false; error = 'The attachment is no longer in the Inbox' }); exit 0 }
 $out.scanned = $n
@@ -452,8 +454,6 @@ fn launch_file() -> Option<String> {
 }
 
 fn main() {
-    // v3.43 — no Outlook attachment copies left over from an earlier run
-    clear_mail_temp();
     tauri::Builder::default()
         // must be the first plugin: a second launch (double-click on another
         // plan while Decargo is open) focuses this window and hands it the file
@@ -487,6 +487,13 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        // v3.43 — no Outlook attachment copies left over from an earlier run.
+        // In setup, so a second launch (handed to the running app by the
+        // single-instance plugin) never empties the folder under it.
+        .setup(|_app| {
+            clear_mail_temp();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             write_file,
             write_file_bytes,

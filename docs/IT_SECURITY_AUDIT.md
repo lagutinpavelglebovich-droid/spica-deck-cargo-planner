@@ -23,7 +23,7 @@ Short version for IT: `docs/IT_SECURITY_NOTE.md`.
 | 3 | Cargo data does not leave the computer | **TRUE.** The cloud sync is deleted, and the only sync goes through a folder on the ship's network. | `src/syncHub.js` (folder only); `src/sync.js` deleted; `src/syncFolder.js:103-152` (local commands only) |
 | 4 | Outlook is read locally and read-only | **TRUE.** In addition, attachments are now copied only when imported and deleted straight away. | Section D.1 |
 | 5 | The two bridge PCs sync through a shared folder on the ship's network | **TRUE** | `src-tauri/src/shared_sync.rs`; `src/syncFolder.js` |
-| 6 | No cloud account and no connection to company systems | **TRUE.** No cloud code is left, and saved cloud credentials are deleted at first start. | `src/app.js:18234-18256` |
+| 6 | No cloud account and no connection to company systems | **TRUE.** No cloud code is left, and saved cloud credentials are deleted at first start. | `src/app.js:18240-18264` |
 
 ---
 
@@ -35,7 +35,7 @@ Short version for IT: `docs/IT_SECURITY_NOTE.md`.
 | `api.open-meteo.com` | Wind & waves map | Grid of sea points around the working locations | When the map is opened, if older than 90 min | Same | `src/weatherMap.js:21,27,110-128` |
 | `marine-api.open-meteo.com` | Waves / swell | Same coordinates | With the requests above | Same | `src/fieldWeather.js:18`, `src/weatherMap.js:22` |
 | `tile.openstreetmap.org`, `tiles.openseamap.org` | Tiles in the position-check map | Tile x/y/z | Only while that map is open | *Online map tiles*; policy `maps` | `src/locMap.js:50-53,67-72` |
-| `github.com` → `release-assets.githubusercontent.com` | Signed update manifest `latest.json` and the signed update package | Nothing besides the request | 8 s after start, every 3 h, after wake/reconnect when due; manual button | *Check for updates automatically*; policy `updates` (`off` blocks manual checks and downloads too) | `src-tauri/tauri.conf.json:74-79`; `src/app.js:17240-17255,17337,17562-17580` |
+| `github.com` → `release-assets.githubusercontent.com` | Signed update manifest `latest.json` and the signed update package | Nothing besides the request | 8 s after start, every 3 h, after wake/reconnect when due; manual button | *Check for updates automatically*; policy `updates` (`off` blocks manual checks and downloads too) | `src-tauri/tauri.conf.json:74-79`; `src/app.js:17240-17255,17337,17568-17586` |
 
 Notes on the update host:
 - Redirect target verified on 2026-11-06 with a real request. Older releases were served from `objects.githubusercontent.com`.
@@ -50,6 +50,8 @@ Notes on the update host:
 **Telemetry, analytics, crash reporting:** none. A search for sentry / analytics / posthog / mixpanel / sendBeacon / bugsnag / segment in `src/` and `src-tauri/src/` finds nothing.
 
 **Listening ports:** none in the product. The only `TcpListener` is in a test (`src-tauri/src/vision.rs:699-722`, `#[cfg(test)]`).
+
+**Capabilities:** 3.43 removed the permissions that let the interface open arbitrary web addresses (section D.6).
 
 **Runtime check:**
 - The production bundle was served with the shipped CSP and run in Chromium, recording every request.
@@ -78,25 +80,26 @@ img-src     'self' data: blob: https://tile.openstreetmap.org https://tiles.open
 
 ## D. Other findings
 
-### D.1 Outlook (`src-tauri/src/main.rs:202-330`, `src/mailWatch.js:53-125`)
+### D.1 Outlook (`src-tauri/src/main.rs:202-333`, `src/mailWatch.js:53-125`)
 
 - **Mechanism:** `powershell.exe` with the script on stdin and no window (`main.rs:263-279`). There is no `-EncodedCommand` and no execution-policy change.
 - **Scope:** COM `GetDefaultFolder(6)` = default Inbox (`main.rs:293`), last 7 days (`mailWatch.js:17`), attachments under 30 MB (`main.rs:312`), file types xlsx/xlsm/xls/csv/ods/docx/pdf.
 - **Scan:** only lists attachment metadata. It no longer saves any file (`main.rs:314-325`).
 - **Import (`outlook_fetch`):** copies the one chosen attachment to `%TEMP%\spica-tide-mail` (`main.rs:316-322`). The app reads it, then calls `mail_temp_clear` (`mailWatch.js:115-120`).
-- **Clean-up:** the folder is also cleared when the process starts and when it exits (`main.rs:456,522-526`).
+- **Clean-up:** the folder is also cleared when the app starts and when it exits (`main.rs`, `.setup` and `RunEvent::Exit`). Start-up clean-up runs in setup, so a second launch handed to the running app by the single-instance plugin never clears it.
+- **Frequency:** the scan (`powershell.exe` + COM) runs 20 s after start and then every 3 min while the app is open, on by default (`mailWatch.js:17,45-51`). It is switched off with *Watch* in the Import window.
 - **Writes to the mailbox:** none (no Send / Move / Delete / read flag).
 - **CHECK ON WINDOWS:** Outlook scan and import work with a real mailbox, and `%TEMP%\spica-tide-mail` is empty after an import and after closing the app.
 
 ### D.2 Update switches and IT policy
 
 - *Check for updates automatically* gates every automatic check: launch, 3-hourly, online, wake (`src/app.js:17251`). The manual button still works.
-- The policy file is `%ProgramData%\Decargo\policy.json`, read by `it_policy` (`src-tauri/src/main.rs:349-372`).
+- The policy file is `%ProgramData%\Decargo\policy.json`, read by `it_policy` (`src-tauri/src/main.rs:348-375`).
   - Only the keys `updates` / `weather` / `maps` with the values `on` / `off` are accepted. Anything else is ignored.
-  - A policy value overrides the user's switch and locks it with "Managed by your IT policy" (`src/netPolicy.js`, `src/app.js:17523-17560`, `index.html:1594-1636`).
+  - A policy value overrides the user's switch and locks it with "Managed by your IT policy" (`src/netPolicy.js`, `src/app.js:17523-17566`, `index.html:1594-1636`).
   - `updates: off` also disables the About check button and all downloads (`src/app.js:17247-17250,17337`).
-- No network request is made before the policy has been read (`netReady()`; `src/fieldWeather.js:110,128`, `src/weatherMap.js:112`, `src/app.js:17246`).
-- Unit-tested: precedence, locking, unknown values, no file.
+- Forecast and update requests wait for the policy before going out (`netReady()`; `src/fieldWeather.js:110,128`, `src/weatherMap.js:112`, `src/app.js:17246`). The wait is capped at 4 s, so a missing shell command cannot keep the app offline. In practice the policy is read within milliseconds of start-up, long before the first request: weather comes after 1.5 s, the update check after 8 s, and map tiles only when the user opens the map.
+- Precedence, locking, unknown values and the no-file case are covered by `tools/test-net-policy.mjs`.
 - **CHECK ON WINDOWS:** a real `policy.json` locks the switches.
 
 ### D.3 Cloud sync removed
@@ -106,15 +109,15 @@ img-src     'self' data: blob: https://tile.openstreetmap.org https://tiles.open
 - **First start of 3.43:**
   - removes `spicaTide_syncAuth` from WebView storage;
   - removes `syncAuth` from the app's store file `sync-config.json`;
-  - drops any non-folder sync config (`src/app.js:18234-18256`).
+  - drops any non-folder sync config (`src/app.js:18240-18264`).
 - What's New entries that mentioned the cloud were reworded (`src/releaseNotes.js`).
 
 ### D.4 File associations
 
 - Only `.spica` is registered (`src-tauri/tauri.conf.json:52-58`).
-- When 3.43 is installed over an older build, the hook `src-tauri/windows/hooks.nsh` gives `.json` back to its previous owner, using the `json_backup` value the old installer saved, and deletes the `HKCU\Software\Classes\json` class.
-  - It acts only if that class still points at Decargo.
-- **CHECK ON WINDOWS:** after an upgrade, `.json` files open in their previous program.
+- When 3.43 is installed over an older build, the hook `src-tauri/windows/hooks.nsh` removes Decargo's per-user `.json` default and deletes the `HKCU\Software\Classes\json` class. It acts only if that class still points at Decargo.
+- Each earlier install or update overwrote the installer's `json_backup` value with Decargo's own class, so the original owner usually cannot be restored. The default is cleared instead, and `.json` opens with whatever program Windows uses without Decargo. A genuine earlier value is put back when one exists.
+- **CHECK ON WINDOWS:** after an upgrade, double-clicking a `.json` file no longer opens Decargo.
 
 ### D.5 Data at rest (unchanged)
 
@@ -125,13 +128,14 @@ img-src     'self' data: blob: https://tile.openstreetmap.org https://tiles.open
 ### D.6 Privileges (unchanged)
 
 - Per-user NSIS installer, no admin rights (`tauri.conf.json:64`). No service, autostart, scheduled task or driver.
-- **Capabilities** (`src-tauri/capabilities/default.json`): dialog, store, updater, process restart, `shell:allow-open`, and `opener` restricted to the app's own print PDFs. There is no file-system plugin scope.
+- **Capabilities** (`src-tauri/capabilities/default.json`): dialog, store, updater, process restart, and `opener:allow-open-path` restricted to the app's own print PDFs. There is no file-system plugin scope.
+- 3.43 also removed `shell:allow-open` and `opener:default`. Together they would have let the interface open any http/https/mailto/tel address in the default program. Nothing used them.
 - **External process:** only `powershell.exe`, for Outlook.
 
 ### D.7 Licence (unchanged)
 
 - Offline Ed25519 verification against an embedded public key (`src-tauri/src/license.rs`). No server.
-- The write commands refuse without a valid licence (`main.rs:45,51,58,134,384`).
+- The write commands refuse without a valid licence (`main.rs:45,51,58,134,386`).
 
 ---
 

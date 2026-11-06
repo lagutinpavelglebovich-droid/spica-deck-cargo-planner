@@ -8,8 +8,8 @@ A Windows desktop application (Tauri 2: a Rust program with the system WebView2 
 
 - **Installer:** `SPICA.TIDE.Deck.Cargo.Planner_3.43.0_x64-setup.exe` (NSIS), about 245 MB. Most of the size is the offline text and number recognition models.
 - **Install scope:** per user, under `%LOCALAPPDATA%`. **No administrator rights** are needed. No service, scheduled task, auto-start or driver is installed.
-- **Registry and file types:** the standard per-user uninstall entry and Start menu shortcut. The only file type registered is `.spica`. Installing over an older version removes the `.json` association those versions added.
-- **WebView2:** required. It is built into Windows 11 and up-to-date Windows 10. If it is missing, the installer fetches Microsoft's WebView2 installer from Microsoft.
+- **Registry and file types:** the standard per-user uninstall entry and Start menu shortcut. The only file type registered is `.spica`. Installing over an older version removes the `.json` association those versions added, so `.json` opens with the program Windows uses by default.
+- **WebView2:** required. It is built into Windows 11 and up-to-date Windows 10. If it is missing, the installer downloads Microsoft's WebView2 bootstrapper from Microsoft's download servers. This happens only at install time.
 
 ## Data on the computer
 
@@ -33,11 +33,13 @@ A plan holds cargo units (container numbers, weights, descriptions, dangerous-go
 
 **No telemetry, no analytics, no crash reporting, no listening ports.** The two bridge PCs sync **only through a shared folder on the ship's network**. There is no cloud account, no external server and no connection to company systems. The cloud sync of earlier versions was removed in 3.43, and any saved credentials for it are deleted on first start.
 
-The app's Content Security Policy lets it connect only to the Open-Meteo hosts above and load images only from the two tile hosts. Updates are handled by the Rust updater, which checks a minisign signature against a public key built into the app before installing.
+The app's Content Security Policy lets it connect only to the Open-Meteo hosts above and load images only from the two tile hosts. The app has no permission to open web addresses in a browser. Updates are handled by the Rust updater, which checks a minisign signature against a public key built into the app before installing.
 
 ## Outlook
 
-The app reads the **default Inbox of classic Outlook on the same PC**: the last **7 days**, messages with load-list, backload or manifest attachments. It uses COM automation through a local PowerShell script passed on standard input (no encoded command, no execution-policy change).
+The app reads the **default Inbox of classic Outlook on the same PC**: the last **7 days**, messages with load-list, backload or manifest attachments. It uses COM automation through a local PowerShell script (`powershell.exe`, no window). The script is passed on standard input: no encoded command, no execution-policy change.
+
+The check runs 20 seconds after start-up and then **every 3 minutes** while the app is open (and Outlook is running). It is on by default and is switched off with **Watch** in the Import window. Endpoint security software will see these PowerShell starts.
 
 Access is **read only**: nothing is sent, moved, deleted or marked as read. The scan only lists attachments. When the officer imports one, that one attachment is copied to `%TEMP%\spica-tide-mail`, read, and deleted at once. The folder is also emptied at start-up and at exit.
 

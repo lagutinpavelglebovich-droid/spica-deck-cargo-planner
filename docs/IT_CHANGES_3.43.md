@@ -11,9 +11,9 @@ Before submitting Decargo to Tidewater IT, I had the source code reviewed agains
 4. **An unused cloud-sync option remained in the app.** It was off by default, but it could send the plan to an external server and keep a password.
    *Fixed:* cloud sync is removed, and any saved credentials are deleted on first start. The two bridge PCs sync only through a shared folder on the ship's network.
 5. **The installer claimed all `.json` files.**
-   *Fixed:* only `.spica` is registered, and upgrading from an older version gives `.json` back to the program that had it before.
+   *Fixed:* only `.spica` is registered, and upgrading from an older version removes the `.json` association. The app can also no longer open web addresses in a browser.
 6. **Copies of Outlook attachments were left in the temp folder.**
-   *Fixed:* only the attachment being imported is copied, and it is deleted straight after reading. The temp folder is also cleared at start-up and at exit. Outlook access remains read-only.
+   *Fixed:* only the attachment being imported is copied, and it is deleted straight after reading. The temp folder is also cleared at start-up and at exit. Outlook access remains read-only. The automatic Inbox check (every 3 minutes, via a local PowerShell script) is now documented and can be switched off with *Watch*.
 7. **Third-party Rust components had not been checked for known vulnerabilities.**
    *Fixed:* they were checked with `cargo audit`. The TLS libraries (rustls, webpki) and several other components were updated. The remaining advisories either do not apply to the Windows build or affect only the signed update package, and are documented in the audit report. The JavaScript components have no known vulnerabilities (`npm audit`).
 8. **Not fixed yet: the installer is not code-signed (Authenticode).** Windows shows "unknown publisher". The SHA-256 of the installer is provided so the file can be verified, and the automatic update package is cryptographically signed.

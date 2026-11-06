@@ -17556,7 +17556,12 @@ function _netBind(){
       if(k === 'updates' && inp.checked) setTimeout(() => _checkForUpdates(false), 1500);
     });
   });
-  onNetChange(_netRender);
+  onNetChange(() => {
+    _netRender();
+    /* weather switched off/on (or by the policy): header + sky follow at once */
+    _hfwKey = ''; if(typeof updateHeaderFieldWx === 'function') updateHeaderFieldWx();
+    try{ _wxApply(); }catch(e){}
+  });
   _netRender();
 }
 
@@ -18235,7 +18240,11 @@ async function _syncSaveConfig(cfg){
 async function _syncLoadConfig(){
   try {
     let cfg = null;
-    try{ localStorage.removeItem('spicaTide_syncAuth'); }catch(e){}
+    try{
+      localStorage.removeItem('spicaTide_syncAuth');
+      const lc = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
+      if(lc && lc.mode !== 'folder') localStorage.removeItem('spicaTide_syncConfig');
+    }catch(e){}
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');

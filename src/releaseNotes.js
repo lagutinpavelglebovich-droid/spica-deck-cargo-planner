@@ -21,7 +21,7 @@ export const RELEASE_NOTES = [
       { type: 'feature', text: 'IT policy file %ProgramData%\\Decargo\\policy.json (updates / weather / maps: on or off) overrides those switches and locks them — "Managed by your IT policy"' },
       { type: 'improvement', text: 'The app may connect only to the exact hosts it uses (Open-Meteo forecast and marine, OpenStreetMap / OpenSeaMap tiles); everything else is refused' },
       { type: 'improvement', text: 'Outlook: the check only lists attachments. The one you import is copied to the temp folder, read and deleted at once; leftovers are cleared at start-up and at exit. Mail is still only read, never changed' },
-      { type: 'fix', text: 'The installer no longer claims .json files — only .spica. Installing over an older version gives .json back to the program that had it before' },
+      { type: 'fix', text: 'The installer no longer claims .json files — only .spica. Installing over an older version removes Decargo\'s .json association' },
     ],
   },
   {

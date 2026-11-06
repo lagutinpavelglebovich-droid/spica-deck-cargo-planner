@@ -3,9 +3,10 @@
 ; Builds before 3.43 also claimed the generic .json file type for Decargo
 ; (per user: HKCU\Software\Classes\.json -> "json", class key
 ; HKCU\Software\Classes\json). 3.43 registers only .spica. When it is
-; installed over an older build, give .json back to whatever owned it before
-; (the installer kept that in the "json_backup" value) and remove our class
-; key. Nothing is touched unless the .json class still points at Decargo.
+; installed over an older build, remove Decargo's .json association (our
+; per-user default and class key), so .json opens with the program Windows
+; would use without Decargo. A genuine earlier owner kept in "json_backup" is
+; put back. Nothing is touched unless the .json class still points at Decargo.
 
 !macro NSIS_HOOK_POSTINSTALL
   ReadRegStr $R0 HKCU "Software\Classes\.json" ""
@@ -18,11 +19,17 @@
   StrCmp $R2 "SPICA TIDE Project" decargo_json_ours
   Goto decargo_json_done
   decargo_json_ours:
+    ; every earlier install/update overwrote json_backup with our own "json",
+    ; so in practice there is nothing to restore: drop the per-user default
+    ; and Windows uses the program chosen for .json system-wide again
     ReadRegStr $R3 HKCU "Software\Classes\.json" "json_backup"
-    StrCmp $R3 "" 0 +3
-      DeleteRegValue HKCU "Software\Classes\.json" ""
-      Goto +2
+    StrCmp $R3 "" decargo_json_clear
+    StrCmp $R3 "json" decargo_json_clear
       WriteRegStr HKCU "Software\Classes\.json" "" "$R3"
+      Goto decargo_json_backup
+    decargo_json_clear:
+      DeleteRegValue HKCU "Software\Classes\.json" ""
+    decargo_json_backup:
     DeleteRegValue HKCU "Software\Classes\.json" "json_backup"
     DeleteRegKey HKCU "Software\Classes\json"
     ; tell Explorer the file associations changed (SHCNE_ASSOCCHANGED)
