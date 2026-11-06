@@ -201,13 +201,50 @@ fn pct_decode(s: &str) -> String {
 
 /// v3.16 — look through the classic Outlook Inbox on THIS computer for
 /// recent mail with load-list / backload / manifest attachments. Read
-/// only: attachments are copied to %TEMP%\spica-tide-mail and their
-/// paths returned as JSON. Nothing leaves the computer. Windows only.
+/// only, nothing leaves the computer, Windows only.
+/// v3.43 (IT review): the scan only LISTS matching attachments (subject,
+/// sender, time, file name, size); nothing is copied. An attachment is
+/// copied to %TEMP%\spica-tide-mail only when the officer imports it
+/// (`outlook_fetch`), and the app deletes it right after reading it
+/// (`mail_temp_clear`), at start-up and at exit.
 #[tauri::command]
 async fn outlook_scan(days: u32, max_items: u32, pattern: String) -> Result<String, String> {
+    run_outlook(days, max_items, pattern, String::new(), 0)
+}
+
+/// v3.43 — copy ONE attachment (message key + attachment index from the
+/// last scan) to %TEMP%\spica-tide-mail and return its path as JSON.
+#[tauri::command]
+async fn outlook_fetch(days: u32, pattern: String, key: String, index: u32) -> Result<String, String> {
+    if key.is_empty() || key.len() > 64 || !key.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("bad attachment reference".into());
+    }
+    run_outlook(days, 2000, pattern, key, index)
+}
+
+/// v3.43 — the folder Outlook attachments are copied to for import.
+fn mail_temp_dir() -> PathBuf {
+    std::env::temp_dir().join("spica-tide-mail")
+}
+
+/// v3.43 — delete every copied attachment (after an import, at start-up,
+/// at exit). Only this one folder under %TEMP% is touched.
+fn clear_mail_temp() {
+    let dir = mail_temp_dir();
+    if dir.is_dir() {
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[tauri::command]
+fn mail_temp_clear() {
+    clear_mail_temp();
+}
+
+fn run_outlook(days: u32, max_items: u32, pattern: String, fetch_key: String, fetch_index: u32) -> Result<String, String> {
     #[cfg(not(windows))]
     {
-        let _ = (days, max_items, pattern);
+        let _ = (days, max_items, pattern, fetch_key, fetch_index);
         Err("Outlook scanning is available on Windows only".into())
     }
     #[cfg(windows)]
@@ -220,6 +257,8 @@ async fn outlook_scan(days: u32, max_items: u32, pattern: String) -> Result<Stri
         let script = OUTLOOK_PS
             .replace("__DAYS__", &days.min(60).to_string())
             .replace("__MAX__", &max_items.clamp(20, 2000).to_string())
+            .replace("__FKEY__", &fetch_key)
+            .replace("__FIDX__", &fetch_index.to_string())
             .replace("__PATTERN__", &pattern.replace('\'', "''").replace(|c: char| !c.is_ascii(), ""));
         let mut child = Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-NoLogo", "-Command", "-"])
@@ -246,6 +285,7 @@ async fn outlook_scan(days: u32, max_items: u32, pattern: String) -> Result<Stri
 const OUTLOOK_PS: &str = r#"
 $ErrorActionPreference = 'Stop'
 $days = __DAYS__; $max = __MAX__; $pattern = '__PATTERN__'
+$fkey = '__FKEY__'; $fidx = __FIDX__
 $out = [ordered]@{ ok = $true; running = $true; scanned = 0; items = @() }
 function Emit($o) { [Console]::Out.WriteLine('@@SPICA@@' + ($o | ConvertTo-Json -Compress -Depth 4)) }
 if (-not (Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)) { $out.running = $false; Emit $out; exit 0 }
@@ -255,7 +295,6 @@ $items = $inbox.Items
 $items.Sort('[ReceivedTime]', $true)
 $since = (Get-Date).AddDays(-$days)
 $dir = Join-Path $env:TEMP 'spica-tide-mail'
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $ext = '\.(xlsx|xlsm|xls|csv|ods|docx|pdf)$'
 $n = 0
 foreach ($m in $items) {
@@ -273,14 +312,20 @@ foreach ($m in $items) {
       if ($a.Size -gt 31457280) { continue }
       $id = [string]$m.EntryID
       $key = $id.Substring([Math]::Max(0, $id.Length - 24))
-      $sub = Join-Path $dir $key
-      New-Item -ItemType Directory -Force -Path $sub | Out-Null
-      $p = Join-Path $sub ($name -replace '[\\/:*?"<>|]', '_')
-      if (-not (Test-Path -LiteralPath $p)) { $a.SaveAsFile($p) }
-      $out.items += [ordered]@{ subject = $subject; from = [string]$m.SenderName; received = $m.ReceivedTime.ToString('o'); name = $name; path = $p; size = [int]$a.Size; key = $key }
+      if ($fkey -ne '') {
+        if (($key -ne $fkey) -or ([int]$a.Index -ne $fidx)) { continue }
+        $sub = Join-Path $dir $key
+        New-Item -ItemType Directory -Force -Path $sub | Out-Null
+        $p = Join-Path $sub ($name -replace '[\\/:*?"<>|]', '_')
+        $a.SaveAsFile($p)
+        Emit ([ordered]@{ ok = $true; path = $p; name = $name })
+        exit 0
+      }
+      $out.items += [ordered]@{ subject = $subject; from = [string]$m.SenderName; received = $m.ReceivedTime.ToString('o'); name = $name; size = [int]$a.Size; key = $key; idx = [int]$a.Index }
     }
   } catch { }
 }
+if ($fkey -ne '') { Emit ([ordered]@{ ok = $false; error = 'The attachment is no longer in the Inbox' }); exit 0 }
 $out.scanned = $n
 Emit $out
 exit 0
@@ -296,6 +341,33 @@ fn chrono_now() -> String {
         .unwrap_or_default();
     // Return Unix timestamp as string — JS side will format if needed
     format!("{}", d.as_secs())
+}
+
+/// v3.43 — optional IT policy file, %ProgramData%\Decargo\policy.json, e.g.
+/// {"updates":"off","weather":"on","maps":"on"}. Read only; returns the
+/// recognised keys ("on" / "off") and the path, or null when there is none.
+#[derive(Serialize)]
+struct ItPolicy {
+    path: String,
+    values: std::collections::BTreeMap<String, String>,
+}
+
+#[tauri::command]
+fn it_policy() -> Option<ItPolicy> {
+    let base = std::env::var_os("ProgramData").map(PathBuf::from)?;
+    let path = base.join("Decargo").join("policy.json");
+    let text = fs::read_to_string(&path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
+    let mut values = std::collections::BTreeMap::new();
+    for k in ["updates", "weather", "maps"] {
+        if let Some(v) = json.get(k).and_then(|v| v.as_str()) {
+            let v = v.trim().to_ascii_lowercase();
+            if v == "on" || v == "off" {
+                values.insert(k.to_string(), v);
+            }
+        }
+    }
+    Some(ItPolicy { path: path.to_string_lossy().into_owned(), values })
 }
 
 /* v3.28 — local sync through a shared folder (see shared_sync.rs). File work
@@ -380,6 +452,8 @@ fn launch_file() -> Option<String> {
 }
 
 fn main() {
+    // v3.43 — no Outlook attachment copies left over from an earlier run
+    clear_mail_temp();
     tauri::Builder::default()
         // must be the first plugin: a second launch (double-click on another
         // plan while Decargo is open) focuses this window and hands it the file
@@ -423,6 +497,9 @@ fn main() {
             read_file_bytes,
             ensure_dir,
             outlook_scan,
+            outlook_fetch,
+            mail_temp_clear,
+            it_policy,
             shared_read,
             shared_commit,
             shared_probe,
@@ -440,6 +517,12 @@ fn main() {
             vision::vision_detect,
             vision::vision_bench,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // v3.43 — and none left behind when the app closes
+            if let tauri::RunEvent::Exit = event {
+                clear_mail_temp();
+            }
+        });
 }

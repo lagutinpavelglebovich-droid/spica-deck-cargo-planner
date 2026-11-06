@@ -26,6 +26,7 @@ import { initDeckCamera, openDeckCamera, dropFileToDeckCamera, onPlanChanged as 
 import { initFieldWeather, openFieldWeather, fieldWxSummary, fieldWxCondition, parseLatLon, formatLatLon, arrowSvg, refresh as fieldWxRefresh } from './fieldWeather.js';
 import { initWeatherMap, openWeatherMap } from './weatherMap.js';
 import { checkPositionOnMap } from './locMap.js';
+import { setPolicy as _netSetPolicy, netReady, netAllowed, policyOf, policyPath, updatesBlocked, userSetting as _netUser, setUserSetting as _netSetUser, onNetChange } from './netPolicy.js';
 import { initMailWatch } from './mailWatch.js';
 import { animateModalIn, animateModalOut, bindSwipeDismiss, bindEscapeDismiss, isModalActionable, getModalState } from './animations/modal.js';
 import { bindHoldToConfirm } from './animations/holdToConfirm.js';
@@ -40,26 +41,11 @@ import { animate as motionAnimate } from 'motion';
 import { wxScene, _FALLBACK_MAP as _WX_FALLBACK_MAP } from './weather/index.js';
 import { skyGL } from './weather/skyGL.js';
 import { DEFAULT_CONDITION } from './weather/presets.js';
-/* Phase W6 — Open-Meteo data layer (api.js, location.js, autoRefresh.js)
-   plus the Meteocons icon URL map. Aliased on import to keep call sites
-   readable (e.g. _wxSetLocation rather than `setLocation`, which is too
-   generic in app.js scope). */
-import { searchCities } from './weather/api.js';
+/* v3.43 (IT review) — the city weather (city search, reverse geocoding,
+   browser location prompt, its own forecast poll) was removed: weather comes
+   only from the plan's working locations (fieldWeather.js), by coordinates. */
 import { iconForCondition, inlineIconForCondition, staticIconForCondition } from './weather/iconMap.js';
 import { initMotion, motionMode, motionFull, setMotionMode, motionThemeSwitch, motionCollapse, motionAfterRender, motionRemove, motionSettleDeck, motionSwap } from './motion.js';
-import {
-  setLocation             as _wxSetLocation,
-  getLocation             as _wxGetLocation,
-  hydrate                 as _wxLocHydrate,
-  resolveInitialLocation  as _wxResolveInitialLocation,
-  onLocationChange,
-} from './weather/location.js';
-import {
-  start            as _wxAutoStart,
-  refreshNow       as _wxRefreshNow,
-  getCachedWeather as _wxGetCached,
-  onWeatherChange,
-} from './weather/autoRefresh.js';
 
 /* ════════════════════════════════════════════════════════════
    OPERATOR / VIEWER MODE
@@ -16188,8 +16174,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.42.2';
-const APP_VERSION   = '3.42.2';
+const CURRENT_BUILD = 'v3.43.0';
+const APP_VERSION   = '3.43.0';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 
@@ -17254,6 +17240,15 @@ function _updAboutResult(html){
 }
 
 async function _checkForUpdates(manual){
+  /* v3.43 — IT policy "updates":"off" stops every contact with GitHub, the
+     manual check included; the user's "Check for updates automatically"
+     switch stops only the automatic ones */
+  await netReady();
+  if(updatesBlocked()){
+    if(manual){ showToast('Updates are turned off by your IT policy', 'info'); _updAboutResult('Managed by your IT policy — update checks are off'); }
+    return;
+  }
+  if(!manual && !netAllowed('updates')) return;
   /* already have one in hand — just bring it forward */
   if(_upd.state !== 'idle'){
     if(manual){ _updShowCard(true); _updRenderAbout(); }
@@ -17280,10 +17275,16 @@ async function _checkForUpdates(manual){
         }
         return;
       }catch(e){
-        if(!manual) return;          /* auto-checks fail silently (offline at sea) */
+        /* auto-checks fail silently (offline at sea); v3.43 — no second
+           route to GitHub from the desktop app */
+        if(manual){
+          showToast('Update check failed — no connection?', 'warn');
+          _updAboutResult('Check failed: ' + _escHtmlUpd(e && e.message || e));
+        }
+        return;
       }
     }
-    /* Strategy 2: GitHub API (browser dev mode or plugin failure) — link only */
+    /* Strategy 2 — browser dev build only (never in the desktop app) */
     const res = await fetch('https://api.github.com/repos/lagutinpavelglebovich-droid/spica-deck-cargo-planner/releases/latest', { cache:'no-cache' });
     if(!res.ok) throw new Error('GitHub API ' + res.status);
     const data = await res.json();
@@ -17333,6 +17334,7 @@ function _updFound(update, manual){
 }
 
 async function _updDownload(manual){
+  if(updatesBlocked()) return;      /* v3.43 — IT policy */
   if(!_upd.update || _upd.state === 'downloading' || _upd.state === 'ready') return;
   clearTimeout(_upd.retryTimer);
   _upd.state = 'downloading'; _upd.got = 0; _upd.total = 0;
@@ -17513,6 +17515,51 @@ function _updBindUI(){
   window.addEventListener('keydown', mark, true);
 }
 
+/* ══════════════════════════════════════════════════════════
+   v3.43 — INTERNET switches (Smart Tools → Internet) + IT policy
+   %ProgramData%\Decargo\policy.json (read by the shell, it_policy) wins
+   over the switches and locks them: "Managed by your IT policy".
+══════════════════════════════════════════════════════════ */
+async function _netPolicyLoad(){
+  let p = null;
+  if(_isTauri()){ try{ p = await invoke('it_policy'); }catch(e){ console.warn('[policy]', e); } }
+  _netSetPolicy(p);
+}
+function _netRender(){
+  [['updates', 'netUpdates'], ['weather', 'netWeather'], ['maps', 'netMaps']].forEach(([k, id]) => {
+    const inp = document.getElementById(id); if(!inp) return;
+    const pol = policyOf(k);
+    inp.checked = netAllowed(k);
+    inp.disabled = !!pol;
+    const row = inp.closest('.net-row');
+    if(row){
+      row.classList.toggle('is-managed', !!pol);
+      const m = row.querySelector('.net-managed');
+      if(m){ m.hidden = !pol; m.title = pol ? policyPath() : ''; }
+    }
+  });
+  /* About: no downloads either when IT turned updates off */
+  const blocked = updatesBlocked();
+  const auto = document.getElementById('aboutAutoUpd');
+  if(auto){ auto.disabled = blocked; if(blocked) auto.checked = false; else auto.checked = _updAutoOn(); }
+  const am = document.getElementById('aboutUpdManaged'); if(am) am.hidden = !blocked;
+  const cb = document.getElementById('aboutCheckBtn'); if(cb){ cb.disabled = blocked; cb.title = blocked ? 'Managed by your IT policy' : ''; }
+  if(typeof _stUpdateAllSectionCounters === 'function') _stUpdateAllSectionCounters();
+}
+function _netBind(){
+  [['updates', 'netUpdates'], ['weather', 'netWeather'], ['maps', 'netMaps']].forEach(([k, id]) => {
+    const inp = document.getElementById(id); if(!inp) return;
+    inp.addEventListener('change', () => {
+      if(policyOf(k)){ _netRender(); return; }
+      _netSetUser(k, inp.checked);
+      if(k === 'weather'){ _hfwKey = ''; if(typeof updateHeaderFieldWx === 'function') updateHeaderFieldWx(); if(inp.checked) fieldWxRefresh(true).catch(() => {}); }
+      if(k === 'updates' && inp.checked) setTimeout(() => _checkForUpdates(false), 1500);
+    });
+  });
+  onNetChange(_netRender);
+  _netRender();
+}
+
 function _scheduleUpdateCheck(){
   if(!_isTauri()) return;
   /* launch check (after the app has settled), then quietly every 3 h.
@@ -17551,39 +17598,16 @@ const _WX_INTENSITIES = { subtle:1, normal:1, strong:1 };
      - enabled: master VFX toggle. Atmosphere body[data-wx] only renders
        when true. Polling lifecycle is INDEPENDENT of this flag — the
        plate always populates from cached weather.
-     - location: Location object (or null until first-run resolves).
+     - location: always null since v3.43 (city weather removed).
      - intensity / motion / engine: VFX rendering knobs.
    Removed: mode (auto/manual split) and condition (atmosphere now
    always reflects real Open-Meteo data for the selected location). */
 const _wxState = { enabled: false, location: null, intensity: 'normal', motion: 'full', engine: 'cinematic' };
 
-/* Phase W6 — one-time migration from the legacy string-typed location
-   ('aberdeen'/'peterhead'/'stavanger'/'esbjerg'/'custom') to the new
-   Location object. Coordinates are the official port lat/lng, copied
-   from the Step 6 spec. 'custom' or any unknown string maps to null,
-   which triggers the first-run flow at boot (geolocation prompt). */
-const _LEGACY_LOCATION_MAP = {
-  aberdeen:  { name: 'Aberdeen',  region: 'Scotland',   country: 'United Kingdom', countryCode: 'GB', lat: 57.1497, lng: -2.0943 },
-  peterhead: { name: 'Peterhead', region: 'Scotland',   country: 'United Kingdom', countryCode: 'GB', lat: 57.5089, lng: -1.7836 },
-  stavanger: { name: 'Stavanger', region: 'Rogaland',   country: 'Norway',         countryCode: 'NO', lat: 58.9700, lng:  5.7331 },
-  esbjerg:   { name: 'Esbjerg',   region: 'Syddanmark', country: 'Denmark',        countryCode: 'DK', lat: 55.4760, lng:  8.4594 },
-};
-function _migrateLegacyLocation(d){
-  if(!d) return false;
-  if(typeof d.location !== 'string') return false;   // already migrated, or null
-  const m = _LEGACY_LOCATION_MAP[d.location];
-  if(m){
-    d.location = { ...m, source: 'manual', resolvedAt: Date.now() };
-  } else {
-    /* 'custom' or anything not in the map → null. The boot path will
-       run resolveInitialLocation if the user accepts geolocation, or
-       open the search overlay if they decline. */
-    d.location = null;
-  }
-  return true;
-}
-
 function _wxLoad(){
+  /* v3.43 — no city location any more: a place saved by an older build (it
+     may have come from this PC's position) is dropped, with its weather cache */
+  try{ localStorage.removeItem('spicaTide_weather_cache'); }catch(e){}
   let d = null;
   try{
     d = JSON.parse(localStorage.getItem(_WX_KEY) || 'null');
@@ -17593,44 +17617,18 @@ function _wxLoad(){
     d = null;
   }
   if(!d){
-    /* First load or corrupt: defaults from _wxState declaration apply.
-       The null location triggers the first-run geolocation flow once
-       _wxBind has wired its handlers. */
+    /* First load or corrupt: defaults from _wxState declaration apply. */
     return;
   }
-  /* One-time legacy migration: location string → object. v7 silently
-     drops `mode` and `condition` fields from old storage — atmosphere
-     now always reflects real weather, so the next _wxSave writes a
-     clean envelope without those fields. */
-  let migrated = _migrateLegacyLocation(d);
-  if(typeof d.mode === 'string' || typeof d.condition === 'string') migrated = true;
-
+  /* v7 dropped `mode` / `condition`; v3.43 dropped `location` (city weather) */
+  let migrated = typeof d.mode === 'string' || typeof d.condition === 'string' || d.location != null;
   if(typeof d.enabled === 'boolean') _wxState.enabled = d.enabled;
-  /* Location: shape-validated object, or null. _migrateLegacyLocation
-     already converted any legacy string. Anything still wrong-shaped
-     after migration is treated as null (first-run flow re-resolves). */
-  if(d.location === null){
-    _wxState.location = null;
-  } else if(d.location && typeof d.location === 'object'
-            && typeof d.location.name === 'string' && d.location.name
-            && typeof d.location.lat === 'number'
-            && typeof d.location.lng === 'number'){
-    _wxState.location = d.location;
-  } else {
-    _wxState.location = null;
-    migrated = true;
-  }
   if(typeof d.intensity === 'string'
      && _WX_INTENSITIES[d.intensity]) _wxState.intensity = d.intensity;
   if(typeof d.motion === 'string'
      && _WX_MOTIONS[d.motion]) _wxState.motion = d.motion;
   if(typeof d.engine === 'string'
      && _WX_ENGINES[d.engine]) _wxState.engine = d.engine;
-
-  /* Seed the location module so getLocation() reflects loaded state.
-     Uses hydrate() (silent — does NOT fire onLocationChange) because
-     subscribers haven't been attached yet at this point in boot. */
-  if(_wxState.location) _wxLocHydrate(_wxState.location);
 
   /* Normalise storage so next load doesn't re-migrate. */
   if(migrated) _wxSave();
@@ -17685,7 +17683,7 @@ function _wxApply(){
      location has data. */
   const _fwId = typeof _workingLocId === 'function' ? _workingLocId() : null;
   const _fw = _fwId ? fieldWxCondition(_fwId) : null;
-  const cached = _fw || _wxGetCached();
+  const cached = _fw;
   const baseCondition = cached ? cached.condition : DEFAULT_CONDITION;
 
   /* _FALLBACK_MAP collapses the API's 11-key vocabulary into the
@@ -17736,10 +17734,7 @@ function _wxApply(){
   const tempEl = document.getElementById('wxChipTemp');
   const iconEl = document.getElementById('wxChipIcon');
 
-  /* City — name only. Region/country live in the search overlay for
-     disambiguation; no need to repeat them in the chip header. */
-  const loc = _wxGetLocation();
-  if(cityEl) cityEl.textContent = loc ? loc.name : '—';
+  if(cityEl) cityEl.textContent = '—';
 
   /* Icon — always rendered. iconForCondition falls back to 'cloudy'
      for unmapped keys, so the plate never has a missing visual. */
@@ -17760,104 +17755,6 @@ function _wxApply(){
   plate?.classList.toggle('is-stale', stale);
 
 }
-/* Phase W6 — format the location strip label. Mirrors how the chip
-   shows just the city name, but the strip has more room so we add
-   the region and country code where present. */
-function _wxFormatLocLabel(loc){
-  if(!loc) return '—';
-  const parts = [loc.name];
-  if(loc.region)  parts.push(loc.region);
-  if(loc.country) parts.push(loc.country);
-  return parts.join(', ');
-}
-
-/* Phase W6 — render Open-Meteo geocoding results into the search list.
-   Each <li> carries the raw CityResult on a closure so click handlers
-   can call _wxSetLocation without re-parsing dataset attributes. */
-function _wxRenderSearchResults(results){
-  const list  = document.getElementById('wxSearchResults');
-  const state = document.getElementById('wxSearchState');
-  if(!list) return;
-  list.innerHTML = '';
-  if(!results.length){
-    if(state){ state.textContent = 'No results found'; state.hidden = false; }
-    return;
-  }
-  if(state) state.hidden = true;
-  for(const r of results){
-    const li = document.createElement('li');
-    li.setAttribute('role', 'option');
-    const name = document.createElement('span');
-    name.className = 'wx-search-name';
-    name.textContent = r.name;
-    li.appendChild(name);
-    if(r.region){
-      const region = document.createElement('span');
-      region.className = 'wx-search-region';
-      region.textContent = ', ' + r.region;
-      li.appendChild(region);
-    }
-    if(r.countryCode){
-      const cc = document.createElement('span');
-      cc.className = 'wx-search-cc';
-      cc.textContent = r.countryCode;
-      li.appendChild(cc);
-    }
-    /* mousedown fires before blur, so preventDefault here keeps
-       focus on the input — otherwise the 200ms blur-close timer
-       would fire and the panel would close before click resolves. */
-    li.addEventListener('mousedown', (e) => e.preventDefault());
-    li.addEventListener('click', () => {
-      _wxSetLocation({
-        name:        r.name,
-        region:      r.region,
-        country:     r.country,
-        countryCode: r.countryCode,
-        lat:         r.lat,
-        lng:         r.lng,
-      });
-      _wxCloseSearch();
-    });
-    list.appendChild(li);
-  }
-}
-
-/* Phase W6 — the search overlay open/close lifecycle. Tracks the time
-   of the last keystroke so reopening with a >5min-old query clears
-   the input (per Step 2 clarification 5). */
-let _wxSearchLastQueryAt = 0;
-let _wxSearchDebounce    = null;
-
-function _wxOpenSearch(opts){
-  /* Boot-time auto-open must not steal keyboard focus from the deck
-     (arrow nudges / shortcuts would silently go into the city field). */
-  const wantFocus = !(opts && opts.focus === false);
-  const panel = document.getElementById('wxSearch');
-  const input = document.getElementById('wxSearchInput');
-  const state = document.getElementById('wxSearchState');
-  if(!panel) return;
-  panel.hidden = false;
-  if(input){
-    if(Date.now() - _wxSearchLastQueryAt > 5 * 60 * 1000){
-      input.value = '';
-      const list = document.getElementById('wxSearchResults');
-      if(list) list.innerHTML = '';
-      if(state){ state.textContent = 'Type to search'; state.hidden = false; }
-    }
-    if(wantFocus) setTimeout(() => input.focus(), 0);
-  }
-}
-
-function _wxCloseSearch(){
-  const panel = document.getElementById('wxSearch');
-  if(!panel) return;
-  panel.hidden = true;
-  if(_wxSearchDebounce){
-    clearTimeout(_wxSearchDebounce);
-    _wxSearchDebounce = null;
-  }
-}
-
 function _wxBind(){
   _wxLoad();
   /* Sync form controls. v7 retired the wxCondition <select>; only
@@ -17870,25 +17767,6 @@ function _wxBind(){
   if(motSel) motSel.value = _wxState.motion;
   if(engSel) engSel.value = _wxState.engine;
   if(enaChk) enaChk.checked = _wxState.enabled;
-
-  /* Sync the location strip label from current state. */
-  const locNameEl = document.getElementById('wxLocName');
-  if(locNameEl) locNameEl.textContent = _wxFormatLocLabel(_wxState.location);
-
-  /* ── Subscribers ──────────────────────────────────────────────
-     Order matters: subscribe BEFORE wiring handlers that might call
-     setLocation, so the very first user-driven location change is
-     mirrored into _wxState and persisted. */
-  onLocationChange((loc) => {
-    _wxState.location = loc;
-    _wxSave();
-    if(locNameEl) locNameEl.textContent = _wxFormatLocLabel(loc);
-    _wxApply();
-  });
-  onWeatherChange(() => {
-    /* Re-render — _wxApply reads getCachedWeather internally. */
-    _wxApply();
-  });
 
   /* ── Form handlers: same shape as before, just for the controls
         that survived the 6a restructure. ─────────────────────────── */
@@ -17918,43 +17796,6 @@ function _wxBind(){
     _wxApply();
   });
 
-  /* ── Location strip handlers ─────────────────────────────────── */
-  document.getElementById('wxLocChange')?.addEventListener('click', () => _wxOpenSearch());
-/* ── Search input: debounced (300ms), min 2 chars ──────────── */
-  const searchInput   = document.getElementById('wxSearchInput');
-  const searchResults = document.getElementById('wxSearchResults');
-  const searchState   = document.getElementById('wxSearchState');
-  searchInput?.addEventListener('input', () => {
-    _wxSearchLastQueryAt = Date.now();
-    if(_wxSearchDebounce){ clearTimeout(_wxSearchDebounce); _wxSearchDebounce = null; }
-    const q = searchInput.value.trim();
-    if(q.length < 2){
-      if(searchResults) searchResults.innerHTML = '';
-      if(searchState){
-        searchState.textContent = q.length === 0 ? 'Type to search' : 'Keep typing…';
-        searchState.hidden = false;
-      }
-      return;
-    }
-    if(searchState){ searchState.textContent = 'Searching…'; searchState.hidden = false; }
-    _wxSearchDebounce = setTimeout(async () => {
-      const results = await searchCities(q);
-      _wxRenderSearchResults(results);
-    }, 300);
-  });
-
-  /* Blur-to-close with 200ms grace so a click on a result registers
-     before the panel hides. Also ignore blur when focus moves into
-     another element inside the search panel (e.g. result list). */
-  searchInput?.addEventListener('blur', () => {
-    setTimeout(() => {
-      const panel = document.getElementById('wxSearch');
-      if(panel && !panel.contains(document.activeElement)){
-        _wxCloseSearch();
-      }
-    }, 200);
-  });
-
   /* ── Chip click → open Smart Tools, expand Weather section. ── */
   document.getElementById('wxChip')?.addEventListener('click', () => {
     document.getElementById('btnSmartTools')?.click();
@@ -17967,34 +17808,8 @@ function _wxBind(){
     }, 80);
   });
 
-  /* Refresh button removed (Phase W5 §13 refinement) — polling
-     handles updates automatically. _wxRefreshNow is still called
-     internally by the manual-override toggle when returning to auto. */
-
   /* Initial apply (respects persisted enabled=false → no data-wx set). */
   _wxApply();
-
-  /* ── Boot sequence (v7 — manual mode retired) ─────────────────
-     1. Always start the polling loop. autoRefresh is now the sole
-        data path — no manual mode that pauses it. start() emits
-        cached data immediately (instant plate population) and
-        schedules first poll at delay 0 (background fetch). The
-        atmosphere toggle (`_wxState.enabled`) controls only body
-        VFX rendering; data lifecycle is independent.
-     2. If no location is set yet (first run, or 'custom' migrated
-        to null), trigger the geolocation prompt. On accept, the
-        reverse geocode resolves a city and setLocation fires the
-        subscriber chain (which clears autoRefresh's cache and
-        triggers an immediate fetch for the new city). On deny,
-        open the search overlay so the user can pick manually. */
-  _wxAutoStart();
-
-  if(!_wxState.location){
-    _wxResolveInitialLocation().then((loc) => {
-      if(loc) _wxSetLocation(loc);
-      else    _wxOpenSearch({ focus: false });
-    });
-  }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -18207,17 +18022,17 @@ function _sndLoadSettings(){
 }
 
 /* ══════════════════════════════════════════════════════════
-   SYNC — CouchDB integration
+   SYNC — shared folder on the ship's network (the only transport since v3.43)
 ══════════════════════════════════════════════════════════ */
 let _syncPushTimer = null;
 function _syncPushDebounced(){
-  if(!isOperator()) return;            /* Viewer: never push to CouchDB */
+  if(!isOperator()) return;            /* Viewer: never publishes */
   if(Sync.getSyncStatus() === 'disabled') return;
   clearTimeout(_syncPushTimer);
   _syncPushTimer = setTimeout(() => {
     _syncPushTimer = null;             /* nothing pending once the push is out */
     Sync.pushState(_syncPlanForPush());
-  }, Sync.getMode() === 'folder' ? 1200 : 3000); // debounce — don't push on every keystroke
+  }, 1200); // debounce — don't push on every keystroke
 }
 /* The plan as it is shared with the other computer. v3.23.1 — the active
    vessel profile travels with it (locations and their positions, deck
@@ -18316,7 +18131,6 @@ function _syncUpdateUI(status){
     error:'#c0392b', disabled:'#888', auth_failed:'#c0392b',
     pending:'#c89a38', conflict:'#c0392b'
   };
-  const folder = Sync.getMode() === 'folder';
   if(dotBp) dotBp.className = 'sync-dot-bp ' + status;
   if(textBp) textBp.textContent = labels[status] || status;
   if(secBp) secBp.style.display = status === 'disabled' ? 'none' : '';
@@ -18329,13 +18143,12 @@ function _syncUpdateUI(status){
     const timeStr = t ? new Date(t).toLocaleTimeString() : '';
     const errCount = Sync.getErrorCount();
     const errSuffix = errCount > 0 ? ' · ' + errCount + ' error' + (errCount>1?'s':'') : '';
-    if(status==='synced') descSt.textContent = (folder ? 'Ship network folder' : 'Connected') + (timeStr ? ' · Last: ' + timeStr : '');
+    if(status==='synced') descSt.textContent = 'Ship network folder' + (timeStr ? ' · Last: ' + timeStr : '');
     else if(status==='syncing') descSt.textContent = 'Syncing…';
     else if(status==='pending') descSt.textContent = 'Changes waiting to be published';
     else if(status==='conflict') descSt.textContent = 'Conflict — choose which plan to keep';
-    else if(status==='offline') descSt.textContent = (folder ? 'Folder not reachable — working locally' : 'Offline — local only') + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
+    else if(status==='offline') descSt.textContent = 'Folder not reachable — working locally' + (timeStr ? ' · Last: ' + timeStr : '') + errSuffix;
     else if(status==='error') descSt.textContent = 'Sync error — will retry' + errSuffix;
-    else if(status==='auth_failed') descSt.textContent = 'Authentication failed — check credentials';
     else if(status==='disabled') descSt.textContent = 'Not configured';
   }
   _syncUpdateConnectedTime();
@@ -18400,36 +18213,43 @@ function _syncApplyRemote(remoteState, meta){
   return true;
 }
 
-/* ── Sync config storage — password stored separately in encrypted store ── */
+/* ── Sync config storage — the shared folder path only.
+   v3.43 (IT review): the cloud (CouchDB) transport was removed. Whatever an
+   older build stored for it — server address, user name, password — is
+   deleted when the config is read at start-up; a cloud config is dropped,
+   so that computer comes up with sync off until a folder is chosen. ── */
 async function _syncSaveConfig(cfg){
-  const publicCfg = { mode:cfg.mode || 'cloud', dir:cfg.dir || '', url:cfg.url || '', db:cfg.db || '', username:cfg.username || '', enabled:true };
+  const publicCfg = { mode:'folder', dir:cfg.dir || '', enabled:true };
   try {
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
       await store.set('syncConfig', publicCfg);
-      await store.set('syncAuth', cfg.password || '');
       await store.save();
     } else {
       localStorage.setItem('spicaTide_syncConfig', JSON.stringify(publicCfg));
-      localStorage.setItem('spicaTide_syncAuth', cfg.password || '');
     }
   } catch(e){ _lsSet('spicaTide_syncConfig', JSON.stringify(publicCfg)); }
 }
 
 async function _syncLoadConfig(){
   try {
-    let cfg = null, pwd = '';
+    let cfg = null;
+    try{ localStorage.removeItem('spicaTide_syncAuth'); }catch(e){}
     if(_isTauri()){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
       cfg = await store.get('syncConfig');
-      pwd = await store.get('syncAuth') || '';
+      let dirty = false;
+      if(await store.has('syncAuth')){ await store.delete('syncAuth'); dirty = true; }
+      if(cfg && cfg.mode !== 'folder'){ await store.delete('syncConfig'); cfg = null; dirty = true; }
+      else if(cfg && (cfg.url || cfg.db || cfg.username)){ cfg = { mode:'folder', dir:cfg.dir || '', enabled:true }; await store.set('syncConfig', cfg); dirty = true; }
+      if(dirty) await store.save();
     } else {
       cfg = JSON.parse(localStorage.getItem('spicaTide_syncConfig') || 'null');
-      pwd = localStorage.getItem('spicaTide_syncAuth') || '';
+      if(cfg && cfg.mode !== 'folder'){ localStorage.removeItem('spicaTide_syncConfig'); cfg = null; }
     }
-    if(cfg && (cfg.url || (cfg.mode === 'folder' && cfg.dir))) return { ...cfg, mode: cfg.mode || 'cloud', password: pwd };
+    if(cfg && cfg.mode === 'folder' && cfg.dir) return { mode:'folder', dir:cfg.dir };
     return null;
   } catch(e){ return null; }
 }
@@ -18440,11 +18260,9 @@ async function _syncDeleteConfig(){
       const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('sync-config.json');
       await store.delete('syncConfig');
-      await store.delete('syncAuth');
       await store.save();
     } else {
       localStorage.removeItem('spicaTide_syncConfig');
-      localStorage.removeItem('spicaTide_syncAuth');
     }
   } catch(e){ localStorage.removeItem('spicaTide_syncConfig'); }
 }
@@ -18474,12 +18292,8 @@ function _syncShowConnected(cfg){
     const dbEl = document.getElementById('syncInfoDb');
     const userEl = document.getElementById('syncInfoUser');
     const timeEl = document.getElementById('syncInfoTime');
-    const folder = cfg.mode === 'folder';
-    const dbL = document.getElementById('syncInfoDbLbl'), userL = document.getElementById('syncInfoUserLbl');
-    if(dbL) dbL.textContent = folder ? 'Folder:' : 'Database:';
-    if(userL) userL.textContent = folder ? 'Last written by:' : 'User:';
-    if(dbEl){ dbEl.textContent = folder ? cfg.dir : (cfg.db || 'spica_tide'); dbEl.title = folder ? cfg.dir : ''; }
-    if(userEl) userEl.textContent = folder ? (Sync.getLastWriter() || '—') : (cfg.username || '—');
+    if(dbEl){ dbEl.textContent = cfg.dir || '—'; dbEl.title = cfg.dir || ''; }
+    if(userEl) userEl.textContent = Sync.getLastWriter() || '—';
     _syncUpdateConnectedTime();
   }
 }
@@ -18494,22 +18308,15 @@ function _syncUpdateConnectedTime(){
   if(!timeEl) return;
   const t = Sync.getLastSyncTime();
   timeEl.textContent = t ? new Date(t).toLocaleTimeString() : 'not yet';
-  if(Sync.getMode() === 'folder'){
-    const u = document.getElementById('syncInfoUser');
-    if(u && Sync.getSyncStatus() !== 'disabled') u.textContent = Sync.getLastWriter() || '—';
-  }
+  const u = document.getElementById('syncInfoUser');
+  if(u && Sync.getSyncStatus() !== 'disabled') u.textContent = Sync.getLastWriter() || '—';
 }
 
 function _syncWireCallbacks(){
   Sync.onStatusChange(s => { _syncUpdateUI(s); _syncLog('status', s); });
   Sync.onRemoteUpdate((state, meta) => {
-    /* Local edits still waiting in the 3 s push debounce must not be wiped
-       silently: ask the operator which version wins instead. */
-    if(_syncPushTimer && isOperator() && Sync.getMode() !== 'folder'){
-      clearTimeout(_syncPushTimer); _syncPushTimer = null;
-      _syncHandleConflict({ remoteTimestamp: Date.now(), remoteState: state, remoteWriter: meta && meta.writer, resolve: plan => Sync.pushState(plan) });
-      return;
-    }
+    /* (the folder transport resolves unpublished local edits itself: adopt /
+       publish / ask, in syncFolder.js) */
     _syncApplyRemote(state, Object.assign({}, meta, { routine: true })); _syncLog('pull', 'Remote state applied' + (meta && meta.writer ? ' (' + meta.writer + ')' : ''));
   });
   Sync.onActivity((dir, detail) => { _syncShowActivity(dir, detail); _syncLog(dir, detail); });
@@ -18577,23 +18384,10 @@ async function _syncDoForcePull(){
   }
 }
 
-/* v3.28 — Sync transport chosen in the form: 'folder' (ship network, the
-   default) or 'cloud' (CouchDB). */
-let _syncFormMode = 'folder';
-function _syncSetFormMode(mode){
-  _syncFormMode = mode === 'cloud' ? 'cloud' : 'folder';
-  document.querySelectorAll('#syncModeSeg .sync-mode-btn').forEach(b => {
-    const on = b.dataset.mode === _syncFormMode;
-    b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
-  });
-  const ff = document.getElementById('syncFolderFields'), cf = document.getElementById('syncCloudFields');
-  if(ff) ff.style.display = _syncFormMode === 'folder' ? '' : 'none';
-  if(cf) cf.style.display = _syncFormMode === 'cloud' ? '' : 'none';
-  const r = document.getElementById('syncResult'); if(r) r.textContent = '';
-}
+/* Sync goes only through a shared folder on the ship's network (v3.43 —
+   the cloud transport was removed). */
 function _syncFormConfig(){
-  if(_syncFormMode === 'folder') return { mode:'folder', dir:document.getElementById('syncDir').value.trim() };
-  return { mode:'cloud', url:document.getElementById('syncUrl').value.trim(), db:document.getElementById('syncDb').value.trim()||'spica_tide', username:document.getElementById('syncUser').value.trim(), password:document.getElementById('syncPass').value };
+  return { mode:'folder', dir:document.getElementById('syncDir').value.trim() };
 }
 async function _syncPickFolder(){
   if(!_isTauri()){ showToast('Choosing a folder works in the desktop app', 'warn'); return; }
@@ -18617,9 +18411,7 @@ function bindSyncSettings(){
   window.__decargoVersion = APP_VERSION;
   Sync.setStateProvider(_syncPlanForPush);
   Sync.setPendingProvider(() => !!_syncPushTimer);   /* v3.37 */
-  document.querySelectorAll('#syncModeSeg .sync-mode-btn').forEach(b => b.addEventListener('click', () => _syncSetFormMode(b.dataset.mode)));
   document.getElementById('syncPickDir')?.addEventListener('click', _syncPickFolder);
-  _syncSetFormMode('folder');
 
   /* ── Load saved config and auto-connect ── */
   (async () => {
@@ -18628,27 +18420,15 @@ function bindSyncSettings(){
       if (saved) {
         /* Populate form fields (in case user clicks Edit) */
         document.getElementById('syncDir').value = saved.dir || '';
-        document.getElementById('syncUrl').value = saved.url || '';
-        document.getElementById('syncDb').value = saved.db || '';
-        document.getElementById('syncUser').value = saved.username || '';
-        document.getElementById('syncPass').value = saved.password || '';
-        _syncSetFormMode(saved.mode);
         toggle.checked = true;
 
-        _syncLog('info', 'Config loaded. Connecting to ' + (saved.mode === 'folder' ? saved.dir : saved.url));
+        _syncLog('info', 'Config loaded. Shared folder: ' + saved.dir);
         Sync.setSyncConfig(saved);
         _syncWireCallbacks();
         _syncShowConnected(saved);
         Sync.startSync();
         _syncUpdateUI(Sync.getSyncStatus());
-
-        /* Cloud: note the current revision. Folder: the watcher's first
-           read does the reconciliation (adopt / publish / ask). */
-        if(saved.mode !== 'folder'){
-          const remote = await Sync.pullState();
-          if(remote) { _syncLog('pull', 'Initial pull ok'); }
-          else { _syncLog('info', 'No remote data or offline'); }
-        }
+        /* the watcher's first read does the reconciliation (adopt / publish / ask) */
       }
     } catch (e) { _syncLog('error', 'Config load failed: ' + e.message); }
   })();
@@ -18679,16 +18459,14 @@ function bindSyncSettings(){
   /* ── Test connection ── */
   if(testBtn) testBtn.addEventListener('click', async () => {
     const cfg = _syncFormConfig();
-    if(cfg.mode === 'folder' && !cfg.dir){ resultEl.textContent = 'Choose the shared folder first'; resultEl.style.color = '#c0392b'; return; }
+    if(!cfg.dir){ resultEl.textContent = 'Choose the shared folder first'; resultEl.style.color = '#c0392b'; return; }
     Sync.setSyncConfig(cfg);
     resultEl.textContent = 'Testing…';
     resultEl.style.color = 'var(--txt3)';
     _syncLog('info', 'Testing connection…');
     const r = await Sync.testConnection();
     if(r.ok){
-      resultEl.textContent = cfg.mode === 'folder'
-        ? '✓ Folder reachable' + (r.writable ? ', writable' : ' (read-only check)') + (r.hasPlan ? ' — a plan is already there' : ' — empty')
-        : '✓ Connected — ' + r.dbName + ' (' + r.docCount + ' docs)';
+      resultEl.textContent = '✓ Folder reachable' + (r.writable ? ', writable' : ' (read-only check)') + (r.hasPlan ? ' — a plan is already there' : ' — empty');
       resultEl.style.color = '#3ea36a';
       _syncLog('info', 'Test OK');
     } else {
@@ -18701,25 +18479,18 @@ function bindSyncSettings(){
   /* ── Save & Enable → persist, connect, switch to connected view ── */
   if(saveBtn) saveBtn.addEventListener('click', async () => {
     const cfg = _syncFormConfig();
-    if(cfg.mode === 'folder'){
-      if(!cfg.dir){ resultEl.textContent='Choose the shared folder first'; resultEl.style.color='#c0392b'; return; }
-      Sync.setSyncConfig(cfg);
-      const t = await Sync.testConnection();
-      if(!t.ok){ resultEl.textContent='✗ ' + t.error; resultEl.style.color='#c0392b'; return; }
-    } else if(!cfg.url){ resultEl.textContent='URL required'; resultEl.style.color='#c0392b'; return; }
+    if(!cfg.dir){ resultEl.textContent='Choose the shared folder first'; resultEl.style.color='#c0392b'; return; }
+    Sync.setSyncConfig(cfg);
+    const t = await Sync.testConnection();
+    if(!t.ok){ resultEl.textContent='✗ ' + t.error; resultEl.style.color='#c0392b'; return; }
     await _syncSaveConfig(cfg);
     Sync.setSyncConfig(cfg);
     _syncWireCallbacks();
 
-    if(cfg.mode !== 'folder'){
-      const remote = await Sync.migrateIfNeeded(_syncPlanForPush());
-      if(remote) _syncApplyRemote(remote);
-    }
-
     Sync.startSync();
     _syncUpdateUI(Sync.getSyncStatus());
     _syncLog('info', 'Sync enabled and started');
-    showToast(cfg.mode === 'folder' ? 'Ship network sync on' : 'Cloud sync enabled', 'ok');
+    showToast('Ship network sync on', 'ok');
 
     /* Switch to connected summary view */
     _syncShowConnected(cfg);
@@ -18901,7 +18672,9 @@ function init(){
   bindMenuBar();
   bindAboutModal();
   bindModeButton();
+  _netPolicyLoad();     /* v3.43 — IT policy before any network request */
   _updBindUI();
+  _netBind();
   _scheduleUpdateCheck();
   bindBackupRestore();
   bindContextMenu();
@@ -19014,8 +18787,8 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
      50-step window). */
   setInterval(() => {
     if(!_autosaveEnabled) return;
-    /* Time the savePlan call. If it exceeds 150ms (e.g. future async
-       cloud sync), enter the 'saving' state briefly before the success
+    /* Time the savePlan call. If it exceeds 150ms (e.g. a slow
+       disk), enter the 'saving' state briefly before the success
        transition. Sync localStorage saves are typically <5ms, so the
        saving state is reserved for slow operations and skipped here. */
     const _t0 = (performance && performance.now) ? performance.now() : Date.now();
@@ -19106,8 +18879,7 @@ if(_csearchEl) _csearchEl.oninput = ()=>{};
    - saved: green dot, no animation
    - unsaved: amber dot, breathing opacity loop
    - saving: grey dot + spinner ring (only entered if savePlan elapsed
-     >150ms — current sync localStorage skips this state, future async
-     cloud sync would hit it)
+     >150ms — current sync localStorage skips this state)
    - autosaved: green pop overshoot + checkmark draw, holds 2500ms, then
      auto-reverts via _updateSaveIndicator() to whatever _dirty reflects
      (Q1 β: visual-only revert; autosave does NOT clear _dirty since
@@ -19809,7 +19581,6 @@ function updateHeaderFieldWx(){
      the location's sky icon and temperature as well */
   blk.hidden = !wx;
   const mapBtn = document.getElementById('hdrMap'); if(mapBtn) mapBtn.hidden = !wx;
-  const city = document.querySelector('.info-peterhead'); if(city) city.hidden = !!wx;
   if(key === _hfwKey) return;
   _hfwKey = key;
   try{ _wxApply(); }catch(e){}            /* sky + deck light follow the working location */

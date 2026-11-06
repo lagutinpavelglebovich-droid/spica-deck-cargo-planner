@@ -13,6 +13,7 @@
 
 import { wmoToCondition } from './weather/api.js';
 import { staticIconForCondition } from './weather/iconMap.js';
+import { netReady, netAllowed, policyOf } from './netPolicy.js';
 const URL_FC = 'https://api.open-meteo.com/v1/forecast';
 const URL_MAR = 'https://marine-api.open-meteo.com/v1/marine';
 const LS_CACHE = 'spicaTide_fieldWx';
@@ -106,6 +107,8 @@ export function formatLatLon(lat, lon){
 
 /* ── Fetching ─────────────────────────────────────────────────── */
 async function getJson(url){
+  await netReady();
+  if(!netAllowed('weather')) throw new Error('weather is off');   /* v3.43 — switch / IT policy */
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try{
@@ -122,6 +125,8 @@ const posKey = locs => locs.map(l => l.id + '@' + l.lat.toFixed(3) + ',' + l.lon
 export async function refresh(force){
   const locs = located();
   if(!locs.length || busy) return DATA;
+  await netReady();
+  if(!netAllowed('weather')){ render(); return DATA; }
   const key = posKey(locs);
   if(!force && DATA && DATA.key === key && DATA.days === FC_DAYS && Date.now() - DATA.at < MAX_AGE_MS) return DATA;
   busy = true; render();
@@ -182,6 +187,7 @@ function nowRow(id){
 }
 /* Short summary for the location card and the header */
 export function fieldWxSummary(id){
+  if(!netAllowed('weather')) return null;          /* v3.43 — off: no old forecast on show */
   const r = nowRow(id);
   if(!r) return null;
   const u = windUnit();
@@ -192,6 +198,7 @@ export function fieldWxSummary(id){
 /* Sky / atmosphere at a location right now (drives the animated
    background and the header icon instead of the port weather). */
 export function fieldWxCondition(id){
+  if(!netAllowed('weather')) return null;
   const r = nowRow(id);
   if(!r || r.wc == null) return null;
   let day = r.day;
@@ -301,6 +308,12 @@ function render(){
   meta.textContent = busy ? 'Updating from Open-Meteo…'
     : DATA ? `Updated ${hhmm(DATA.at)}${Date.now() - DATA.at > 3 * 3600000 ? ' — old, check the connection' : ''}${lastErr ? ' · ' + lastErr : ''}`
     : lastErr || (withPos.length ? 'Not loaded yet' : '');
+  if(!netAllowed('weather')){
+    meta.textContent = '';
+    ov.querySelector('#fwxRefresh').disabled = true;
+    body.innerHTML = `<div class="fwx-empty"><b>Weather forecast is off.</b> ${policyOf('weather') ? 'Managed by your IT policy.' : 'Turn it on in Smart Tools → Internet.'}</div>`;
+    return;
+  }
   if(!withPos.length){
     body.innerHTML = `<div class="fwx-empty"><b>No positions yet.</b> Add the position of each platform / FPSO in
       Vessel Setup → Locations (e.g. <code>58 27.4N 000 15.2E</code> straight from the ECDIS), then the weather and sea state

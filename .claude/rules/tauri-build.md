@@ -32,7 +32,7 @@ Adding a new Tauri plugin? Add its permissions here or save/open will silently f
 | "dialog save not allowed" | Missing capability | Add `dialog:allow-save` to capabilities |
 | `window.__TAURI__` undefined at import | ES module loads before Tauri injects runtime | Use `_isTauri()` function, not const |
 | `proc macro panicked` on icons | Any referenced PNG is not RGBA | Check ALL PNGs in icons/, not just icon.png |
-| NSIS config invalid | Wrong keys in `bundle.windows.nsis` | Check Tauri v2 schema — only `installerIcon`, `installMode`, `languages`, `startMenuFolder` |
+| NSIS config invalid | Wrong keys in `bundle.windows.nsis` | Check Tauri v2 schema — we use `installerIcon`, `installMode`, `languages`, `startMenuFolder`, `installerHooks` (`windows/hooks.nsh`, v3.43: removes the pre-3.43 `.json` association on upgrade) |
 | `plugins.dialog: invalid type` | Empty object `{}` not accepted | Remove plugins block from tauri.conf.json entirely |
 | Whole layout broken on Windows after enabling CSP (tiny deck, unstyled panels) — fine in browser tests | Tauri appends a nonce/hash to `style-src`; any nonce/hash makes browsers IGNORE `'unsafe-inline'`, so every `style="…"` attribute is refused (v3.37.0) | Keep `app.security.dangerousDisableAssetCspModification: ["style-src"]`. Any browser-side CSP test must emulate Tauri's nonce injection, or it proves nothing |
 
@@ -44,6 +44,8 @@ Defined in `src-tauri/src/main.rs`:
 - `read_file(path)` — string read
 - `get_recent_files()` / `add_recent_file(path, name)` — recent files list
 - `license_status()` / `license_install(key)` — licence keys (src-tauri/src/license.rs). `write_file`, `write_file_bytes`, `autosave_store`, `append_file_raw`, `shared_commit` refuse without a valid licence (`license::require()`); any new write command must call it too
+- `outlook_scan` (lists attachments only) / `outlook_fetch` (copies ONE attachment to `%TEMP%\spica-tide-mail` at import) / `mail_temp_clear` — the temp folder is also emptied at start-up and at exit (v3.43)
+- `it_policy()` — reads `%ProgramData%\Decargo\policy.json` (`updates` / `weather` / `maps`: `on` | `off`); see `src/netPolicy.js` and `docs/IT_SECURITY_NOTE.md`
 - Licence keys are signed with the owner's Ed25519 key, issued by `tools/make-license.mjs`; the private key (`*.pem`) must never enter the repo
 
 ## Build Commands
@@ -58,3 +60,10 @@ npm run release       # vite build + tauri build
 
 - `build-windows.yml` — builds on push to main / tags, uploads .exe artifact
 - `release.yml` — creates GitHub Release on `v*` tags
+
+## Network / CSP (v3.43, IT review)
+
+- `connect-src` lists exact hosts only: `api.open-meteo.com`, `marine-api.open-meteo.com` (+ Tauri IPC). `img-src`: `tile.openstreetmap.org`, `tiles.openseamap.org`. No bare `https:` / `http:`.
+- The updater runs in Rust (not governed by the CSP): `github.com` → `release-assets.githubusercontent.com` (older releases: `objects.githubusercontent.com`).
+- Adding a new internet host = change the CSP, `docs/IT_SECURITY_NOTE.md` (host table + firewall list) and `docs/IT_SECURITY_AUDIT.md`, and gate it behind a `netPolicy.js` switch. IT was promised this list is complete.
+- Cloud (CouchDB) sync was removed in v3.43 — do not bring it back; folder sync is the only transport.

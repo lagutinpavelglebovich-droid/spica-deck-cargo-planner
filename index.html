@@ -187,7 +187,7 @@
       <div class="menu-action" data-action="checkUpdate">Check for Updates</div>
       <div class="menu-action" data-action="licence">Licence…</div>
       <div class="menu-sep"></div>
-      <div class="menu-action menu-disabled" data-action="version">v3.42.2</div>
+      <div class="menu-action menu-disabled" data-action="version">v3.43.0</div>
     </div>
   </div>
 </div>
@@ -215,7 +215,7 @@
     <h2 class="about-title">Decargo</h2>
     <div class="about-subtitle">Deck Cargo Planner</div>
     <div class="about-version" id="aboutVersionText">
-      Version 3.42.2<br>
+      Version 3.43.0<br>
       Release: Stable
     </div>
     <div class="about-licence" id="aboutLicence"></div>
@@ -230,6 +230,7 @@
       </div>
       <div class="about-check-result" id="aboutCheckResult"></div>
       <label class="about-auto-upd"><input type="checkbox" id="aboutAutoUpd" checked> Download updates automatically <span>(about 30 MB each)</span></label>
+      <div class="about-managed" id="aboutUpdManaged" hidden>Managed by your IT policy</div>
       <button class="about-changelog-btn" id="aboutChangelogBtn">View changelog</button>
     </div>
     <div class="about-footer">&copy; 2026 Decargo<br>Developed by Pavlo Lagutin</div>
@@ -735,9 +736,8 @@
        IDs preserved for JS continuity:
          #voyIn       — voyage number input (autobind oninput=save at app.js:14267)
          #dateBtn     — date display button (setDateDisplay, calendar popup)
-         #wxChipCity  — Peterhead label (now display-only, was a button)
-         #wxChipTemp  — temperature span (set by _wxApply)
-         #wxChipIcon  — weather emoji span (set by _wxApply)
+         (v3.43 — the city weather block #wxChipCity/#wxChipTemp/#wxChipIcon was
+          removed with the city weather; the header shows the plan's field weather)
        Removed: #voyRemarksBtn (button), #wxChip (button wrapper), #wxChipGroup
        (wrapping plate). Their handlers in bindVoyageRemarks / _wxBind become
        orphan no-ops — intentional, see commit message Strategy A. -->
@@ -759,13 +759,6 @@
       <span class="hfw-map-ic" aria-hidden="true"><svg viewBox="0 0 40 28"><path class="s1" d="M3 9c5-4 9-4 14 0s9 4 14 0 5-2 6-1"/><path class="s2" d="M3 16c5-4 9-4 14 0s9 4 14 0 5-2 6-1"/><path class="s3" d="M3 23c5-4 9-4 14 0s9 4 14 0 5-2 6-1"/></svg></span>
       <span class="hfw-map-tx"><b>Wind &amp; waves</b><small>Live map</small></span>
     </button>
-    <div class="info-block info-peterhead">
-      <span class="info-label" id="wxChipCity">—</span>
-      <div class="info-value-row">
-        <span class="info-value" id="wxChipTemp"></span>
-        <span class="info-icon" id="wxChipIcon" aria-hidden="true"></span>
-      </div>
-    </div>
    </div>
   </div>
 
@@ -1596,6 +1589,51 @@
       </div>
       </div><!-- /st-sec-body --></div><!-- /st-section system -->
 
+      <!-- v3.43 — what the app may fetch from the internet; an IT policy file
+           (%ProgramData%\Decargo\policy.json) can fix and lock each switch -->
+      <div class="st-section" data-section-id="internet">
+      <div class="st-sec-hdr">
+        <span class="st-sec-title">Internet</span>
+        <span class="st-sec-count" hidden></span>
+        <span class="st-sec-chv" aria-hidden="true">▾</span>
+      </div>
+      <div class="st-sec-body">
+        <div class="st-row net-row" data-net="updates">
+          <div class="st-row-body">
+            <div class="st-row-title">Check for updates automatically</div>
+            <div class="st-row-desc">At start-up and every 3 hours, from GitHub. Off: only the “Check for updates” button in About does.</div>
+            <div class="net-managed" hidden>Managed by your IT policy</div>
+          </div>
+          <label class="st-toggle" title="Check for updates automatically">
+            <input type="checkbox" id="netUpdates" checked>
+            <div class="st-track"><div class="st-thumb"></div></div>
+          </label>
+        </div>
+        <div class="st-row net-row" data-net="weather">
+          <div class="st-row-body">
+            <div class="st-row-title">Weather forecast</div>
+            <div class="st-row-desc">From Open-Meteo. Only the coordinates of the working locations are sent.</div>
+            <div class="net-managed" hidden>Managed by your IT policy</div>
+          </div>
+          <label class="st-toggle" title="Weather forecast">
+            <input type="checkbox" id="netWeather" checked>
+            <div class="st-track"><div class="st-thumb"></div></div>
+          </label>
+        </div>
+        <div class="st-row net-row" data-net="maps">
+          <div class="st-row-body">
+            <div class="st-row-title">Online map tiles</div>
+            <div class="st-row-desc">OpenStreetMap and OpenSeaMap in the position-check map. Off: the map shows the pins without a background.</div>
+            <div class="net-managed" hidden>Managed by your IT policy</div>
+          </div>
+          <label class="st-toggle" title="Online map tiles">
+            <input type="checkbox" id="netMaps" checked>
+            <div class="st-track"><div class="st-thumb"></div></div>
+          </label>
+        </div>
+        <div class="net-foot">Cargo data, Outlook, sync and number reading never use the internet.</div>
+      </div><!-- /st-sec-body --></div><!-- /st-section internet -->
+
       <!-- Section: Cargo Placement -->
       <div class="st-section" data-section-id="placement">
       <div class="st-sec-hdr">
@@ -1811,8 +1849,8 @@
           <div class="st-row-desc" id="syncDesc">Not configured</div>
           <!-- Connected summary view (shown after successful save) -->
           <div class="sync-connected" id="syncConnectedView" style="margin-top:8px;display:none;">
-            <div class="sync-info-row"><span class="sync-info-label" id="syncInfoDbLbl">Database:</span> <span id="syncInfoDb">—</span></div>
-            <div class="sync-info-row"><span class="sync-info-label" id="syncInfoUserLbl">User:</span> <span id="syncInfoUser">—</span></div>
+            <div class="sync-info-row"><span class="sync-info-label" id="syncInfoDbLbl">Folder:</span> <span id="syncInfoDb">—</span></div>
+            <div class="sync-info-row"><span class="sync-info-label" id="syncInfoUserLbl">Last written by:</span> <span id="syncInfoUser">—</span></div>
             <div class="sync-info-row"><span class="sync-info-label">Last sync:</span> <span id="syncInfoTime">—</span></div>
             <div style="display:flex;gap:4px;margin-top:6px;">
               <button class="sync-btn" id="syncForcePull2" title="Pull the latest plan" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">⟳ Pull</button>
@@ -1827,22 +1865,12 @@
           </div>
           <!-- Config form (shown for initial setup or when editing) -->
           <div class="sync-config" id="syncConfigPanel" style="margin-top:8px;display:none;">
-            <div class="sync-mode" id="syncModeSeg" role="radiogroup" aria-label="Sync through">
-              <button type="button" class="sync-mode-btn on" data-mode="folder" role="radio" aria-checked="true">Ship network</button>
-              <button type="button" class="sync-mode-btn" data-mode="cloud" role="radio" aria-checked="false">Cloud</button>
-            </div>
             <div id="syncFolderFields">
               <div class="sync-folder-row">
                 <input class="sync-input" type="text" id="syncDir" placeholder="\\SERVER\Share\Decargo" spellcheck="false" autocomplete="off">
                 <button type="button" class="sync-btn sync-pick" id="syncPickDir">Choose…</button>
               </div>
               <div class="sync-note">Both bridge computers use the same folder on the shared drive. The plan stays on board — nothing goes to the internet.</div>
-            </div>
-            <div id="syncCloudFields" style="display:none;">
-            <input class="sync-input" type="text" id="syncUrl" placeholder="https://your-couch.railway.app">
-            <input class="sync-input" type="text" id="syncDb" placeholder="spica_tide">
-            <input class="sync-input" type="text" id="syncUser" placeholder="username">
-            <input class="sync-input" type="password" id="syncPass" placeholder="password">
             </div>
             <div style="display:flex;gap:4px;margin-top:4px;">
               <button class="sync-btn" id="syncTestBtn" style="flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;">Test</button>

@@ -10,9 +10,10 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatLatLon } from './fieldWeather.js';
+import { netAllowed, policyOf } from './netPolicy.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-let map = null, pin = null, others = null, resolver = null;
+let map = null, pin = null, others = null, resolver = null, tiles = [];
 
 function ensure(){
   let ov = document.getElementById('posMapOv');
@@ -46,8 +47,10 @@ function ensure(){
   ov.addEventListener('keydown', e => { if(e.key === 'Escape'){ e.stopPropagation(); done(null); } });
   ov.addEventListener('mousedown', e => { if(e.target === ov) done(null); });
   map = L.map(ov.querySelector('#pmMap'), { zoomControl: true, attributionControl: false, worldCopyJump: true });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
-  L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 1 }).addTo(map);
+  /* v3.43 — tiles only while "Online map tiles" is on (switch / IT policy);
+     added in checkPositionOnMap so a change takes effect next time */
+  tiles = [L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }),
+           L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 1 })];
   L.control.scale({ metric: true, imperial: true, position: 'bottomleft' }).addTo(map);
   others = L.layerGroup().addTo(map);
   const icon = L.divIcon({ className: 'pm-pin', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 13] });
@@ -63,6 +66,10 @@ function ensure(){
    located locations, drawn small for orientation. */
 export function checkPositionOnMap({ name, lat, lon, around = [] }){
   const ov = ensure();
+  const on = netAllowed('maps');
+  tiles.forEach(t => { if(on && !map.hasLayer(t)) t.addTo(map); else if(!on && map.hasLayer(t)) map.removeLayer(t); });
+  ov.querySelector('.pm-attr').textContent = on ? 'Map © OpenStreetMap contributors · sea marks © OpenSeaMap'
+    : 'Online map tiles are off' + (policyOf('maps') ? ' (managed by your IT policy)' : ' — Smart Tools → Internet') + '. Position and pins still work.';
   ov.querySelector('#pmTitle').textContent = name || 'Location';
   ov.classList.add('open');
   ov.tabIndex = -1; ov.focus();

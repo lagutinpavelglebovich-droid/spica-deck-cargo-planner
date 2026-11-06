@@ -4,8 +4,10 @@
    on THIS computer (Rust command `outlook_scan`, read-only, local) and
    offers them for import: a list in the Import window, and a card when
    a new one arrives while the planner is open.
-   Nothing is sent anywhere; attachments are copied to the local temp
-   folder only so the import can read them.
+   Nothing is sent anywhere, nothing in the mailbox is changed. v3.43: the
+   scan only lists attachments; the one being imported is copied to
+   %TEMP%\spica-tide-mail, read, and deleted at once (the folder is also
+   emptied at start-up and at exit).
 ════════════════════════════════════════════════════════════ */
 
 const LS_SEEN  = 'spicaTide_mailSeen';
@@ -58,7 +60,7 @@ export async function scan(manual){
     const raw = await call('outlook_scan', { days: DAYS, maxItems: 400, pattern: PATTERN });
     const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
     let items = Array.isArray(data.items) ? data.items : (data.items ? [data.items] : []);
-    items = items.filter(it => it && it.path && it.name)
+    items = items.filter(it => it && it.key && it.name)
       .sort((a, b) => String(b.received).localeCompare(String(a.received)));
     last = { at: new Date(), running: data.running !== false, items, error: '' };
     if(!manual) notifyNew(items);
@@ -108,7 +110,14 @@ async function importItem(it){
   if(!API.isOperator()){ API.toast('Viewer mode — import is not available', 'warn'); return; }
   try{
     const call = window.__mailMock || ((c, a) => API.invoke(c, a));
-    const buf = await call('read_file_bytes', { path: it.path });
+    /* v3.43 — the scan only lists attachments; the one being imported is
+       copied now, read, and its temporary copy deleted straight away */
+    const raw = await call('outlook_fetch', { days: DAYS, pattern: PATTERN, key: it.key, index: it.idx | 0 });
+    const got = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if(!got || !got.ok || !got.path) throw new Error((got && got.error) || 'attachment not found');
+    let buf;
+    try{ buf = await call('read_file_bytes', { path: got.path }); }
+    finally{ call('mail_temp_clear', {}).catch(() => {}); }
     const bytes = buf instanceof ArrayBuffer ? buf : (buf && buf.buffer) ? buf.buffer : new Uint8Array(buf || []).buffer;
     const file = new File([bytes], it.name, { type: '' });
     const done = new Set(lsGet(LS_DONE, [])); done.add(itemKey(it)); lsSet(LS_DONE, [...done].slice(-400));

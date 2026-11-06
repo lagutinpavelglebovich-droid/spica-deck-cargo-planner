@@ -11,6 +11,20 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.43.0',
+    date: '2026-11-06',
+    highlights: [ 'Internet use: fewer hosts, switches and an IT policy', 'Cloud sync removed — the ship network folder is the only sync' ],
+    changes: [
+      { type: 'sync', text: 'Cloud (CouchDB) sync is gone: the form, the code and its settings. A server address, user name or password saved by an older version is deleted on first start. Sync through the shared folder on the ship\'s network works exactly as before' },
+      { type: 'improvement', text: 'Weather uses only the positions of the working locations from the plan. The city weather — city search, finding a place from this computer\'s position, the "allow location" prompt — is removed' },
+      { type: 'feature', text: 'Smart Tools → Internet: Check for updates automatically, Weather forecast and Online map tiles can each be switched off. With automatic checks off the app does not contact GitHub until "Check for updates" is pressed' },
+      { type: 'feature', text: 'IT policy file %ProgramData%\\Decargo\\policy.json (updates / weather / maps: on or off) overrides those switches and locks them — "Managed by your IT policy"' },
+      { type: 'improvement', text: 'The app may connect only to the exact hosts it uses (Open-Meteo forecast and marine, OpenStreetMap / OpenSeaMap tiles); everything else is refused' },
+      { type: 'improvement', text: 'Outlook: the check only lists attachments. The one you import is copied to the temp folder, read and deleted at once; leftovers are cleared at start-up and at exit. Mail is still only read, never changed' },
+      { type: 'fix', text: 'The installer no longer claims .json files — only .spica. Installing over an older version gives .json back to the program that had it before' },
+    ],
+  },
+  {
     version: '3.42.2',
     date: '2026-11-05',
     highlights: [ 'Cargo colours match on both computers again' ],
@@ -366,7 +380,6 @@ export const RELEASE_NOTES = [
     changes: [
       { type: 'sync', text: 'Sync through a shared folder on the ship\'s network drive — no servers, nothing leaves the vessel. Both bridge computers point at the same folder (Smart Tools → Sync → Ship network); the Operator publishes, the other computer picks the plan up within a couple of seconds' },
       { type: 'sync', text: 'Safe by design: writes are locked and atomic, a change made on the other computer while you had unpublished edits asks Keep mine / Use theirs, linking to a folder that already holds a plan asks first, and the last 30 versions are kept in the folder\'s history' },
-      { type: 'sync', text: 'Cloud sync stays available as the second option and is fully off while the ship network is used' },
       { type: 'ui', text: 'The app is now Decargo — Deck Cargo Planner: window title, About, splash, PDF footer and EULA. Exports and project files are named after the active vessel' },
     ],
   },
@@ -522,7 +535,7 @@ export const RELEASE_NOTES = [
     date: '2026-10-25',
     highlights: [ 'Positions and vessel setup sync between computers' ],
     changes: [
-      { type: 'sync', text: 'Location positions and everything in Vessel Setup (locations, deck, zones, lashing) now travel with the cloud sync: set them on one computer, the other picks them up. The later edit wins; the deck-camera calibration stays on its own computer' },
+      { type: 'sync', text: 'Location positions and everything in Vessel Setup (locations, deck, zones, lashing) now travel with the sync: set them on one computer, the other picks them up. The later edit wins; the deck-camera calibration stays on its own computer' },
     ],
   },
   {
@@ -919,7 +932,7 @@ export const RELEASE_NOTES = [
       { type: 'feature',     text: 'NEW badge registry with auto-expiry after 3 versions' },
       { type: 'feature',     text: 'What\'s New modal shown after each update' },
       { type: 'feature',     text: 'Update History panel accessible from Help menu' },
-      { type: 'sync',        text: 'CouchDB push blocked in Viewer mode; pull stays active' },
+      { type: 'sync',        text: 'Sync: Viewer mode never publishes, it only receives the plan' },
       { type: 'improvement', text: 'Mode persists across app restarts via localStorage' },
     ],
   },

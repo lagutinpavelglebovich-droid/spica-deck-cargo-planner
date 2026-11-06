@@ -7948,15 +7948,10 @@ body.hdr-tight .save-state-text{ display:none; }
 [data-theme="dark"] .sync-input{background:var(--surf3);border-color:var(--brd2);color:var(--txt);}
 
 /* v3.28 — sync transport switch (Ship network / Cloud) + folder row */
-.sync-mode{display:flex;gap:2px;padding:2px;margin-bottom:6px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);}
-.sync-mode-btn{flex:1;padding:4px 6px;border:0;border-radius:calc(var(--r-xs) - 1px);background:transparent;color:var(--txt3);font:600 9px 'Inter',sans-serif;letter-spacing:.2px;cursor:pointer;}
-.sync-mode-btn.on{background:var(--surf);color:var(--acc);box-shadow:0 1px 2px rgba(0,0,0,.08);}
 .sync-folder-row{display:flex;gap:4px;align-items:flex-start;}
 .sync-folder-row .sync-input{flex:1;min-width:0;}
 .sync-pick{flex:none;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r-xs);background:var(--surf3);color:var(--txt2);font:600 9px 'Inter',sans-serif;cursor:pointer;}
 .sync-note{font:400 9px/1.4 'Inter',sans-serif;color:var(--txt3);margin:0 0 4px;}
-[data-theme="dark"] .sync-mode{background:var(--surf2);border-color:var(--brd2);}
-[data-theme="dark"] .sync-mode-btn.on{background:var(--surf3);color:var(--acc);box-shadow:none;}
 [data-theme="dark"] .sync-pick{background:var(--surf3);border-color:var(--brd2);color:var(--txt2);}
 
 /* ── Sync connected summary view ── */
@@ -18836,3 +18831,17 @@ body.pdf-capture .cb.cb-cam-moved{ outline:none; opacity:1; }
 /* the direction stays readable on a narrow header: the arrow goes first
    (above), the pill only when not even three pills fit */
 @container his (max-width: 140px){ .info-block.info-fieldwx .hfw-dir{ display:none; } }
+
+/* v3.43 — Smart Tools → Internet: switches an IT policy can lock */
+.net-row .net-managed{ margin-top:4px; display:inline-flex; align-items:center; gap:5px; font-size:9.5px; font-weight:600; letter-spacing:.2px; color:var(--acc); }
+.net-row .net-managed::before{ content:""; width:9px; height:9px; flex:0 0 auto; background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3 4V3a2 2 0 0 1 4 0v1h.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5zm1 0h2V3a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3 4V3a2 2 0 0 1 4 0v1h.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5zm1 0h2V3a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center/contain no-repeat; }
+.net-row.is-managed .st-toggle{ opacity:.55; cursor:not-allowed; }
+.net-row.is-managed .st-toggle input{ cursor:not-allowed; }
+.net-foot{ padding:6px 20px 2px; font-size:9.5px; line-height:1.4; color:var(--txt3); }
+.about-managed{ margin-top:4px; font-size:10px; font-weight:600; color:var(--acc); }
+.about-check-btn:disabled{ opacity:.5; cursor:not-allowed; }
+[data-theme="dark"] .net-foot{ color:var(--txt3); }
+[data-theme="dark"] .net-row .net-managed, [data-theme="dark"] .about-managed{ color:var(--acc); }
+.net-row .net-managed[hidden], .about-managed[hidden]{ display:none; }

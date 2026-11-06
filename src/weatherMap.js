@@ -14,6 +14,7 @@
    Projection: Mercator. All drawing on canvases; pins are DOM.
 ════════════════════════════════════════════════════════════ */
 
+import { netReady, netAllowed, policyOf } from './netPolicy.js';
 import LAND from './weather/northSeaLand.json';
 import { windUnit, setWindUnit, windLbl, HMAX_K } from './fieldWeather.js';
 
@@ -108,6 +109,8 @@ function covers(b){       /* does the stored grid still hold every working locat
 }
 
 async function getJson(url){
+  await netReady();
+  if(!netAllowed('weather')) throw new Error('Weather forecast is off (Smart Tools → Internet' + (policyOf('weather') ? ', managed by your IT policy)' : ')'));
   const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 25000);
   try{ const r = await fetch(url, { signal: ctrl.signal }); if(!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
   finally{ clearTimeout(t); }
@@ -365,7 +368,7 @@ async function load(force){
       tIdx = nowIdx(); syncTime(); viewChanged(true);
     }
   }catch(e){
-    err = e && e.name === 'AbortError' ? 'no answer from Open-Meteo' : 'could not reach Open-Meteo';
+    err = e && e.name === 'AbortError' ? 'no answer from Open-Meteo' : /is off/.test(e && e.message) ? e.message : 'could not reach Open-Meteo';
   }finally{
     loading = false; syncControls();
   }
