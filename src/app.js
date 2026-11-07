@@ -909,12 +909,16 @@ function locById(id){return LOC_ALL.find(l=>l.id===id) || S.customLocs.find(l=>l
 function _isGreyLoc(id){ const l = LOC_ALL.find(x => x.id === id); return !!(l && l.fixed); }
 /* First location of the vessel — fallback for new cargo / imports. */
 function _defaultLocId(){ return (LOC_ALL[0] && LOC_ALL[0].id) || 'BLEO'; }
-/* Keep the plan's active locations valid for the active vessel. */
+/* Keep the plan's active locations valid for the active vessel.
+   v3.43.1 — an empty list stays empty. This used to re-seed the vessel's
+   first two locations (Bleo Holm + Claymore CAP) whenever none were active,
+   and it runs on every strip rebuild: after Clear Deck, or after closing the
+   last card, they came straight back. Locations appear only when the
+   officer adds them (⊕, import, placing cargo). */
 function _syncLocsToVessel(){
   const ok = id => !!locById(id);
   S.activeLocs = (S.activeLocs || []).filter(ok);
-  if(!S.activeLocs.length && LOC_ALL.length) S.activeLocs = LOC_ALL.slice(0, Math.min(2, LOC_ALL.length)).map(l => l.id);
-  if(!ok(S.selLoc)) S.selLoc = S.activeLocs[0] || _defaultLocId();
+  if(!ok(S.selLoc)) S.selLoc = S.activeLocs[0] || null;
 }
 
 /* ── Premium Palette Pool ────────────────────────────────────
@@ -8466,8 +8470,12 @@ function _applyPlan(p, opts = {}){
     if(opts.ui !== false) _vesselForPlan(p);
     S.cargo = p.cargo; _migrateDgClasses(S.cargo); _normalizeCargoGeometry(S.cargo);
     S.customLib = p.customLib; S.customLocs = p.customLocs;
-    if(p.activeLocs.length) S.activeLocs = p.activeLocs;
-    if(p.selLoc != null) S.selLoc = p.selLoc;
+    /* v3.43.1 — the plan's list wins even when empty (a deck cleared on the
+       other bridge PC must not keep this PC's old location cards) */
+    S.activeLocs = p.activeLocs.slice();
+    /* …but a location that has cargo on deck always has its card */
+    S.cargo.forEach(c => { if(c.platform && locById(c.platform) && !S.activeLocs.includes(c.platform)) S.activeLocs.push(c.platform); });
+    S.selLoc = p.selLoc != null && S.activeLocs.includes(p.selLoc) ? p.selLoc : (S.activeLocs[0] || null);
     const vi = document.getElementById('voyIn'); if(vi) vi.value = p.voyage;
     if(p.date){ selDate = new Date(p.date); if(isNaN(selDate)) selDate = new Date(); }
     _setDict(DYN_COLORS, p.dynColors);
@@ -16174,8 +16182,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.43.0';
-const APP_VERSION   = '3.43.0';
+const CURRENT_BUILD = 'v3.43.1';
+const APP_VERSION   = '3.43.1';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

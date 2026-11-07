@@ -11,6 +11,15 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.43.1',
+    date: '2026-11-07',
+    highlights: [ 'Clear Deck leaves no location cards behind' ],
+    changes: [
+      { type: 'fix', text: 'After Clear Deck, or after closing the last location card, Bleo Holm and Claymore CAP came back on their own. Now the location strip stays empty until you add a location (⊕, an import or placing cargo)' },
+      { type: 'fix', text: 'Sync: a deck cleared on the other bridge PC also clears the location cards here, instead of keeping the old ones' },
+    ],
+  },
+  {
     version: '3.43.0',
     date: '2026-11-06',
     highlights: [ 'Internet use: fewer hosts, switches and an IT policy', 'Cloud sync removed — the ship network folder is the only sync' ],
