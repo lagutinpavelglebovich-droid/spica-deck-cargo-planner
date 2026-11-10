@@ -12,8 +12,11 @@ import { invoke as _rawInvoke } from '@tauri-apps/api/core';
 /* v3.38 — every shell call goes through here: a write refused for an
    invalid licence (it ended mid-session) brings the lock screen up at once
    instead of leaving a screen whose saves silently fail. */
-async function invoke(cmd, args){
-  try{ return await _rawInvoke(cmd, args); }
+async function invoke(cmd, args, options){
+  /* v3.43.2 — pass the options on: Record video sends the file path in a
+     header (append_file_raw, raw bytes); dropping it made every chunk fail
+     with "missing x-path header" since 3.38 */
+  try{ return await _rawInvoke(cmd, args, options); }
   catch(e){
     if(/licence is not valid/i.test(String(e && e.message || e)) && typeof _licRefresh === 'function') setTimeout(() => _licRefresh(false), 0);
     throw e;
@@ -16182,8 +16185,8 @@ function bindLangSwitch(){
    Window: show if minor >= (current_minor - NEW_BADGE_WINDOW)
 ════════════════════════════════════════════════════════════ */
 
-const CURRENT_BUILD = 'v3.43.1';
-const APP_VERSION   = '3.43.1';
+const CURRENT_BUILD = 'v3.43.2';
+const APP_VERSION   = '3.43.2';
 const RELEASE_CHANNEL = 'Stable';
 const NEW_BADGE_WINDOW = 4; /* show NEW for last N minor versions */
 

@@ -11,6 +11,14 @@
 
 export const RELEASE_NOTES = [
   {
+    version: '3.43.2',
+    date: '2026-11-10',
+    highlights: [ 'Record video writes the video again' ],
+    changes: [
+      { type: 'fix', text: 'Record video: every piece of the video failed with "Writing the video failed — missing x-path header", so the saved file stayed empty (since 3.38). The log next to the video was written, the video itself was not' },
+    ],
+  },
+  {
     version: '3.43.1',
     date: '2026-11-07',
     highlights: [ 'Clear Deck leaves no location cards behind' ],
